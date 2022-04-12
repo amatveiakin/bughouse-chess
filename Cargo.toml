@@ -7,5 +7,4 @@ edition = "2021"
 [dependencies]
 derive-new = "0.5.9"
 enum-map = "2.1.0"
-# enum-map-derive = "*"  // !!!
 itertools = "0.10.3"

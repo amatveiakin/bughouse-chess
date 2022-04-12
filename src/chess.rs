@@ -1,12 +1,11 @@
 #![allow(unused_parens)]
 
-use std::ops;
+use enum_map::{enum_map, EnumMap};
 
-use derive_new::new;
-use enum_map::{enum_map, Enum, EnumMap};
-use itertools::Itertools;
-
-use crate::janitor::Janitor;
+use crate::coord::{Col, SubjectiveRow, Coord};
+use crate::force::Force;
+use crate::grid::Grid;
+use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, CastleDirection};
 use crate::util::sort_two;
 
 
@@ -32,208 +31,6 @@ pub struct BughouseRules {
     pub drop_aggression: DropAggression,
 }
 
-
-// Row form a force's point of view
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct SubjectiveRow {
-    pub idx: u8,  // 0-based
-}
-impl SubjectiveRow {
-    pub fn from_zero_based(idx: u8) -> Self {
-        assert!(idx < NUM_ROWS);
-        Self { idx }
-    }
-    pub fn from_one_based(idx: u8) -> Self {
-        Self::from_zero_based((idx).checked_sub(1).unwrap())
-    }
-    pub fn to_row(self, force: Force) -> Row {
-        match force {
-            Force::White => Row::from_zero_based(self.idx),
-            Force::Black => Row::from_zero_based(NUM_ROWS - self.idx - 1),
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct Row {
-    pub idx: u8,  // 0-based
-}
-impl Row {
-    pub fn from_zero_based(idx: u8) -> Self {
-        assert!(idx < NUM_ROWS);
-        Self { idx }
-    }
-    pub fn from_algebraic(idx: char) -> Self {
-        Self::from_zero_based((idx as u8).checked_sub('1' as u8).unwrap())
-    }
-    pub fn to_zero_based(self) -> u8 { self.idx }
-    pub fn all() -> impl Iterator<Item = Self> {
-        (0..NUM_ROWS).map(|(idx)| Self::from_zero_based(idx))
-    }
-}
-impl ops::Add<i8> for Row {
-    type Output = Self;
-    fn add(self, other: i8) -> Self::Output {
-        Self::from_zero_based((self.to_zero_based() as i8 + other) as u8)
-    }
-}
-impl ops::Sub for Row {
-    type Output = i8;
-    fn sub(self, other: Self) -> Self::Output {
-        (self.to_zero_based() as i8) - (other.to_zero_based() as i8)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct Col {
-    pub idx: u8,  // 0-based
-}
-impl Col {
-    pub fn from_zero_based(idx: u8) -> Col {
-        assert!(idx < NUM_COLS);
-        Col { idx }
-    }
-    pub fn from_algebraic(idx: char) -> Self {
-        Self::from_zero_based((idx as u8).checked_sub('A' as u8).unwrap())
-    }
-    pub fn to_zero_based(self) -> u8 { self.idx }
-    pub fn all() -> impl Iterator<Item = Self> {
-        (0..NUM_COLS).map(|(idx)| Self::from_zero_based(idx))
-    }
-}
-impl ops::Add<i8> for Col {
-    type Output = Self;
-    fn add(self, other: i8) -> Self::Output {
-        Self::from_zero_based((self.to_zero_based() as i8 + other) as u8)
-    }
-}
-impl ops::Sub for Col {
-    type Output = i8;
-    fn sub(self, other: Self) -> Self::Output {
-        (self.to_zero_based() as i8) - (other.to_zero_based() as i8)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Coord {
-    pub row: Row,
-    pub col: Col,
-}
-impl Coord {
-    pub fn all() -> impl Iterator<Item = Coord> {
-        (0..NUM_ROWS).cartesian_product(0..NUM_COLS).map(|(row_idx, col_idx)|
-            Coord{ row: Row::from_zero_based(row_idx), col: Col::from_zero_based(col_idx) }
-        )
-    }
-}
-impl ops::Add<(i8, i8)> for Coord {
-    type Output = Self;
-    fn add(self, other: (i8, i8)) -> Self::Output {
-        Self{ row: self.row + other.0, col: self.col + other.1 }
-    }
-}
-impl ops::Sub for Coord {
-    type Output = (i8, i8);
-    fn sub(self, other: Self) -> Self::Output {
-        (self.row - other.row, self.col - other.col)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Enum)]
-pub enum Force {
-    White,
-    Black,
-}
-impl Force {
-    pub fn opponent(self) -> Force {
-        match self {
-            Force::White => Force::Black,
-            Force::Black => Force::White,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Enum)]
-pub enum PieceKind {
-    Pawn,
-    Knight,
-    Bishop,
-    Rook,
-    Queen,
-    King,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum PieceOrigin {
-    Innate,
-    Promoted,
-    Dropped,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, new)]
-pub struct PieceOnBoard {
-    kind: PieceKind,
-    origin: PieceOrigin,
-    rook_castling: Option<CastleDirection>,  // whether rook can be used to castle
-    force: Force,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Enum)]
-pub enum CastleDirection {
-    ASide,
-    HSide,
-}
-
-pub type Reserve = EnumMap<PieceKind, u8>;
-
-const NUM_ROWS: u8 = 8;
-const NUM_COLS: u8 = 8;
-
-
-#[derive(Clone, Debug)]
-struct Grid {
-    data: [[Option<PieceOnBoard>; NUM_COLS as usize]; NUM_ROWS as usize],
-}
-impl Grid {
-    pub fn new() -> Grid {
-        Grid { data: Default::default() }
-    }
-    // Idea. A separate class GridView that allows to make only temporary changes.
-    fn maybe_scoped_set(&mut self, change: Option<(Coord, Option<PieceOnBoard>)>)
-        -> impl ops::DerefMut<Target = Grid> + '_
-    {
-        let original = match change {
-            None => None,
-            Some((pos, new_piece)) => {
-                self[pos] = new_piece;
-                Some((pos, self[pos]))
-            },
-        };
-        Janitor::new(self, move |grid| {
-            if let Some((pos, original_piece)) = original {
-                grid[pos] = original_piece;
-            }
-        })
-    }
-    fn scoped_set(&mut self, pos: Coord, piece: Option<PieceOnBoard>)
-        -> impl ops::DerefMut<Target = Grid> + '_
-    {
-        let original_piece = self[pos];
-        self[pos] = piece;
-        Janitor::new(self, move |grid| grid[pos] = original_piece)
-    }
-}
-impl ops::Index<Coord> for Grid {
-    type Output = Option<PieceOnBoard>;
-    fn index(&self, pos: Coord) -> &Self::Output {
-        &self.data[pos.row.idx as usize][pos.col.idx as usize]
-    }
-}
-impl ops::IndexMut<Coord> for Grid {
-    fn index_mut(&mut self, pos: Coord) -> &mut Self::Output {
-        &mut self.data[pos.row.idx as usize][pos.col.idx as usize]
-    }
-}
 
 fn direction_forward(force: Force) -> i8 {
     match force {
@@ -436,6 +233,8 @@ fn is_reachable(
     }
 }
 
+
+pub type Reserve = EnumMap<PieceKind, u8>;
 
 // TODO: Info for draws (number of moves without action; hash map of former positions)
 #[derive(Clone, Debug)]
@@ -643,12 +442,12 @@ impl Board {
                 let rook_to;
                 match dir {
                     CastleDirection::ASide => {
-                        king_to = Coord{ row, col: Col::from_algebraic('C')};
-                        rook_to = Coord{ row, col: Col::from_algebraic('D')};
+                        king_to = Coord::new(row, Col::C);
+                        rook_to = Coord::new(row, Col::D);
                     },
                     CastleDirection::HSide => {
-                        king_to = Coord{ row, col: Col::from_algebraic('G') };
-                        rook_to = Coord{ row, col: Col::from_algebraic('F') };
+                        king_to = Coord::new(row, Col::G);
+                        rook_to = Coord::new(row, Col::F);
                     },
                 };
                 let reachable = is_reachable(
