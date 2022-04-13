@@ -1,8 +1,12 @@
 #![allow(unused_parens)]
 
-use enum_map::{enum_map, EnumMap};
+use std::rc::Rc;
 
-use crate::coord::{Col, SubjectiveRow, Coord};
+use enum_map::{enum_map, EnumMap};
+use itertools::Itertools;
+use rand::prelude::*;
+
+use crate::coord::{SubjectiveRow, Row, Col, Coord};
 use crate::force::Force;
 use crate::grid::Grid;
 use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, CastleDirection};
@@ -24,8 +28,12 @@ pub enum DropAggression {
 }
 
 #[derive(Clone, Debug)]
-pub struct BughouseRules {
+pub struct ChessRules {
     pub starting_position: StartingPosition,
+}
+
+#[derive(Clone, Debug)]
+pub struct BughouseRules {
     pub min_pawn_drop_row: SubjectiveRow,
     pub max_pawn_drop_row: SubjectiveRow,
     pub drop_aggression: DropAggression,
@@ -34,8 +42,8 @@ pub struct BughouseRules {
 
 fn direction_forward(force: Force) -> i8 {
     match force {
-        Force::White => 1,
-        Force::Black => -1,
+        Force::White => -1,
+        Force::Black => 1,
     }
 }
 
@@ -237,9 +245,9 @@ fn is_reachable(
 pub type Reserve = EnumMap<PieceKind, u8>;
 
 // TODO: Info for draws (number of moves without action; hash map of former positions)
-#[derive(Clone, Debug)]
 pub struct Board {
-    rules: BughouseRules,
+    #[allow(dead_code)] chess_rules: Rc<ChessRules>,
+    bughouse_rules: Option<Rc<BughouseRules>>,
     status: GameStatus,
     grid: Grid,
     // Tells which castling moves can be made based on what pieces have moved (not taking
@@ -248,6 +256,12 @@ pub struct Board {
     reserve: EnumMap<Force, Reserve>,
     last_turn: Option<Turn>,  // for en passant capture
     active_force: Force,
+}
+
+#[derive(Clone, Debug)]
+pub struct Capture {
+    piece_kind: PieceKind,
+    force: Force,
 }
 
 // Note. Generally speaking, it's impossible to detect castling based on king movement in Chess960.
@@ -260,31 +274,45 @@ pub enum Turn {
 
 #[derive(Clone, Debug)]
 pub struct TurnMove {
-    from: Coord,
-    to: Coord,
-    promote_to: Option<PieceKind>,
+    pub from: Coord,
+    pub to: Coord,
+    pub promote_to: Option<PieceKind>,
 }
 
 #[derive(Clone, Debug)]
 pub struct TurnDrop {
-    piece_kind: PieceKind,
-    to: Coord,
+    pub piece_kind: PieceKind,
+    pub to: Coord,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GameStatus {
     Active,
-    Victory,
+    Victory(Force),
     Draw,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TurnError {
+    IllegalChessMove,
+    IllegalDropFobidden,
+    IllegalDropPieceMissing,
+    IllegalDropPosition,
+    IllegalDropAggression,
 }
 
 
 impl Board {
-    pub fn new(rules: BughouseRules) -> Board {
+    fn new(
+        chess_rules: Rc<ChessRules>,
+        bughouse_rules: Option<Rc<BughouseRules>>,
+        starting_grid: Grid,
+    ) -> Board {
         Board {
-            rules: rules,
+            chess_rules: chess_rules,
+            bughouse_rules: bughouse_rules,
             status: GameStatus::Active,
-            grid: Grid::new(),  // TODO: Generate pieces
+            grid: starting_grid,
             castle_rights: enum_map!{ _ => enum_map!{ _ => true } },
             reserve: enum_map!{ _ => enum_map!{ _ => 0 } },
             last_turn: None,
@@ -292,18 +320,17 @@ impl Board {
         }
     }
 
-    pub fn try_turn(&mut self, turn: Turn) -> bool {
-        let mut new_grid = match self.try_turn_no_check_test(&turn) {
-            Some(v) => v,
-            None => { return false; },
-        };
-        let king_pos = find_king(&new_grid, self.active_force);
-        let opponent_king_pos = find_king(&new_grid, self.active_force.opponent());
+    fn try_turn(&mut self, turn: Turn) -> Result<Option<Capture>, TurnError> {
+        let force = self.active_force;
+        let (mut new_grid, capture) = self.try_turn_no_check_test(&turn)?;
+        let king_pos = find_king(&new_grid, force);
+        let opponent_king_pos = find_king(&new_grid, force.opponent());
         if is_check_to(&mut new_grid, king_pos) {
-            return false;
+            return Err(TurnError::IllegalChessMove);
         }
         if let Turn::Drop(_) = turn {
-            let drop_legal = match self.rules.drop_aggression {
+            let bughouse_rules = self.bughouse_rules.as_ref().ok_or(TurnError::IllegalDropFobidden)?;
+            let drop_legal = match bughouse_rules.drop_aggression {
                 DropAggression::NoCheck =>
                     !is_check_to(&mut new_grid, opponent_king_pos),
                 DropAggression::NoChessMate =>
@@ -314,7 +341,7 @@ impl Board {
                     true,
             };
             if !drop_legal {
-                return false;
+                return Err(TurnError::IllegalDropAggression);
             }
         }
 
@@ -322,95 +349,103 @@ impl Board {
             Turn::Move(mv) => {
                 let piece = self.grid[mv.from].unwrap();
                 if piece.kind == PieceKind::King {
-                    self.castle_rights[self.active_force] = enum_map!{ _ => false };
+                    self.castle_rights[force] = enum_map!{ _ => false };
                 } else if let Some(rook_castling) = piece.rook_castling {
                     assert_eq!(piece.kind, PieceKind::Rook);
-                    self.castle_rights[self.active_force][rook_castling] = false;
+                    self.castle_rights[force][rook_castling] = false;
                 }
             },
             Turn::Drop(_) => { },
             Turn::Castle(_) => {
-                self.castle_rights[self.active_force] = enum_map!{ _ => false };
+                self.castle_rights[force] = enum_map!{ _ => false };
             }
         }
         self.grid = new_grid;
-        // TODO: Update partner reserve
         self.last_turn = Some(turn);
-        if is_bughouse_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
-            self.status = GameStatus::Victory;
-            return true;
+        if self.bughouse_rules.is_some() {
+            if is_bughouse_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
+                self.status = GameStatus::Victory(force);
+            }
+        } else {
+            if is_chess_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
+                self.status = GameStatus::Victory(force);
+            }
         }
         // TODO: Draw if position is repeated three times.
-        self.active_force = self.active_force.opponent();
-        true
+        self.active_force = force.opponent();
+        Ok(capture)
     }
 
-    fn try_turn_no_check_test(&self, turn: &Turn) -> Option<Grid> {
+    fn try_turn_no_check_test(&self, turn: &Turn) -> Result<(Grid, Option<Capture>), TurnError> {
+        let force = self.active_force;
         let mut new_grid = self.grid.clone();
+        let mut capture = None;
         match turn {
             Turn::Move(mv) => {
-                let piece = new_grid[mv.from].take()?;
-                if piece.force != self.active_force {
-                    return None;
+                let capture_pos_or = get_capture(&new_grid, mv.from, mv.to, &self.last_turn);
+                let piece = new_grid[mv.from].take().ok_or(TurnError::IllegalChessMove)?;
+                if piece.force != force {
+                    return Err(TurnError::IllegalChessMove);
                 }
                 let piece_kind = piece.kind;
-                let capture_or = get_capture(&new_grid, mv.from, mv.to, &self.last_turn);
                 let reachable = is_reachable(
-                    &mut new_grid, self.active_force, piece_kind,
-                    mv.from, mv.to, capture_or.is_some(), false
+                    &mut new_grid, force, piece_kind,
+                    mv.from, mv.to, capture_pos_or.is_some(), false
                 );
                 if !reachable {
-                    return None;
+                    return Err(TurnError::IllegalChessMove);
                 }
-                let last_row = SubjectiveRow::from_one_based(8).to_row(self.active_force);
+                let last_row = SubjectiveRow::from_one_based(8).to_row(force);
                 if mv.to.row == last_row && piece_kind == PieceKind::Pawn {
                     if let Some(promote_to) = mv.promote_to {
                         new_grid[mv.to] = Some(PieceOnBoard::new(
-                            promote_to, PieceOrigin::Promoted, None, self.active_force
+                            promote_to, PieceOrigin::Promoted, None, force
                         ));
                     } else {
-                        return None;
+                        return Err(TurnError::IllegalChessMove);
                     }
                 } else {
                     if let Some(_) = mv.promote_to {
-                        return None;
+                        return Err(TurnError::IllegalChessMove);
                     } else {
                         new_grid[mv.to] = Some(piece);
                     }
                 }
-                if let Some(capture) = capture_or {
-                    assert!(new_grid[capture].is_some());
-                    new_grid[capture] = None;
+                if let Some(capture_pos) = capture_pos_or {
+                    let captured_piece = new_grid[capture_pos].unwrap();
+                    capture = Some(Capture{ piece_kind: captured_piece.kind, force: captured_piece.force });
+                    new_grid[capture_pos] = None;
                 }
             },
             Turn::Drop(drop) => {
+                let bughouse_rules = self.bughouse_rules.as_ref().ok_or(TurnError::IllegalDropFobidden)?;
                 if drop.piece_kind == PieceKind::Pawn && (
-                    drop.to.row < self.rules.min_pawn_drop_row.to_row(self.active_force) ||
-                    drop.to.row > self.rules.max_pawn_drop_row.to_row(self.active_force)
+                    drop.to.row < bughouse_rules.min_pawn_drop_row.to_row(force) ||
+                    drop.to.row > bughouse_rules.max_pawn_drop_row.to_row(force)
                 ) {
-                    return None;
+                    return Err(TurnError::IllegalDropPosition);
                 }
-                if self.reserve[self.active_force][drop.piece_kind] < 1 {
-                    return None;
+                if self.reserve[force][drop.piece_kind] < 1 {
+                    return Err(TurnError::IllegalDropPieceMissing);
                 }
                 if new_grid[drop.to].is_some() {
-                    return None;
+                    return Err(TurnError::IllegalDropPosition);
                 }
                 new_grid[drop.to] = Some(PieceOnBoard::new(
-                    drop.piece_kind, PieceOrigin::Dropped, None, self.active_force
+                    drop.piece_kind, PieceOrigin::Dropped, None, force
                 ));
             },
             Turn::Castle(dir) => {
-                if !self.castle_rights[self.active_force][*dir] {
-                    return None;
+                if !self.castle_rights[force][*dir] {
+                    return Err(TurnError::IllegalChessMove);
                 }
-                let row = SubjectiveRow::from_one_based(1).to_row(self.active_force);
+                let row = SubjectiveRow::from_one_based(1).to_row(force);
                 let mut king = None;
                 let mut king_pos = None;
                 for col in Col::all() {
                     let pos = Coord{ row, col };
                     if let Some(piece) = new_grid[pos] {
-                        if piece.force == self.active_force && piece.kind == PieceKind::King {
+                        if piece.force == force && piece.kind == PieceKind::King {
                             king = new_grid[pos].take();
                             king_pos = Some(pos);
                             break;
@@ -426,7 +461,7 @@ impl Board {
                 for col in Col::all() {
                     let pos = Coord{ row, col };
                     if let Some(piece) = new_grid[pos] {
-                        if piece.force == self.active_force && piece.rook_castling == Some(*dir) {
+                        if piece.force == force && piece.rook_castling == Some(*dir) {
                             assert_eq!(piece.kind, PieceKind::Rook);
                             rook = new_grid[pos].take();
                             rook_pos = Some(pos);
@@ -451,19 +486,131 @@ impl Board {
                     },
                 };
                 let reachable = is_reachable(
-                    &mut new_grid, self.active_force, PieceKind::King,
+                    &mut new_grid, force, PieceKind::King,
                     king_from, king_to, false, true
                 ) && is_reachable(
-                    &mut new_grid, self.active_force, PieceKind::Rook,
+                    &mut new_grid, force, PieceKind::Rook,
                     rook_from, rook_to, false, true
                 );
                 if !reachable {
-                    return None;
+                    return Err(TurnError::IllegalChessMove);
                 }
                 new_grid[king_to] = king;
                 new_grid[rook_to] = rook;
             },
         }
-        Some(new_grid)
+        Ok((new_grid, capture))
+    }
+
+    fn receive_capture(&mut self, capture: &Capture) {
+        self.reserve[capture.force][capture.piece_kind] += 1;
+    }
+}
+
+
+fn generate_starting_grid(starting_position: StartingPosition) -> Grid {
+    use CastleDirection::*;
+    use PieceKind::*;
+    let new_white = |kind| {
+        assert_ne!(kind, Rook);
+        PieceOnBoard::new(kind, PieceOrigin::Innate, None, Force::White)
+    };
+    let new_white_rook = |castling| {
+        PieceOnBoard::new(Rook, PieceOrigin::Innate, Some(castling), Force::White)
+    };
+    let mut grid = Grid::new();
+
+    for col in Col::all() {
+        grid[Coord::new(Row::_2, col)] = Some(new_white(Pawn));
+    }
+    match starting_position {
+        StartingPosition::Classic => {
+            grid[Coord::A1] = Some(new_white_rook(ASide));
+            grid[Coord::B1] = Some(new_white(Knight));
+            grid[Coord::C1] = Some(new_white(Bishop));
+            grid[Coord::D1] = Some(new_white(Queen));
+            grid[Coord::E1] = Some(new_white(King));
+            grid[Coord::F1] = Some(new_white(Bishop));
+            grid[Coord::G1] = Some(new_white(Knight));
+            grid[Coord::H1] = Some(new_white_rook(HSide));
+        },
+        StartingPosition::FischerRandom => {
+            let mut rng = rand::thread_rng();
+            let row = Row::_1;
+            grid[Coord::new(row, Col::from_zero_based(rng.gen_range(0..4) * 2))] = Some(new_white(Bishop));
+            grid[Coord::new(row, Col::from_zero_based(rng.gen_range(0..4) * 2 + 1))] = Some(new_white(Bishop));
+            let mut cols = Col::all().filter(|col| grid[Coord::new(row, *col)].is_none()).collect_vec();
+            cols.shuffle(&mut rng);
+            let (king_and_rook_cols, queen_and_knight_cols) = cols.split_at(3);
+            let [&left_rook_col, &king_col, &right_rook_col] =
+                <[&Col; 3]>::try_from(king_and_rook_cols.into_iter().sorted().collect_vec()).unwrap();
+            let [queen_col, knight_col_1, knight_col_2] =
+                <[Col; 3]>::try_from(queen_and_knight_cols).unwrap();
+            grid[Coord::new(row, left_rook_col)] = Some(new_white_rook(ASide));
+            grid[Coord::new(row, king_col)] = Some(new_white(King));
+            grid[Coord::new(row, right_rook_col)] = Some(new_white_rook(HSide));
+            grid[Coord::new(row, queen_col)] = Some(new_white(Queen));
+            grid[Coord::new(row, knight_col_1)] = Some(new_white(Knight));
+            grid[Coord::new(row, knight_col_2)] = Some(new_white(Knight));
+        },
+    }
+
+    for col in Col::all() {
+        grid[Coord::new(Row::_7, col)] = grid[Coord::new(Row::_2, col)].map(|mut piece| {
+            piece.force = Force::Black;
+            piece
+        });
+        grid[Coord::new(Row::_8, col)] = grid[Coord::new(Row::_1, col)].map(|mut piece| {
+            piece.force = Force::Black;
+            piece
+        });
+    }
+    grid
+}
+
+pub struct ChessGame {
+    board: Board,
+}
+
+impl ChessGame {
+    pub fn new(rules: ChessRules) -> ChessGame {
+        let starting_position = rules.starting_position;
+        ChessGame {
+            board: Board::new(Rc::new(rules), None, generate_starting_grid(starting_position)),
+        }
+    }
+
+    pub fn try_turn(&mut self, turn: Turn) -> Result<(), TurnError> {
+        self.board.try_turn(turn)?;
+        Ok(())
+    }
+}
+
+
+pub struct BughouseGame {
+    boards: [Board; 2],
+}
+
+impl BughouseGame {
+    pub fn new(chess_rules: ChessRules, bughouse_rules: BughouseRules) -> BughouseGame {
+        let starting_position = chess_rules.starting_position;
+        let chess_rules = Rc::new(chess_rules);
+        let bughouse_rules = Rc::new(bughouse_rules);
+        let starting_grid = generate_starting_grid(starting_position);
+        let boards = [
+            Board::new(Rc::clone(&chess_rules), Some(Rc::clone(&bughouse_rules)), starting_grid.clone()),
+            Board::new(Rc::clone(&chess_rules), Some(Rc::clone(&bughouse_rules)), starting_grid),
+        ];
+        BughouseGame {
+            boards: boards,
+        }
+    }
+
+    pub fn try_turn(&mut self, board_idx: usize, turn: Turn) -> Result<(), TurnError> {
+        let capture_or = self.boards[board_idx].try_turn(turn)?;
+        if let Some(capture) = capture_or {
+            self.boards[1 - board_idx].receive_capture(&capture)
+        }
+        Ok(())
     }
 }
