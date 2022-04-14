@@ -1,3 +1,4 @@
+use std::fmt;
 use std::ops;
 
 use itertools::Itertools;
@@ -56,6 +57,7 @@ impl Row {
         Self::from_zero_based(const_char_sub(idx, '1'))
     }
     pub const fn to_zero_based(self) -> u8 { self.idx }
+    pub const fn to_algebraic(self) -> char { (self.idx + '1' as u8) as char }
     pub fn all() -> impl Iterator<Item = Self> + Clone {
         (0..NUM_ROWS).map(|idx| Self::from_zero_based(idx))
     }
@@ -87,9 +89,10 @@ impl Col {
         Col { idx }
     }
     pub const fn from_algebraic(idx: char) -> Self {
-        Self::from_zero_based(const_char_sub(idx.to_ascii_lowercase(), 'a'))
+        Self::from_zero_based(const_char_sub(idx, 'a'))
     }
-    pub fn to_zero_based(self) -> u8 { self.idx }
+    pub const fn to_zero_based(self) -> u8 { self.idx }
+    pub const fn to_algebraic(self) -> char { (self.idx + 'a' as u8) as char }
     pub fn all() -> impl Iterator<Item = Self> + Clone {
         (0..NUM_COLS).map(|idx| Self::from_zero_based(idx))
     }
@@ -110,7 +113,7 @@ impl ops::Sub for Col {
 }
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Coord {
     pub row: Row,
     pub col: Col,
@@ -120,10 +123,10 @@ impl Coord {
     pub const fn new(row: Row, col: Col) -> Self {
         Self{ row, col }
     }
-    // pub fn from_algebraic(s: &str) -> Self {
-    //     let chars: [char; 2] = s.chars().collect_vec().try_into().unwrap();
-    //     Coord{ row: Row::from_algebraic(chars[1]), col: Col::from_algebraic(chars[0]) }
-    // }
+    pub fn from_algebraic(s: &str) -> Self {
+        let chars: [char; 2] = s.chars().collect_vec().try_into().unwrap();
+        Coord{ row: Row::from_algebraic(chars[1]), col: Col::from_algebraic(chars[0]) }
+    }
     pub fn all() -> impl Iterator<Item = Coord> {
         Row::all().cartesian_product(Col::all()).map(|(row, col)| Coord{ row, col } )
     }
@@ -143,6 +146,12 @@ impl ops::Sub for Coord {
     }
 }
 
+impl fmt::Debug for Coord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Coord({}{})", self.col.to_algebraic(), self.row.to_algebraic())
+    }
+}
+
 
 impl Row {
     #![allow(dead_code)]
@@ -158,14 +167,14 @@ impl Row {
 
 impl Col {
     #![allow(dead_code)]
-    pub const A: Col = Col::from_algebraic('A');
-    pub const B: Col = Col::from_algebraic('B');
-    pub const C: Col = Col::from_algebraic('C');
-    pub const D: Col = Col::from_algebraic('D');
-    pub const E: Col = Col::from_algebraic('E');
-    pub const F: Col = Col::from_algebraic('F');
-    pub const G: Col = Col::from_algebraic('G');
-    pub const H: Col = Col::from_algebraic('H');
+    pub const A: Col = Col::from_algebraic('a');
+    pub const B: Col = Col::from_algebraic('b');
+    pub const C: Col = Col::from_algebraic('c');
+    pub const D: Col = Col::from_algebraic('d');
+    pub const E: Col = Col::from_algebraic('e');
+    pub const F: Col = Col::from_algebraic('f');
+    pub const G: Col = Col::from_algebraic('g');
+    pub const H: Col = Col::from_algebraic('h');
 }
 
 impl Coord {
