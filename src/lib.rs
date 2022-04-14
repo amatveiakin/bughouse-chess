@@ -13,6 +13,7 @@ mod grid;
 mod piece;
 mod janitor;
 mod util;
+pub mod tui;
 
 pub use chess::*;
 pub use coord::*;

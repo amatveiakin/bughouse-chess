@@ -21,7 +21,7 @@ const fn const_char_sub(a: char, b: char) -> u8 {
 
 
 // Row form a force's point of view
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct SubjectiveRow {
     idx: u8,  // 0-based
 }
@@ -38,6 +38,12 @@ impl SubjectiveRow {
         match force {
             Force::White => Row::from_zero_based(self.idx),
             Force::Black => Row::from_zero_based(NUM_ROWS - self.idx - 1),
+        }
+    }
+    pub fn from_row(row: Row, force: Force) -> Self {
+        match force {
+            Force::White => Self::from_zero_based(row.idx),
+            Force::Black => Self::from_zero_based(NUM_ROWS - row.idx - 1),
         }
     }
 }

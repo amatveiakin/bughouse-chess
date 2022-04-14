@@ -1,12 +1,8 @@
 use std::ops;
 
-use console::Style;
-use itertools::Itertools;
-
-use crate::coord::{Row, Col, Coord, NUM_ROWS, NUM_COLS};
-use crate::force::Force;
+use crate::coord::{Coord, NUM_ROWS, NUM_COLS};
 use crate::janitor::Janitor;
-use crate::piece::{PieceKind, PieceOnBoard};
+use crate::piece::PieceOnBoard;
 
 
 #[derive(Clone, Debug)]
@@ -45,36 +41,6 @@ impl Grid {
         self[pos] = piece;
         Janitor::new(self, move |grid| grid[pos] = original_piece)
     }
-
-    pub fn render_as_unicode(&self) -> String {
-        let bg_colors = [
-            Style::new().color256(233).on_color256(230),
-            Style::new().color256(233).on_color256(222)
-        ];
-        let mut color_idx = 0;
-        let mut ret = String::new();
-        let mut rows = Row::all().collect_vec();
-        rows.reverse();
-        for row in rows.into_iter() {
-            ret.push_str(&format_square(row.to_algebraic()));
-            for col in Col::all() {
-                ret.push_str(&bg_colors[color_idx].apply_to(
-                    format_square(match self[Coord::new(row, col)] {
-                        Some(piece) => to_unicode_char(piece.kind, piece.force),
-                        None => ' ',
-                    })
-                ).to_string());
-                color_idx = 1 - color_idx;
-            }
-            color_idx = 1 - color_idx;
-            ret.push('\n');
-        }
-        ret.push_str(&format_square(' '));
-        for col in Col::all() {
-            ret.push_str(&format_square(col.to_algebraic()));
-        }
-        ret
-    }
 }
 
 impl ops::Index<Coord> for Grid {
@@ -90,28 +56,6 @@ impl ops::IndexMut<Coord> for Grid {
     }
 }
 
-fn format_square(ch: char) -> String {
-    format!(" {} ", ch)
-}
-
-fn to_unicode_char(piece_kind: PieceKind, force: Force) -> char {
-    use PieceKind::*;
-    use Force::*;
-    match (force, piece_kind) {
-        (White, Pawn) => '♙',
-        (White, Knight) => '♘',
-        (White, Bishop) => '♗',
-        (White, Rook) => '♖',
-        (White, Queen) => '♕',
-        (White, King) => '♔',
-        (Black, Pawn) => '♟',
-        (Black, Knight) => '♞',
-        (Black, Bishop) => '♝',
-        (Black, Rook) => '♜',
-        (Black, Queen) => '♛',
-        (Black, King) => '♚',
-    }
-}
 
 #[cfg(test)]
 mod tests {

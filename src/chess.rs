@@ -272,6 +272,7 @@ fn as_single_char(s: &str) -> char {
 }
 
 fn turn_from_algebraic(grid: &mut Grid, force: Force, notation: &str) -> Result<Turn, TurnError> {
+    let notation = notation.trim();
     const PIECE_RE: &str = r"[PNBRQK]";
     lazy_static! {
         static ref MOVE_RE: Regex = Regex::new(
@@ -330,6 +331,7 @@ fn turn_from_algebraic(grid: &mut Grid, force: Force, notation: &str) -> Result<
 pub type Reserve = EnumMap<PieceKind, u8>;
 
 // TODO: Info for draws (number of moves without action; hash map of former positions)
+// TODO: Rc => references to a Box in Game classes
 pub struct Board {
     #[allow(dead_code)] chess_rules: Rc<ChessRules>,
     bughouse_rules: Option<Rc<BughouseRules>>,
@@ -338,7 +340,7 @@ pub struct Board {
     // Tells which castling moves can be made based on what pieces have moved (not taking
     // into account checks or the path being occupied).
     castle_rights: EnumMap<Force, EnumMap<CastleDirection, bool>>,
-    reserve: EnumMap<Force, Reserve>,
+    reserves: EnumMap<Force, Reserve>,
     last_turn: Option<Turn>,  // for en passant capture
     active_force: Force,
 }
@@ -407,11 +409,17 @@ impl Board {
             status: GameStatus::Active,
             grid: starting_grid,
             castle_rights: enum_map!{ _ => enum_map!{ _ => true } },
-            reserve: enum_map!{ _ => enum_map!{ _ => 0 } },
+            reserves: enum_map!{ _ => enum_map!{ _ => 0 } },
             last_turn: None,
             active_force: Force::White,
         }
     }
+
+    pub fn grid(&self) -> &Grid { &self.grid }
+    pub fn reserve(&self, force: Force) -> &Reserve { &self.reserves[force] }
+    pub fn reserves(&self) -> &EnumMap<Force, Reserve> { &self.reserves }
+
+    fn is_bughouse(&self) -> bool { self.bughouse_rules.is_some() }
 
     fn try_turn(&mut self, turn: Turn) -> Result<Option<Capture>, TurnError> {
         if self.status != GameStatus::Active {
@@ -440,6 +448,7 @@ impl Board {
                 return Err(TurnError::DropAggression);
             }
         }
+        // Turn validity verified; start updating game state.
 
         match &turn {
             Turn::Move(mv) => {
@@ -447,6 +456,7 @@ impl Board {
                 if piece.kind == PieceKind::King {
                     self.castle_rights[force] = enum_map!{ _ => false };
                 } else if let Some(rook_castling) = piece.rook_castling {
+                    // TODO: FIX: Also remove castle right when rook is captured
                     assert_eq!(piece.kind, PieceKind::Rook);
                     self.castle_rights[force][rook_castling] = false;
                 }
@@ -457,8 +467,13 @@ impl Board {
             }
         }
         self.grid = new_grid;
+        if let Turn::Drop(ref drop) = turn {
+            let reserve_left = &mut self.reserves[force][drop.piece_kind];
+            assert!(*reserve_left > 0);
+            *reserve_left -= 1;
+        }
         self.last_turn = Some(turn);
-        if self.bughouse_rules.is_some() {
+        if self.is_bughouse() {
             if is_bughouse_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
                 self.status = GameStatus::Victory(force);
             }
@@ -490,7 +505,13 @@ impl Board {
                 new_grid[mv.from] = None;
                 if let Some(capture_pos) = capture_pos_or {
                     let captured_piece = new_grid[capture_pos].unwrap();
-                    capture = Some(Capture{ piece_kind: captured_piece.kind, force: captured_piece.force });
+                    capture = Some(Capture {
+                        piece_kind: match captured_piece.origin {
+                            PieceOrigin::Promoted => PieceKind::Pawn,
+                            _ => captured_piece.kind,
+                        },
+                        force: captured_piece.force
+                    });
                     new_grid[capture_pos] = None;
                 }
                 if should_promote(force, piece.kind, mv.to) {
@@ -515,13 +536,14 @@ impl Board {
             },
             Turn::Drop(drop) => {
                 let bughouse_rules = self.bughouse_rules.as_ref().ok_or(TurnError::DropFobidden)?;
+                let to_subjective_row = SubjectiveRow::from_row(drop.to.row, force);
                 if drop.piece_kind == PieceKind::Pawn && (
-                    drop.to.row < bughouse_rules.min_pawn_drop_row.to_row(force) ||
-                    drop.to.row > bughouse_rules.max_pawn_drop_row.to_row(force)
+                    to_subjective_row < bughouse_rules.min_pawn_drop_row ||
+                    to_subjective_row > bughouse_rules.max_pawn_drop_row
                 ) {
                     return Err(TurnError::DropPosition);
                 }
-                if self.reserve[force][drop.piece_kind] < 1 {
+                if self.reserves[force][drop.piece_kind] < 1 {
                     return Err(TurnError::DropPieceMissing);
                 }
                 if new_grid[drop.to].is_some() {
@@ -613,7 +635,7 @@ impl Board {
     }
 
     fn receive_capture(&mut self, capture: &Capture) {
-        self.reserve[capture.force][capture.piece_kind] += 1;
+        self.reserves[capture.force][capture.piece_kind] += 1;
     }
 }
 
@@ -690,9 +712,8 @@ impl ChessGame {
         }
     }
 
-    pub fn status(&self) -> GameStatus {
-        self.board.status
-    }
+    pub fn board(&self) -> &Board { &self.board }
+    pub fn status(&self) -> GameStatus { self.board.status }
 
     pub fn try_turn(&mut self, turn: Turn) -> Result<(), TurnError> {
         self.board.try_turn(turn)?;
@@ -712,10 +733,6 @@ impl ChessGame {
             self.try_turn_from_algebraic(turn_notation)?
         }
         Ok(())
-    }
-
-    pub fn render_as_unicode(&self) -> String {
-        self.board.grid.render_as_unicode()
     }
 }
 
@@ -739,11 +756,18 @@ impl BughouseGame {
         }
     }
 
+    pub fn board(&self, idx: usize) -> &Board { &self.boards[idx] }
+
     pub fn try_turn(&mut self, board_idx: usize, turn: Turn) -> Result<(), TurnError> {
         let capture_or = self.boards[board_idx].try_turn(turn)?;
         if let Some(capture) = capture_or {
             self.boards[1 - board_idx].receive_capture(&capture)
         }
         Ok(())
+    }
+    pub fn try_turn_from_algebraic(&mut self, board_idx: usize, notation: &str) -> Result<(), TurnError> {
+        let active_force = self.boards[board_idx].active_force;
+        let turn = turn_from_algebraic(&mut self.boards[board_idx].grid, active_force, notation)?;
+        self.try_turn(board_idx, turn)
     }
 }
