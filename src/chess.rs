@@ -42,6 +42,12 @@ pub struct BughouseRules {
     pub drop_aggression: DropAggression,
 }
 
+impl ChessRules {
+    pub fn classic() -> Self {
+        Self{ starting_position: StartingPosition::Classic }
+    }
+}
+
 
 fn direction_forward(force: Force) -> i8 {
     match force {
