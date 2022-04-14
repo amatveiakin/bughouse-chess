@@ -5,6 +5,7 @@ authors = ["Andrei Matveiakin <a.matveiakin@gmail.com>"]
 edition = "2021"
 
 [dependencies]
+crossterm = "0.23.2"
 console = "0.15.0"
 derive-new = "0.5.9"
 enum-map = "2.1.0"

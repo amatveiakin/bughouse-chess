@@ -1,4 +1,4 @@
-use bughouse_chess::{ChessRules, ChessGame, GameStatus, Force};
+use bughouse_chess::{ChessRules, ChessGame, ChessGameStatus, Force};
 
 
 #[test]
@@ -15,5 +15,5 @@ fn wikipedia_example() {
         36.Kf1 Ng3+ 37.Ke1 Bb4+ 38.Kd1 Bb3+ 39.Kc1 Ne2+ 40.Kb1 Nc3+
         41.Kc1 Rc2#
     ").unwrap();
-    assert_eq!(game.status(), GameStatus::Victory(Force::Black));
+    assert_eq!(game.status(), ChessGameStatus::Victory(Force::Black));
 }

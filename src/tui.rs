@@ -1,7 +1,9 @@
+// TODO: Use `crossterm` instead (fix: for some reason rendering reserve background
+//   was more buggy with it).
 use console::Style;
 use itertools::Itertools;
 
-use crate::coord::{Row, Col, Coord};
+use crate::coord::{Row, Col, Coord, NUM_COLS};
 use crate::chess::{Board, Reserve, ChessGame, BughouseGame};
 use crate::grid::Grid;
 use crate::force::Force;
@@ -27,12 +29,11 @@ pub fn render_reserve(reserve: &Reserve, force: Force, width: usize) -> String {
 }
 
 pub fn render_bughouse_board(board: &Board) -> String {
-    let grid_str = render_grid(board.grid());
-    let width = grid_str.lines().next().unwrap().len();
+    let width: usize = ((NUM_COLS + 2) * 3).into();
     format!(
         "{}{}{}",
         render_reserve(board.reserve(Force::Black), Force::Black, width),
-        grid_str,
+        render_grid(board.grid()),
         render_reserve(board.reserve(Force::White), Force::White, width),
     )
 }

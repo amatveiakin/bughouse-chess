@@ -1,3 +1,4 @@
+extern crate crossterm;
 extern crate console;
 extern crate derive_new;
 extern crate enum_map;

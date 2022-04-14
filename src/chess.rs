@@ -164,11 +164,13 @@ fn is_bughouse_mate_to(grid: &mut Grid, king_pos: Coord, last_turn: &Option<Turn
         return false;
     }
     for pos in Coord::all() {
-        let mut grid = grid.scoped_set(pos, Some(PieceOnBoard::new(
-            PieceKind::Queen, PieceOrigin::Dropped, None, force
-        )));
-        if !is_check_to(&mut grid, king_pos) {
-            return false;
+        if grid[pos].is_none() {
+            let mut grid = grid.scoped_set(pos, Some(PieceOnBoard::new(
+                PieceKind::Queen, PieceOrigin::Dropped, None, force
+            )));
+            if !is_check_to(&mut grid, king_pos) {
+                return false;
+            }
         }
     }
     true
@@ -328,23 +330,6 @@ fn turn_from_algebraic(grid: &mut Grid, force: Force, notation: &str) -> Result<
 }
 
 
-pub type Reserve = EnumMap<PieceKind, u8>;
-
-// TODO: Info for draws (number of moves without action; hash map of former positions)
-// TODO: Rc => references to a Box in Game classes
-pub struct Board {
-    #[allow(dead_code)] chess_rules: Rc<ChessRules>,
-    bughouse_rules: Option<Rc<BughouseRules>>,
-    status: GameStatus,
-    grid: Grid,
-    // Tells which castling moves can be made based on what pieces have moved (not taking
-    // into account checks or the path being occupied).
-    castle_rights: EnumMap<Force, EnumMap<CastleDirection, bool>>,
-    reserves: EnumMap<Force, Reserve>,
-    last_turn: Option<Turn>,  // for en passant capture
-    active_force: Force,
-}
-
 #[derive(Clone, Debug)]
 pub struct Capture {
     piece_kind: PieceKind,
@@ -373,9 +358,22 @@ pub struct TurnDrop {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum GameStatus {
+pub enum ChessGameStatus {
     Active,
     Victory(Force),
+    Draw,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BughouseTeam {
+    First,
+    Second,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BughouseGameStatus {
+    Active,
+    Victory(BughouseTeam),
     Draw,
 }
 
@@ -396,6 +394,22 @@ pub enum TurnError {
     GameOver,
 }
 
+pub type Reserve = EnumMap<PieceKind, u8>;
+
+// TODO: Info for draws (number of moves without action; hash map of former positions)
+// TODO: Rc => references to a Box in Game classes
+pub struct Board {
+    #[allow(dead_code)] chess_rules: Rc<ChessRules>,
+    bughouse_rules: Option<Rc<BughouseRules>>,
+    status: ChessGameStatus,
+    grid: Grid,
+    // Tells which castling moves can be made based on what pieces have moved (not taking
+    // into account checks or the path being occupied).
+    castle_rights: EnumMap<Force, EnumMap<CastleDirection, bool>>,
+    reserves: EnumMap<Force, Reserve>,
+    last_turn: Option<Turn>,  // for en passant capture
+    active_force: Force,
+}
 
 impl Board {
     fn new(
@@ -406,7 +420,7 @@ impl Board {
         Board {
             chess_rules: chess_rules,
             bughouse_rules: bughouse_rules,
-            status: GameStatus::Active,
+            status: ChessGameStatus::Active,
             grid: starting_grid,
             castle_rights: enum_map!{ _ => enum_map!{ _ => true } },
             reserves: enum_map!{ _ => enum_map!{ _ => 0 } },
@@ -422,7 +436,7 @@ impl Board {
     fn is_bughouse(&self) -> bool { self.bughouse_rules.is_some() }
 
     fn try_turn(&mut self, turn: Turn) -> Result<Option<Capture>, TurnError> {
-        if self.status != GameStatus::Active {
+        if self.status != ChessGameStatus::Active {
             return Err(TurnError::GameOver);
         }
         let force = self.active_force;
@@ -475,11 +489,11 @@ impl Board {
         self.last_turn = Some(turn);
         if self.is_bughouse() {
             if is_bughouse_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
-                self.status = GameStatus::Victory(force);
+                self.status = ChessGameStatus::Victory(force);
             }
         } else {
             if is_chess_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
-                self.status = GameStatus::Victory(force);
+                self.status = ChessGameStatus::Victory(force);
             }
         }
         // TODO: Draw if position is repeated three times.
@@ -713,7 +727,7 @@ impl ChessGame {
     }
 
     pub fn board(&self) -> &Board { &self.board }
-    pub fn status(&self) -> GameStatus { self.board.status }
+    pub fn status(&self) -> ChessGameStatus { self.board.status }
 
     pub fn try_turn(&mut self, turn: Turn) -> Result<(), TurnError> {
         self.board.try_turn(turn)?;
@@ -739,6 +753,7 @@ impl ChessGame {
 
 pub struct BughouseGame {
     boards: [Board; 2],
+    status: BughouseGameStatus,
 }
 
 impl BughouseGame {
@@ -753,15 +768,30 @@ impl BughouseGame {
         ];
         BughouseGame {
             boards: boards,
+            status: BughouseGameStatus::Active,
         }
     }
 
     pub fn board(&self, idx: usize) -> &Board { &self.boards[idx] }
+    pub fn status(&self) -> BughouseGameStatus { self.status }
 
     pub fn try_turn(&mut self, board_idx: usize, turn: Turn) -> Result<(), TurnError> {
+        use Force::*;
         let capture_or = self.boards[board_idx].try_turn(turn)?;
         if let Some(capture) = capture_or {
             self.boards[1 - board_idx].receive_capture(&capture)
+        }
+        assert!(self.status == BughouseGameStatus::Active);
+        match self.boards[board_idx].status {
+            ChessGameStatus::Active => {},
+            ChessGameStatus::Victory(force) => {
+                self.status = BughouseGameStatus::Victory(match (board_idx, force) {
+                    (0, White) | (1, Black) => BughouseTeam::First,
+                    (1, White) | (0, Black) => BughouseTeam::Second,
+                    _ => panic!("Unexpected board index: {}", board_idx),
+                });
+            },
+            ChessGameStatus::Draw => { self.status = BughouseGameStatus::Draw; },
         }
         Ok(())
     }

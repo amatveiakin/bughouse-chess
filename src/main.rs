@@ -1,4 +1,7 @@
-use std::io;
+use std::io::{self, Write};
+
+use crossterm::{execute, terminal, cursor};
+use crossterm::style::{self, Stylize};
 
 use bughouse_chess::*;
 
@@ -13,26 +16,23 @@ fn main() -> io::Result<()> {
         drop_aggression: DropAggression::NoChessMate,
     };
 
-    // let mut game = ChessGame::new(chess_rules);
-    // println!("{}\n", tui::render_chess_game(&game));
-    // loop {
-    //     let mut buffer = String::new();
-    //     let stdin = io::stdin();
-    //     stdin.read_line(&mut buffer)?;
-    //     if let Err(e) = game.try_turn_from_algebraic(&buffer) {
-    //         println!("Impossible move: {:?}", e);
-    //     } else {
-    //         println!("{}\n", tui::render_chess_game(&game));
-    //     }
-    //     if game.status() != GameStatus::Active {
-    //         println!("\n{:?}", game.status());
-    //         return Ok(());
-    //     }
-    // }
-
+    let mut stdout = io::stdout();
     let mut game = BughouseGame::new(chess_rules, bughouse_rules);
-    println!("{}\n", tui::render_bughouse_game(&game));
+    let mut error_message: Option<String> = None;
     loop {
+        execute!(stdout, terminal::Clear(terminal::ClearType::All), cursor::MoveTo(0, 0))?;
+        writeln!(stdout, "{}\n", tui::render_bughouse_game(&game))?;
+        if game.status() != BughouseGameStatus::Active {
+            assert!(error_message.is_none());
+            let msg = format!("Game over: {:?}", game.status());
+            writeln!(stdout, "{}", msg.with(style::Color::Blue))?;
+            return Ok(());
+        }
+        if let Some(err) = error_message {
+            execute!(stdout, cursor::SavePosition)?;
+            writeln!(stdout, "\n\n{}", err.with(style::Color::Red))?;
+            execute!(stdout, cursor::RestorePosition)?;
+        }
         let mut buffer = String::new();
         let stdin = io::stdin();
         stdin.read_line(&mut buffer)?;
@@ -44,18 +44,12 @@ fn main() -> io::Result<()> {
             "<" => 0,
             ">" => 1,
             _ => {
-                println!("Should begin with < or >");
+                error_message = Some("Should begin with < or >".to_owned());
                 continue;
             }
         };
-        if let Err(e) = game.try_turn_from_algebraic(board_idx, &turn) {
-            println!("Impossible move: {:?}", e);
-        } else {
-            println!("{}\n", tui::render_bughouse_game(&game));
-        }
-        // if game.status() != GameStatus::Active {
-        //     println!("\n{:?}", game.status());
-        //     return Ok(());
-        // }
+        error_message = game.try_turn_from_algebraic(board_idx, &turn).err().map(|err| {
+            format!("Impossible move: {:?}", err)
+        });
     }
 }
