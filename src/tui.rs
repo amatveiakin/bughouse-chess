@@ -4,7 +4,7 @@ use console::Style;
 use itertools::Itertools;
 
 use crate::coord::{Row, Col, Coord, NUM_COLS};
-use crate::chess::{Board, Reserve, ChessGame, BughouseGame};
+use crate::chess::{Board, Reserve, ChessGame, BughouseBoard, BughouseGame};
 use crate::grid::Grid;
 use crate::force::Force;
 use crate::piece::PieceKind;
@@ -39,8 +39,8 @@ pub fn render_bughouse_board(board: &Board) -> String {
 }
 
 pub fn render_bughouse_game(game: &BughouseGame) -> String {
-    let board1 = render_bughouse_board(game.board(0));
-    let board2 = render_bughouse_board(game.board(1));
+    let board1 = render_bughouse_board(game.board(BughouseBoard::A));
+    let board2 = render_bughouse_board(game.board(BughouseBoard::B));
     board1.lines().zip(board2.lines().rev()).map(|(line1, line2)| {
         format!("{}      {}", line1, line2)
     }).join("\n")

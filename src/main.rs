@@ -41,8 +41,8 @@ fn main() -> io::Result<()> {
             return Ok(())
         };
         let board_idx = match board {
-            "<" => 0,
-            ">" => 1,
+            "<" => BughouseBoard::A,
+            ">" => BughouseBoard::B,
             _ => {
                 error_message = Some("Should begin with < or >".to_owned());
                 continue;

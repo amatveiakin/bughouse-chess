@@ -3,7 +3,7 @@
 use std::cmp;
 use std::rc::Rc;
 
-use enum_map::{enum_map, EnumMap};
+use enum_map::{Enum, EnumMap, enum_map};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use rand::prelude::*;
@@ -364,6 +364,12 @@ pub enum ChessGameStatus {
     Draw,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Enum)]
+pub enum BughouseBoard {
+    A,
+    B,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BughouseTeam {
     First,
@@ -392,6 +398,24 @@ pub enum TurnError {
     DropPosition,
     DropAggression,
     GameOver,
+}
+
+impl BughouseBoard {
+    pub fn other(self) -> Self {
+        match self {
+            BughouseBoard::A => BughouseBoard::B,
+            BughouseBoard::B => BughouseBoard::A,
+        }
+    }
+}
+
+impl BughouseTeam {
+    pub fn opponent(self) -> Self {
+        match self {
+            BughouseTeam::First => BughouseTeam::Second,
+            BughouseTeam::Second => BughouseTeam::First,
+        }
+    }
 }
 
 pub type Reserve = EnumMap<PieceKind, u8>;
@@ -752,7 +776,7 @@ impl ChessGame {
 
 
 pub struct BughouseGame {
-    boards: [Board; 2],
+    boards: EnumMap<BughouseBoard, Board>,
     status: BughouseGameStatus,
 }
 
@@ -762,40 +786,39 @@ impl BughouseGame {
         let chess_rules = Rc::new(chess_rules);
         let bughouse_rules = Rc::new(bughouse_rules);
         let starting_grid = generate_starting_grid(starting_position);
-        let boards = [
-            Board::new(Rc::clone(&chess_rules), Some(Rc::clone(&bughouse_rules)), starting_grid.clone()),
-            Board::new(Rc::clone(&chess_rules), Some(Rc::clone(&bughouse_rules)), starting_grid),
-        ];
+        let boards = enum_map!{
+            _ => Board::new(Rc::clone(&chess_rules), Some(Rc::clone(&bughouse_rules)), starting_grid.clone())
+        };
         BughouseGame {
             boards: boards,
             status: BughouseGameStatus::Active,
         }
     }
 
-    pub fn board(&self, idx: usize) -> &Board { &self.boards[idx] }
+    pub fn board(&self, idx: BughouseBoard) -> &Board { &self.boards[idx] }
     pub fn status(&self) -> BughouseGameStatus { self.status }
 
-    pub fn try_turn(&mut self, board_idx: usize, turn: Turn) -> Result<(), TurnError> {
+    pub fn try_turn(&mut self, board_idx: BughouseBoard, turn: Turn) -> Result<(), TurnError> {
         use Force::*;
+        use BughouseBoard::*;
         let capture_or = self.boards[board_idx].try_turn(turn)?;
         if let Some(capture) = capture_or {
-            self.boards[1 - board_idx].receive_capture(&capture)
+            self.boards[board_idx.other()].receive_capture(&capture)
         }
         assert!(self.status == BughouseGameStatus::Active);
         match self.boards[board_idx].status {
             ChessGameStatus::Active => {},
             ChessGameStatus::Victory(force) => {
                 self.status = BughouseGameStatus::Victory(match (board_idx, force) {
-                    (0, White) | (1, Black) => BughouseTeam::First,
-                    (1, White) | (0, Black) => BughouseTeam::Second,
-                    _ => panic!("Unexpected board index: {}", board_idx),
+                    (A, White) | (B, Black) => BughouseTeam::First,
+                    (B, White) | (A, Black) => BughouseTeam::Second,
                 });
             },
             ChessGameStatus::Draw => { self.status = BughouseGameStatus::Draw; },
         }
         Ok(())
     }
-    pub fn try_turn_from_algebraic(&mut self, board_idx: usize, notation: &str) -> Result<(), TurnError> {
+    pub fn try_turn_from_algebraic(&mut self, board_idx: BughouseBoard, notation: &str) -> Result<(), TurnError> {
         let active_force = self.boards[board_idx].active_force;
         let turn = turn_from_algebraic(&mut self.boards[board_idx].grid, active_force, notation)?;
         self.try_turn(board_idx, turn)
