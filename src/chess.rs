@@ -2,6 +2,7 @@
 
 use std::cmp;
 use std::rc::Rc;
+use std::time::{Instant, Duration};
 
 use enum_map::{Enum, EnumMap, enum_map};
 use itertools::Itertools;
@@ -10,6 +11,7 @@ use rand::prelude::*;
 use regex::Regex;
 
 use crate::coord::{SubjectiveRow, Row, Col, Coord};
+use crate::clock::{TimeControl, Clock};
 use crate::force::Force;
 use crate::grid::Grid;
 use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, CastleDirection};
@@ -33,6 +35,7 @@ pub enum DropAggression {
 #[derive(Clone, Debug)]
 pub struct ChessRules {
     pub starting_position: StartingPosition,
+    pub time_control: TimeControl,
 }
 
 #[derive(Clone, Debug)]
@@ -43,8 +46,11 @@ pub struct BughouseRules {
 }
 
 impl ChessRules {
-    pub fn classic() -> Self {
-        Self{ starting_position: StartingPosition::Classic }
+    pub fn classic_blitz() -> Self {
+        Self{
+            starting_position: StartingPosition::Classic,
+            time_control: TimeControl{ starting_time: Duration::from_secs(300) }
+        }
     }
 }
 
@@ -432,6 +438,7 @@ pub struct Board {
     castle_rights: EnumMap<Force, EnumMap<CastleDirection, bool>>,
     reserves: EnumMap<Force, Reserve>,
     last_turn: Option<Turn>,  // for en passant capture
+    clock: Clock,
     active_force: Force,
 }
 
@@ -441,6 +448,7 @@ impl Board {
         bughouse_rules: Option<Rc<BughouseRules>>,
         starting_grid: Grid,
     ) -> Board {
+        let time_control = chess_rules.time_control.clone();
         Board {
             chess_rules: chess_rules,
             bughouse_rules: bughouse_rules,
@@ -449,6 +457,7 @@ impl Board {
             castle_rights: enum_map!{ _ => enum_map!{ _ => true } },
             reserves: enum_map!{ _ => enum_map!{ _ => 0 } },
             last_turn: None,
+            clock: Clock::new(time_control),
             active_force: Force::White,
         }
     }
@@ -456,10 +465,26 @@ impl Board {
     pub fn grid(&self) -> &Grid { &self.grid }
     pub fn reserve(&self, force: Force) -> &Reserve { &self.reserves[force] }
     pub fn reserves(&self) -> &EnumMap<Force, Reserve> { &self.reserves }
+    pub fn clock(&self) -> &Clock { &self.clock }
 
     fn is_bughouse(&self) -> bool { self.bughouse_rules.is_some() }
 
-    fn try_turn(&mut self, turn: Turn) -> Result<Option<Capture>, TurnError> {
+    fn start_clock(&mut self, now: Instant) {
+        if !self.clock.is_active() {
+            self.clock.new_turn(self.active_force, now);
+        }
+    }
+    fn test_flag(&mut self, now: Instant) {
+        if self.status != ChessGameStatus::Active {
+            return;
+        }
+        if self.clock.time_left(self.active_force, now).is_zero() {
+            self.status = ChessGameStatus::Victory(self.active_force.opponent());
+        }
+    }
+
+    fn try_turn(&mut self, turn: Turn, now: Instant) -> Result<Option<Capture>, TurnError> {
+        self.test_flag(now);
         if self.status != ChessGameStatus::Active {
             return Err(TurnError::GameOver);
         }
@@ -522,6 +547,7 @@ impl Board {
         }
         // TODO: Draw if position is repeated three times.
         self.active_force = force.opponent();
+        self.clock.new_turn(self.active_force, now);
         Ok(capture)
     }
 
@@ -753,22 +779,29 @@ impl ChessGame {
     pub fn board(&self) -> &Board { &self.board }
     pub fn status(&self) -> ChessGameStatus { self.board.status }
 
-    pub fn try_turn(&mut self, turn: Turn) -> Result<(), TurnError> {
-        self.board.try_turn(turn)?;
+    pub fn test_flag(&mut self, now: Instant) {
+        self.board.test_flag(now);
+    }
+
+    // Should `test_flag` first!
+    pub fn try_turn(&mut self, turn: Turn, now: Instant) -> Result<(), TurnError> {
+        self.board.try_turn(turn, now)?;
         Ok(())
     }
-    pub fn try_turn_from_algebraic(&mut self, notation: &str) -> Result<(), TurnError> {
+    pub fn try_turn_from_algebraic(&mut self, notation: &str, now: Instant) -> Result<(), TurnError> {
         let active_force = self.board.active_force;
         let turn = turn_from_algebraic(&mut self.board.grid, active_force, notation)?;
-        self.try_turn(turn)
+        self.try_turn(turn, now)
     }
     pub fn try_replay_log(&mut self, log: &str) -> Result<(), TurnError> {
         lazy_static! {
             static ref TURN_NUMBER_RE: Regex = Regex::new(r"^(?:[0-9]+\.)?(.*)$").unwrap();
         }
+        // TODO: What should happen to time when replaying log?
+        let now = Instant::now();
         for turn_notation in log.split_whitespace() {
             let turn_notation = TURN_NUMBER_RE.captures(turn_notation).unwrap().get(1).unwrap().as_str();
-            self.try_turn_from_algebraic(turn_notation)?
+            self.try_turn_from_algebraic(turn_notation, now)?
         }
         Ok(())
     }
@@ -798,29 +831,68 @@ impl BughouseGame {
     pub fn board(&self, idx: BughouseBoard) -> &Board { &self.boards[idx] }
     pub fn status(&self) -> BughouseGameStatus { self.status }
 
-    pub fn try_turn(&mut self, board_idx: BughouseBoard, turn: Turn) -> Result<(), TurnError> {
-        use Force::*;
+    pub fn test_flag(&mut self, now: Instant) {
         use BughouseBoard::*;
-        let capture_or = self.boards[board_idx].try_turn(turn)?;
+        use BughouseGameStatus::*;
+        self.boards[A].test_flag(now);
+        self.boards[B].test_flag(now);
+        let status_a = self.game_status_for_board(A);
+        let status_b = self.game_status_for_board(B);
+        let status = match (status_a, status_b) {
+            (Victory(victory_a), Victory(victory_b)) => {
+                if victory_a == victory_b { Victory(victory_a) } else { Draw }
+            },
+            (Victory(victory), Active) => { Victory(victory) },
+            (Active, Victory(victory)) => { Victory(victory) },
+            (Active, Active) => { Active },
+            (Draw, _) | (_, Draw) => {
+                panic!("Cannot draw on flag");
+            }
+        };
+        self.set_status(status, now);
+    }
+
+    // Should `test_flag` first!
+    pub fn try_turn(&mut self, board_idx: BughouseBoard, turn: Turn, now: Instant)
+        -> Result<(), TurnError>
+    {
+        let capture_or = self.boards[board_idx].try_turn(turn, now)?;
+        self.boards[board_idx.other()].start_clock(now);
         if let Some(capture) = capture_or {
             self.boards[board_idx.other()].receive_capture(&capture)
         }
         assert!(self.status == BughouseGameStatus::Active);
-        match self.boards[board_idx].status {
-            ChessGameStatus::Active => {},
-            ChessGameStatus::Victory(force) => {
-                self.status = BughouseGameStatus::Victory(match (board_idx, force) {
-                    (A, White) | (B, Black) => BughouseTeam::First,
-                    (B, White) | (A, Black) => BughouseTeam::Second,
-                });
-            },
-            ChessGameStatus::Draw => { self.status = BughouseGameStatus::Draw; },
-        }
+        self.set_status(self.game_status_for_board(board_idx), now);
         Ok(())
     }
-    pub fn try_turn_from_algebraic(&mut self, board_idx: BughouseBoard, notation: &str) -> Result<(), TurnError> {
+    pub fn try_turn_from_algebraic(&mut self, board_idx: BughouseBoard, notation: &str, now: Instant)
+        -> Result<(), TurnError>
+    {
         let active_force = self.boards[board_idx].active_force;
         let turn = turn_from_algebraic(&mut self.boards[board_idx].grid, active_force, notation)?;
-        self.try_turn(board_idx, turn)
+        self.try_turn(board_idx, turn, now)
+    }
+
+    fn game_status_for_board(&self, board_idx: BughouseBoard) -> BughouseGameStatus {
+        use Force::*;
+        use BughouseBoard::*;
+        match self.boards[board_idx].status {
+            ChessGameStatus::Active => BughouseGameStatus::Active,
+            ChessGameStatus::Victory(force) => {
+                BughouseGameStatus::Victory(match (board_idx, force) {
+                    (A, White) | (B, Black) => BughouseTeam::First,
+                    (B, White) | (A, Black) => BughouseTeam::Second,
+                })
+            },
+            ChessGameStatus::Draw => BughouseGameStatus::Draw,
+        }
+    }
+    fn set_status(&mut self, status: BughouseGameStatus, now: Instant) {
+        self.status = status;
+        if status != BughouseGameStatus::Active {
+            for (_, board) in self.boards.iter_mut() {
+                board.clock.stop(now);
+            }
+        }
     }
 }

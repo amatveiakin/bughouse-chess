@@ -35,6 +35,7 @@ dependencies = [
  "lazy_static",
  "rand",
  "regex",
+ "scopeguard",
 ]
 
 [[package]]
