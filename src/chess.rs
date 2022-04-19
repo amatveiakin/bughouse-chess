@@ -2,7 +2,7 @@
 
 use std::cmp;
 use std::rc::Rc;
-use std::time::{Instant, Duration};
+use std::time::Instant;
 
 use enum_map::{Enum, EnumMap, enum_map};
 use itertools::Itertools;
@@ -11,48 +11,12 @@ use rand::prelude::*;
 use regex::Regex;
 
 use crate::coord::{SubjectiveRow, Row, Col, Coord};
-use crate::clock::{TimeControl, Clock};
+use crate::clock::Clock;
 use crate::force::Force;
 use crate::grid::Grid;
 use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, CastleDirection};
+use crate::rules::{DropAggression, StartingPosition, ChessRules, BughouseRules};
 use crate::util::sort_two;
-
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum StartingPosition {
-    Classic,
-    FischerRandom,  // a.k.a. Chess960
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum DropAggression {
-    NoCheck,
-    NoChessMate,
-    NoBughouseMate,
-    MateAllowed,
-}
-
-#[derive(Clone, Debug)]
-pub struct ChessRules {
-    pub starting_position: StartingPosition,
-    pub time_control: TimeControl,
-}
-
-#[derive(Clone, Debug)]
-pub struct BughouseRules {
-    pub min_pawn_drop_row: SubjectiveRow,
-    pub max_pawn_drop_row: SubjectiveRow,
-    pub drop_aggression: DropAggression,
-}
-
-impl ChessRules {
-    pub fn classic_blitz() -> Self {
-        Self{
-            starting_position: StartingPosition::Classic,
-            time_control: TimeControl{ starting_time: Duration::from_secs(300) }
-        }
-    }
-}
 
 
 fn direction_forward(force: Force) -> i8 {
