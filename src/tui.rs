@@ -6,8 +6,9 @@ use console::Style;
 use itertools::Itertools;
 
 use crate::coord::{Row, Col, Coord, NUM_COLS};
-use crate::chess::{Board, Reserve, ChessGame, BughouseBoard, BughouseGame};
+use crate::board::{Board, Reserve};
 use crate::clock::Clock;
+use crate::game::{ChessGame, BughouseBoard, BughouseGame};
 use crate::grid::Grid;
 use crate::force::Force;
 use crate::piece::PieceKind;

@@ -8,21 +8,23 @@ extern crate rand;
 extern crate regex;
 extern crate scopeguard;
 
-mod chess;
+mod board;
 mod clock;
 mod coord;
 mod force;
+mod game;
 mod grid;
 mod piece;
 mod rules;
 pub mod janitor;
-pub mod util;
 pub mod tui;
+pub mod util;
 
-pub use chess::*;
+pub use board::*;
 pub use clock::*;
 pub use coord::*;
 pub use force::*;
+pub use game::*;
 pub use grid::*;
 pub use piece::*;
 pub use rules::*;
