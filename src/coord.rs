@@ -2,6 +2,7 @@ use std::fmt;
 use std::ops;
 
 use itertools::Itertools;
+use serde::{Serialize, Deserialize};
 
 use crate::force::Force;
 
@@ -21,7 +22,7 @@ const fn const_char_sub(a: char, b: char) -> u8 {
 
 
 // Row form a force's point of view
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct SubjectiveRow {
     idx: u8,  // 0-based
 }
@@ -33,6 +34,9 @@ impl SubjectiveRow {
     }
     pub fn from_one_based(idx: u8) -> Self {
         Self::from_zero_based((idx).checked_sub(1).unwrap())
+    }
+    pub fn to_one_based(&self) -> u8 {
+        self.idx + 1
     }
     pub fn to_row(self, force: Force) -> Row {
         match force {

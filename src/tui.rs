@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 // TODO: Use `crossterm` instead (fix: for some reason rendering reserve background
 //   was more buggy with it).
 use console::Style;
@@ -7,38 +5,53 @@ use itertools::Itertools;
 
 use crate::coord::{Row, Col, Coord, NUM_COLS};
 use crate::board::{Board, Reserve};
-use crate::clock::Clock;
+use crate::clock::{TimeMeasurement, GameInstant, Clock};
 use crate::game::{ChessGame, BughouseBoard, BughouseGame};
 use crate::grid::Grid;
 use crate::force::Force;
 use crate::piece::PieceKind;
+use crate::player::Player;
 
 
 const BOARD_WIDTH: usize = (NUM_COLS as usize + 2) * 3;
 
 fn div_ceil(a: u128, b: u128) -> u128 { (a + b - 1) / b }
 
-pub fn render_clock(clock: &Clock, force: Force, now: Instant, align_right: bool) -> String {
+pub fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, usize) {
     // TODO: Support longer time controls (with hours)
     let is_active = clock.active_force() == Some(force);
-    let millis = clock.time_left(force, now).as_millis();
+    let millis = clock.time_left(force, now, TimeMeasurement::Approximate).as_millis();
     let sec = millis / 1000;
     let separator = |s| if !is_active || millis % 1000 >= 500 { s } else { " " };
-    let mut time_str = if sec >= 20 {
+    let mut clock_str = if sec >= 20 {
         format!("{:02}{}{:02}", sec / 60, separator(":"), sec % 60)
     } else {
         format!(" {:02}{}{}", sec, separator("."), div_ceil(millis, 100) % 10)
     };
-    let space = String::from(' ').repeat(BOARD_WIDTH - time_str.len());
+    let clock_str_len = clock_str.len();
     if is_active {
-        time_str = Style::new().reverse().apply_to(time_str).to_string();
+        clock_str = Style::new().reverse().apply_to(clock_str).to_string();
     } else if millis == 0 {
-        time_str = Style::new().on_red().apply_to(time_str).to_string();
+        // TODO: Mark red only if flag defeat confirmed by the server.
+        clock_str = Style::new().on_red().apply_to(clock_str).to_string();
     }
-    if align_right {
-        format!("{}{}\n", space, time_str)
+    (clock_str, clock_str_len)
+}
+
+// TODO: Team marker
+// TODO: Highlight myself
+pub fn render_player(player: &Player) -> (String, usize) {
+    (player.name.clone(), player.name.len())
+}
+
+pub fn render_header(clock: &Clock, player: &Player, force: Force, now: GameInstant, flip: bool) -> String {
+    let (clock_str, clock_str_len) = render_clock(clock, force, now);
+    let (player_str, player_str_len) = render_player(player);
+    let space = String::from(' ').repeat(BOARD_WIDTH - clock_str_len - player_str_len);
+    if flip {
+        format!("{}{}{}\n", player_str, space, clock_str)
     } else {
-        format!("{}{}\n", time_str, space)
+        format!("{}{}{}\n", clock_str, space, player_str)
     }
 }
 
@@ -56,28 +69,30 @@ pub fn render_reserve(reserve: &Reserve, force: Force) -> String {
     )
 }
 
-pub fn render_chess_game(game: &ChessGame, now: Instant) -> String {
+pub fn render_chess_game(game: &ChessGame, now: GameInstant) -> String {
+    use Force::*;
     let board = game.board();
     format!(
         "{}\n{}\n{}",
-        render_clock(board.clock(), Force::Black, now, false),
+        render_header(board.clock(), board.player(Black), Black, now, false),
         render_grid(board.grid()),
-        render_clock(board.clock(), Force::White, now, false),
+        render_header(board.clock(), board.player(White), White, now, false),
     )
 }
 
-pub fn render_bughouse_board(board: &Board, now: Instant, second_board: bool) -> String {
+pub fn render_bughouse_board(board: &Board, now: GameInstant, second_board: bool) -> String {
+    use Force::*;
     format!(
         "{}\n{}{}{}\n{}",
-        render_clock(board.clock(), Force::Black, now, second_board),
-        render_reserve(board.reserve(Force::Black), Force::Black),
+        render_header(board.clock(), board.player(Black), Black, now, second_board),
+        render_reserve(board.reserve(Black), Black),
         render_grid(board.grid()),
-        render_reserve(board.reserve(Force::White), Force::White),
-        render_clock(board.clock(), Force::White, now, second_board),
+        render_reserve(board.reserve(White), White),
+        render_header(board.clock(), board.player(White), White, now, second_board),
     )
 }
 
-pub fn render_bughouse_game(game: &BughouseGame, now: Instant) -> String {
+pub fn render_bughouse_game(game: &BughouseGame, now: GameInstant) -> String {
     let board1 = render_bughouse_board(game.board(BughouseBoard::A), now, false);
     let board2 = render_bughouse_board(game.board(BughouseBoard::B), now, true);
     board1.lines().zip(board2.lines().rev()).map(|(line1, line2)| {

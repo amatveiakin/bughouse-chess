@@ -1,9 +1,20 @@
-use bughouse_chess::{ChessRules, ChessGame, ChessGameStatus, Force};
+use std::rc::Rc;
 
+use enum_map::{EnumMap, enum_map};
+
+use bughouse_chess::{ChessRules, ChessGame, ChessGameStatus, VictoryReason, Player, Team, Force};
+
+
+fn players() -> EnumMap<Force, Rc<Player>> {
+    enum_map! {
+        Force::White => Rc::new(Player{ name: "Alice".to_owned(), team: Team::Red }),
+        Force::Black => Rc::new(Player{ name: "Bob".to_owned(), team: Team::Blue }),
+    }
+}
 
 #[test]
 fn wikipedia_example() {
-    let mut game = ChessGame::new(ChessRules::classic_blitz());
+    let mut game = ChessGame::new(ChessRules::classic_blitz(), players());
     game.try_replay_log("
         1.Nf3 Nf6 2.c4 g6 3.Nc3 Bg7 4.d4 O-O 5.Bf4 d5
         6.Qb3 dxc4 7.Qxc4 c6 8.e4 Nbd7 9.Rd1 Nb6 10.Qc5 Bg4
@@ -15,5 +26,5 @@ fn wikipedia_example() {
         36.Kf1 Ng3+ 37.Ke1 Bb4+ 38.Kd1 Bb3+ 39.Kc1 Ne2+ 40.Kb1 Nc3+
         41.Kc1 Rc2#
     ").unwrap();
-    assert_eq!(game.status(), ChessGameStatus::Victory(Force::Black));
+    assert_eq!(game.status(), ChessGameStatus::Victory(Force::Black, VictoryReason::Checkmate));
 }

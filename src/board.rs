@@ -2,17 +2,18 @@
 
 use std::cmp;
 use std::rc::Rc;
-use std::time::Instant;
 
 use enum_map::{EnumMap, enum_map};
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde::{Serialize, Deserialize};
 
 use crate::coord::{SubjectiveRow, Row, Col, Coord};
-use crate::clock::Clock;
+use crate::clock::{TimeMeasurement, GameInstant, Clock};
 use crate::force::Force;
 use crate::grid::Grid;
 use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, CastleDirection};
+use crate::player::Player;
 use crate::rules::{DropAggression, ChessRules, BughouseRules};
 use crate::util::sort_two;
 
@@ -325,10 +326,17 @@ pub struct TurnDrop {
     pub to: Coord,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum VictoryReason {
+    Checkmate,
+    Flag,
+    Resignation,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ChessGameStatus {
     Active,
-    Victory(Force),
+    Victory(Force, VictoryReason),
     Draw,
 }
 
@@ -353,9 +361,11 @@ pub type Reserve = EnumMap<PieceKind, u8>;
 
 // TODO: Info for draws (number of moves without action; hash map of former positions)
 // TODO: Rc => references to a Box in Game classes
+#[derive(Clone, Debug)]
 pub struct Board {
     #[allow(dead_code)] chess_rules: Rc<ChessRules>,
     bughouse_rules: Option<Rc<BughouseRules>>,
+    players: EnumMap<Force, Rc<Player>>,
     status: ChessGameStatus,
     grid: Grid,
     // Tells which castling moves can be made based on what pieces have moved (not taking
@@ -371,12 +381,14 @@ impl Board {
     pub fn new(
         chess_rules: Rc<ChessRules>,
         bughouse_rules: Option<Rc<BughouseRules>>,
+        players: EnumMap<Force, Rc<Player>>,
         starting_grid: Grid,
     ) -> Board {
         let time_control = chess_rules.time_control.clone();
         Board {
-            chess_rules: chess_rules,
-            bughouse_rules: bughouse_rules,
+            chess_rules,
+            bughouse_rules,
+            players,
             status: ChessGameStatus::Active,
             grid: starting_grid,
             castle_rights: enum_map!{ _ => enum_map!{ _ => true } },
@@ -387,6 +399,8 @@ impl Board {
         }
     }
 
+    pub fn player(&self, force: Force) -> &Player { &*self.players[force] }
+    pub fn players(&self) -> &EnumMap<Force, Rc<Player>> { &self.players }
     pub fn status(&self) -> ChessGameStatus { self.status }
     pub fn grid(&self) -> &Grid { &self.grid }
     pub fn grid_mut(&mut self) -> &mut Grid { &mut self.grid }
@@ -398,21 +412,21 @@ impl Board {
 
     fn is_bughouse(&self) -> bool { self.bughouse_rules.is_some() }
 
-    pub fn start_clock(&mut self, now: Instant) {
+    pub fn start_clock(&mut self, now: GameInstant) {
         if !self.clock.is_active() {
             self.clock.new_turn(self.active_force, now);
         }
     }
-    pub fn test_flag(&mut self, now: Instant) {
+    pub fn test_flag(&mut self, now: GameInstant) {
         if self.status != ChessGameStatus::Active {
             return;
         }
-        if self.clock.time_left(self.active_force, now).is_zero() {
-            self.status = ChessGameStatus::Victory(self.active_force.opponent());
+        if self.clock.time_left(self.active_force, now, TimeMeasurement::Exact).is_zero() {
+            self.status = ChessGameStatus::Victory(self.active_force.opponent(), VictoryReason::Flag);
         }
     }
 
-    pub fn try_turn(&mut self, turn: Turn, now: Instant) -> Result<Option<Capture>, TurnError> {
+    pub fn try_turn(&mut self, turn: Turn, now: GameInstant) -> Result<Option<Capture>, TurnError> {
         self.test_flag(now);
         if self.status != ChessGameStatus::Active {
             return Err(TurnError::GameOver);
@@ -467,11 +481,11 @@ impl Board {
         self.last_turn = Some(turn);
         if self.is_bughouse() {
             if is_bughouse_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
-                self.status = ChessGameStatus::Victory(force);
+                self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
             }
         } else {
             if is_chess_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
-                self.status = ChessGameStatus::Victory(force);
+                self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
             }
         }
         // TODO: Draw if position is repeated three times.

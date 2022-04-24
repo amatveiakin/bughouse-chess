@@ -1,10 +1,11 @@
 use derive_new::new;
 use enum_map::Enum;
+use serde::{Serialize, Deserialize};
 
 use crate::force::Force;
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Enum)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Enum, Serialize, Deserialize)]
 pub enum PieceKind {
     Pawn,
     Knight,
@@ -14,14 +15,14 @@ pub enum PieceKind {
     King,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum PieceOrigin {
     Innate,
     Promoted,
     Dropped,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, new)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, new, Serialize, Deserialize)]
 pub struct PieceOnBoard {
     pub kind: PieceKind,
     pub origin: PieceOrigin,
@@ -29,7 +30,7 @@ pub struct PieceOnBoard {
     pub force: Force,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Enum)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Enum, Serialize, Deserialize)]
 pub enum CastleDirection {
     ASide,
     HSide,

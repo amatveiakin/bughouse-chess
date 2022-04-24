@@ -1,16 +1,18 @@
 use std::time::Duration;
 
+use serde::{Serialize, Deserialize};
+
 use crate::coord::SubjectiveRow;
 use crate::clock::TimeControl;
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum StartingPosition {
     Classic,
     FischerRandom,  // a.k.a. Chess960
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum DropAggression {
     NoCheck,
     NoChessMate,
@@ -18,13 +20,13 @@ pub enum DropAggression {
     MateAllowed,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChessRules {
     pub starting_position: StartingPosition,
     pub time_control: TimeControl,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BughouseRules {
     pub min_pawn_drop_row: SubjectiveRow,
     pub max_pawn_drop_row: SubjectiveRow,

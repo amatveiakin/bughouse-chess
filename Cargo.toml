@@ -5,8 +5,10 @@ authors = ["Andrei Matveiakin <a.matveiakin@gmail.com>"]
 edition = "2021"
 
 [dependencies]
+byteorder = "1.4.3"
 crossterm = "0.23.2"
 console = "0.15.0"
+clap = { version = "3.1.9", features = ["cargo"] }
 derive-new = "0.5.9"
 enum-map = "2.1.0"
 itertools = "0.10.3"
@@ -14,3 +16,5 @@ lazy_static = "1.4.0"
 rand = "0.8.5"
 regex = "1.5.5"
 scopeguard = "1.1.0"
+serde = { version = "1.0.136", features = ["derive"] }
+serde_json = "1.0.79"

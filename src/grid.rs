@@ -3,9 +3,10 @@ use std::ops;
 use crate::coord::{Coord, NUM_ROWS, NUM_COLS};
 use crate::janitor::Janitor;
 use crate::piece::PieceOnBoard;
+use serde::{Serialize, Deserialize};
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Grid {
     data: [[Option<PieceOnBoard>; NUM_COLS as usize]; NUM_ROWS as usize],
 }
