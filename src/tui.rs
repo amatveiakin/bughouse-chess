@@ -38,8 +38,6 @@ pub fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, u
     (clock_str, clock_str_len)
 }
 
-// TODO: Team marker
-// TODO: Highlight myself
 pub fn render_player(player: &Player) -> (String, usize) {
     (player.name.clone(), player.name.len())
 }

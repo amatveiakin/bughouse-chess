@@ -6,7 +6,6 @@ use serde::{Serialize, Deserialize};
 use crate::force::Force;
 
 
-// TODO: Disable time control in tests.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TimeControl {
     pub starting_time: Duration,
