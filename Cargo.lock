@@ -46,6 +46,7 @@ dependencies = [
  "enum-map",
  "itertools",
  "lazy_static",
+ "mockstream",
  "rand",
  "regex",
  "scopeguard",
@@ -283,6 +284,12 @@ checksum = "b9f1c5b025cda876f66ef43a113f91ebc9f4ccef34843000e0adf6ebbab84e21"
 dependencies = [
  "winapi",
 ]
+
+[[package]]
+name = "mockstream"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35bbe0c0c9d254b463b13734bc361d1423289547e052b1e77e5a77292496ba2e"
 
 [[package]]
 name = "ntapi"

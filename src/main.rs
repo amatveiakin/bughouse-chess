@@ -2,8 +2,8 @@ use std::io;
 
 use clap::{arg, Command};
 
-mod client;
-mod server;
+mod client_main;
+mod server_main;
 
 
 fn main() -> io::Result<()> {
@@ -27,11 +27,11 @@ fn main() -> io::Result<()> {
 
     match matches.subcommand() {
         Some(("server", _)) => {
-            server::server_main();
+            server_main::run();
             Ok(())
         },
         Some(("client", sub_matches)) => {
-            client::client_main(client::ClientConfig {
+            client_main::run(client_main::ClientConfig {
                 server_address: sub_matches.value_of("server_address").unwrap().to_string(),
                 player_name: sub_matches.value_of("player_name").unwrap().to_string(),
                 team: sub_matches.value_of("team").unwrap().to_string(),

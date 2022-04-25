@@ -21,7 +21,9 @@ mod piece;
 mod player;
 mod rules;
 pub mod janitor;
+pub mod client;
 pub mod network;
+pub mod server;
 pub mod tui;
 pub mod util;
 

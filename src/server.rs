@@ -1,21 +1,38 @@
 use std::io;
-use std::net::{TcpStream, TcpListener};
+use std::net::TcpStream;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Instant, Duration};
 
 use itertools::Itertools;
+use mockstream::SyncMockStream;
 use rand::prelude::*;
 
-use bughouse_chess::*;
+use crate::clock::{TimeControl, GameInstant};
+use crate::coord::{SubjectiveRow};
+use crate::game::{BughouseBoard, BughouseGameStatus, BughouseGame};
+use crate::event::{BughouseServerEvent, BughouseClientEvent};
+use crate::player::{Player, Team};
+use crate::rules::{StartingPosition, ChessRules, DropAggression, BughouseRules};
+use crate::network;
 
 
 const TOTAL_PLAYERS: usize = 4;
 const TOTAL_PLAYERS_PER_TEAM: usize = 2;
 
-enum IncomingEvent {
-    ClientConnected(TcpStream),
+pub trait RWStream : io::Read + io::Write + Send + Sync + 'static {
+    fn clone_or_die(&self) -> Self;
+}
+impl RWStream for TcpStream {
+    fn clone_or_die(&self) -> Self { self.try_clone().unwrap() }
+}
+impl RWStream for SyncMockStream {
+    fn clone_or_die(&self) -> Self { self.clone() }
+}
+
+pub enum IncomingEvent<S: RWStream> {
+    ClientConnected(S),
     ClientEvent(usize, BughouseClientEvent),  // id, event
     Tick,
 }
@@ -28,18 +45,19 @@ enum ContestState {
     },
 }
 
-type Players = Vec<(Option<Player>, TcpStream)>;
+// TODO: Rename to `Clients`.
+type Players<S> = Vec<(Option<Player>, S)>;
 
-struct ServerState {
-    players: Players,
+pub struct ServerState<S: RWStream> {
+    players: Players<S>,
     contest_state: ContestState,
-    new_client_tx: mpsc::Sender<IncomingEvent>,  // should redirect to `apply_event` input
+    new_client_tx: mpsc::Sender<IncomingEvent<S>>,  // should redirect to `apply_event` input
     chess_rules: ChessRules,
     bughouse_rules: BughouseRules,
 }
 
-impl ServerState {
-    pub fn new(new_client_tx: mpsc::Sender<IncomingEvent>) -> Self {
+impl<S: RWStream> ServerState<S> {
+    pub fn new(new_client_tx: mpsc::Sender<IncomingEvent<S>>) -> Self {
         ServerState {
             players: vec![],
             contest_state: ContestState::Lobby,
@@ -57,7 +75,7 @@ impl ServerState {
     }
 
     // TODO: Better error handling
-    pub fn apply_event(&mut self, event: IncomingEvent) {
+    pub fn apply_event(&mut self, event: IncomingEvent<S>) {
         let now = Instant::now();
         if let ContestState::Game{ ref mut game, game_start } = self.contest_state {
             if let Some(game_start) = game_start {
@@ -79,7 +97,7 @@ impl ServerState {
                     ContestState::Lobby => {
                         assert!(self.players.len() < TOTAL_PLAYERS);
                         let player_id = self.players.len();
-                        self.players.push((None, stream.try_clone().unwrap()));
+                        self.players.push((None, stream.clone_or_die()));
                         let tx_new = self.new_client_tx.clone();
                         thread::spawn(move || {
                             loop {
@@ -187,7 +205,7 @@ impl ServerState {
     }
 }
 
-fn get_team_players(players: &Players, team: Team) -> impl Iterator<Item = &Player> {
+fn get_team_players<S: RWStream>(players: &Players<S>, team: Team) -> impl Iterator<Item = &Player> {
     players.iter().filter_map(move |(player_or, _)| {
         if let Some(p) = player_or {
             if p.team == team {
@@ -198,22 +216,22 @@ fn get_team_players(players: &Players, team: Team) -> impl Iterator<Item = &Play
     })
 }
 
-fn send_event(players: &mut Players, player_id: usize, event: &BughouseServerEvent) -> io::Result<()> {
+fn send_event<S: RWStream>(players: &mut Players<S>, player_id: usize, event: &BughouseServerEvent) -> io::Result<()> {
     network::write_obj(&mut players[player_id].1, event)
 }
 
-fn send_error(players: &mut Players, player_id: usize, message: String) -> io::Result<()> {
+fn send_error<S: RWStream>(players: &mut Players<S>, player_id: usize, message: String) -> io::Result<()> {
     send_event(players, player_id, &BughouseServerEvent::Error{ message })
 }
 
-fn broadcast_event(players: &mut Players, event: &BughouseServerEvent) -> io::Result<()> {
+fn broadcast_event<S: RWStream>(players: &mut Players<S>, event: &BughouseServerEvent) -> io::Result<()> {
     for (_, stream) in players.iter_mut() {
         network::write_obj(stream, event)?;
     }
     Ok(())
 }
 
-fn assign_boards(players: &Players) -> Vec<(Player, BughouseBoard)> {
+fn assign_boards<S: RWStream>(players: &Players<S>) -> Vec<(Player, BughouseBoard)> {
     let mut rng = rand::thread_rng();
     let mut make_team = |team| {
         let mut team_players = get_team_players(players, team).map(|p| p.clone()).collect_vec();
@@ -225,38 +243,4 @@ fn assign_boards(players: &Players) -> Vec<(Player, BughouseBoard)> {
         ]
     };
     [make_team(Team::Red), make_team(Team::Blue)].concat()
-}
-
-pub fn server_main() {
-    let (tx, rx) = mpsc::channel();
-    let tx_client_connected = tx.clone();
-    let tx_tick = tx.clone();
-    thread::spawn(move || {
-        loop {
-            thread::sleep(Duration::from_millis(100));
-            tx_tick.send(IncomingEvent::Tick).unwrap();
-        }
-    });
-    thread::spawn(move || {
-        let mut server_state = ServerState::new(tx);
-        for event in rx {
-            server_state.apply_event(event);
-        }
-        panic!("Unexpected end of events stream");
-    });
-
-    let listener = TcpListener::bind(("0.0.0.0", network::PORT)).unwrap();
-    println!("Listening to connection on {}...", listener.local_addr().unwrap());
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                println!("Client connected from {}", stream.peer_addr().unwrap());
-                tx_client_connected.send(IncomingEvent::ClientConnected(stream)).unwrap();
-            }
-            Err(err) => {
-                println!("Cannot estanblish connection: {}", err);
-            }
-        }
-    }
-    panic!("Unexpected end of TcpListener::incoming");
 }
