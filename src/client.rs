@@ -28,7 +28,6 @@ enum IncomingEvent {
 
 enum ClientState {
     Uninitialized,
-    Error { message: String },
     Lobby { players: Vec<Player> },
     Game {
         game: BughouseGame,  // local state; may contain moves not confirmed by the server yet
@@ -117,8 +116,9 @@ pub fn client_main(config: ClientConfig) -> io::Result<()> {
                 use BughouseServerEvent::*;
                 match net_event {
                     Error{ message } => {
-                        // TODO: Should all errors be final?
-                        client_state = ClientState::Error{ message };
+                        execute!(io::stdout(), terminal::LeaveAlternateScreen)?;
+                        writeln!(stdout, "Fatal error: {}", message)?;
+                        std::process::exit(1);
                     },
                     LobbyUpdated{ players } => {
                         client_state = ClientState::Lobby{ players };
@@ -219,9 +219,6 @@ pub fn client_main(config: ClientConfig) -> io::Result<()> {
         match client_state {
             ClientState::Uninitialized => {
                 writeln!(stdout, "Loading...")?;
-            },
-            ClientState::Error{ ref message } => {
-                writeln!(stdout, "{}", message)?;
             },
             ClientState::Lobby{ ref players } => {
                 let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
