@@ -159,7 +159,10 @@ pub fn client_main(config: ClientConfig) -> io::Result<()> {
                         }
                     },
                     GameOver{ time, game_status } => {
-                        if let ClientState::Game{ ref mut game, .. } = client_state {
+                        if let ClientState::Game{ ref mut game, ref mut game_confirmed, .. } = client_state {
+                            if let Some(game_confirmed) = game_confirmed.take() {
+                                *game = game_confirmed;
+                            }
                             assert!(game.status() == BughouseGameStatus::Active);
                             assert!(game_status != BughouseGameStatus::Active);
                             // TODO: Make sure this is synced with flag.

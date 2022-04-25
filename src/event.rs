@@ -29,8 +29,6 @@ pub enum BughouseServerEvent {
     },
     // Used when game is ended for a reason unrelated to the last turn (flag, resign).
     GameOver {
-        // TODO: Include final positions (and clock readings?) to revert moves tentativaly made
-        //   before flag dropped.
         time: GameInstant,
         game_status: BughouseGameStatus,
     },
