@@ -246,6 +246,11 @@ impl BughouseGame {
     pub fn player_board(&self, player_name: &str) -> Option<&Board> {
         self.find_player(player_name).map(|(board_idx, _)| &self.boards[board_idx])
     }
+    pub fn player_is_active(&self, player_name: &str) -> Option<bool> {
+        self.find_player(player_name).map(|(board_idx, force)| {
+            self.boards[board_idx].active_force() == force
+        })
+    }
 
     pub fn set_status(&mut self, status: BughouseGameStatus, now: GameInstant) {
         self.status = status;

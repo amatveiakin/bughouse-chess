@@ -181,8 +181,7 @@ pub fn client_main(config: ClientConfig) -> io::Result<()> {
                 return Ok(());
             }
             if let ClientState::Game{ ref mut game, ref mut game_confirmed, .. } = client_state {
-                let board = game.player_board(my_name).unwrap();
-                if board.player(board.active_force()).name == my_name {
+                if game.player_is_active(my_name).unwrap() {
                     assert!(game_confirmed.is_none());
                     *game_confirmed = Some(game.clone());
                     // Don't try to advance the clock: server is the source of truth for flag defeat.
@@ -216,6 +215,7 @@ pub fn client_main(config: ClientConfig) -> io::Result<()> {
         execute!(stdout, cursor::MoveTo(0, 0))?;
         // TODO: Don't clear the board to avoid blinking.
         execute!(stdout, terminal::Clear(terminal::ClearType::FromCursorDown))?;
+        let mut highlight_input = false;
         match client_state {
             ClientState::Uninitialized => {
                 writeln!(stdout, "Loading...")?;
@@ -246,20 +246,22 @@ pub fn client_main(config: ClientConfig) -> io::Result<()> {
                     None => GameInstant::game_start(),
                 };
                 writeln!(stdout, "{}\n", tui::render_bughouse_game(&game, game_now))?;
-                if game.status() != BughouseGameStatus::Active {
+                if game.status() == BughouseGameStatus::Active {
+                    highlight_input = game.player_is_active(my_name).unwrap();
+                } else {
                     let msg = format!("Game over: {:?}", game.status());
                     writeln!(stdout, "{}", msg.with(style::Color::Magenta))?;
                 }
             },
         }
 
-        // TODO: Fixed input line
-        write!(stdout, "{}", keyboard_input)?;
-        // TODO: Different cursor and input color when not your turn.
         // Simulate cursor: real cursor blinking is broken with Show/Hide.
-        if now.duration_since(app_start_time).as_millis() % 1000 < 500 {
-            write!(stdout, "{}", "▂")?;
-        }
+        let show_cursor = now.duration_since(app_start_time).as_millis() % 1000 >= 500;
+        let cursor = if show_cursor { '▂' } else { ' ' };
+        let input_style = if highlight_input { style::Color::White } else { style::Color::DarkGrey };
+        // TODO: Show input on a fixed line regardless of client_status.
+        write!(stdout, "{}", format!("{}{}", keyboard_input, cursor).with(input_style))?;
+
         writeln!(stdout, "\n")?;
         if let Some(ref err) = error_message {
             writeln!(stdout, "{}", err.clone().with(style::Color::Red))?;
