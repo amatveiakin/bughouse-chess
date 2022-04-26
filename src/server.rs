@@ -1,39 +1,25 @@
-use std::io;
-use std::net::TcpStream;
+use std::collections::{hash_map, HashMap};
+use std::ops;
 use std::rc::Rc;
-use std::sync::mpsc;
-use std::thread;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Instant, Duration};
 
-use itertools::Itertools;
-use mockstream::SyncMockStream;
+use enum_map::enum_map;
 use rand::prelude::*;
 
 use crate::clock::{TimeControl, GameInstant};
 use crate::coord::{SubjectiveRow};
 use crate::game::{BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::event::{BughouseServerEvent, BughouseClientEvent};
-use crate::player::{Player, Team};
+use crate::player::Player;
 use crate::rules::{StartingPosition, ChessRules, DropAggression, BughouseRules};
-use crate::network;
 
 
 const TOTAL_PLAYERS: usize = 4;
 const TOTAL_PLAYERS_PER_TEAM: usize = 2;
 
-pub trait RWStream : io::Read + io::Write + Send + Sync + 'static {
-    fn clone_or_die(&self) -> Self;
-}
-impl RWStream for TcpStream {
-    fn clone_or_die(&self) -> Self { self.try_clone().unwrap() }
-}
-impl RWStream for SyncMockStream {
-    fn clone_or_die(&self) -> Self { self.clone() }
-}
-
-pub enum IncomingEvent<S: RWStream> {
-    ClientConnected(S),
-    ClientEvent(usize, BughouseClientEvent),  // id, event
+pub enum IncomingEvent {
+    Network(ClientId, BughouseClientEvent),
     Tick,
 }
 
@@ -45,23 +31,112 @@ enum ContestState {
     },
 }
 
-// TODO: Rename to `Clients`.
-type Players<S> = Vec<(Option<Player>, S)>;
 
-pub struct ServerState<S: RWStream> {
-    players: Players<S>,
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+struct PlayerId(usize);
+
+struct Players {
+    map: HashMap<PlayerId, Rc<Player>>,
+}
+
+impl Players {
+    fn new() -> Self { Self{ map: HashMap::new() } }
+    fn len(&self) -> usize { self.map.len() }
+    fn iter(&self) -> impl Iterator<Item = &Rc<Player>> { self.map.values() }
+    fn add_player(&mut self, player: Rc<Player>) -> PlayerId {
+        loop {
+            let id = PlayerId(rand::random());
+            match self.map.entry(id) {
+                hash_map::Entry::Occupied(_) => {},
+                hash_map::Entry::Vacant(e) => {
+                    e.insert(player);
+                    return id;
+                }
+            }
+        }
+    }
+}
+
+impl ops::Index<PlayerId> for Players {
+    type Output = Rc<Player>;
+    fn index(&self, id: PlayerId) -> &Self::Output { &self.map[&id] }
+}
+impl ops::IndexMut<PlayerId> for Players {
+    fn index_mut(&mut self, id: PlayerId) -> &mut Self::Output { self.map.get_mut(&id).unwrap() }
+}
+
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ClientId(usize);
+
+pub struct Client {
+    events_tx: mpsc::Sender<BughouseServerEvent>,
+    player_id: Option<PlayerId>,
+}
+
+impl Client {
+    fn send(&mut self, event: BughouseServerEvent) {
+        self.events_tx.send(event).unwrap();
+    }
+    fn send_error(&mut self, message: String) {
+        self.send(BughouseServerEvent::Error{ message });
+    }
+}
+
+pub struct Clients {
+    map: HashMap<ClientId, Client>,
+}
+
+impl Clients {
+    pub fn new() -> Self { Self{ map: HashMap::new() } }
+
+    pub fn add_client(&mut self, events_tx: mpsc::Sender<BughouseServerEvent>) -> ClientId {
+        let client = Client {
+            events_tx,
+            player_id: None,
+        };
+        loop {
+            let id = ClientId(rand::random());
+            match self.map.entry(id) {
+                hash_map::Entry::Occupied(_) => {},
+                hash_map::Entry::Vacant(e) => {
+                    e.insert(client);
+                    return id;
+                }
+            }
+        }
+    }
+
+    fn broadcast(&mut self, event: &BughouseServerEvent) {
+        for (_, Client{events_tx, ..}) in &self.map {
+            events_tx.send(event.clone()).unwrap();
+        }
+    }
+}
+
+impl ops::Index<ClientId> for Clients {
+    type Output = Client;
+    fn index(&self, id: ClientId) -> &Self::Output { &self.map[&id] }
+}
+impl ops::IndexMut<ClientId> for Clients {
+    fn index_mut(&mut self, id: ClientId) -> &mut Self::Output { self.map.get_mut(&id).unwrap() }
+}
+
+
+pub struct ServerState {
+    clients: Arc<Mutex<Clients>>,
+    players: Players,
     contest_state: ContestState,
-    new_client_tx: mpsc::Sender<IncomingEvent<S>>,  // should redirect to `apply_event` input
     chess_rules: ChessRules,
     bughouse_rules: BughouseRules,
 }
 
-impl<S: RWStream> ServerState<S> {
-    pub fn new(new_client_tx: mpsc::Sender<IncomingEvent<S>>) -> Self {
+impl ServerState {
+    pub fn new(clients: Arc<Mutex<Clients>>) -> Self {
         ServerState {
-            players: vec![],
+            clients,
+            players: Players::new(),
             contest_state: ContestState::Lobby,
-            new_client_tx,
             chess_rules: ChessRules {
                 starting_position: StartingPosition::FischerRandom,
                 time_control: TimeControl{ starting_time: Duration::from_secs(300) },
@@ -75,70 +150,51 @@ impl<S: RWStream> ServerState<S> {
     }
 
     // TODO: Better error handling
-    pub fn apply_event(&mut self, event: IncomingEvent<S>) {
+    pub fn apply_event(&mut self, event: IncomingEvent) {
         let now = Instant::now();
+        let mut clients = self.clients.lock().unwrap();
+
         if let ContestState::Game{ ref mut game, game_start } = self.contest_state {
             if let Some(game_start) = game_start {
                 let game_now = GameInstant::new(game_start, now);
                 game.test_flag(game_now);
                 if game.status() != BughouseGameStatus::Active {
-                    broadcast_event(&mut self.players, &BughouseServerEvent::GameOver {
+                    clients.broadcast(&BughouseServerEvent::GameOver {
                         time: game_now,
                         game_status: game.status(),
-                    }).unwrap();
+                    });
                     return;
                 }
             }
         }
 
         match event {
-            IncomingEvent::ClientConnected(mut stream) => {
-                match self.contest_state {
-                    ContestState::Lobby => {
-                        assert!(self.players.len() < TOTAL_PLAYERS);
-                        let player_id = self.players.len();
-                        self.players.push((None, stream.clone_or_die()));
-                        let tx_new = self.new_client_tx.clone();
-                        thread::spawn(move || {
-                            loop {
-                                let ev = network::parse_obj::<BughouseClientEvent>(
-                                    &network::read_str(&mut stream).unwrap()).unwrap();
-                                tx_new.send(IncomingEvent::ClientEvent(player_id, ev)).unwrap();
-                            }
-                        });
-                    },
-                    ContestState::Game{ .. } => {
-                        // TODO: Allow to reconnect
-                        network::write_obj(&mut stream, &BughouseServerEvent::Error {
-                            message: "Cannot connect: game has already started".to_owned(),
-                        }).unwrap();
-                    },
-                }
-            },
-            IncomingEvent::ClientEvent(player_id, event) => {
+            IncomingEvent::Network(client_id, event) => {
                 match event {
                     BughouseClientEvent::Join{ player_name, team } => {
                         if let ContestState::Lobby = self.contest_state {
-                            if self.players[player_id].0.is_some() {
-                                send_error(&mut self.players, player_id, "Cannot join: already joined".to_owned()).unwrap();
+                            if clients[client_id].player_id.is_some() {
+                                clients[client_id].send_error("Cannot join: already joined".to_owned());
                             } else {
                                 // TODO: Check name uniqueness
-                                if get_team_players(&self.players, team).count() >= TOTAL_PLAYERS_PER_TEAM {
-                                    send_error(&mut self.players, player_id, format!("Cannot join: team {:?} is full", team)).unwrap();
+                                if self.players.iter().filter(|p| { p.team == team }).count() >= TOTAL_PLAYERS_PER_TEAM {
+                                    clients[client_id].send_error(format!("Cannot join: team {:?} is full", team));
                                 } else {
                                     println!("Player {} joined team {:?}", player_name, team);
-                                    self.players[player_id].0 = Some(Player {
+                                    let player_id = self.players.add_player(Rc::new(Player {
                                         name: player_name,
                                         team,
-                                    });
-                                    let player_to_send = self.players.iter().filter_map(|(p, _)| p.clone()).collect_vec();
-                                    broadcast_event(&mut self.players, &BughouseServerEvent::LobbyUpdated {
+                                    }));
+                                    clients[client_id].player_id = Some(player_id);
+                                    // TODO: Use `unwrap_or_clone` when ready: https://github.com/rust-lang/rust/issues/93610
+                                    let player_to_send = self.players.iter().map(|p| (**p).clone()).collect();
+                                    clients.broadcast(&BughouseServerEvent::LobbyUpdated {
                                         players: player_to_send,
-                                    }).unwrap();
+                                    });
                                 }
                             }
                         } else {
-                            send_error(&mut self.players, player_id, "Cannot join: game has already started".to_owned()).unwrap();
+                            clients[client_id].send_error("Cannot join: game has already started".to_owned());
                         }
                     },
                     BughouseClientEvent::MakeTurn{ turn_algebraic } => {
@@ -146,31 +202,35 @@ impl<S: RWStream> ServerState<S> {
                             if game_start.is_none() {
                                 *game_start = Some(now);
                             }
-                            let game_now = GameInstant::new(game_start.unwrap(), now);
-                            let player_name = self.players[player_id].0.as_ref().unwrap().name.clone();
-                            let turn_result = game.try_turn_by_player_from_algebraic(
-                                &player_name, &turn_algebraic, game_now
-                            );
-                            if let Err(error) = turn_result {
-                                send_error(&mut self.players, player_id, format!("Impossible turn: {:?}", error)).unwrap();
-                            }
-                            broadcast_event(&mut self.players, &BughouseServerEvent::TurnMade {
-                                player_name: player_name.to_owned(),
-                                turn_algebraic,  // TODO: Rewrite turn to a standard form
-                                time: game_now,
-                                game_status: game.status(),
-                            }).unwrap();
-                            if game.status() != BughouseGameStatus::Active {
-                                return;
+                            if let Some(player_id) = clients[client_id].player_id {
+                                let game_now = GameInstant::new(game_start.unwrap(), now);
+                                let player_name = self.players[player_id].name.clone();
+                                let turn_result = game.try_turn_by_player_from_algebraic(
+                                    &player_name, &turn_algebraic, game_now
+                                );
+                                if let Err(error) = turn_result {
+                                    clients[client_id].send_error(format!("Impossible turn: {:?}", error));
+                                }
+                                clients.broadcast(&BughouseServerEvent::TurnMade {
+                                    player_name: player_name.to_owned(),
+                                    turn_algebraic,  // TODO: Rewrite turn to a standard form
+                                    time: game_now,
+                                    game_status: game.status(),
+                                });
+                                if game.status() != BughouseGameStatus::Active {
+                                    return;
+                                }
+                            } else {
+                                clients[client_id].send_error("Cannot make turn: not joined".to_owned());
                             }
                         } else {
-                            send_error(&mut self.players, player_id, "Cannot make turn: no game in progress".to_owned()).unwrap();
+                            clients[client_id].send_error("Cannot make turn: no game in progress".to_owned());
                         }
                     },
                     BughouseClientEvent::Leave => {
-                        broadcast_event(&mut self.players, &BughouseServerEvent::Error {
+                        clients.broadcast(&BughouseServerEvent::Error {
                             message: "Oh no! Somebody left the party".to_owned(),
-                        }).unwrap();
+                        });
                     },
                 }
             },
@@ -181,11 +241,9 @@ impl<S: RWStream> ServerState<S> {
 
         if let ContestState::Lobby = self.contest_state {
             assert!(self.players.len() <= TOTAL_PLAYERS);
-            if self.players.len() == TOTAL_PLAYERS && self.players.iter().all(|(p, _)| p.is_some()) {
-                let players_with_boards = assign_boards(&self.players);
-                let player_map = BughouseGame::make_player_map(
-                    players_with_boards.iter().map(|(p, board_idx)| (Rc::new(p.clone()), *board_idx))
-                );
+            if self.players.len() == TOTAL_PLAYERS {
+                let players_with_boards = assign_boards(self.players.iter());
+                let player_map = BughouseGame::make_player_map(players_with_boards.iter().cloned());
                 let game = BughouseGame::new(
                     self.chess_rules.clone(), self.bughouse_rules.clone(), player_map
                 );
@@ -194,53 +252,35 @@ impl<S: RWStream> ServerState<S> {
                     game,
                     game_start: None,
                 };
-                broadcast_event(&mut self.players, &BughouseServerEvent::GameStarted {
+                // TODO: Use `unwrap_or_clone` when ready: https://github.com/rust-lang/rust/issues/93610
+                let player_to_send = players_with_boards.into_iter().map(|(p, board_idx)| {
+                    ((*p).clone(), board_idx)
+                }).collect();
+                clients.broadcast(&BughouseServerEvent::GameStarted {
                     chess_rules: self.chess_rules.clone(),
                     bughouse_rules: self.bughouse_rules.clone(),
                     starting_grid,
-                    players: players_with_boards,
-                }).unwrap();
+                    players: player_to_send,
+                });
             }
         };
     }
 }
 
-fn get_team_players<S: RWStream>(players: &Players<S>, team: Team) -> impl Iterator<Item = &Player> {
-    players.iter().filter_map(move |(player_or, _)| {
-        if let Some(p) = player_or {
-            if p.team == team {
-                return Some(p);
-            }
-        }
-        None
-    })
-}
-
-fn send_event<S: RWStream>(players: &mut Players<S>, player_id: usize, event: &BughouseServerEvent) -> io::Result<()> {
-    network::write_obj(&mut players[player_id].1, event)
-}
-
-fn send_error<S: RWStream>(players: &mut Players<S>, player_id: usize, message: String) -> io::Result<()> {
-    send_event(players, player_id, &BughouseServerEvent::Error{ message })
-}
-
-fn broadcast_event<S: RWStream>(players: &mut Players<S>, event: &BughouseServerEvent) -> io::Result<()> {
-    for (_, stream) in players.iter_mut() {
-        network::write_obj(stream, event)?;
-    }
-    Ok(())
-}
-
-fn assign_boards<S: RWStream>(players: &Players<S>) -> Vec<(Player, BughouseBoard)> {
+fn assign_boards<'a>(players: impl Iterator<Item = &'a Rc<Player>>)
+    -> Vec<(Rc<Player>, BughouseBoard)>
+{
     let mut rng = rand::thread_rng();
-    let mut make_team = |team| {
-        let mut team_players = get_team_players(players, team).map(|p| p.clone()).collect_vec();
+    let mut players_per_team = enum_map!{ _ => vec![] };
+    for p in players {
+        players_per_team[p.team].push(Rc::clone(p));
+    }
+    players_per_team.into_values().map(|mut team_players| {
         team_players.shuffle(&mut rng);
-        let [a, b] = <[Player; TOTAL_PLAYERS_PER_TEAM]>::try_from(team_players).unwrap();
+        let [a, b] = <[Rc<Player>; TOTAL_PLAYERS_PER_TEAM]>::try_from(team_players).unwrap();
         vec![
             (a, BughouseBoard::A),
             (b, BughouseBoard::B),
         ]
-    };
-    [make_team(Team::Red), make_team(Team::Blue)].concat()
+    }).flatten().collect()
 }
