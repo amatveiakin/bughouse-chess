@@ -2,27 +2,28 @@ use std::collections::{hash_map, HashMap};
 use std::ops;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, mpsc};
-use std::time::{Instant, Duration};
+use std::time::Instant;
 
 use enum_map::enum_map;
 use rand::prelude::*;
 
-use crate::clock::{TimeControl, GameInstant};
-use crate::coord::{SubjectiveRow};
+use crate::clock::GameInstant;
 use crate::game::{BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::event::{BughouseServerEvent, BughouseClientEvent};
 use crate::player::Player;
-use crate::rules::{StartingPosition, ChessRules, DropAggression, BughouseRules};
+use crate::rules::{ChessRules, BughouseRules};
 
 
 const TOTAL_PLAYERS: usize = 4;
 const TOTAL_PLAYERS_PER_TEAM: usize = 2;
 
+#[derive(Debug)]
 pub enum IncomingEvent {
     Network(ClientId, BughouseClientEvent),
     Tick,
 }
 
+#[derive(Debug)]
 enum ContestState {
     Lobby,
     Game {
@@ -129,23 +130,22 @@ pub struct ServerState {
     contest_state: ContestState,
     chess_rules: ChessRules,
     bughouse_rules: BughouseRules,
+    board_assignment_override: Option<Vec<(String, BughouseBoard)>>,  // for tests
 }
 
 impl ServerState {
-    pub fn new(clients: Arc<Mutex<Clients>>) -> Self {
+    pub fn new(
+        clients: Arc<Mutex<Clients>>,
+        chess_rules: ChessRules,
+        bughouse_rules: BughouseRules
+    ) -> Self {
         ServerState {
             clients,
+            chess_rules,
+            bughouse_rules,
             players: Players::new(),
             contest_state: ContestState::Lobby,
-            chess_rules: ChessRules {
-                starting_position: StartingPosition::FischerRandom,
-                time_control: TimeControl{ starting_time: Duration::from_secs(300) },
-            },
-            bughouse_rules: BughouseRules {
-                min_pawn_drop_row: SubjectiveRow::from_one_based(2),
-                max_pawn_drop_row: SubjectiveRow::from_one_based(6),
-                drop_aggression: DropAggression::NoChessMate,
-            },
+            board_assignment_override: None,
         }
     }
 
@@ -242,7 +242,7 @@ impl ServerState {
         if let ContestState::Lobby = self.contest_state {
             assert!(self.players.len() <= TOTAL_PLAYERS);
             if self.players.len() == TOTAL_PLAYERS {
-                let players_with_boards = assign_boards(self.players.iter());
+                let players_with_boards = self.assign_boards(self.players.iter());
                 let player_map = BughouseGame::make_player_map(players_with_boards.iter().cloned());
                 let game = BughouseGame::new(
                     self.chess_rules.clone(), self.bughouse_rules.clone(), player_map
@@ -265,22 +265,35 @@ impl ServerState {
             }
         };
     }
-}
 
-fn assign_boards<'a>(players: impl Iterator<Item = &'a Rc<Player>>)
-    -> Vec<(Rc<Player>, BughouseBoard)>
-{
-    let mut rng = rand::thread_rng();
-    let mut players_per_team = enum_map!{ _ => vec![] };
-    for p in players {
-        players_per_team[p.team].push(Rc::clone(p));
+    #[allow(non_snake_case)]
+    pub fn TEST_override_board_assignment(&mut self, assignment: Vec<(String, BughouseBoard)>) {
+        assert_eq!(assignment.len(), TOTAL_PLAYERS);
+        self.board_assignment_override = Some(assignment);
     }
-    players_per_team.into_values().map(|mut team_players| {
-        team_players.shuffle(&mut rng);
-        let [a, b] = <[Rc<Player>; TOTAL_PLAYERS_PER_TEAM]>::try_from(team_players).unwrap();
-        vec![
-            (a, BughouseBoard::A),
-            (b, BughouseBoard::B),
-        ]
-    }).flatten().collect()
+
+    fn assign_boards<'a>(&self, players: impl Iterator<Item = &'a Rc<Player>>)
+        -> Vec<(Rc<Player>, BughouseBoard)>
+    {
+        if let Some(assignment) = &self.board_assignment_override {
+            let players_by_name: HashMap<_, _> = players.map(|p| (&p.name, p)).collect();
+            assignment.iter().map(|(name, board_idx)| {
+                (Rc::clone(players_by_name[name]), *board_idx)
+            }).collect()
+        } else {
+            let mut rng = rand::thread_rng();
+            let mut players_per_team = enum_map!{ _ => vec![] };
+            for p in players {
+                players_per_team[p.team].push(Rc::clone(p));
+            }
+            players_per_team.into_values().map(|mut team_players| {
+                team_players.shuffle(&mut rng);
+                let [a, b] = <[Rc<Player>; TOTAL_PLAYERS_PER_TEAM]>::try_from(team_players).unwrap();
+                vec![
+                    (a, BughouseBoard::A),
+                    (b, BughouseBoard::B),
+                ]
+            }).flatten().collect()
+        }
+    }
 }

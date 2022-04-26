@@ -137,6 +137,9 @@ impl Coord {
         let chars: [char; 2] = s.chars().collect_vec().try_into().unwrap();
         Coord{ row: Row::from_algebraic(chars[1]), col: Col::from_algebraic(chars[0]) }
     }
+    pub fn to_algebraic(&self) -> String {
+        format!("{}{}", self.col.to_algebraic(), self.row.to_algebraic())
+    }
     pub fn all() -> impl Iterator<Item = Coord> {
         Row::all().cartesian_product(Col::all()).map(|(row, col)| Coord{ row, col } )
     }
@@ -158,7 +161,7 @@ impl ops::Sub for Coord {
 
 impl fmt::Debug for Coord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Coord({}{})", self.col.to_algebraic(), self.row.to_algebraic())
+        write!(f, "Coord({})", self.to_algebraic())
     }
 }
 

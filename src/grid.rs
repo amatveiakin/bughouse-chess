@@ -1,12 +1,13 @@
+use std::fmt;
 use std::ops;
 
 use crate::coord::{Coord, NUM_ROWS, NUM_COLS};
 use crate::janitor::Janitor;
-use crate::piece::PieceOnBoard;
+use crate::piece::{PieceOrigin, PieceOnBoard};
 use serde::{Serialize, Deserialize};
 
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Grid {
     data: [[Option<PieceOnBoard>; NUM_COLS as usize]; NUM_ROWS as usize],
 }
@@ -54,6 +55,28 @@ impl ops::Index<Coord> for Grid {
 impl ops::IndexMut<Coord> for Grid {
     fn index_mut(&mut self, pos: Coord) -> &mut Self::Output {
         &mut self.data[pos.row.to_zero_based() as usize][pos.col.to_zero_based() as usize]
+    }
+}
+
+fn debug_format_piece(piece: &PieceOnBoard) -> String {
+    let mut s = format!("{:?}-{:?}", piece.force, piece.kind);
+    if piece.origin != PieceOrigin::Innate {
+        s.push_str(&format!("-{:?}", piece.origin));
+    }
+    if let Some(rook_castling) = piece.rook_castling {
+        s.push_str(&format!("-castling:{:?}", rook_castling));
+    }
+    s
+}
+
+impl fmt::Debug for Grid {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Grid ")?;
+        f.debug_list().entries(Coord::all().filter_map(|coord| {
+            self[coord].map(|piece| {
+                format!("{} => {}", coord.to_algebraic(), debug_format_piece(&piece))
+            })
+        })).finish()
     }
 }
 

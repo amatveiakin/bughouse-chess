@@ -10,18 +10,31 @@ use crate::event::{BughouseServerEvent, BughouseClientEvent};
 use crate::player::{Player, Team};
 
 
+#[derive(Debug)]
 pub enum IncomingEvent {
     Network(BughouseServerEvent),
     Terminal(term_event::Event),
     Tick,
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
+#[must_use]
 pub enum EventReaction {
     Continue,
     ExitOk,
     ExitWithError(String),
 }
 
+impl EventReaction {
+    pub fn expect_cont(&self) {
+        assert!(
+            matches!(&self, EventReaction::Continue),
+            "Expected the app to continue, found {:?}", &self
+        );
+    }
+}
+
+#[derive(Debug)]
 pub enum ContestState {
     Uninitialized,
     Lobby { players: Vec<Player> },
@@ -54,6 +67,7 @@ impl ClientState {
         }
     }
 
+    pub fn my_name(&self) -> &str { &self.my_name }
     pub fn contest_state(&self) -> &ContestState { &self.contest_state }
     pub fn command_error(&self) -> &Option<String> { &self.command_error }
     pub fn keyboard_input(&self) -> &String { &self.keyboard_input }
@@ -194,7 +208,7 @@ impl ClientState {
                     self.keyboard_input = cmd;
                 }
             } else {
-                self.command_error = Some(format!("unknown command: '{}'", cmd));
+                self.command_error = Some(format!("Unknown command: '{}'", cmd));
             }
         }
         EventReaction::Continue

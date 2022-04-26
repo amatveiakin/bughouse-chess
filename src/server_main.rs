@@ -24,7 +24,16 @@ pub fn run() {
     let clients = Arc::new(Mutex::new(Clients::new()));
     let clients_view = Arc::clone(&clients);
     thread::spawn(move || {
-        let mut server_state = ServerState::new(clients);
+        let chess_rules = ChessRules {
+            starting_position: StartingPosition::FischerRandom,
+            time_control: TimeControl{ starting_time: Duration::from_secs(300) },
+        };
+        let bughouse_rules = BughouseRules {
+            min_pawn_drop_row: SubjectiveRow::from_one_based(2),
+            max_pawn_drop_row: SubjectiveRow::from_one_based(6),
+            drop_aggression: DropAggression::NoChessMate,
+        };
+        let mut server_state = ServerState::new(clients, chess_rules, bughouse_rules);
         for event in rx {
             server_state.apply_event(event);
         }
