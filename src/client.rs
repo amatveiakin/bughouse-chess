@@ -1,5 +1,5 @@
-use std::io;
 use std::rc::Rc;
+use std::sync::mpsc;
 use std::time::Instant;
 
 use crossterm::{event as term_event};
@@ -8,7 +8,6 @@ use crate::clock::{GameInstant};
 use crate::game::{BughouseGameStatus, BughouseGame};
 use crate::event::{BughouseServerEvent, BughouseClientEvent};
 use crate::player::{Player, Team};
-use crate::network;
 
 
 pub enum IncomingEvent {
@@ -34,21 +33,21 @@ pub enum ContestState {
     // TODO: Separate state for `GameOver`.
 }
 
-pub struct ClientState<'a, OutStream: io::Write> {
-    my_name: &'a str,
+pub struct ClientState {
+    my_name: String,
     my_team: Team,
-    out_stream: &'a mut OutStream,
+    events_tx: mpsc::Sender<BughouseClientEvent>,
     contest_state: ContestState,
     command_error: Option<String>,
     keyboard_input: String,
 }
 
-impl<'a, OutStream: io::Write> ClientState<'a, OutStream> {
-    pub fn new(my_name: &'a str, my_team: Team, out_stream: &'a mut OutStream) -> Self {
+impl ClientState {
+    pub fn new(my_name: String, my_team: Team, events_tx: mpsc::Sender<BughouseClientEvent>) -> Self {
         ClientState {
             my_name,
             my_team,
-            out_stream,
+            events_tx,
             contest_state: ContestState::Uninitialized,
             command_error: None,
             keyboard_input: String::new(),
@@ -60,14 +59,14 @@ impl<'a, OutStream: io::Write> ClientState<'a, OutStream> {
     pub fn keyboard_input(&self) -> &String { &self.keyboard_input }
 
     // Must be called exactly once before calling `apply_event`.
-    pub fn join(&mut self) -> io::Result<()> {
-        network::write_obj(self.out_stream, &BughouseClientEvent::Join {
+    pub fn join(&mut self) {
+        self.events_tx.send(BughouseClientEvent::Join {
             player_name: self.my_name.to_owned(),
             team: self.my_team,
-        })
+        }).unwrap();
     }
 
-    pub fn apply_event(&mut self, event: IncomingEvent) -> io::Result<EventReaction> {
+    pub fn apply_event(&mut self, event: IncomingEvent) -> EventReaction {
         let mut command_to_execute = None;
         match event {
             IncomingEvent::Terminal(term_event) => {
@@ -91,7 +90,7 @@ impl<'a, OutStream: io::Write> ClientState<'a, OutStream> {
                 use BughouseServerEvent::*;
                 match net_event {
                     Error{ message } => {
-                        return Ok(EventReaction::ExitWithError(message));
+                        return EventReaction::ExitWithError(message);
                     },
                     LobbyUpdated{ players } => {
                         let new_players = players;
@@ -164,8 +163,8 @@ impl<'a, OutStream: io::Write> ClientState<'a, OutStream> {
         if let Some(cmd) = command_to_execute {
             self.command_error = None;
             if cmd == "quit" {
-                network::write_obj(self.out_stream, &BughouseClientEvent::Leave)?;
-                return Ok(EventReaction::ExitOk);
+                self.events_tx.send(BughouseClientEvent::Leave).unwrap();
+                return EventReaction::ExitOk;
             }
             if let ContestState::Game{ ref mut game, ref mut game_confirmed, .. } = self.contest_state {
                 if game.player_is_active(&self.my_name).unwrap() {
@@ -181,9 +180,9 @@ impl<'a, OutStream: io::Write> ClientState<'a, OutStream> {
                     );
                     match turn_result {
                         Ok(_) => {
-                            network::write_obj(self.out_stream, &BughouseClientEvent::MakeTurn {
+                            self.events_tx.send(BughouseClientEvent::MakeTurn {
                                 turn_algebraic: cmd
-                            })?;
+                            }).unwrap();
                         },
                         Err(err) => {
                             *game_confirmed = None;
@@ -198,7 +197,7 @@ impl<'a, OutStream: io::Write> ClientState<'a, OutStream> {
                 self.command_error = Some(format!("unknown command: '{}'", cmd));
             }
         }
-        Ok(EventReaction::Continue)
+        EventReaction::Continue
     }
 
     fn new_contest_state(&mut self, contest_state: ContestState) {
