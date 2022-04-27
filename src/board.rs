@@ -426,8 +426,8 @@ impl Board {
         }
     }
 
+    // Does not test flag. Will not update game status if a player has zero time left.
     pub fn try_turn(&mut self, turn: Turn, now: GameInstant) -> Result<Option<Capture>, TurnError> {
-        self.test_flag(now);
         if self.status != ChessGameStatus::Active {
             return Err(TurnError::GameOver);
         }

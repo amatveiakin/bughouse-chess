@@ -32,7 +32,12 @@ pub fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, u
     if is_active {
         clock_str = Style::new().reverse().apply_to(clock_str).to_string();
     } else if millis == 0 {
-        // TODO: Mark red only if flag defeat confirmed by the server.
+        // Note. This will not apply to an active player, which is by design.
+        // When the game is over, all clocks stop, so no player is active.
+        // An active player can have zero time only in an online game client.
+        // In this case we shouldn't paint the clock red (which means defeat)
+        // before the server confirmed game result, because the game may have
+        // ended earlier on the other board.
         clock_str = Style::new().on_red().apply_to(clock_str).to_string();
     }
     (clock_str, clock_str_len)

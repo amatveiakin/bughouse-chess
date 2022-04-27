@@ -175,7 +175,6 @@ impl ClientState {
                             *local_turn = None;
                             assert!(game_confirmed.status() == BughouseGameStatus::Active);
                             assert!(game_status != BughouseGameStatus::Active);
-                            // TODO: Make sure this is synced with flag.
                             game_confirmed.set_status(game_status, time);
                         } else {
                             panic!("Cannot record game result: no game in progress")
@@ -194,23 +193,23 @@ impl ClientState {
                 self.events_tx.send(BughouseClientEvent::Leave).unwrap();
                 return EventReaction::ExitOk;
             }
-            if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, .. }
+            if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, game_start }
                 = self.contest_state
             {
                 let turn_algebraic = cmd;
+                let game_now = match game_start {
+                    Some(t) => GameInstant::new(t, Instant::now()),
+                    None => GameInstant::game_start(),
+                };
                 if game_confirmed.player_is_active(&self.my_name).unwrap() && local_turn.is_none() {
                     let mut game_copy = game_confirmed.clone();
-                    // Don't try to advance the clock: server is the source of truth for flag defeat.
-                    // TODO: Fix time recorded in order to show accurate local time before the server confirmed the move.
-                    //   Problem: need to avoid recording flag defeat prematurely.
-                    let clock = game_copy.player_board(&self.my_name).unwrap().clock();
-                    let turn_start = clock.turn_start().unwrap_or(GameInstant::game_start());
+                    // Note. Not calling `test_flag`, because server is the source of truth for flag defeat.
                     let turn_result = game_copy.try_turn_by_player_from_algebraic(
-                        &self.my_name, &turn_algebraic, turn_start
+                        &self.my_name, &turn_algebraic, game_now
                     );
                     match turn_result {
                         Ok(_) => {
-                            *local_turn = Some((turn_algebraic.clone(), turn_start));
+                            *local_turn = Some((turn_algebraic.clone(), game_now));
                             self.events_tx.send(BughouseClientEvent::MakeTurn {
                                 turn_algebraic: turn_algebraic
                             }).unwrap();

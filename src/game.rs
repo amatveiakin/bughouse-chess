@@ -105,7 +105,9 @@ impl ChessGame {
         self.board.test_flag(now);
     }
 
-    // Should `test_flag` first!
+    // Function from `try_turn...` familiy do not test flag internally. They will not update
+    // game status if a player has zero time left.
+    // Thus it's recommended to `test_flag` first.
     pub fn try_turn(&mut self, turn: Turn, now: GameInstant) -> Result<(), TurnError> {
         self.board.try_turn(turn, now)?;
         Ok(())
