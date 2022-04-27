@@ -39,11 +39,25 @@ pub enum ContestState {
     Uninitialized,
     Lobby { players: Vec<Player> },
     Game {
-        game: BughouseGame,  // local state; may contain moves not confirmed by the server yet
-        game_confirmed: Option<BughouseGame>,  // state from the server, if different from `game`
+        // State as it has been confirmed by the server.
+        game_confirmed: BughouseGame,
+        // Local turn (algebraic), uncofirmed by the server yet, but displayed on the client.
+        local_turn: Option<(String, GameInstant)>,
+        // Game start time: `None` before first move, non-`None` afterwards.
         game_start: Option<Instant>,
     },
-    // TODO: Separate state for `GameOver`.
+}
+
+pub fn game_local(my_name: &str, game_confirmed: &BughouseGame, local_turn: &Option<(String, GameInstant)>)
+    -> BughouseGame
+{
+    let mut game = game_confirmed.clone();
+    if let Some((turn_algebraic, turn_time)) = local_turn {
+        game.try_turn_by_player_from_algebraic(
+            my_name, turn_algebraic, *turn_time
+        ).unwrap();
+    }
+    game
 }
 
 pub struct ClientState {
@@ -124,45 +138,45 @@ impl ClientState {
                             players.iter().map(|(p, board_idx)| (Rc::new(p.clone()), *board_idx))
                         );
                         self.new_contest_state(ContestState::Game {
-                            game: BughouseGame::new_with_grid(
+                            game_confirmed: BughouseGame::new_with_grid(
                                 chess_rules, bughouse_rules, starting_grid, player_map
                             ),
-                            game_confirmed: None,
+                            local_turn: None,
                             game_start: None,
                         });
                     },
                     TurnMade{ player_name, turn_algebraic, time, game_status } => {
                         if let ContestState::Game{
-                            ref mut game, ref mut game_confirmed, ref mut game_start
+                            ref mut game_confirmed, ref mut local_turn, ref mut game_start
                         } = self.contest_state {
-                            assert!(game.status() == BughouseGameStatus::Active, "Cannot make turn: game over");
+                            assert!(game_confirmed.status() == BughouseGameStatus::Active, "Cannot make turn: game over");
                             if game_start.is_none() {
                                 // TODO: Sync client/server times better; consider NTP
                                 *game_start = Some(Instant::now());
                             }
                             if player_name == self.my_name {
-                                *game = game_confirmed.take().unwrap();
+                                *local_turn = None;
                             }
-                            let turn_result = game.try_turn_by_player_from_algebraic(
+                            let turn_result = game_confirmed.try_turn_by_player_from_algebraic(
                                 &player_name, &turn_algebraic, time
                             );
                             turn_result.unwrap_or_else(|err| {
                                 panic!("Impossible turn: {}, error: {:?}", turn_algebraic, err)
                             });
-                            assert_eq!(game_status, game.status());
+                            assert_eq!(game_status, game_confirmed.status());
                         } else {
                             panic!("Cannot make turn: no game in progress")
                         }
                     },
                     GameOver{ time, game_status } => {
-                        if let ContestState::Game{ ref mut game, ref mut game_confirmed, .. } = self.contest_state {
-                            if let Some(game_confirmed) = game_confirmed.take() {
-                                *game = game_confirmed;
-                            }
-                            assert!(game.status() == BughouseGameStatus::Active);
+                        if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, .. }
+                            = self.contest_state
+                        {
+                            *local_turn = None;
+                            assert!(game_confirmed.status() == BughouseGameStatus::Active);
                             assert!(game_status != BughouseGameStatus::Active);
                             // TODO: Make sure this is synced with flag.
-                            game.set_status(game_status, time);
+                            game_confirmed.set_status(game_status, time);
                         } else {
                             panic!("Cannot record game result: no game in progress")
                         }
@@ -180,32 +194,34 @@ impl ClientState {
                 self.events_tx.send(BughouseClientEvent::Leave).unwrap();
                 return EventReaction::ExitOk;
             }
-            if let ContestState::Game{ ref mut game, ref mut game_confirmed, .. } = self.contest_state {
-                if game.player_is_active(&self.my_name).unwrap() {
-                    assert!(game_confirmed.is_none());
-                    *game_confirmed = Some(game.clone());
+            if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, .. }
+                = self.contest_state
+            {
+                let turn_algebraic = cmd;
+                if game_confirmed.player_is_active(&self.my_name).unwrap() && local_turn.is_none() {
+                    let mut game_copy = game_confirmed.clone();
                     // Don't try to advance the clock: server is the source of truth for flag defeat.
                     // TODO: Fix time recorded in order to show accurate local time before the server confirmed the move.
                     //   Problem: need to avoid recording flag defeat prematurely.
-                    let clock = game.player_board(&self.my_name).unwrap().clock();
+                    let clock = game_copy.player_board(&self.my_name).unwrap().clock();
                     let turn_start = clock.turn_start().unwrap_or(GameInstant::game_start());
-                    let turn_result = game.try_turn_by_player_from_algebraic(
-                        &self.my_name, &cmd, turn_start
+                    let turn_result = game_copy.try_turn_by_player_from_algebraic(
+                        &self.my_name, &turn_algebraic, turn_start
                     );
                     match turn_result {
                         Ok(_) => {
+                            *local_turn = Some((turn_algebraic.clone(), turn_start));
                             self.events_tx.send(BughouseClientEvent::MakeTurn {
-                                turn_algebraic: cmd
+                                turn_algebraic: turn_algebraic
                             }).unwrap();
                         },
                         Err(err) => {
-                            *game_confirmed = None;
                             // TODO: FIX: Screen is not updated while an error is shown.
-                            self.command_error = Some(format!("Illegal turn '{}': {:?}", cmd, err));
+                            self.command_error = Some(format!("Illegal turn '{}': {:?}", turn_algebraic, err));
                         },
                     }
                 } else {
-                    self.keyboard_input = cmd;
+                    self.keyboard_input = turn_algebraic;
                 }
             } else {
                 self.command_error = Some(format!("Unknown command: '{}'", cmd));

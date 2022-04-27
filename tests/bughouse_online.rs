@@ -108,26 +108,31 @@ impl Client {
     fn my_name(&self) -> &str {
         self.state.my_name()
     }
-    fn game(&self) -> &BughouseGame {
-        match self.state.contest_state() {
-            client::ContestState::Game{ game, .. } => game,
+    fn game_local(&self) -> BughouseGame {
+        match &self.state.contest_state() {
+            client::ContestState::Game{ game_confirmed, local_turn, .. } =>
+                client::game_local(self.my_name(), game_confirmed, local_turn),
             _ => panic!("No game in found"),
         }
     }
     fn force(&self) -> Force {
-        self.game().find_player(self.my_name()).unwrap().1
+        self.game_local().find_player(self.my_name()).unwrap().1
     }
-    fn board(&self) -> &Board {
-        self.game().player_board(self.my_name()).unwrap()
+    fn board(&self) -> Board {
+        self.game_local().player_board(self.my_name()).unwrap().clone()
     }
 
-    fn process_events(&mut self, server: &mut Server) -> bool {
+    fn process_outgoing_events(&mut self, server: &mut Server) -> bool {
         let mut something_changed = false;
         for event in self.outgoing_rx.try_iter() {
             something_changed = true;
             println!("{:?} >>> {:?}", self.id, event);
             server.send_network_event(self.id, event);
         }
+        something_changed
+    }
+    fn process_incoming_events(&mut self) -> bool {
+        let mut something_changed = false;
         for event in self.incoming_rx.try_iter() {
             something_changed = true;
             println!("{:?} <<< {:?}", self.id, event);
@@ -177,15 +182,40 @@ impl World {
         idx
     }
 
+    fn process_events_for(&mut self, client_id: TestClientId) {
+        let client = &mut self.clients[client_id.0];
+        client.process_outgoing_events(&mut self.server);
+        client.process_incoming_events();
+    }
+    fn process_events_from_clients(&mut self) -> bool {
+        let mut something_changed = false;
+        for client in &mut self.clients {
+            if client.process_outgoing_events(&mut self.server) {
+                something_changed = true;
+            }
+        }
+        something_changed
+    }
+    fn process_events_to_clients(&mut self) -> bool {
+        let mut something_changed = false;
+        for client in &mut self.clients {
+            if client.process_incoming_events() {
+                something_changed = true;
+            }
+        }
+        something_changed
+    }
+    // TODO: Randomize order to simulate network better.
     // TODO: When to tick?
-    fn process_events(&mut self) {
+    fn process_all_events(&mut self) {
         let mut something_changed = true;
         while something_changed {
             something_changed = false;
-            for client in &mut self.clients {
-                if client.process_events(&mut self.server) {
-                    something_changed = true;
-                }
+            if self.process_events_from_clients() {
+                something_changed = true;
+            }
+            if self.process_events_to_clients() {
+                something_changed = true;
             }
         }
     }
@@ -200,6 +230,8 @@ impl ops::IndexMut<TestClientId> for World {
 }
 
 
+// TODO: Consider name that easier to parse and less looking like chess coord,
+//   e.g. paw, pab, pbw, pbb
 #[test]
 fn play_online() {
     let mut world = World::new();
@@ -214,12 +246,12 @@ fn play_online() {
     let cl2 = world.add_client("p2", Team::Red);
     let cl3 = world.add_client("p3", Team::Blue);
 
-    world.process_events();
+    world.process_all_events();
     assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Lobby{ .. }));
 
     let cl4 = world.add_client("p4", Team::Blue);
 
-    world.process_events();
+    world.process_all_events();
     assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
 
     // Input from inactive player is ignored
@@ -227,27 +259,54 @@ fn play_online() {
 
     world[cl1].execute_command("e5").expect_error_contains_dbg(&TurnError::Unreachable);
     world[cl1].execute_command("e4").expect_ok();
-    world.process_events();
+    world.process_all_events();
 
     // Now the invalid command is processed
     world[cl3].send_key(KeyCode::Enter, KeyModifiers::empty()).expect_error_contains("hello");
 
     world[cl3].execute_command("d5").expect_ok();
-    world.process_events();
+    world.process_all_events();
 
     world[cl1].execute_command("xd5").expect_ok();
-    world.process_events();
+    world.process_all_events();
     assert_eq!(world[cl2].board().reserve(world[cl2].force())[PieceKind::Pawn], 1);
 
     world[cl4].execute_command("Nc3").expect_ok();
-    world.process_events();
+    world.process_all_events();
 
     world[cl2].execute_command("P@e4").expect_ok();
-    world.process_events();
+    world.process_all_events();
 
     world[cl4].execute_command("d4").expect_ok();
-    world.process_events();
+    world.process_all_events();
 
     world[cl2].execute_command("xd3").expect_ok();  // en passant
-    world.process_events();
+    world.process_all_events();
+}
+
+
+// Regression test for turn preview bug: turns from the other boards could've been
+// reverted when a local turn was confirmed.
+#[test]
+fn remote_turn_persisted() {
+    let mut world = World::new();
+    world.server.state.TEST_override_board_assignment(vec! [
+        ("p1".to_owned(), BughouseBoard::A),
+        ("p2".to_owned(), BughouseBoard::B),
+        ("p3".to_owned(), BughouseBoard::A),
+        ("p4".to_owned(), BughouseBoard::B),
+    ]);
+
+    let cl1 = world.add_client("p1", Team::Red);
+    let _cl2 = world.add_client("p2", Team::Red);
+    let _cl3 = world.add_client("p3", Team::Blue);
+    let cl4 = world.add_client("p4", Team::Blue);
+
+    world.process_all_events();
+
+    world[cl1].execute_command("e4").expect_ok();
+    world[cl4].execute_command("d4").expect_ok();
+    world.process_events_for(cl4);
+    world.process_events_for(cl1);
+    assert!(world[cl1].game_local().board(BughouseBoard::B).grid()[Coord::D4].is_some());
 }

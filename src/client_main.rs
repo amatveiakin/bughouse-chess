@@ -20,9 +20,10 @@ pub struct ClientConfig {
     pub team: String,
 }
 
-fn render(stdout: &mut io::Stdout, my_name: &str, app_start_time: Instant, client_state: &ClientState)
+fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &ClientState)
     -> io::Result<()>
 {
+    let my_name = client_state.my_name();
     let now = Instant::now();
     execute!(stdout, cursor::MoveTo(0, 0))?;
     // TODO: Don't clear the board to avoid blinking.
@@ -49,11 +50,12 @@ fn render(stdout: &mut io::Stdout, my_name: &str, app_start_time: Instant, clien
                 writeln!(stdout, "")?;
             }
         },
-        ContestState::Game{ ref game, ref game_start, .. } => {
+        ContestState::Game{ ref game_confirmed, ref local_turn, ref game_start } => {
             let game_now = match game_start {
                 Some(t) => GameInstant::new(*t, now),
                 None => GameInstant::game_start(),
             };
+            let game = game_local(my_name, game_confirmed, local_turn);
             writeln!(stdout, "{}\n", tui::render_bughouse_game(&game, game_now))?;
             if game.status() == BughouseGameStatus::Active {
                 highlight_input = game.player_is_active(my_name).unwrap();
@@ -80,7 +82,7 @@ fn render(stdout: &mut io::Stdout, my_name: &str, app_start_time: Instant, clien
 }
 
 pub fn run(config: ClientConfig) -> io::Result<()> {
-    let my_name = config.player_name.trim();
+    let my_name = config.player_name.trim().to_owned();
     let my_team = match config.team.as_str() {
         "red" => Team::Red,
         "blue" => Team::Blue,
@@ -93,7 +95,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     //   net_stream.set_nodelay(true)?;
     let mut net_in_stream = net_stream.try_clone()?;
     let mut net_out_stream = net_stream;
-    #[allow(unused_variables)] let config = ();  // shouldn't be used anymore;  TODO: how to do this properly?
+    std::mem::drop(config);
 
     let mut stdout = io::stdout();
     terminal::enable_raw_mode()?;
@@ -146,7 +148,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                 std::process::exit(1);
             }
         }
-        render(&mut stdout, &my_name, app_start_time, &client_state)?;
+        render(&mut stdout, app_start_time, &client_state)?;
     }
     panic!("Unexpected end of events stream");
 }
