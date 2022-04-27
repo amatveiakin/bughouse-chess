@@ -22,7 +22,7 @@ pub fn run() {
         }
     });
     let clients = Arc::new(Mutex::new(Clients::new()));
-    let clients_view = Arc::clone(&clients);
+    let clients_adder = Arc::clone(&clients);
     thread::spawn(move || {
         let chess_rules = ChessRules {
             starting_position: StartingPosition::FischerRandom,
@@ -45,17 +45,37 @@ pub fn run() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                println!("Client connected from {}", stream.peer_addr().unwrap());
+                let peer_addr = stream.peer_addr().unwrap();
+                println!("Client connected: {}", peer_addr);
                 let mut in_stream = stream.try_clone().unwrap();
                 let mut out_stream = stream;
                 let (client_tx, client_rx) = mpsc::channel();
-                let client_id = clients_view.lock().unwrap().add_client(client_tx);
+                let client_id = clients_adder.lock().unwrap().add_client(client_tx);
                 let tx_new = tx.clone();
+                let clients_remover = Arc::clone(&clients_adder);
                 thread::spawn(move || {
                     loop {
-                        let ev = network::parse_obj::<BughouseClientEvent>(
-                            &network::read_str(&mut in_stream).unwrap()).unwrap();
-                        tx_new.send(IncomingEvent::Network(client_id, ev)).unwrap();
+                        let ev_data = network::read_str(&mut in_stream);
+                        match ev_data {
+                            Ok(ev_data) => {
+                                let ev = network::parse_obj::<BughouseClientEvent>(&ev_data).unwrap();
+                                tx_new.send(IncomingEvent::Network(client_id, ev)).unwrap();
+                            },
+                            Err(err) => {
+                                use std::io::ErrorKind::*;
+                                match err.kind() {
+                                    ConnectionReset | ConnectionAborted => {
+                                        println!("Client disconnected: {}", peer_addr);
+                                        clients_remover.lock().unwrap().remove_client(client_id);
+                                        // TODO: Should the thread be joined? How?
+                                        return;
+                                    },
+                                    _ => {
+                                        panic!("Unexpected network error: {:?}", err);
+                                    }
+                                }
+                            },
+                        }
                     }
                 });
                 thread::spawn(move || {

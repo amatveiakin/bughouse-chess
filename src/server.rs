@@ -1,4 +1,4 @@
-use std::collections::{hash_map, HashMap};
+use std::collections::HashMap;
 use std::ops;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, mpsc};
@@ -39,23 +39,21 @@ struct PlayerId(usize);
 
 struct Players {
     map: HashMap<PlayerId, Rc<Player>>,
+    next_id: usize,
 }
 
 impl Players {
-    fn new() -> Self { Self{ map: HashMap::new() } }
+    fn new() -> Self { Self{ map: HashMap::new(), next_id: 1 } }
     fn len(&self) -> usize { self.map.len() }
     fn iter(&self) -> impl Iterator<Item = &Rc<Player>> { self.map.values() }
+    fn find_by_name(&self, name: &str) -> Option<PlayerId> {
+        self.map.iter().find_map(|(id, p)| if p.name == name { Some(*id) } else { None })
+    }
     fn add_player(&mut self, player: Rc<Player>) -> PlayerId {
-        loop {
-            let id = PlayerId(rand::random());
-            match self.map.entry(id) {
-                hash_map::Entry::Occupied(_) => {},
-                hash_map::Entry::Vacant(e) => {
-                    e.insert(player);
-                    return id;
-                }
-            }
-        }
+        let id = PlayerId(self.next_id);
+        self.next_id += 1;
+        assert!(self.map.insert(id, player).is_none());
+        id
     }
 }
 
@@ -87,26 +85,24 @@ impl Client {
 
 pub struct Clients {
     map: HashMap<ClientId, Client>,
+    next_id: usize,
 }
 
 impl Clients {
-    pub fn new() -> Self { Self{ map: HashMap::new() } }
+    pub fn new() -> Self { Clients{ map: HashMap::new(), next_id: 1 } }
 
     pub fn add_client(&mut self, events_tx: mpsc::Sender<BughouseServerEvent>) -> ClientId {
         let client = Client {
             events_tx,
             player_id: None,
         };
-        loop {
-            let id = ClientId(rand::random());
-            match self.map.entry(id) {
-                hash_map::Entry::Occupied(_) => {},
-                hash_map::Entry::Vacant(e) => {
-                    e.insert(client);
-                    return id;
-                }
-            }
-        }
+        let id = ClientId(self.next_id);
+        self.next_id += 1;
+        assert!(self.map.insert(id, client).is_none());
+        id
+    }
+    pub fn remove_client(&mut self, id: ClientId) {
+        self.map.remove(&id);
     }
 
     fn broadcast(&mut self, event: &BughouseServerEvent) {
@@ -174,25 +170,41 @@ impl ServerState {
                 match event {
                     BughouseClientEvent::Join{ player_name, team } => {
                         if let ContestState::Lobby = self.contest_state {
+                            let mut joined = false;
                             if clients[client_id].player_id.is_some() {
                                 clients[client_id].send_error("Cannot join: already joined".to_owned());
                             } else {
-                                // TODO: Check name uniqueness
-                                if self.players.iter().filter(|p| { p.team == team }).count() >= TOTAL_PLAYERS_PER_TEAM {
-                                    clients[client_id].send_error(format!("Cannot join: team {:?} is full", team));
+                                // TODO: Better reconnection:
+                                //   - Allow to reconnect during the game.
+                                //   - Remove the player if disconnected while in lobby.
+                                if let Some(existing_player_id) = self.players.find_by_name(&player_name) {
+                                    if clients.map.values().find(|c| c.player_id == Some(existing_player_id)).is_some() {
+                                        clients[client_id].send_error(format!(
+                                            "Cannot join: client for player \"{}\" already connected", player_name));
+                                    } else {
+                                        clients[client_id].player_id = Some(existing_player_id);
+                                        joined = true;
+                                    }
                                 } else {
-                                    println!("Player {} joined team {:?}", player_name, team);
-                                    let player_id = self.players.add_player(Rc::new(Player {
-                                        name: player_name,
-                                        team,
-                                    }));
-                                    clients[client_id].player_id = Some(player_id);
-                                    // TODO: Use `unwrap_or_clone` when ready: https://github.com/rust-lang/rust/issues/93610
-                                    let player_to_send = self.players.iter().map(|p| (**p).clone()).collect();
-                                    clients.broadcast(&BughouseServerEvent::LobbyUpdated {
-                                        players: player_to_send,
-                                    });
+                                    if self.players.iter().filter(|p| { p.team == team }).count() >= TOTAL_PLAYERS_PER_TEAM {
+                                        clients[client_id].send_error(format!("Cannot join: team {:?} is full", team));
+                                    } else {
+                                        println!("Player {} joined team {:?}", player_name, team);
+                                        let player_id = self.players.add_player(Rc::new(Player {
+                                            name: player_name,
+                                            team,
+                                        }));
+                                        clients[client_id].player_id = Some(player_id);
+                                        joined = true;
+                                    }
                                 }
+                            }
+                            if joined {
+                                // TODO: Use `unwrap_or_clone` when ready: https://github.com/rust-lang/rust/issues/93610
+                                let player_to_send = self.players.iter().map(|p| (**p).clone()).collect();
+                                clients.broadcast(&BughouseServerEvent::LobbyUpdated {
+                                    players: player_to_send,
+                                });
                             }
                         } else {
                             clients[client_id].send_error("Cannot join: game has already started".to_owned());
