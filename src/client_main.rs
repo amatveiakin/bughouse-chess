@@ -26,14 +26,15 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
     let my_name = client_state.my_name();
     let now = Instant::now();
     execute!(stdout, cursor::MoveTo(0, 0))?;
-    // TODO: Don't clear the board to avoid blinking.
-    execute!(stdout, terminal::Clear(terminal::ClearType::FromCursorDown))?;
     let mut highlight_input = false;
+    let mut additional_message = None;
     match client_state.contest_state() {
         ContestState::Uninitialized => {
+            execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
             writeln!(stdout, "Loading...")?;
         },
         ContestState::Lobby{ ref players } => {
+            execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
             let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
             for p in players {
                 teams[p.team].push(p.name.clone());
@@ -57,11 +58,14 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
             };
             let game = game_local(my_name, game_confirmed, local_turn);
             writeln!(stdout, "{}\n", tui::render_bughouse_game(&game, game_now))?;
+            // TODO: Don't clear the board to avoid blinking.
+            execute!(stdout, terminal::Clear(terminal::ClearType::FromCursorDown))?;
             if game.status() == BughouseGameStatus::Active {
                 highlight_input = game.player_is_active(my_name).unwrap();
             } else {
-                let msg = format!("Game over: {:?}", game.status());
-                writeln!(stdout, "{}", msg.with(style::Color::Magenta))?;
+                additional_message = Some(
+                    format!("Game over: {:?}", game.status()).with(style::Color::Magenta)
+                );
             }
         },
     }
@@ -75,6 +79,9 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
     write!(stdout, "{}", input_with_cursor.with(input_style))?;
 
     writeln!(stdout, "\n")?;
+    if let Some(msg) = additional_message {
+        writeln!(stdout, "{}", msg)?;
+    }
     if let Some(ref err) = client_state.command_error() {
         writeln!(stdout, "{}", err.clone().with(style::Color::Red))?;
     }
