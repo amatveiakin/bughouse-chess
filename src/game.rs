@@ -250,7 +250,7 @@ impl BughouseGame {
     }
     pub fn player_is_active(&self, player_name: &str) -> Option<bool> {
         self.find_player(player_name).map(|(board_idx, force)| {
-            self.boards[board_idx].active_force() == force
+            self.status == BughouseGameStatus::Active && self.boards[board_idx].active_force() == force
         })
     }
 
