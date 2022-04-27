@@ -35,7 +35,6 @@ pub enum BughouseServerEvent {
 }
 
 
-// TODO: Add `Resign` event
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseClientEvent {
     Join {
@@ -46,5 +45,6 @@ pub enum BughouseClientEvent {
         // TODO: Add `game_id` field to avoid replaying lingering moves from older games.
         turn_algebraic: String,
     },
+    Resign,
     Leave,
 }

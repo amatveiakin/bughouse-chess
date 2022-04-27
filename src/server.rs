@@ -7,6 +7,7 @@ use std::time::Instant;
 use enum_map::enum_map;
 use rand::prelude::*;
 
+use crate::board::VictoryReason;
 use crate::clock::GameInstant;
 use crate::game::{BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::event::{BughouseServerEvent, BughouseClientEvent};
@@ -156,7 +157,7 @@ impl ServerState {
 
         if let ContestState::Game{ ref mut game, game_start } = self.contest_state {
             if let Some(game_start) = game_start {
-                let game_now = GameInstant::new(game_start, now);
+                let game_now = GameInstant::from_active_game(game_start, now);
                 game.test_flag(game_now);
                 if game.status() != BughouseGameStatus::Active {
                     clients.broadcast(&BughouseServerEvent::GameOver {
@@ -203,7 +204,7 @@ impl ServerState {
                                 *game_start = Some(now);
                             }
                             if let Some(player_id) = clients[client_id].player_id {
-                                let game_now = GameInstant::new(game_start.unwrap(), now);
+                                let game_now = GameInstant::from_active_game(game_start.unwrap(), now);
                                 let player_name = self.players[player_id].name.clone();
                                 let turn_result = game.try_turn_by_player_from_algebraic(
                                     &player_name, &turn_algebraic, game_now
@@ -227,6 +228,27 @@ impl ServerState {
                             clients[client_id].send_error("Cannot make turn: no game in progress".to_owned());
                         }
                     },
+                    BughouseClientEvent::Resign => {
+                        if let ContestState::Game{ ref mut game, game_start } = self.contest_state {
+                            if let Some(player_id) = clients[client_id].player_id {
+                                let game_now = GameInstant::from_maybe_active_game(game_start, now);
+                                let status = BughouseGameStatus::Victory(
+                                    self.players[player_id].team.opponent(),
+                                    VictoryReason::Resignation
+                                );
+                                game.set_status(status, game_now);
+                                clients.broadcast(&BughouseServerEvent::GameOver {
+                                    time: game_now,
+                                    game_status: status,
+                                });
+                                return;
+                            } else {
+                                clients[client_id].send_error("Cannot resign: not joined".to_owned());
+                            }
+                        } else {
+                            clients[client_id].send_error("Cannot resign: no game in progress".to_owned());
+                        }
+                    }
                     BughouseClientEvent::Leave => {
                         clients.broadcast(&BughouseServerEvent::Error {
                             message: "Oh no! Somebody left the party".to_owned(),

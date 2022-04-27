@@ -51,13 +51,11 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
                 writeln!(stdout, "")?;
             }
         },
-        ContestState::Game{ ref game_confirmed, ref local_turn, ref game_start } => {
-            let game_now = match game_start {
-                Some(t) => GameInstant::new(*t, now),
-                None => GameInstant::game_start(),
-            };
+        ContestState::Game{ ref game_confirmed, ref local_turn, game_start } => {
+            let game_now = GameInstant::from_maybe_active_game(*game_start, now);
             let game = game_local(my_name, game_confirmed, local_turn);
             writeln!(stdout, "{}\n", tui::render_bughouse_game(&game, game_now))?;
+            // TODO: Clear after lobby: there are remainings of player names in empty lines
             // TODO: Don't clear the board to avoid blinking.
             execute!(stdout, terminal::Clear(terminal::ClearType::FromCursorDown))?;
             if game.status() == BughouseGameStatus::Active {
@@ -70,6 +68,7 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
         },
     }
 
+    // TODO: Fix: the bottom is blinking and input is lagging.
     // Simulate cursor: real cursor blinking is broken with Show/Hide.
     let show_cursor = now.duration_since(app_start_time).as_millis() % 1000 >= 500;
     let cursor = if show_cursor { '▂' } else { ' ' };

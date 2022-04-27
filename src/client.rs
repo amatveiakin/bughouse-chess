@@ -189,41 +189,48 @@ impl ClientState {
 
         if let Some(cmd) = command_to_execute {
             self.command_error = None;
-            if cmd == "quit" {
-                self.events_tx.send(BughouseClientEvent::Leave).unwrap();
-                return EventReaction::ExitOk;
-            }
-            if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, game_start }
-                = self.contest_state
-            {
-                let turn_algebraic = cmd;
-                let game_now = match game_start {
-                    Some(t) => GameInstant::new(t, Instant::now()),
-                    None => GameInstant::game_start(),
-                };
-                if game_confirmed.player_is_active(&self.my_name).unwrap() && local_turn.is_none() {
-                    let mut game_copy = game_confirmed.clone();
-                    // Note. Not calling `test_flag`, because server is the source of truth for flag defeat.
-                    let turn_result = game_copy.try_turn_by_player_from_algebraic(
-                        &self.my_name, &turn_algebraic, game_now
-                    );
-                    match turn_result {
-                        Ok(_) => {
-                            *local_turn = Some((turn_algebraic.clone(), game_now));
-                            self.events_tx.send(BughouseClientEvent::MakeTurn {
-                                turn_algebraic: turn_algebraic
-                            }).unwrap();
-                        },
-                        Err(err) => {
-                            // TODO: FIX: Screen is not updated while an error is shown.
-                            self.command_error = Some(format!("Illegal turn '{}': {:?}", turn_algebraic, err));
-                        },
-                    }
-                } else {
-                    self.keyboard_input = turn_algebraic;
+            if let Some(cmd) = cmd.strip_prefix('/') {
+                match cmd {
+                    "quit" => {
+                        self.events_tx.send(BughouseClientEvent::Leave).unwrap();
+                        return EventReaction::ExitOk;
+                    },
+                    "resign" => {
+                        self.events_tx.send(BughouseClientEvent::Resign).unwrap();
+                    },
+                    _ => {
+                        self.command_error = Some(format!("Unknown command: '{}'", cmd));
+                    },
                 }
             } else {
-                self.command_error = Some(format!("Unknown command: '{}'", cmd));
+                if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, game_start }
+                    = self.contest_state
+                {
+                    let turn_algebraic = cmd;
+                    let game_now = GameInstant::from_maybe_active_game(game_start, Instant::now());
+                    if game_confirmed.player_is_active(&self.my_name).unwrap() && local_turn.is_none() {
+                        let mut game_copy = game_confirmed.clone();
+                        // Note. Not calling `test_flag`, because server is the source of truth for flag defeat.
+                        let turn_result = game_copy.try_turn_by_player_from_algebraic(
+                            &self.my_name, &turn_algebraic, game_now
+                        );
+                        match turn_result {
+                            Ok(_) => {
+                                *local_turn = Some((turn_algebraic.clone(), game_now));
+                                self.events_tx.send(BughouseClientEvent::MakeTurn {
+                                    turn_algebraic: turn_algebraic
+                                }).unwrap();
+                            },
+                            Err(err) => {
+                                self.command_error = Some(format!("Illegal turn '{}': {:?}", turn_algebraic, err));
+                            },
+                        }
+                    } else {
+                        self.keyboard_input = turn_algebraic;
+                    }
+                } else {
+                    self.command_error = Some("No game in progress".to_owned());
+                }
             }
         }
         EventReaction::Continue

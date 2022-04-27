@@ -27,8 +27,14 @@ pub struct GameInstant {
 }
 
 impl GameInstant {
-    pub fn new(game_start: Instant, now: Instant) -> GameInstant {
+    pub fn from_active_game(game_start: Instant, now: Instant) -> GameInstant {
         GameInstant{ elapsed_since_start: now - game_start }
+    }
+    pub fn from_maybe_active_game(game_start: Option<Instant>, now: Instant) -> GameInstant {
+        match game_start {
+            Some(t) => GameInstant::from_active_game(t, now),
+            None => GameInstant::game_start(),
+        }
     }
     pub fn game_start() -> GameInstant {
         GameInstant{ elapsed_since_start: Duration::ZERO }
