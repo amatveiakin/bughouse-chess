@@ -368,9 +368,7 @@ pub struct Board {
     players: EnumMap<Force, Rc<Player>>,
     status: ChessGameStatus,
     grid: Grid,
-    // Tells which castling moves can be made based on what pieces have moved (not taking
-    // into account checks or the path being occupied).
-    castle_rights: EnumMap<Force, EnumMap<CastleDirection, bool>>,
+    king_has_moved: EnumMap<Force, bool>,
     reserves: EnumMap<Force, Reserve>,
     last_turn: Option<Turn>,  // for en passant capture
     clock: Clock,
@@ -391,7 +389,7 @@ impl Board {
             players,
             status: ChessGameStatus::Active,
             grid: starting_grid,
-            castle_rights: enum_map!{ _ => enum_map!{ _ => true } },
+            king_has_moved: enum_map!{ _ => false },
             reserves: enum_map!{ _ => enum_map!{ _ => 0 } },
             last_turn: None,
             clock: Clock::new(time_control),
@@ -458,18 +456,15 @@ impl Board {
 
         match &turn {
             Turn::Move(mv) => {
-                let piece = self.grid[mv.from].unwrap();
+                let piece = &mut self.grid[mv.from].unwrap();
                 if piece.kind == PieceKind::King {
-                    self.castle_rights[force] = enum_map!{ _ => false };
-                } else if let Some(rook_castling) = piece.rook_castling {
-                    // TODO: FIX: Also remove castle right when rook is captured
-                    assert_eq!(piece.kind, PieceKind::Rook);
-                    self.castle_rights[force][rook_castling] = false;
+                    self.king_has_moved[force] = true;
                 }
+                piece.rook_castling = None;
             },
             Turn::Drop(_) => { },
             Turn::Castle(_) => {
-                self.castle_rights[force] = enum_map!{ _ => false };
+                self.king_has_moved[force] = true;
             }
         }
         self.grid = new_grid;
@@ -561,7 +556,19 @@ impl Board {
                 ));
             },
             Turn::Castle(dir) => {
-                if !self.castle_rights[force][*dir] {
+                // TODO: More castling tests. Include cases:
+                //   - Castle successful.
+                //   - Cannot castle when king has moved.
+                //   - Cannot castle when rook has moved.
+                //   - Cannot castle when there are pieces in between.
+                //   - King cannot starts in a checked square.
+                //   - King cannot pass through a checked square.
+                //   - King cannot ends up in a checked square.
+                //   - [Chess960] Castle successful on the first turn.
+                //   - [Chess960] Castle when both rooks are on the same side,
+                //      both when it's possible (the other rook is further away)
+                //      and impossible (the other rook is in the way).
+                if self.king_has_moved[force] {
                     return Err(TurnError::CastlingPieceHasMoved);
                 }
                 let row = SubjectiveRow::from_one_based(1).to_row(force);
@@ -577,7 +584,7 @@ impl Board {
                         }
                     }
                 }
-                // Shouldn't have castle right if the king has moved.
+                // King should be in the first row if !self.king_has_moved
                 assert!(king.is_some());
                 let king_from = king_pos.unwrap();
 
@@ -589,13 +596,15 @@ impl Board {
                         if piece.force == force && piece.rook_castling == Some(*dir) {
                             assert_eq!(piece.kind, PieceKind::Rook);
                             rook = new_grid[pos].take();
+                            rook.unwrap().rook_castling = None;  // not that is matters, but...
                             rook_pos = Some(pos);
                             break;
                         }
                     }
                 }
-                // Shouldn't have castle right if the rook has moved.
-                assert!(rook.is_some());
+                if rook.is_none() {
+                    return Err(TurnError::CastlingPieceHasMoved);
+                }
                 let rook_from = rook_pos.unwrap();
 
                 let king_to;

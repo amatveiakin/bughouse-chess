@@ -1,3 +1,6 @@
+// TODO: Remove `try_` prefix from all function names.
+// Improvement potential: Allow whitespace after turn number in `replay_log` functions.
+
 #![allow(unused_parens)]
 
 use std::rc::Rc;
@@ -316,6 +319,31 @@ impl BughouseGame {
             return Err(TurnError::WrongTurnOrder);
         }
         self.try_turn_from_algebraic(board_idx, notation, now)
+    }
+    // Should be used in tests only, because it doesn't handle time properly.
+    #[allow(non_snake_case)]
+    pub fn TEST_try_replay_log(&mut self, log: &str) -> Result<(), TurnError> {
+        lazy_static! {
+            static ref TURN_NUMBER_RE: Regex = Regex::new(r"^(?:[0-9]+([AaBb])\.)?(.*)$").unwrap();
+        }
+        let now = GameInstant::game_start();
+        for turn_notation in log.split_whitespace() {
+            use BughouseBoard::*;
+            use Force::*;
+            let captures = TURN_NUMBER_RE.captures(turn_notation).unwrap();
+            let player_notation = captures.get(1).unwrap().as_str();
+            let turn_notation = captures.get(2).unwrap().as_str();
+            let (board_idx, force) = match player_notation {
+                "A" => (A, White),
+                "a" => (A, Black),
+                "B" => (B, White),
+                "b" => (B, Black),
+                _ => panic!("Unexpected bughouse player notation: {}", player_notation),
+            };
+            assert_eq!(self.boards[board_idx].active_force(), force);
+            self.try_turn_from_algebraic(board_idx, turn_notation, now)?
+        }
+        Ok(())
     }
 
     fn game_status_for_board(&self, board_idx: BughouseBoard) -> BughouseGameStatus {

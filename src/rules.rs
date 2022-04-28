@@ -41,3 +41,13 @@ impl ChessRules {
         }
     }
 }
+
+impl BughouseRules {
+    pub fn chess_com() -> Self {
+        Self{
+            min_pawn_drop_row: SubjectiveRow::from_one_based(2),
+            max_pawn_drop_row: SubjectiveRow::from_one_based(7),
+            drop_aggression: DropAggression::MateAllowed,
+        }
+    }
+}
