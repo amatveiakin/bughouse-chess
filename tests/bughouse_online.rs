@@ -100,8 +100,7 @@ impl Client {
         let (incoming_tx, incoming_rx) = mpsc::channel();
         let (outgoing_tx, outgoing_rx) = mpsc::channel();
         let id = server.add_client(incoming_tx);
-        let mut state = client::ClientState::new(my_name, my_team, outgoing_tx);
-        state.join();
+        let state = client::ClientState::new(my_name, my_team, outgoing_tx);
         Client{ id, incoming_rx, outgoing_rx, state }
     }
 
@@ -131,14 +130,17 @@ impl Client {
         }
         something_changed
     }
-    fn process_incoming_events(&mut self) -> bool {
+    fn process_incoming_events(&mut self) -> (bool, client::EventReaction) {
         let mut something_changed = false;
         for event in self.incoming_rx.try_iter() {
             something_changed = true;
             println!("{:?} <<< {:?}", self.id, event);
-            self.state.apply_event(client::IncomingEvent::Network(event)).expect_cont();
+            let reaction = self.state.apply_event(client::IncomingEvent::Network(event));
+            if reaction != client::EventReaction::Continue {
+                return (something_changed, reaction);
+            }
         }
-        something_changed
+        (something_changed, client::EventReaction::Continue)
     }
 
     fn send_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> ClientReaction {
@@ -178,14 +180,16 @@ impl World {
 
     fn add_client(&mut self, name: &str, team: Team) -> TestClientId {
         let idx = TestClientId(self.clients.len());
-        self.clients.push(Client::new(name.to_owned(), team, &mut self.server));
+        let mut client = Client::new(name.to_owned(), team, &mut self.server);
+        client.state.join();
+        self.clients.push(client);
         idx
     }
 
-    fn process_events_for(&mut self, client_id: TestClientId) {
+    fn process_events_for(&mut self, client_id: TestClientId) -> client::EventReaction {
         let client = &mut self.clients[client_id.0];
         client.process_outgoing_events(&mut self.server);
-        client.process_incoming_events();
+        client.process_incoming_events().1
     }
     fn process_events_from_clients(&mut self) -> bool {
         let mut something_changed = false;
@@ -199,7 +203,9 @@ impl World {
     fn process_events_to_clients(&mut self) -> bool {
         let mut something_changed = false;
         for client in &mut self.clients {
-            if client.process_incoming_events() {
+            let (change, reaction) = client.process_incoming_events();
+            reaction.expect_cont();
+            if change {
                 something_changed = true;
             }
         }
@@ -233,7 +239,7 @@ impl ops::IndexMut<TestClientId> for World {
 // TODO: Consider name that easier to parse and less looking like chess coord,
 //   e.g. paw, pab, pbw, pbb
 #[test]
-fn play_online() {
+fn play_online_misc() {
     let mut world = World::new();
     world.server.state.TEST_override_board_assignment(vec! [
         ("p1".to_owned(), BughouseBoard::A),
@@ -284,7 +290,6 @@ fn play_online() {
     world.process_all_events();
 }
 
-
 // Regression test for turn preview bug: turns from the other boards could've been
 // reverted when a local turn was confirmed.
 #[test]
@@ -306,7 +311,78 @@ fn remote_turn_persisted() {
 
     world[cl1].execute_command("e4").expect_ok();
     world[cl4].execute_command("d4").expect_ok();
-    world.process_events_for(cl4);
-    world.process_events_for(cl1);
+    world.process_events_for(cl4).expect_cont();
+    world.process_events_for(cl1).expect_cont();
     assert!(world[cl1].game_local().board(BughouseBoard::B).grid()[Coord::D4].is_some());
+}
+
+#[test]
+fn leave_and_reconnect_lobby() {
+    let mut world = World::new();
+
+    let cl1 = world.add_client("p1", Team::Red);
+    let cl2 = world.add_client("p2", Team::Red);
+    let cl3 = world.add_client("p3", Team::Blue);
+    world.process_all_events();
+    match world[cl1].state.contest_state() {
+        client::ContestState::Lobby{ players, .. } => assert_eq!(players.len(), 3),
+        _ => panic!("Expected client to be in Lobby state"),
+    }
+
+    world[cl2].execute_command("/quit").expect_app_status(client::EventReaction::ExitOk);
+    world[cl3].execute_command("/quit").expect_app_status(client::EventReaction::ExitOk);
+    world.process_all_events();
+    match world[cl1].state.contest_state() {
+        client::ContestState::Lobby{ players, .. } => assert_eq!(players.len(), 1),
+        _ => panic!("Expected client to be in Lobby state"),
+    }
+
+    let _cl4 = world.add_client("p4", Team::Blue);
+    world.process_all_events();
+    // Game should not start yet because some players have been removed.
+    match world[cl1].state.contest_state() {
+        client::ContestState::Lobby{ players, .. } => assert_eq!(players.len(), 2),
+        _ => panic!("Expected client to be in Lobby state"),
+    }
+
+    // Cannot reconnect as an active player.
+    let cl1_new = world.add_client("p1", Team::Blue);
+    assert!(matches!(world.process_events_for(cl1_new), client::EventReaction::ExitWithError(_)));
+    world.process_all_events();
+
+    // Can reconnect with the same name - that's fine.
+    let _cl2_new = world.add_client("p2", Team::Red);
+    // Can use free spot to connect with a different name - that's fine too.
+    let _cl5 = world.add_client("p5", Team::Blue);
+    world.process_all_events();
+    assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
+}
+
+#[test]
+fn leave_and_reconnect_game() {
+    let mut world = World::new();
+
+    let cl1 = world.add_client("p1", Team::Red);
+    let _cl2 = world.add_client("p2", Team::Red);
+    let cl3 = world.add_client("p3", Team::Blue);
+    let _cl4 = world.add_client("p4", Team::Blue);
+    world.process_all_events();
+    assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
+
+    world[cl3].execute_command("/quit").expect_app_status(client::EventReaction::ExitOk);
+    world.process_all_events();
+    // Show must go on - the game has started.
+    assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
+
+    // Cannot connect as a different player even though somebody has left.
+    let cl5 = world.add_client("p5", Team::Blue);
+    assert!(matches!(world.process_events_for(cl5), client::EventReaction::ExitWithError(_)));
+    world.process_all_events();
+
+    // Cannot reconnect as an active player.
+    let cl2_new = world.add_client("p2", Team::Blue);
+    assert!(matches!(world.process_events_for(cl2_new), client::EventReaction::ExitWithError(_)));
+    world.process_all_events();
+
+    // TODO: Test that it's possible to reconnect as the player who has left when it's implemented.
 }

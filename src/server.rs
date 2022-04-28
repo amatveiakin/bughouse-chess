@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use std::ops;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
@@ -101,6 +101,11 @@ impl Clients {
         assert!(self.map.insert(id, client).is_none());
         id
     }
+    // A client can be removed multiple times, e.g. first on `Leave`, then on network
+    // channel closure. This is not an error.
+    // Improvement potential: Send an event informing other clients that somebody went
+    // offline (for TUI: could use “ϟ” for “disconnected”; there is a plug emoji “🔌”
+    // that works much better, but it's not supported by console fonts).
     pub fn remove_client(&mut self, id: ClientId) {
         self.map.remove(&id);
     }
@@ -188,7 +193,7 @@ impl ServerState {
                         self.core.process_resign(&mut clients, client_id, now);
                     }
                     BughouseClientEvent::Leave => {
-                        self.core.process_leave(&mut clients);
+                        self.core.process_leave(&mut clients, client_id);
                     },
                 }
             },
@@ -229,45 +234,46 @@ impl ServerStateCore {
         &mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId,
         player_name: String, team: Team
     ) {
-        if let ContestState::Lobby = self.contest_state {
-            let mut joined = false;
-            if clients[client_id].player_id.is_some() {
-                clients[client_id].send_error("Cannot join: already joined".to_owned());
-            } else {
-                // TODO: Better reconnection:
-                //   - Allow to reconnect during the game.
-                //   - Remove the player if disconnected while in lobby.
+        match self.contest_state {
+            ContestState::Lobby => {
+                if clients[client_id].player_id.is_some() {
+                    clients[client_id].send_error("Cannot join: already joined".to_owned());
+                } else {
+                    if let Some(_) = self.players.find_by_name(&player_name) {
+                        clients[client_id].send_error(format!("Cannot join: player \"{}\" already exists", player_name));
+                    } else {
+                        if self.players.iter().filter(|p| { p.team == team }).count() >= TOTAL_PLAYERS_PER_TEAM {
+                            clients[client_id].send_error(format!("Cannot join: team {:?} is full", team));
+                        } else {
+                            println!("Player {} joined team {:?}", player_name, team);
+                            let player_id = self.players.add_player(Rc::new(Player {
+                                name: player_name,
+                                team,
+                            }));
+                            clients[client_id].player_id = Some(player_id);
+                            self.send_lobby_updated(clients);
+                        }
+                    }
+                }
+            },
+            ContestState::Game{ .. } => {
+                // TODO: Allow to reconnect during the game. Use this code + replay event log to
+                //   the new client.
+                /*
                 if let Some(existing_player_id) = self.players.find_by_name(&player_name) {
                     if clients.map.values().find(|c| c.player_id == Some(existing_player_id)).is_some() {
                         clients[client_id].send_error(format!(
                             "Cannot join: client for player \"{}\" already connected", player_name));
                     } else {
                         clients[client_id].player_id = Some(existing_player_id);
-                        joined = true;
+                        self.send_lobby_updated(clients);
                     }
                 } else {
-                    if self.players.iter().filter(|p| { p.team == team }).count() >= TOTAL_PLAYERS_PER_TEAM {
-                        clients[client_id].send_error(format!("Cannot join: team {:?} is full", team));
-                    } else {
-                        println!("Player {} joined team {:?}", player_name, team);
-                        let player_id = self.players.add_player(Rc::new(Player {
-                            name: player_name,
-                            team,
-                        }));
-                        clients[client_id].player_id = Some(player_id);
-                        joined = true;
-                    }
+                    clients[client_id].send_error("Cannot join: game has already started".to_owned());
                 }
+                */
+                clients[client_id].send_error("Cannot join: game has already started".to_owned());
             }
-            if joined {
-                // TODO: Use `unwrap_or_clone` when ready: https://github.com/rust-lang/rust/issues/93610
-                let player_to_send = self.players.iter().map(|p| (**p).clone()).collect();
-                clients.broadcast(&BughouseServerEvent::LobbyUpdated {
-                    players: player_to_send,
-                });
-            }
-        } else {
-            clients[client_id].send_error("Cannot join: game has already started".to_owned());
         }
     }
 
@@ -323,14 +329,26 @@ impl ServerStateCore {
         }
     }
 
-    fn process_leave(&mut self, clients: &mut ClientsGuard<'_>) {
-        clients.broadcast(&BughouseServerEvent::Error {
-            message: "Oh no! Somebody left the party".to_owned(),
-        });
+    fn process_leave(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId) {
+        clients.remove_client(client_id);
+        // Note. Player will be removed automatically. This has to be the case, otherwise
+        // clients disconnected due to a network error would've left abandoned players.
     }
 
     fn post_process(&mut self, clients: &mut ClientsGuard<'_>) {
         if let ContestState::Lobby = self.contest_state {
+            let active_player_ids: HashSet<_> = clients.map.values().filter_map(|c| c.player_id).collect();
+            let mut player_removed = false;
+            self.players.map.retain(|id, _| {
+                let keep = active_player_ids.contains(id);
+                if !keep {
+                    player_removed = true;
+                }
+                keep
+            });
+            if player_removed {
+                self.send_lobby_updated(clients);
+            }
             assert!(self.players.len() <= TOTAL_PLAYERS);
             if self.players.len() == TOTAL_PLAYERS {
                 let players_with_boards = self.assign_boards(self.players.iter());
@@ -355,6 +373,14 @@ impl ServerStateCore {
                 });
             }
         }
+    }
+
+    fn send_lobby_updated(&self, clients: &mut ClientsGuard<'_>) {
+        // TODO: Use `unwrap_or_clone` when ready: https://github.com/rust-lang/rust/issues/93610
+        let player_to_send = self.players.iter().map(|p| (**p).clone()).collect();
+        clients.broadcast(&BughouseServerEvent::LobbyUpdated {
+            players: player_to_send,
+        });
     }
 
     fn assign_boards<'a>(&self, players: impl Iterator<Item = &'a Rc<Player>>)
