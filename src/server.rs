@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ops;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 use std::time::Instant;
 
 use enum_map::enum_map;
@@ -11,7 +11,7 @@ use crate::board::VictoryReason;
 use crate::clock::GameInstant;
 use crate::game::{BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::event::{BughouseServerEvent, BughouseClientEvent};
-use crate::player::Player;
+use crate::player::{Player, Team};
 use crate::rules::{ChessRules, BughouseRules};
 
 
@@ -120,14 +120,24 @@ impl ops::IndexMut<ClientId> for Clients {
     fn index_mut(&mut self, id: ClientId) -> &mut Self::Output { self.map.get_mut(&id).unwrap() }
 }
 
+type ClientsGuard<'a> = MutexGuard<'a, Clients>;
 
-pub struct ServerState {
-    clients: Arc<Mutex<Clients>>,
+
+struct ServerStateCore {
     players: Players,
     contest_state: ContestState,
     chess_rules: ChessRules,
     bughouse_rules: BughouseRules,
     board_assignment_override: Option<Vec<(String, BughouseBoard)>>,  // for tests
+}
+
+// Split state into two parts in order to allow things like:
+//   let mut clients = self.clients.lock().unwrap();
+//   self.foo(&mut clients);
+// which would otherwise make the compiler complain that `self` is borrowed twice.
+pub struct ServerState {
+    clients: Arc<Mutex<Clients>>,
+    core: ServerStateCore,
 }
 
 impl ServerState {
@@ -138,19 +148,67 @@ impl ServerState {
     ) -> Self {
         ServerState {
             clients,
-            chess_rules,
-            bughouse_rules,
-            players: Players::new(),
-            contest_state: ContestState::Lobby,
-            board_assignment_override: None,
+            core: ServerStateCore {
+                chess_rules,
+                bughouse_rules,
+                players: Players::new(),
+                contest_state: ContestState::Lobby,
+                board_assignment_override: None,
+            }
         }
     }
 
-    // TODO: Better error handling
     pub fn apply_event(&mut self, event: IncomingEvent) {
+        // Use the same timestamp for the entire event processing. Other code reachable
+        // from this function should not call `Instant::now()`. Doing so may cause a race
+        // condition: e.g. if we check the flag, see that it's ok and then continue to
+        // write down a turn which, by that time, becomes illegal because player's time
+        // is over.
         let now = Instant::now();
+
+        // Lock clients for the entire duration of the function. This means simpler and
+        // more predictable event processing, e.g. it gives a guarantee that all broadcasts
+        // from a single `apply_event` reach the same set of clients.
         let mut clients = self.clients.lock().unwrap();
 
+        // Now that we've fixed a `now`, test flags first. Thus we make sure that turns or
+        // other actions are not allowed after the time is over.
+        self.core.test_flags(&mut clients, now);
+
+        match event {
+            IncomingEvent::Network(client_id, event) => {
+                match event {
+                    BughouseClientEvent::Join{ player_name, team } => {
+                        self.core.process_join(&mut clients, client_id, player_name, team);
+                    },
+                    BughouseClientEvent::MakeTurn{ turn_algebraic } => {
+                        self.core.process_make_turn(&mut clients, client_id, now, turn_algebraic);
+                    },
+                    BughouseClientEvent::Resign => {
+                        self.core.process_resign(&mut clients, client_id, now);
+                    }
+                    BughouseClientEvent::Leave => {
+                        self.core.process_leave(&mut clients);
+                    },
+                }
+            },
+            IncomingEvent::Tick => {
+                // Any event triggers state update, so no additional action is required.
+            },
+        }
+
+        self.core.post_process(&mut clients);
+    }
+
+    #[allow(non_snake_case)]
+    pub fn TEST_override_board_assignment(&mut self, assignment: Vec<(String, BughouseBoard)>) {
+        assert_eq!(assignment.len(), TOTAL_PLAYERS);
+        self.core.board_assignment_override = Some(assignment);
+    }
+}
+
+impl ServerStateCore {
+    fn test_flags(&mut self, clients: &mut ClientsGuard<'_>, now: Instant) {
         if let ContestState::Game{ ref mut game, game_start } = self.contest_state {
             if let Some(game_start) = game_start {
                 if game.status() == BughouseGameStatus::Active {
@@ -165,111 +223,113 @@ impl ServerState {
                 }
             }
         }
+    }
 
-        match event {
-            IncomingEvent::Network(client_id, event) => {
-                match event {
-                    BughouseClientEvent::Join{ player_name, team } => {
-                        if let ContestState::Lobby = self.contest_state {
-                            let mut joined = false;
-                            if clients[client_id].player_id.is_some() {
-                                clients[client_id].send_error("Cannot join: already joined".to_owned());
-                            } else {
-                                // TODO: Better reconnection:
-                                //   - Allow to reconnect during the game.
-                                //   - Remove the player if disconnected while in lobby.
-                                if let Some(existing_player_id) = self.players.find_by_name(&player_name) {
-                                    if clients.map.values().find(|c| c.player_id == Some(existing_player_id)).is_some() {
-                                        clients[client_id].send_error(format!(
-                                            "Cannot join: client for player \"{}\" already connected", player_name));
-                                    } else {
-                                        clients[client_id].player_id = Some(existing_player_id);
-                                        joined = true;
-                                    }
-                                } else {
-                                    if self.players.iter().filter(|p| { p.team == team }).count() >= TOTAL_PLAYERS_PER_TEAM {
-                                        clients[client_id].send_error(format!("Cannot join: team {:?} is full", team));
-                                    } else {
-                                        println!("Player {} joined team {:?}", player_name, team);
-                                        let player_id = self.players.add_player(Rc::new(Player {
-                                            name: player_name,
-                                            team,
-                                        }));
-                                        clients[client_id].player_id = Some(player_id);
-                                        joined = true;
-                                    }
-                                }
-                            }
-                            if joined {
-                                // TODO: Use `unwrap_or_clone` when ready: https://github.com/rust-lang/rust/issues/93610
-                                let player_to_send = self.players.iter().map(|p| (**p).clone()).collect();
-                                clients.broadcast(&BughouseServerEvent::LobbyUpdated {
-                                    players: player_to_send,
-                                });
-                            }
-                        } else {
-                            clients[client_id].send_error("Cannot join: game has already started".to_owned());
-                        }
-                    },
-                    BughouseClientEvent::MakeTurn{ turn_algebraic } => {
-                        if let ContestState::Game{ ref mut game, ref mut game_start } = self.contest_state {
-                            if game_start.is_none() {
-                                *game_start = Some(now);
-                            }
-                            if let Some(player_id) = clients[client_id].player_id {
-                                let game_now = GameInstant::from_active_game(game_start.unwrap(), now);
-                                let player_name = self.players[player_id].name.clone();
-                                let turn_result = game.try_turn_by_player_from_algebraic(
-                                    &player_name, &turn_algebraic, game_now
-                                );
-                                if let Err(error) = turn_result {
-                                    clients[client_id].send_error(format!("Impossible turn: {:?}", error));
-                                }
-                                clients.broadcast(&BughouseServerEvent::TurnMade {
-                                    player_name: player_name.to_owned(),
-                                    turn_algebraic,  // TODO: Rewrite turn to a standard form
-                                    time: game_now,
-                                    game_status: game.status(),
-                                });
-                            } else {
-                                clients[client_id].send_error("Cannot make turn: not joined".to_owned());
-                            }
-                        } else {
-                            clients[client_id].send_error("Cannot make turn: no game in progress".to_owned());
-                        }
-                    },
-                    BughouseClientEvent::Resign => {
-                        if let ContestState::Game{ ref mut game, game_start } = self.contest_state {
-                            if let Some(player_id) = clients[client_id].player_id {
-                                let game_now = GameInstant::from_maybe_active_game(game_start, now);
-                                let status = BughouseGameStatus::Victory(
-                                    self.players[player_id].team.opponent(),
-                                    VictoryReason::Resignation
-                                );
-                                game.set_status(status, game_now);
-                                clients.broadcast(&BughouseServerEvent::GameOver {
-                                    time: game_now,
-                                    game_status: status,
-                                });
-                            } else {
-                                clients[client_id].send_error("Cannot resign: not joined".to_owned());
-                            }
-                        } else {
-                            clients[client_id].send_error("Cannot resign: no game in progress".to_owned());
-                        }
+    fn process_join(
+        &mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId,
+        player_name: String, team: Team
+    ) {
+        if let ContestState::Lobby = self.contest_state {
+            let mut joined = false;
+            if clients[client_id].player_id.is_some() {
+                clients[client_id].send_error("Cannot join: already joined".to_owned());
+            } else {
+                // TODO: Better reconnection:
+                //   - Allow to reconnect during the game.
+                //   - Remove the player if disconnected while in lobby.
+                if let Some(existing_player_id) = self.players.find_by_name(&player_name) {
+                    if clients.map.values().find(|c| c.player_id == Some(existing_player_id)).is_some() {
+                        clients[client_id].send_error(format!(
+                            "Cannot join: client for player \"{}\" already connected", player_name));
+                    } else {
+                        clients[client_id].player_id = Some(existing_player_id);
+                        joined = true;
                     }
-                    BughouseClientEvent::Leave => {
-                        clients.broadcast(&BughouseServerEvent::Error {
-                            message: "Oh no! Somebody left the party".to_owned(),
-                        });
-                    },
+                } else {
+                    if self.players.iter().filter(|p| { p.team == team }).count() >= TOTAL_PLAYERS_PER_TEAM {
+                        clients[client_id].send_error(format!("Cannot join: team {:?} is full", team));
+                    } else {
+                        println!("Player {} joined team {:?}", player_name, team);
+                        let player_id = self.players.add_player(Rc::new(Player {
+                            name: player_name,
+                            team,
+                        }));
+                        clients[client_id].player_id = Some(player_id);
+                        joined = true;
+                    }
                 }
-            },
-            IncomingEvent::Tick => {
-                // Any event triggers state update, so no additional action is required.
-            },
+            }
+            if joined {
+                // TODO: Use `unwrap_or_clone` when ready: https://github.com/rust-lang/rust/issues/93610
+                let player_to_send = self.players.iter().map(|p| (**p).clone()).collect();
+                clients.broadcast(&BughouseServerEvent::LobbyUpdated {
+                    players: player_to_send,
+                });
+            }
+        } else {
+            clients[client_id].send_error("Cannot join: game has already started".to_owned());
         }
+    }
 
+    fn process_make_turn(
+        &mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant,
+        turn_algebraic: String
+    ) {
+        if let ContestState::Game{ ref mut game, ref mut game_start } = self.contest_state {
+            if game_start.is_none() {
+                *game_start = Some(now);
+            }
+            if let Some(player_id) = clients[client_id].player_id {
+                let game_now = GameInstant::from_active_game(game_start.unwrap(), now);
+                let player_name = self.players[player_id].name.clone();
+                let turn_result = game.try_turn_by_player_from_algebraic(
+                    &player_name, &turn_algebraic, game_now
+                );
+                if let Err(error) = turn_result {
+                    clients[client_id].send_error(format!("Impossible turn: {:?}", error));
+                }
+                clients.broadcast(&BughouseServerEvent::TurnMade {
+                    player_name: player_name.to_owned(),
+                    turn_algebraic,  // TODO: Rewrite turn to a standard form
+                    time: game_now,
+                    game_status: game.status(),
+                });
+            } else {
+                clients[client_id].send_error("Cannot make turn: not joined".to_owned());
+            }
+        } else {
+            clients[client_id].send_error("Cannot make turn: no game in progress".to_owned());
+        }
+    }
+
+    fn process_resign(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant) {
+        if let ContestState::Game{ ref mut game, game_start } = self.contest_state {
+            if let Some(player_id) = clients[client_id].player_id {
+                let game_now = GameInstant::from_maybe_active_game(game_start, now);
+                let status = BughouseGameStatus::Victory(
+                    self.players[player_id].team.opponent(),
+                    VictoryReason::Resignation
+                );
+                game.set_status(status, game_now);
+                clients.broadcast(&BughouseServerEvent::GameOver {
+                    time: game_now,
+                    game_status: status,
+                });
+            } else {
+                clients[client_id].send_error("Cannot resign: not joined".to_owned());
+            }
+        } else {
+            clients[client_id].send_error("Cannot resign: no game in progress".to_owned());
+        }
+    }
+
+    fn process_leave(&mut self, clients: &mut ClientsGuard<'_>) {
+        clients.broadcast(&BughouseServerEvent::Error {
+            message: "Oh no! Somebody left the party".to_owned(),
+        });
+    }
+
+    fn post_process(&mut self, clients: &mut ClientsGuard<'_>) {
         if let ContestState::Lobby = self.contest_state {
             assert!(self.players.len() <= TOTAL_PLAYERS);
             if self.players.len() == TOTAL_PLAYERS {
@@ -294,13 +354,7 @@ impl ServerState {
                     players: player_to_send,
                 });
             }
-        };
-    }
-
-    #[allow(non_snake_case)]
-    pub fn TEST_override_board_assignment(&mut self, assignment: Vec<(String, BughouseBoard)>) {
-        assert_eq!(assignment.len(), TOTAL_PLAYERS);
-        self.board_assignment_override = Some(assignment);
+        }
     }
 
     fn assign_boards<'a>(&self, players: impl Iterator<Item = &'a Rc<Player>>)
