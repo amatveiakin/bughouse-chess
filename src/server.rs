@@ -153,14 +153,15 @@ impl ServerState {
 
         if let ContestState::Game{ ref mut game, game_start } = self.contest_state {
             if let Some(game_start) = game_start {
-                let game_now = GameInstant::from_active_game(game_start, now);
-                game.test_flag(game_now);
-                if game.status() != BughouseGameStatus::Active {
-                    clients.broadcast(&BughouseServerEvent::GameOver {
-                        time: game_now,
-                        game_status: game.status(),
-                    });
-                    return;
+                if game.status() == BughouseGameStatus::Active {
+                    let game_now = GameInstant::from_active_game(game_start, now);
+                    game.test_flag(game_now);
+                    if game.status() != BughouseGameStatus::Active {
+                        clients.broadcast(&BughouseServerEvent::GameOver {
+                            time: game_now,
+                            game_status: game.status(),
+                        });
+                    }
                 }
             }
         }
@@ -230,9 +231,6 @@ impl ServerState {
                                     time: game_now,
                                     game_status: game.status(),
                                 });
-                                if game.status() != BughouseGameStatus::Active {
-                                    return;
-                                }
                             } else {
                                 clients[client_id].send_error("Cannot make turn: not joined".to_owned());
                             }
@@ -253,7 +251,6 @@ impl ServerState {
                                     time: game_now,
                                     game_status: status,
                                 });
-                                return;
                             } else {
                                 clients[client_id].send_error("Cannot resign: not joined".to_owned());
                             }
