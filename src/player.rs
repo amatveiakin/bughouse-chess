@@ -18,7 +18,8 @@ impl Team {
 }
 
 
-// TODO: How to store players? Identify by reference / id / visible name / internal name ?..
+// Improvement potential: Find a consistent and efficient way to store and address players.
+//   Identify by reference / id / visible name / internal name ?..
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Player {
     pub name: String,

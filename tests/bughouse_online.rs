@@ -1,4 +1,4 @@
-// TODO: Mock clock.
+// Improvement potential. Test time-related things with mock clock.
 
 use std::fmt;
 use std::ops;
@@ -211,8 +211,8 @@ impl World {
         }
         something_changed
     }
-    // TODO: Randomize order to simulate network better.
-    // TODO: When to tick?
+    // Improvement potential: Randomize order to simulate network better.
+    // Improvement potential: Consider if this need to auto-tick (maybe randomly).
     fn process_all_events(&mut self) {
         let mut something_changed = true;
         while something_changed {
@@ -236,8 +236,8 @@ impl ops::IndexMut<TestClientId> for World {
 }
 
 
-// TODO: Consider name that easier to parse and less looking like chess coord,
-//   e.g. paw, pab, pbw, pbb
+// Improvement potential. Consider names that are easier to parse and don't look like
+//   chess coord, e.g. "paw", "pab", "pbw", "pbb".
 #[test]
 fn play_online_misc() {
     let mut world = World::new();

@@ -1,5 +1,5 @@
-// TODO: Use `crossterm` instead (fix: for some reason rendering reserve background
-//   was more buggy with it).
+// Improvement potential. Use `crossterm` instead (fix: for some reason rendering
+//   reserve background was more buggy with it).
 use console::Style;
 use itertools::Itertools;
 
@@ -18,7 +18,7 @@ const BOARD_WIDTH: usize = (NUM_COLS as usize + 2) * 3;
 fn div_ceil(a: u128, b: u128) -> u128 { (a + b - 1) / b }
 
 pub fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, usize) {
-    // TODO: Support longer time controls (with hours)
+    // Improvement potential: Support longer time controls (with hours).
     let is_active = clock.active_force() == Some(force);
     let millis = clock.time_left(force, now).as_millis();
     let sec = millis / 1000;

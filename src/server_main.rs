@@ -1,5 +1,5 @@
-// TODO: Try to do everything via message-passing, without `Mutex`es, but also
-//   witout threading and network logic inside `ServerState`.
+// Improvement potential. Try to do everything via message-passing, without `Mutex`es,
+//   but also witout threading and network logic inside `ServerState`.
 //   Problem. Adding client via event is a potential race condition in case the
 //   first TCP message from the client arrives earlier.
 
@@ -67,7 +67,9 @@ pub fn run() {
                                     ConnectionReset | ConnectionAborted => {
                                         println!("Client disconnected: {}", peer_addr);
                                         clients_remover.lock().unwrap().remove_client(client_id);
-                                        // TODO: Should the thread be joined? How?
+                                        // Rust-upgrade (https://github.com/rust-lang/rust/issues/90470):
+                                        //   Use `JoinHandle.is_running` in order to join the thread in a
+                                        //   non-blocking way.
                                         return;
                                     },
                                     _ => {

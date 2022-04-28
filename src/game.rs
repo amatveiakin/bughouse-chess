@@ -117,11 +117,12 @@ impl ChessGame {
         let turn = turn_from_algebraic(self.board.grid_mut(), active_force, notation)?;
         self.try_turn(turn, now)
     }
-    pub fn try_replay_log(&mut self, log: &str) -> Result<(), TurnError> {
+    // Should be used in tests only, because it doesn't handle time properly.
+    #[allow(non_snake_case)]
+    pub fn TEST_try_replay_log(&mut self, log: &str) -> Result<(), TurnError> {
         lazy_static! {
             static ref TURN_NUMBER_RE: Regex = Regex::new(r"^(?:[0-9]+\.)?(.*)$").unwrap();
         }
-        // TODO: What should happen to time when replaying log?
         let now = GameInstant::game_start();
         for turn_notation in log.split_whitespace() {
             let turn_notation = TURN_NUMBER_RE.captures(turn_notation).unwrap().get(1).unwrap().as_str();

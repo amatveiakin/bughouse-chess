@@ -103,7 +103,7 @@ impl Clients {
     }
     // A client can be removed multiple times, e.g. first on `Leave`, then on network
     // channel closure. This is not an error.
-    // Improvement potential: Send an event informing other clients that somebody went
+    // Improvement potential. Send an event informing other clients that somebody went
     // offline (for TUI: could use “ϟ” for “disconnected”; there is a plug emoji “🔌”
     // that works much better, but it's not supported by console fonts).
     pub fn remove_client(&mut self, id: ClientId) {
@@ -361,7 +361,7 @@ impl ServerStateCore {
                     game,
                     game_start: None,
                 };
-                // TODO: Use `unwrap_or_clone` when ready: https://github.com/rust-lang/rust/issues/93610
+                // Rust-upgrade (https://github.com/rust-lang/rust/issues/93610): Use `unwrap_or_clone`.
                 let player_to_send = players_with_boards.into_iter().map(|(p, board_idx)| {
                     ((*p).clone(), board_idx)
                 }).collect();
@@ -376,7 +376,7 @@ impl ServerStateCore {
     }
 
     fn send_lobby_updated(&self, clients: &mut ClientsGuard<'_>) {
-        // TODO: Use `unwrap_or_clone` when ready: https://github.com/rust-lang/rust/issues/93610
+        // Rust-upgrade (https://github.com/rust-lang/rust/issues/93610): Use `unwrap_or_clone`.
         let player_to_send = self.players.iter().map(|p| (**p).clone()).collect();
         clients.broadcast(&BughouseServerEvent::LobbyUpdated {
             players: player_to_send,

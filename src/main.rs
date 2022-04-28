@@ -1,3 +1,10 @@
+// Legend for various fix-this comments:
+//   * "TODO" - bug or missing crucial feature.
+//   * "Improvement potential" - missing nice-to-have feature or an opportunity
+//       to make code better or faster.
+//   * "Rust-upgrade" - place where code can be improved using a Rust feature
+//       that is not implemented or stabilized yet.
+
 use std::io;
 
 use clap::{arg, Command};

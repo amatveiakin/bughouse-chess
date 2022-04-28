@@ -83,7 +83,7 @@ fn get_capture(grid: &Grid, from: Coord, to: Coord, last_turn: &Option<Turn>) ->
 //   - Pawnes are not promoted.
 //   - Drops are not generated (this is done separately in `is_bughouse_mate_to`).
 fn generate_moves_for_mate_test(grid: &mut Grid, from: Coord, last_turn: &Option<Turn>) -> Vec<TurnMove> {
-    // TODO: Optimize: don't iterate over all squares
+    // Improvement potential: Don't iterate over all squares.
     let mut moves = Vec::new();
     for to in Coord::all() {
         let capture_or = get_capture(grid, from, to, last_turn);
@@ -360,7 +360,7 @@ pub enum TurnError {
 pub type Reserve = EnumMap<PieceKind, u8>;
 
 // TODO: Info for draws (number of moves without action; hash map of former positions)
-// TODO: Rc => references to a Box in Game classes
+// Improvement potential: Rc => references to a Box in Game classes
 #[derive(Clone, Debug)]
 pub struct Board {
     #[allow(dead_code)] chess_rules: Rc<ChessRules>,

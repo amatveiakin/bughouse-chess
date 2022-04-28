@@ -149,9 +149,10 @@ impl ClientState {
                         if let ContestState::Game{
                             ref mut game_confirmed, ref mut local_turn, ref mut game_start
                         } = self.contest_state {
+                            // TODO: Simply ignore turns after game over.
                             assert!(game_confirmed.status() == BughouseGameStatus::Active, "Cannot make turn: game over");
                             if game_start.is_none() {
-                                // TODO: Sync client/server times better; consider NTP
+                                // Improvement potential. Sync client/server times better; consider NTP.
                                 *game_start = Some(Instant::now());
                             }
                             if player_name == self.my_name {

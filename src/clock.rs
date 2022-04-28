@@ -9,7 +9,7 @@ use crate::force::Force;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TimeControl {
     pub starting_time: Duration,
-    // TODO: Support increment, delay, etc.
+    // Improvement potential. Support increment, delay, etc.
 }
 
 

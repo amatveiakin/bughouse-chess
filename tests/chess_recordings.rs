@@ -15,7 +15,7 @@ fn players() -> EnumMap<Force, Rc<Player>> {
 #[test]
 fn wikipedia_example() {
     let mut game = ChessGame::new(ChessRules::classic_blitz(), players());
-    game.try_replay_log("
+    game.TEST_try_replay_log("
         1.Nf3 Nf6 2.c4 g6 3.Nc3 Bg7 4.d4 O-O 5.Bf4 d5
         6.Qb3 dxc4 7.Qxc4 c6 8.e4 Nbd7 9.Rd1 Nb6 10.Qc5 Bg4
         11.Bg5 Na4 12.Qa3 Nxc3 13.bxc3 Nxe4 14.Bxe7 Qb6 15.Bc4 Nxc3

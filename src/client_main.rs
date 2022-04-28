@@ -56,7 +56,8 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
             let game = game_local(my_name, game_confirmed, local_turn);
             writeln!(stdout, "{}\n", tui::render_bughouse_game(&game, game_now))?;
             // TODO: Clear after lobby: there are remainings of player names in empty lines
-            // TODO: Don't clear the board to avoid blinking.
+            // Note. Don't clear the board to avoid blinking.
+            // TODO: Show last turn by opponent.
             execute!(stdout, terminal::Clear(terminal::ClearType::FromCursorDown))?;
             if game.status() == BughouseGameStatus::Active {
                 highlight_input = game.player_is_active(my_name).unwrap();
@@ -68,13 +69,13 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
         },
     }
 
-    // TODO: Fix: the bottom is blinking and input is lagging.
+    // Improvement potential. Fix: the bottom is blinking and input is lagging.
     // Simulate cursor: real cursor blinking is broken with Show/Hide.
     let show_cursor = now.duration_since(app_start_time).as_millis() % 1000 >= 500;
     let cursor = if show_cursor { '▂' } else { ' ' };
     let input_with_cursor = format!("{}{}", client_state.keyboard_input(), cursor);
     let input_style = if highlight_input { style::Color::White } else { style::Color::DarkGrey };
-    // TODO: Show input on a fixed line regardless of client_status.
+    // Improvement potential. Show input on a fixed line regardless of client_status.
     write!(stdout, "{}", input_with_cursor.with(input_style))?;
 
     writeln!(stdout, "\n")?;
@@ -97,7 +98,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     let server_addr = (config.server_address.as_str(), network::PORT).to_socket_addrs().unwrap().collect_vec();
     println!("Connecting to {:?}...", server_addr);
     let net_stream = TcpStream::connect(&server_addr[..])?;
-    // TODO: Test if nodelay helps.  Should it be set on both sides or just one?
+    // Improvement potential: Test if nodelay helps. Should it be set on both sides or just one?
     //   net_stream.set_nodelay(true)?;
     let mut net_in_stream = net_stream.try_clone()?;
     let mut net_out_stream = net_stream;

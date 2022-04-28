@@ -1,5 +1,5 @@
-// TODO: Replace home-made read/write functions with tokio or another proper alternative.
-//   ... or use intermediate format other than String to support binary formats.
+// Improvement potential. Replace home-made read/write functions with tokio or another
+//   proper alternative. Or at least use intermediate formats other than String/JSON.
 
 use std::io;
 
@@ -30,8 +30,8 @@ pub fn write_obj(writer: &mut impl io::Write, obj: &impl Serialize) -> io::Resul
     write_str(writer, &serde_json::to_string(obj).unwrap())
 }
 
-// TODO: Combine `parse_obj(read_str(...))` into `read_obj(...)`.
-// TODO: Make return type deducible.
+// Improvement potential: Combine `parse_obj(read_str(...))` into `read_obj(...)`.
+// Improvement potential: Make return type deducible.
 pub fn parse_obj<'a, T>(s: &'a str) -> Result<T, serde_json::Error>
 where
     T: de::Deserialize<'a>,
