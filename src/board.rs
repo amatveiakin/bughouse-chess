@@ -9,7 +9,7 @@ use regex::Regex;
 use serde::{Serialize, Deserialize};
 
 use crate::coord::{SubjectiveRow, Row, Col, Coord};
-use crate::clock::{TimeMeasurement, GameInstant, Clock};
+use crate::clock::{GameInstant, Clock};
 use crate::force::Force;
 use crate::grid::Grid;
 use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, CastleDirection};
@@ -421,7 +421,7 @@ impl Board {
         if self.status != ChessGameStatus::Active {
             return;
         }
-        if self.clock.time_left(self.active_force, now, TimeMeasurement::Exact).is_zero() {
+        if self.clock.time_left(self.active_force, now).is_zero() {
             self.status = ChessGameStatus::Victory(self.active_force.opponent(), VictoryReason::Flag);
         }
     }

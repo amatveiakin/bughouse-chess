@@ -52,7 +52,7 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
             }
         },
         ContestState::Game{ ref game_confirmed, ref local_turn, game_start } => {
-            let game_now = GameInstant::from_maybe_active_game(*game_start, now);
+            let game_now = GameInstant::from_maybe_active_game(*game_start, now).approximate();
             let game = game_local(my_name, game_confirmed, local_turn);
             writeln!(stdout, "{}\n", tui::render_bughouse_game(&game, game_now))?;
             // TODO: Clear after lobby: there are remainings of player names in empty lines

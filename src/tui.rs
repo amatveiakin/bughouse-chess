@@ -5,7 +5,7 @@ use itertools::Itertools;
 
 use crate::coord::{Row, Col, Coord, NUM_COLS};
 use crate::board::{Board, Reserve};
-use crate::clock::{TimeMeasurement, GameInstant, Clock};
+use crate::clock::{GameInstant, Clock};
 use crate::game::{ChessGame, BughouseBoard, BughouseGame};
 use crate::grid::Grid;
 use crate::force::Force;
@@ -20,7 +20,7 @@ fn div_ceil(a: u128, b: u128) -> u128 { (a + b - 1) / b }
 pub fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, usize) {
     // TODO: Support longer time controls (with hours)
     let is_active = clock.active_force() == Some(force);
-    let millis = clock.time_left(force, now, TimeMeasurement::Approximate).as_millis();
+    let millis = clock.time_left(force, now).as_millis();
     let sec = millis / 1000;
     let separator = |s| if !is_active || millis % 1000 >= 500 { s } else { " " };
     let mut clock_str = if sec >= 20 {

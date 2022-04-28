@@ -207,7 +207,7 @@ impl ClientState {
                     = self.contest_state
                 {
                     let turn_algebraic = cmd;
-                    let game_now = GameInstant::from_maybe_active_game(game_start, Instant::now());
+                    let game_now = GameInstant::from_maybe_active_game(game_start, Instant::now()).approximate();
                     if game_confirmed.player_is_active(&self.my_name).unwrap() && local_turn.is_none() {
                         let mut game_copy = game_confirmed.clone();
                         // Note. Not calling `test_flag`, because server is the source of truth for flag defeat.

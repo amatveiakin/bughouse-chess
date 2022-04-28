@@ -13,22 +13,22 @@ pub struct TimeControl {
 }
 
 
-#[derive(Clone, Copy)]
-pub enum TimeMeasurement {
-    Exact,  // for updating game state
-    Approximate,  // for network interfaces where times can be sligtly desynced
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+enum TimeMeasurement {
+    Exact,
+    Approximate,
 }
 
-
 // Time since game start.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct GameInstant {
     elapsed_since_start: Duration,
+    measurement: TimeMeasurement,
 }
 
 impl GameInstant {
-    pub fn from_active_game(game_start: Instant, now: Instant) -> GameInstant {
-        GameInstant{ elapsed_since_start: now - game_start }
+    pub fn from_active_game(game_start: Instant, now: Instant) -> Self {
+        GameInstant::new(now - game_start)
     }
     pub fn from_maybe_active_game(game_start: Option<Instant>, now: Instant) -> GameInstant {
         match game_start {
@@ -36,16 +36,29 @@ impl GameInstant {
             None => GameInstant::game_start(),
         }
     }
-    pub fn game_start() -> GameInstant {
-        GameInstant{ elapsed_since_start: Duration::ZERO }
+    pub fn game_start() -> Self {
+        GameInstant::new(Duration::ZERO)
     }
-    pub fn duration_since(self, earlier: GameInstant, measurement: TimeMeasurement) -> Duration {
-        match measurement {
-            TimeMeasurement::Exact =>
+    pub fn duration_since(self, earlier: GameInstant) -> Duration {
+        use TimeMeasurement::*;
+        match (self.measurement, earlier.measurement) {
+            (Exact, Exact) =>
                 self.elapsed_since_start.checked_sub(earlier.elapsed_since_start).unwrap(),
-            TimeMeasurement::Approximate =>
+            (Approximate, _) | (_, Approximate) =>
                 self.elapsed_since_start.saturating_sub(earlier.elapsed_since_start),
         }
+    }
+    // Mark as approximate, so that attemps to go back in time wouldn't panic. Could be
+    // used in online clients where local time and server time can be sligtly desynced.
+    // Should not be used on the server side or in offline clients - if you get a crash
+    // without it this is likely a bug.
+    pub fn approximate(mut self) -> Self {
+        self.measurement = TimeMeasurement::Approximate;
+        self
+    }
+
+    fn new(elapsed_since_start: Duration) -> Self {
+        GameInstant{ elapsed_since_start, measurement: TimeMeasurement::Exact }
     }
 }
 
@@ -70,11 +83,11 @@ impl Clock {
     pub fn active_force(&self) -> Option<Force> { self.turn_state.map(|st| st.0) }
     pub fn turn_start(&self) -> Option<GameInstant> { self.turn_state.map(|st| st.1) }
 
-    pub fn time_left(&self, force: Force, now: GameInstant, measurement: TimeMeasurement) -> Duration {
+    pub fn time_left(&self, force: Force, now: GameInstant) -> Duration {
         let mut ret = self.remaining_time[force];
         if let Some((current_force, current_start)) = self.turn_state {
             if force == current_force {
-                ret = ret.saturating_sub(now.duration_since(current_start, measurement));
+                ret = ret.saturating_sub(now.duration_since(current_start));
             }
         }
         ret
@@ -83,7 +96,7 @@ impl Clock {
     pub fn new_turn(&mut self, new_force: Force, now: GameInstant) {
         if let Some((prev_force, _)) = self.turn_state {
             assert_ne!(prev_force, new_force);
-            let remaining = self.time_left(prev_force, now, TimeMeasurement::Exact);
+            let remaining = self.time_left(prev_force, now);
             assert!(remaining > Duration::ZERO);
             self.remaining_time[prev_force] = remaining;
         }
@@ -92,7 +105,7 @@ impl Clock {
 
     pub fn stop(&mut self, now: GameInstant) {
         if let Some((prev_force, _)) = self.turn_state {
-            let remaining = self.time_left(prev_force, now, TimeMeasurement::Exact);
+            let remaining = self.time_left(prev_force, now);
             self.remaining_time[prev_force] = remaining;
         }
         self.turn_state = None;
