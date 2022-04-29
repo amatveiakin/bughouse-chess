@@ -8,10 +8,13 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
 
+use tungstenite::protocol;
+
 use bughouse_chess::*;
 use bughouse_chess::server::*;
 
 
+// Improvement potential: Better error handling.
 pub fn run() {
     let (tx, rx) = mpsc::channel();
     let tx_tick = tx.clone();
@@ -47,42 +50,40 @@ pub fn run() {
             Ok(stream) => {
                 let peer_addr = stream.peer_addr().unwrap();
                 println!("Client connected: {}", peer_addr);
-                let mut in_stream = stream.try_clone().unwrap();
-                let mut out_stream = stream;
+                let mut socket_in = tungstenite::accept(stream).unwrap();
+                let mut socket_out = network::clone_websocket(&socket_in, protocol::Role::Server);
                 let (client_tx, client_rx) = mpsc::channel();
                 let client_id = clients_adder.lock().unwrap().add_client(client_tx);
                 let tx_new = tx.clone();
-                let clients_remover = Arc::clone(&clients_adder);
+                let clients_remover1 = Arc::clone(&clients_adder);
+                let clients_remover2 = Arc::clone(&clients_adder);
+                // Rust-upgrade (https://github.com/rust-lang/rust/issues/90470):
+                //   Use `JoinHandle.is_running` in order to join the read/write threads in a
+                //   non-blocking way.
                 thread::spawn(move || {
                     loop {
-                        let ev_data = network::read_str(&mut in_stream);
-                        match ev_data {
-                            Ok(ev_data) => {
-                                let ev = network::parse_obj::<BughouseClientEvent>(&ev_data).unwrap();
+                        match network::read_obj(&mut socket_in) {
+                            Ok(ev) => {
                                 tx_new.send(IncomingEvent::Network(client_id, ev)).unwrap();
                             },
                             Err(err) => {
-                                use std::io::ErrorKind::*;
-                                match err.kind() {
-                                    ConnectionReset | ConnectionAborted => {
-                                        println!("Client disconnected: {}", peer_addr);
-                                        clients_remover.lock().unwrap().remove_client(client_id);
-                                        // Rust-upgrade (https://github.com/rust-lang/rust/issues/90470):
-                                        //   Use `JoinHandle.is_running` in order to join the thread in a
-                                        //   non-blocking way.
-                                        return;
-                                    },
-                                    _ => {
-                                        panic!("Unexpected network error: {:?}", err);
-                                    }
-                                }
+                                println!("Client {} will be disconnected due to read error: {:?}", peer_addr, err);
+                                clients_remover1.lock().unwrap().remove_client(client_id);
+                                return;
                             },
                         }
                     }
                 });
                 thread::spawn(move || {
-                    for msg in client_rx {
-                        network::write_obj(&mut out_stream, &msg).unwrap();
+                    for ev in client_rx {
+                        match network::write_obj(&mut socket_out, &ev) {
+                            Ok(()) => {},
+                            Err(err) => {
+                                println!("Client {} will be disconnected due to write error: {:?}", peer_addr, err);
+                                clients_remover2.lock().unwrap().remove_client(client_id);
+                                return;
+                            },
+                        }
                     }
                 });
             }

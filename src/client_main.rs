@@ -9,6 +9,8 @@ use crossterm::style::{self, Stylize};
 use enum_map::{EnumMap, enum_map};
 use itertools::Itertools;
 use scopeguard::defer;
+use tungstenite::protocol;
+use url::Url;
 
 use bughouse_chess::*;
 use bughouse_chess::client::*;
@@ -97,11 +99,12 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     };
     let server_addr = (config.server_address.as_str(), network::PORT).to_socket_addrs().unwrap().collect_vec();
     println!("Connecting to {:?}...", server_addr);
-    let net_stream = TcpStream::connect(&server_addr[..])?;
+    let stream = TcpStream::connect(&server_addr[..])?;
     // Improvement potential: Test if nodelay helps. Should it be set on both sides or just one?
     //   net_stream.set_nodelay(true)?;
-    let mut net_in_stream = net_stream.try_clone()?;
-    let mut net_out_stream = net_stream;
+    let ws_request = Url::parse(&format!("ws://{}", config.server_address)).unwrap();
+    let (mut socket_in, _) = tungstenite::client(ws_request, stream).unwrap();
+    let mut socket_out = network::clone_websocket(&socket_in, protocol::Role::Client);
     std::mem::drop(config);
 
     let mut stdout = io::stdout();
@@ -116,8 +119,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     let tx_tick = tx;
     thread::spawn(move || {
         loop {
-            let ev = network::parse_obj::<BughouseServerEvent>(
-                &network::read_str(&mut net_in_stream).unwrap()).unwrap();
+            let ev = network::read_obj(&mut socket_in).unwrap();
             tx_net.send(IncomingEvent::Network(ev)).unwrap();
         }
     });
@@ -137,7 +139,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     let (server_tx, server_rx) = mpsc::channel();
     thread::spawn(move || {
         for ev in server_rx {
-            network::write_obj(&mut net_out_stream, &ev).unwrap();
+            network::write_obj(&mut socket_out, &ev).unwrap();
         }
     });
 

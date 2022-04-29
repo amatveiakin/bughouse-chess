@@ -9,6 +9,8 @@ extern crate rand;
 extern crate regex;
 extern crate scopeguard;
 extern crate serde;
+extern crate tungstenite;
+extern crate url;
 
 mod board;
 mod clock;

@@ -1,40 +1,46 @@
-// Improvement potential. Replace home-made read/write functions with tokio or another
-//   proper alternative. Or at least use intermediate formats other than String/JSON.
-
 use std::io;
+use std::net::TcpStream;
 
-use byteorder::{ByteOrder, LittleEndian};
 use serde::{de, Serialize};
+use tungstenite::{WebSocket, Message, protocol::Role};
 
 
 pub const PORT: u16 = 38617;
 
-pub fn write_str(writer: &mut impl io::Write, data: &str) -> io::Result<()> {
-    let mut buf = [0u8; 4];
-    LittleEndian::write_u32(&mut buf, data.len() as u32);
-    writer.write_all(&buf)?;
-    writer.write_all(&data.as_ref())?;
-    Ok(())
+
+#[derive(Debug)]
+pub enum CommunicationError {
+    Socket(tungstenite::Error),
+    Serde(serde_json::Error),
 }
 
-pub fn read_str(reader: &mut impl io::Read) -> io::Result<String> {
-    let mut len_buf = [0u8; 4];
-    reader.read_exact(&mut len_buf)?;
-    let len = LittleEndian::read_u32(&mut len_buf);
-    let mut content_buf = vec![0; len.try_into().unwrap()];
-    reader.read_exact(&mut content_buf)?;
-    Ok(String::from_utf8(content_buf).unwrap())
-}
-
-pub fn write_obj(writer: &mut impl io::Write, obj: &impl Serialize) -> io::Result<()> {
-    write_str(writer, &serde_json::to_string(obj).unwrap())
-}
-
-// Improvement potential: Combine `parse_obj(read_str(...))` into `read_obj(...)`.
-// Improvement potential: Make return type deducible.
-pub fn parse_obj<'a, T>(s: &'a str) -> Result<T, serde_json::Error>
+pub fn write_obj<T, S>(socket: &mut WebSocket<S>, obj: &T) -> Result<(), CommunicationError>
 where
-    T: de::Deserialize<'a>,
+    T: Serialize,
+    S: io::Read + io::Write,
 {
-    serde_json::from_str(s)
+    let serialized = serde_json::to_string(obj).map_err(|err| CommunicationError::Serde(err))?;
+    socket.write_message(Message::Text(serialized)).map_err(|err| CommunicationError::Socket(err))
+}
+
+pub fn read_obj<T, S>(socket: &mut WebSocket<S>) -> Result<T, CommunicationError>
+where
+    T: de::DeserializeOwned,
+    S: io::Read + io::Write,
+{
+    let msg = socket.read_message().map_err(|err| CommunicationError::Socket(err))?;
+    if let Message::Text(msg) = msg {
+        serde_json::from_str(&msg).map_err(|err| CommunicationError::Serde(err))
+    } else {
+        panic!("Expected text, got {:?}", msg);
+    }
+}
+
+
+// TODO: Instead of cloning the socket, consider calling TcpStream.set_nonblocking on the
+//   underlying stream and doing read/writes in the same thread.
+pub fn clone_websocket(socket: &WebSocket<TcpStream>, role: Role) -> WebSocket<TcpStream> {
+    let stream = socket.get_ref().try_clone().unwrap();
+    let config = *socket.get_config();
+    WebSocket::from_raw_socket(stream, role, Some(config))
 }
