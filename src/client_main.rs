@@ -66,7 +66,8 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
         ContestState::Game{ ref game_confirmed, ref local_turn, game_start } => {
             let game_now = GameInstant::from_maybe_active_game(*game_start, now).approximate();
             let game = game_local(my_name, game_confirmed, local_turn);
-            writeln_raw(stdout, format!("{}\n", tui::render_bughouse_game(&game, game_now)))?;
+            let view = game.view_for_player(my_name);
+            writeln_raw(stdout, format!("{}\n", tui::render_bughouse_game(&game, view, game_now)))?;
             // TODO: Clear after lobby: there are remainings of player names in empty lines
             // Note. Don't clear the board to avoid blinking.
             // TODO: Show last turn by opponent.

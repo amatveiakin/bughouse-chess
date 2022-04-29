@@ -1,3 +1,5 @@
+use std::mem;
+
 // Improvement potential. Use `crossterm` instead (fix: for some reason rendering
 //   reserve background was more buggy with it).
 use console::Style;
@@ -6,7 +8,7 @@ use itertools::Itertools;
 use crate::coord::{Row, Col, Coord, NUM_COLS};
 use crate::board::{Board, Reserve};
 use crate::clock::{GameInstant, Clock};
-use crate::game::{ChessGame, BughouseBoard, BughouseGame};
+use crate::game::{ChessGame, BughouseBoard, BughouseGame, BughouseGameView};
 use crate::grid::Grid;
 use crate::force::Force;
 use crate::piece::PieceKind;
@@ -95,12 +97,21 @@ pub fn render_bughouse_board(board: &Board, now: GameInstant, second_board: bool
     )
 }
 
-pub fn render_bughouse_game(game: &BughouseGame, now: GameInstant) -> String {
-    let board1 = render_bughouse_board(game.board(BughouseBoard::A), now, false);
-    let board2 = render_bughouse_board(game.board(BughouseBoard::B), now, true);
-    board1.lines().zip(board2.lines().rev()).map(|(line1, line2)| {
-        format!("{}      {}", line1, line2)
-    }).join("\n")
+pub fn render_bughouse_game(game: &BughouseGame, view: BughouseGameView, now: GameInstant) -> String {
+    let (mut board_idx1, mut board_idx2) = (BughouseBoard::A, BughouseBoard::B);
+    if view.flip_boards {
+        mem::swap(&mut board_idx1, &mut board_idx2);
+    }
+    let board1 = render_bughouse_board(game.board(board_idx1), now, false);
+    let board2 = render_bughouse_board(game.board(board_idx2), now, true);
+    let lines1 = board1.lines();
+    let lines2 = board2.lines();
+    let join_lines = |(l1, l2)| format!("{}      {}", l1, l2);
+    if view.flip_forces {
+        lines1.rev().zip(lines2).map(join_lines).join("\n")
+    } else {
+        lines1.zip(lines2.rev()).map(join_lines).join("\n")
+    }
 }
 
 pub fn render_grid(grid: &Grid) -> String {

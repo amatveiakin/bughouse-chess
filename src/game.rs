@@ -177,6 +177,12 @@ pub fn get_bughouse_force(team: Team, board_idx: BughouseBoard) -> Force {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct BughouseGameView {
+    pub flip_boards: bool,
+    pub flip_forces: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct BughouseGame {
     boards: EnumMap<BughouseBoard, Board>,
@@ -354,13 +360,14 @@ impl BughouseGame {
             ChessGameStatus::Draw => BughouseGameStatus::Draw,
         }
     }
+
+    pub fn view_for_player(&self, player_name: &str) -> BughouseGameView {
+        use BughouseBoard::*;
+        use Force::*;
+        let (board_idx, force) = self.find_player(player_name).unwrap();
+        BughouseGameView {
+            flip_boards: match board_idx { A => false, B => true },
+            flip_forces: match force { White => false, Black => true },
+        }
+    }
 }
-
-
-// TODO: Flip boards and sides to make current player appear in the bottom left corner
-// pub struct BughouseGameView {
-//     flip_boards: bool,
-//     blip_forces: bool,
-// }
-// pub fn view_for_player(game: &BughouseGame, player: &Player) -> BughouseGameView {
-// }
