@@ -1,3 +1,4 @@
+use std::fmt;
 use std::io::{self, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::mpsc;
@@ -22,6 +23,15 @@ pub struct ClientConfig {
     pub team: String,
 }
 
+fn writeln_raw(stdout: &mut io::Stdout, v: impl fmt::Display) -> io::Result<()> {
+    let s = v.to_string();
+    // Note. Not using `lines()` because it removes trailing new line.
+    for line in s.split('\n') {
+        execute!(stdout, style::Print(line), cursor::MoveToNextLine(1), cursor::Hide)?;
+    }
+    Ok(())
+}
+
 fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &ClientState)
     -> io::Result<()>
 {
@@ -33,7 +43,7 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
     match client_state.contest_state() {
         ContestState::Uninitialized => {
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-            writeln!(stdout, "Loading...")?;
+            writeln_raw(stdout, "Loading...")?;
         },
         ContestState::Lobby{ ref players } => {
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
@@ -42,21 +52,21 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
                 teams[p.team].push(p.name.clone());
             }
             for (team, team_players) in teams {
-                writeln!(stdout, "Team {:?}:", team)?;
+                writeln_raw(stdout, &format!("Team {:?}:", team))?;
                 let color = match team {
                     Team::Red => style::Color::Red,
                     Team::Blue => style::Color::Blue,
                 };
                 for p in team_players {
-                    writeln!(stdout, "  {} {}", "•".with(color), p)?;
+                    writeln_raw(stdout, format!("  {} {}", "•".with(color), p))?;
                 }
-                writeln!(stdout, "")?;
+                writeln_raw(stdout, "")?;
             }
         },
         ContestState::Game{ ref game_confirmed, ref local_turn, game_start } => {
             let game_now = GameInstant::from_maybe_active_game(*game_start, now).approximate();
             let game = game_local(my_name, game_confirmed, local_turn);
-            writeln!(stdout, "{}\n", tui::render_bughouse_game(&game, game_now))?;
+            writeln_raw(stdout, format!("{}\n", tui::render_bughouse_game(&game, game_now)))?;
             // TODO: Clear after lobby: there are remainings of player names in empty lines
             // Note. Don't clear the board to avoid blinking.
             // TODO: Show last turn by opponent.
@@ -78,14 +88,13 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
     let input_with_cursor = format!("{}{}", client_state.keyboard_input(), cursor);
     let input_style = if highlight_input { style::Color::White } else { style::Color::DarkGrey };
     // Improvement potential. Show input on a fixed line regardless of client_status.
-    write!(stdout, "{}", input_with_cursor.with(input_style))?;
+    writeln_raw(stdout, format!("{}\n", input_with_cursor.with(input_style)))?;
 
-    writeln!(stdout, "\n")?;
     if let Some(msg) = additional_message {
-        writeln!(stdout, "{}", msg)?;
+        writeln_raw(stdout, msg)?;
     }
     if let Some(ref err) = client_state.command_error() {
-        writeln!(stdout, "{}", err.clone().with(style::Color::Red))?;
+        writeln_raw(stdout, err.clone().with(style::Color::Red))?;
     }
     Ok(())
 }
@@ -108,7 +117,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     std::mem::drop(config);
 
     let mut stdout = io::stdout();
-    terminal::enable_raw_mode()?;
+    terminal::enable_raw_mode()?;  // TODO: Should this be reverted on exit?
     execute!(stdout, terminal::EnterAlternateScreen, cursor::Hide)?;
     defer!{ execute!(io::stdout(), terminal::LeaveAlternateScreen).unwrap(); };
     let app_start_time = Instant::now();
