@@ -172,8 +172,6 @@ fn is_check_to(grid: &Grid, king_pos: Coord) -> bool {
 
 // Tests that the piece can move in such a way and that the path is free.
 // Does not support castling.
-// TODO: Consider alternative way of supporting en passant: return enum
-//   (Yes / No / If en passant).
 fn is_reachable(grid: &Grid, from: Coord, to: Coord, capturing: bool) -> bool {
     if to == from {
         return false;
@@ -255,62 +253,6 @@ fn as_single_char(s: &str) -> char {
     ret
 }
 
-pub fn turn_from_algebraic(grid: &mut Grid, force: Force, notation: &str) -> Result<Turn, TurnError> {
-    let notation = notation.trim();
-    const PIECE_RE: &str = r"[PNBRQK]";
-    lazy_static! {
-        static ref MOVE_RE: Regex = Regex::new(
-            &format!(r"^({piece})?([a-h])?([1-8])?([x×:])?([a-h][1-8])(?:[=/]?({piece})?)([+†#‡]?)$", piece=PIECE_RE)
-        ).unwrap();
-        static ref DROP_RE: Regex = Regex::new(
-            &format!(r"^({piece})@([a-h][1-8])$", piece=PIECE_RE)
-        ).unwrap();
-        static ref A_CASTLING_RE: Regex = Regex::new("^(0-0-0|O-O-O)$").unwrap();
-        static ref H_CASTLING_RE: Regex = Regex::new("^(0-0|O-O)$").unwrap();
-    }
-    if let Some(cap) = MOVE_RE.captures(notation) {
-        let piece_kind = cap.get(1).map_or(PieceKind::Pawn, |m| piece_from_algebraic(m.as_str()));
-        let from_col = cap.get(2).map(|m| Col::from_algebraic(as_single_char(m.as_str())));
-        let from_row = cap.get(3).map(|m| Row::from_algebraic(as_single_char(m.as_str())));
-        let capturing = cap.get(4).is_some();
-        let to = Coord::from_algebraic(cap.get(5).unwrap().as_str());
-        let promote_to = cap.get(6).map(|m| piece_from_algebraic(m.as_str()));
-        let _mark = cap.get(7).map(|m| m.as_str());  // TODO: Test check/mate
-        if promote_to.is_some() != should_promote(force, piece_kind, to) {
-            return Err(TurnError::BadPromotion);
-        }
-        let mut turn = None;
-        for from in Coord::all() {
-            if let Some(piece) = grid[from] {
-                if (
-                    piece.force == force &&
-                    piece.kind == piece_kind &&
-                    from_row.unwrap_or(from.row) == from.row &&
-                    from_col.unwrap_or(from.col) == from.col
-                ) {
-                    // TODO: Proper capture checks
-                    if is_reachable(grid, from, to, capturing) {
-                        if turn.is_some() {
-                            return Err(TurnError::AmbiguousNotation);
-                        }
-                        turn = Some(Turn::Move(TurnMove{ from, to, promote_to }));
-                    }
-                }
-            }
-        }
-        return turn.ok_or(TurnError::Unreachable);
-    } else if let Some(cap) = DROP_RE.captures(notation) {
-        let piece_kind = piece_from_algebraic(cap.get(1).unwrap().as_str());
-        let to = Coord::from_algebraic(cap.get(2).unwrap().as_str());
-        return Ok(Turn::Drop(TurnDrop{ piece_kind, to }));
-    } else if A_CASTLING_RE.is_match(notation) {
-        return Ok(Turn::Castle(CastleDirection::ASide));
-    } else if H_CASTLING_RE.is_match(notation) {
-        return Ok(Turn::Castle(CastleDirection::HSide));
-    }
-    Err(TurnError::InvalidNotation)
-}
-
 
 #[derive(Clone, Debug)]
 pub struct Capture {
@@ -357,6 +299,7 @@ pub enum ChessGameStatus {
 pub enum TurnError {
     InvalidNotation,
     AmbiguousNotation,
+    CaptureNotationRequiresCapture,
     PieceMissing,
     WrongTurnOrder,
     Unreachable,
@@ -662,5 +605,65 @@ impl Board {
 
     pub fn receive_capture(&mut self, capture: &Capture) {
         self.reserves[capture.force][capture.piece_kind] += 1;
+    }
+
+    pub fn make_turn_from_algebraic(&self, notation: &str) -> Result<Turn, TurnError> {
+        let force = self.active_force;
+        let notation = notation.trim();
+        const PIECE_RE: &str = r"[PNBRQK]";
+        lazy_static! {
+            static ref MOVE_RE: Regex = Regex::new(
+                &format!(r"^({piece})?([a-h])?([1-8])?([x×:])?([a-h][1-8])(?:[=/]?({piece})?)([+†#‡]?)$", piece=PIECE_RE)
+            ).unwrap();
+            static ref DROP_RE: Regex = Regex::new(
+                &format!(r"^({piece})@([a-h][1-8])$", piece=PIECE_RE)
+            ).unwrap();
+            static ref A_CASTLING_RE: Regex = Regex::new("^(0-0-0|O-O-O)$").unwrap();
+            static ref H_CASTLING_RE: Regex = Regex::new("^(0-0|O-O)$").unwrap();
+        }
+        if let Some(cap) = MOVE_RE.captures(notation) {
+            let piece_kind = cap.get(1).map_or(PieceKind::Pawn, |m| piece_from_algebraic(m.as_str()));
+            let from_col = cap.get(2).map(|m| Col::from_algebraic(as_single_char(m.as_str())));
+            let from_row = cap.get(3).map(|m| Row::from_algebraic(as_single_char(m.as_str())));
+            let capturing = cap.get(4).is_some();
+            let to = Coord::from_algebraic(cap.get(5).unwrap().as_str());
+            let promote_to = cap.get(6).map(|m| piece_from_algebraic(m.as_str()));
+            let _mark = cap.get(7).map(|m| m.as_str());  // TODO: Test check/mate
+            if promote_to.is_some() != should_promote(force, piece_kind, to) {
+                return Err(TurnError::BadPromotion);
+            }
+            let mut turn = None;
+            for from in Coord::all() {
+                if let Some(piece) = self.grid[from] {
+                    if (
+                        piece.force == force &&
+                        piece.kind == piece_kind &&
+                        from_row.unwrap_or(from.row) == from.row &&
+                        from_col.unwrap_or(from.col) == from.col
+                    ) {
+                        let capture_or = get_capture(&self.grid, from, to, &self.last_turn);
+                        if is_reachable(&self.grid, from, to, capture_or.is_some()) {
+                            if capturing && !capture_or.is_some() {
+                                return Err(TurnError::CaptureNotationRequiresCapture);
+                            }
+                            if turn.is_some() {
+                                return Err(TurnError::AmbiguousNotation);
+                            }
+                            turn = Some(Turn::Move(TurnMove{ from, to, promote_to }));
+                        }
+                    }
+                }
+            }
+            return turn.ok_or(TurnError::Unreachable);
+        } else if let Some(cap) = DROP_RE.captures(notation) {
+            let piece_kind = piece_from_algebraic(cap.get(1).unwrap().as_str());
+            let to = Coord::from_algebraic(cap.get(2).unwrap().as_str());
+            return Ok(Turn::Drop(TurnDrop{ piece_kind, to }));
+        } else if A_CASTLING_RE.is_match(notation) {
+            return Ok(Turn::Castle(CastleDirection::ASide));
+        } else if H_CASTLING_RE.is_match(notation) {
+            return Ok(Turn::Castle(CastleDirection::HSide));
+        }
+        Err(TurnError::InvalidNotation)
     }
 }

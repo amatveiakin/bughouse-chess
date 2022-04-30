@@ -12,7 +12,7 @@ use rand::prelude::*;
 use regex::Regex;
 use serde::{Serialize, Deserialize};
 
-use crate::board::{Board, Turn, TurnError, ChessGameStatus, VictoryReason, turn_from_algebraic};
+use crate::board::{Board, Turn, TurnError, ChessGameStatus, VictoryReason};
 use crate::clock::GameInstant;
 use crate::coord::{Row, Col, Coord};
 use crate::force::Force;
@@ -116,8 +116,7 @@ impl ChessGame {
         Ok(())
     }
     pub fn try_turn_from_algebraic(&mut self, notation: &str, now: GameInstant) -> Result<(), TurnError> {
-        let active_force = self.board.active_force();
-        let turn = turn_from_algebraic(self.board.grid_mut(), active_force, notation)?;
+        let turn = self.board.make_turn_from_algebraic(notation)?;
         self.try_turn(turn, now)
     }
     // Should be used in tests only, because it doesn't handle time properly.
@@ -312,8 +311,7 @@ impl BughouseGame {
     pub fn try_turn_from_algebraic(&mut self, board_idx: BughouseBoard, notation: &str, now: GameInstant)
         -> Result<(), TurnError>
     {
-        let active_force = self.boards[board_idx].active_force();
-        let turn = turn_from_algebraic(self.boards[board_idx].grid_mut(), active_force, notation)?;
+        let turn = self.boards[board_idx].make_turn_from_algebraic(notation)?;
         self.try_turn(board_idx, turn, now)
     }
     pub fn try_turn_by_player_from_algebraic(&mut self, player_name: &str, notation: &str, now: GameInstant)

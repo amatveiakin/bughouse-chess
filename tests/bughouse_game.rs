@@ -29,7 +29,7 @@ fn no_castling_with_dropped_rook() {
         0A.xh5  0a.Rxh5
         0A.Nf3  0a.Rxh2
         0A.Ng5  0a.Rxh1
-        0A.Ne4  0a.Rxg1
+        0A.Ne4  0a.Rg1
         0A.Ng3  0a.Rxf1
         0A.Nxf1  0a.e5
         0B.b4  0b.a5
