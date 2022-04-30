@@ -1,17 +1,3 @@
-extern crate crossterm;
-extern crate clap;
-extern crate console;
-extern crate derive_new;
-extern crate enum_map;
-extern crate itertools;
-extern crate lazy_static;
-extern crate rand;
-extern crate regex;
-extern crate scopeguard;
-extern crate serde;
-extern crate tungstenite;
-extern crate url;
-
 mod board;
 mod clock;
 mod coord;
@@ -24,9 +10,7 @@ mod player;
 mod rules;
 pub mod janitor;
 pub mod client;
-pub mod network;
 pub mod server;
-pub mod tui;
 pub mod util;
 
 pub use board::*;

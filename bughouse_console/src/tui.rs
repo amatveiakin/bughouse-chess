@@ -5,14 +5,11 @@ use std::mem;
 use console::Style;
 use itertools::Itertools;
 
-use crate::coord::{Row, Col, Coord, NUM_COLS};
-use crate::board::{Board, Reserve};
-use crate::clock::{GameInstant, Clock};
-use crate::game::{ChessGame, BughouseBoard, BughouseGame, BughouseGameView};
-use crate::grid::Grid;
-use crate::force::Force;
-use crate::piece::PieceKind;
-use crate::player::Player;
+use bughouse_chess::{
+    Row, Col, Coord, NUM_COLS, Force, Player,
+    Grid, PieceKind, Board, Reserve, GameInstant, Clock,
+    ChessGame, BughouseBoard, BughouseGame, BughouseGameView
+};
 
 
 const BOARD_WIDTH: usize = (NUM_COLS as usize + 2) * 3;
@@ -75,7 +72,7 @@ pub fn render_reserve(reserve: &Reserve, force: Force) -> String {
 }
 
 pub fn render_chess_game(game: &ChessGame, now: GameInstant) -> String {
-    use Force::*;
+    use self::Force::*;
     let board = game.board();
     format!(
         "{}\n{}\n{}",
@@ -86,7 +83,7 @@ pub fn render_chess_game(game: &ChessGame, now: GameInstant) -> String {
 }
 
 pub fn render_bughouse_board(board: &Board, now: GameInstant, second_board: bool) -> String {
-    use Force::*;
+    use self::Force::*;
     format!(
         "{}\n{}{}{}\n{}",
         render_header(board.clock(), board.player(Black), Black, now, second_board),
@@ -157,8 +154,8 @@ fn format_square(ch: char) -> String {
 }
 
 fn to_unicode_char(piece_kind: PieceKind, force: Force) -> char {
-    use PieceKind::*;
-    use Force::*;
+    use self::PieceKind::*;
+    use self::Force::*;
     match (force, piece_kind) {
         (White, Pawn) => '♙',
         (White, Knight) => '♘',

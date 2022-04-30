@@ -5,12 +5,29 @@
 //   * "Rust-upgrade" - place where code can be improved using a Rust feature
 //       that is not implemented or stabilized yet.
 
-use std::io;
+extern crate crossterm;
+extern crate clap;
+extern crate console;
+extern crate enum_map;
+extern crate instant;
+extern crate itertools;
+extern crate scopeguard;
+extern crate serde;
+extern crate serde_json;
+extern crate tungstenite;
+extern crate url;
 
-use clap::{arg, Command};
+extern crate bughouse_chess;
+
+pub mod network;
+pub mod tui;
 
 mod client_main;
 mod server_main;
+
+use std::io;
+
+use clap::{arg, Command};
 
 
 fn main() -> io::Result<()> {

@@ -13,21 +13,63 @@ Supported rule variations:
 - Limits on where pawns can be dropped.
 - Limits on drop aggression, e.g. cannot drop piece if that leads to checkmate.
 
+Folder structure:
 
-## Usage
+- `/` — the core library (`bughouse_chess` Rust package).
+- `/bughouse_console` — a binary that can run as a server or as console client.
+- `/bughouse_wasm` — WASM (WebAssembly) bindings.
+- `/www` — web client based on the abovementioned WASM bindings.
 
-Running as a server:
+
+## Console how-to
+
+Build & run server:
 
 ```
-$ bughouse-chess server
+cargo run --package bughouse_console -- server
 ```
 
-Running as a client:
+Build & run client:
 
 ```
-$ bughouse-chess client <server-ip> <player-name> <team>
+cargo run --package bughouse_console -- client <server_address> <player_name> <team>
 ```
 
 Note. Client requires a modern terminal with raw mode support.
-Windows 10 cmd and most Linux terminal should work, while mingw, git bash,
+Windows 10 cmd and most Linux terminals should work, while mingw, git bash,
 cmd and powershell in older Windows versions may not.
+
+Note. Unicode support in Windows cmd built-in fonts is very poor. You need to
+install and activate custom fonts (e.g. DejaVu Sans Mono) in order for chess
+pieces to render properly in Windows terminal.
+
+Example. To play locally start 5 terminal instances and run:
+
+```
+cargo run --package bughouse_console -- server
+cargo run --package bughouse_console -- client localhost p1 red
+cargo run --package bughouse_console -- client localhost p2 red
+cargo run --package bughouse_console -- client localhost p3 blue
+cargo run --package bughouse_console -- client localhost p4 blue
+```
+
+
+## Web how-to
+
+Run once in the beginning and every time after changing Rust code:
+
+```
+cd ../bughouse_wasm && wasm-pack build
+```
+
+Run once:
+
+```
+cd ../www && npm install
+```
+
+Test locally:
+
+```
+cd ../www && npm run start
+```

@@ -2,9 +2,9 @@ use std::collections::{HashSet, HashMap};
 use std::ops;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
-use std::time::Instant;
 
 use enum_map::enum_map;
+use instant::Instant;
 use rand::prelude::*;
 
 use crate::board::VictoryReason;

@@ -1,6 +1,7 @@
-use std::time::{Instant, Duration};
+use std::time::Duration;
 
 use enum_map::{EnumMap, enum_map};
+use instant::Instant;
 use serde::{Serialize, Deserialize};
 
 use crate::force::Force;

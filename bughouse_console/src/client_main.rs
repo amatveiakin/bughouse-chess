@@ -1,13 +1,16 @@
+// TODO: Rename to client_tui (or client_console).
+
 use std::fmt;
-use std::io::{self, Write};
+use std::io;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::mpsc;
 use std::thread;
-use std::time::{Instant, Duration};
+use std::time::Duration;
 
 use crossterm::{execute, terminal, cursor, event as term_event};
 use crossterm::style::{self, Stylize};
 use enum_map::{EnumMap, enum_map};
+use instant::Instant;
 use itertools::Itertools;
 use scopeguard::defer;
 use tungstenite::protocol;
@@ -16,11 +19,20 @@ use url::Url;
 use bughouse_chess::*;
 use bughouse_chess::client::*;
 
+use crate::network;
+use crate::tui;
+
 
 pub struct ClientConfig {
     pub server_address: String,
     pub player_name: String,
     pub team: String,
+}
+
+enum IncomingEvent {
+    Network(BughouseServerEvent),
+    Terminal(term_event::Event),
+    Tick,
 }
 
 fn writeln_raw(stdout: &mut io::Stdout, v: impl fmt::Display) -> io::Result<()> {
@@ -32,7 +44,10 @@ fn writeln_raw(stdout: &mut io::Stdout, v: impl fmt::Display) -> io::Result<()> 
     Ok(())
 }
 
-fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &ClientState)
+fn render(
+    stdout: &mut io::Stdout, app_start_time: Instant, client_state: &ClientState,
+    keyboard_input: &str, command_error: &Option<String>
+)
     -> io::Result<()>
 {
     let my_name = client_state.my_name();
@@ -86,7 +101,7 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
     // Simulate cursor: real cursor blinking is broken with Show/Hide.
     let show_cursor = now.duration_since(app_start_time).as_millis() % 1000 >= 500;
     let cursor = if show_cursor { '▂' } else { ' ' };
-    let input_with_cursor = format!("{}{}", client_state.keyboard_input(), cursor);
+    let input_with_cursor = format!("{}{}", keyboard_input, cursor);
     let input_style = if highlight_input { style::Color::White } else { style::Color::DarkGrey };
     // Improvement potential. Show input on a fixed line regardless of client_status.
     writeln_raw(stdout, format!("{}\n", input_with_cursor.with(input_style)))?;
@@ -94,7 +109,7 @@ fn render(stdout: &mut io::Stdout, app_start_time: Instant, client_state: &Clien
     if let Some(msg) = additional_message {
         writeln_raw(stdout, msg)?;
     }
-    if let Some(ref err) = client_state.command_error() {
+    if let Some(ref err) = command_error {
         writeln_raw(stdout, err.clone().with(style::Color::Red))?;
     }
     Ok(())
@@ -154,20 +169,66 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     });
 
     let mut client_state = ClientState::new(my_name.to_owned(), my_team, server_tx);
+    let mut keyboard_input = String::new();
+    let mut command_error = None;
     client_state.join();
     for event in rx {
-        match client_state.apply_event(event) {
-            EventReaction::Continue => {},
-            EventReaction::ExitOk => {
-                return Ok(());
+        match event {
+            IncomingEvent::Network(event) => {
+                client_state.process_server_event(event).unwrap();
             },
-            EventReaction::ExitWithError(message) => {
-                execute!(io::stdout(), terminal::LeaveAlternateScreen)?;
-                writeln!(stdout, "Fatal error: {}", message)?;
-                std::process::exit(1);
-            }
+            IncomingEvent::Terminal(event) => {
+                if let term_event::Event::Key(event) = event {
+                    match event.code {
+                        term_event::KeyCode::Char(ch) => {
+                            keyboard_input.push(ch);
+                        },
+                        term_event::KeyCode::Backspace => {
+                            keyboard_input.pop();
+                        },
+                        term_event::KeyCode::Enter => {
+                            let mut keep_input = false;
+                            if let Some(cmd) = keyboard_input.strip_prefix('/') {
+                                match cmd {
+                                    "quit" => {
+                                        client_state.leave();
+                                        return Ok(());
+                                    },
+                                    "resign" => {
+                                        client_state.resign();
+                                    },
+                                    _ => {
+                                        command_error = Some(format!("Unknown command: '{}'", cmd));
+                                    },
+                                }
+                            } else {
+                                command_error = match client_state.make_turn(keyboard_input.clone()) {
+                                    Ok(()) => None,
+                                    Err(TurnCommandError::IllegalTurn(TurnError::WrongTurnOrder)) => {
+                                        keep_input = true;
+                                        None
+                                    },
+                                    Err(TurnCommandError::IllegalTurn(err)) => {
+                                        Some(format!("Illegal turn '{}': {:?}", keyboard_input, err))
+                                    },
+                                    Err(TurnCommandError::NoGameInProgress) => {
+                                        Some("Cannot make turn: no game in progress".to_owned())
+                                    },
+                                }
+                            }
+                            if !keep_input {
+                                keyboard_input.clear();
+                            }
+                        },
+                        _ => {},
+                    }
+                }
+            },
+            IncomingEvent::Tick => {
+                // Any event triggers repaint, so no additional action is required.
+            },
         }
-        render(&mut stdout, app_start_time, &client_state)?;
+        render(&mut stdout, app_start_time, &client_state, &keyboard_input, &command_error)?;
     }
     panic!("Unexpected end of events stream");
 }

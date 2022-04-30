@@ -1,0 +1,36 @@
+{
+  "name": "create-wasm-app",
+  "version": "0.1.0",
+  "description": "Bughouse chess client",
+  "main": "index.js",
+  "bin": {
+    "create-wasm-app": ".bin/create-wasm-app.js"
+  },
+  "scripts": {
+    "build": "webpack --config webpack.config.js",
+    "start": "webpack-dev-server"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rustwasm/create-wasm-app.git"
+  },
+  "keywords": [
+    "bughouse",
+    "chess"
+  ],
+  "author": "Andrei Matveiakin <a.matveiakin@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/rustwasm/create-wasm-app/issues"
+  },
+  "homepage": "https://github.com/rustwasm/create-wasm-app#readme",
+  "dependencies": {
+    "bughouse-chess": "file:../bughouse_wasm/pkg"
+  },
+  "devDependencies": {
+    "webpack": "^4.29.3",
+    "webpack-cli": "^3.1.0",
+    "webpack-dev-server": "^3.1.5",
+    "copy-webpack-plugin": "^5.0.0"
+  }
+}

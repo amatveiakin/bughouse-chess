@@ -12,6 +12,7 @@ pub const PORT: u16 = 38617;
 pub enum CommunicationError {
     Socket(tungstenite::Error),
     Serde(serde_json::Error),
+    BughouseProtocol(String),
 }
 
 pub fn write_obj<T, S>(socket: &mut WebSocket<S>, obj: &T) -> Result<(), CommunicationError>
@@ -32,7 +33,7 @@ where
     if let Message::Text(msg) = msg {
         serde_json::from_str(&msg).map_err(|err| CommunicationError::Serde(err))
     } else {
-        panic!("Expected text, got {:?}", msg);
+        Err(CommunicationError::BughouseProtocol(format!("Expected text, got {:?}", msg)))
     }
 }
 

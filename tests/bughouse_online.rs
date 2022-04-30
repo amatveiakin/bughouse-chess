@@ -1,14 +1,11 @@
 // Improvement potential. Test time-related things with mock clock.
 
-use std::fmt;
 use std::ops;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
-use crossterm::{event as term_event};
-use term_event::{KeyCode, KeyModifiers};
-
 use bughouse_chess::*;
+use bughouse_chess::client::TurnCommandError::IllegalTurn;
 
 
 struct Server {
@@ -42,48 +39,6 @@ impl Server {
     }
     #[allow(dead_code)] fn tick(&mut self) {
         self.state.apply_event(server::IncomingEvent::Tick);
-    }
-}
-
-
-#[derive(Debug)]
-#[must_use]
-struct ClientReaction {
-    app_status: client::EventReaction,
-    command_error: Option<String>,
-}
-
-impl ClientReaction {
-    #[track_caller]
-    pub fn expect_ok(&self) {
-        self.app_status.expect_cont();
-        if let Some(error) = &self.command_error {
-            panic!("Expected no error, found \"{}\"", error)
-        }
-    }
-
-    #[track_caller]
-    pub fn expect_app_continue(&self) {
-        self.expect_app_status(client::EventReaction::Continue);
-    }
-
-    #[track_caller]
-    pub fn expect_app_status(&self, status: client::EventReaction) {
-        assert_eq!(self.app_status, status);
-    }
-
-    #[track_caller]
-    pub fn expect_error_contains(&self, substr: &str) {
-        if let Some(error) = &self.command_error {
-            assert!(error.contains(substr));
-        } else {
-            panic!("Expected command to fail with \"{}\", but it succeeded", substr);
-        }
-    }
-
-    #[track_caller]
-    pub fn expect_error_contains_dbg(&self, v: &impl fmt::Debug) {
-        self.expect_error_contains(&format!("{:?}", v));
     }
 }
 
@@ -130,32 +85,20 @@ impl Client {
         }
         something_changed
     }
-    fn process_incoming_events(&mut self) -> (bool, client::EventReaction) {
+    fn process_incoming_events(&mut self) -> (bool, Result<(), client::EventError>) {
         let mut something_changed = false;
         for event in self.incoming_rx.try_iter() {
             something_changed = true;
             println!("{:?} <<< {:?}", self.id, event);
-            let reaction = self.state.apply_event(client::IncomingEvent::Network(event));
-            if reaction != client::EventReaction::Continue {
-                return (something_changed, reaction);
+            let result = self.state.process_server_event(event);
+            if let Err(err) = result {
+                return (something_changed, Err(err));
             }
         }
-        (something_changed, client::EventReaction::Continue)
+        (something_changed, Ok(()))
     }
-
-    fn send_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> ClientReaction {
-        let ev = term_event::Event::Key(term_event::KeyEvent::new(code, modifiers));
-        let app_status = self.state.apply_event(client::IncomingEvent::Terminal(ev));
-        ClientReaction{ app_status, command_error: self.state.command_error().clone() }
-    }
-    fn execute_command(&mut self, cmd: &str) -> ClientReaction {
-        for ch in cmd.chars() {
-            self.send_key(KeyCode::Char(ch), KeyModifiers::empty()).expect_app_continue();
-        }
-        self.send_key(KeyCode::Enter, KeyModifiers::empty())
-    }
-    #[allow(dead_code)] fn tick(&mut self) {
-        self.state.apply_event(client::IncomingEvent::Tick).expect_cont();
+    fn make_turn(&mut self, turn_algebraic: &str) -> Result<(), client::TurnCommandError> {
+        self.state.make_turn(turn_algebraic.to_owned())
     }
 }
 
@@ -186,7 +129,7 @@ impl World {
         idx
     }
 
-    fn process_events_for(&mut self, client_id: TestClientId) -> client::EventReaction {
+    fn process_events_for(&mut self, client_id: TestClientId) -> Result<(), client::EventError> {
         let client = &mut self.clients[client_id.0];
         client.process_outgoing_events(&mut self.server);
         client.process_incoming_events().1
@@ -204,7 +147,7 @@ impl World {
         let mut something_changed = false;
         for client in &mut self.clients {
             let (change, reaction) = client.process_incoming_events();
-            reaction.expect_cont();
+            reaction.unwrap();
             if change {
                 something_changed = true;
             }
@@ -260,33 +203,30 @@ fn play_online_misc() {
     world.process_all_events();
     assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
 
-    // Input from inactive player is ignored
-    world[cl3].execute_command("hello").expect_ok();
+    // Input from inactive player is not parsed.
+    assert_eq!(world[cl3].make_turn("attack!").unwrap_err(), IllegalTurn(TurnError::WrongTurnOrder));
 
-    world[cl1].execute_command("e5").expect_error_contains_dbg(&TurnError::Unreachable);
-    world[cl1].execute_command("e4").expect_ok();
+    assert_eq!(world[cl1].make_turn("e5").unwrap_err(), IllegalTurn(TurnError::Unreachable));
+    world[cl1].make_turn("e4").unwrap();
     world.process_all_events();
 
-    // Now the invalid command is processed
-    world[cl3].send_key(KeyCode::Enter, KeyModifiers::empty()).expect_error_contains("hello");
-
-    world[cl3].execute_command("d5").expect_ok();
+    world[cl3].make_turn("d5").unwrap();
     world.process_all_events();
 
-    world[cl1].execute_command("xd5").expect_ok();
+    world[cl1].make_turn("xd5").unwrap();
     world.process_all_events();
     assert_eq!(world[cl2].board().reserve(world[cl2].force())[PieceKind::Pawn], 1);
 
-    world[cl4].execute_command("Nc3").expect_ok();
+    world[cl4].make_turn("Nc3").unwrap();
     world.process_all_events();
 
-    world[cl2].execute_command("P@e4").expect_ok();
+    world[cl2].make_turn("P@e4").unwrap();
     world.process_all_events();
 
-    world[cl4].execute_command("d4").expect_ok();
+    world[cl4].make_turn("d4").unwrap();
     world.process_all_events();
 
-    world[cl2].execute_command("xd3").expect_ok();  // en passant
+    world[cl2].make_turn("xd3").unwrap();  // en passant
     world.process_all_events();
 }
 
@@ -309,10 +249,10 @@ fn remote_turn_persisted() {
 
     world.process_all_events();
 
-    world[cl1].execute_command("e4").expect_ok();
-    world[cl4].execute_command("d4").expect_ok();
-    world.process_events_for(cl4).expect_cont();
-    world.process_events_for(cl1).expect_cont();
+    world[cl1].make_turn("e4").unwrap();
+    world[cl4].make_turn("d4").unwrap();
+    world.process_events_for(cl4).unwrap();
+    world.process_events_for(cl1).unwrap();
     assert!(world[cl1].game_local().board(BughouseBoard::B).grid()[Coord::D4].is_some());
 }
 
@@ -329,8 +269,8 @@ fn leave_and_reconnect_lobby() {
         _ => panic!("Expected client to be in Lobby state"),
     }
 
-    world[cl2].execute_command("/quit").expect_app_status(client::EventReaction::ExitOk);
-    world[cl3].execute_command("/quit").expect_app_status(client::EventReaction::ExitOk);
+    world[cl2].state.leave();
+    world[cl3].state.leave();
     world.process_all_events();
     match world[cl1].state.contest_state() {
         client::ContestState::Lobby{ players, .. } => assert_eq!(players.len(), 1),
@@ -347,7 +287,7 @@ fn leave_and_reconnect_lobby() {
 
     // Cannot reconnect as an active player.
     let cl1_new = world.add_client("p1", Team::Blue);
-    assert!(matches!(world.process_events_for(cl1_new), client::EventReaction::ExitWithError(_)));
+    assert!(matches!(world.process_events_for(cl1_new), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // Can reconnect with the same name - that's fine.
@@ -369,19 +309,19 @@ fn leave_and_reconnect_game() {
     world.process_all_events();
     assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
 
-    world[cl3].execute_command("/quit").expect_app_status(client::EventReaction::ExitOk);
+    world[cl3].state.leave();
     world.process_all_events();
     // Show must go on - the game has started.
     assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
 
     // Cannot connect as a different player even though somebody has left.
     let cl5 = world.add_client("p5", Team::Blue);
-    assert!(matches!(world.process_events_for(cl5), client::EventReaction::ExitWithError(_)));
+    assert!(matches!(world.process_events_for(cl5), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // Cannot reconnect as an active player.
     let cl2_new = world.add_client("p2", Team::Blue);
-    assert!(matches!(world.process_events_for(cl2_new), client::EventReaction::ExitWithError(_)));
+    assert!(matches!(world.process_events_for(cl2_new), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // TODO: Test that it's possible to reconnect as the player who has left when it's implemented.
