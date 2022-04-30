@@ -1,9 +1,9 @@
 #![allow(unused_parens)]
 
-use std::cmp;
 use std::rc::Rc;
 
 use enum_map::{EnumMap, enum_map};
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Serialize, Deserialize};
@@ -18,11 +18,24 @@ use crate::rules::{DropAggression, ChessRules, BughouseRules};
 use crate::util::sort_two;
 
 
+fn iter_minmax<T: PartialOrd + Copy, I: Iterator<Item = T>>(iter: I) -> Option<(T, T)> {
+    match iter.minmax() {
+        itertools::MinMaxResult::NoElements => None,
+        itertools::MinMaxResult::OneElement(v) => Some((v, v)),
+        itertools::MinMaxResult::MinMax(min, max) => Some((min, max)),
+    }
+}
+
 fn direction_forward(force: Force) -> i8 {
     match force {
         Force::White => 1,
         Force::Black => -1,
     }
+}
+
+fn col_range_inclusive((col_min, col_max): (Col, Col)) -> impl Iterator<Item = Col> {
+    assert!(col_min <= col_max);
+    (col_min.to_zero_based() ..= col_max.to_zero_based()).map(|idx| Col::from_zero_based(idx))
 }
 
 fn find_king(grid: &Grid, force: Force) -> Coord {
@@ -565,6 +578,8 @@ impl Board {
                 //   - King cannot pass through a checked square.
                 //   - King cannot ends up in a checked square.
                 //   - [Chess960] Castle successful on the first turn.
+                //   - [Chess960] Castle blocked by a piece at the destination,
+                //      which is outside or kind and rook initial positions.
                 //   - [Chess960] Castle when both rooks are on the same side,
                 //      both when it's possible (the other rook is further away)
                 //      and impossible (the other rook is in the way).
@@ -621,18 +636,14 @@ impl Board {
                 };
 
                 let cols = [king_from.col, king_to.col, rook_from.col, rook_to.col];
-                let mut col = *cols.iter().min().unwrap();
-                let max_col = *cols.iter().max().unwrap();
-                while col != max_col {
+                for col in col_range_inclusive(iter_minmax(cols.into_iter()).unwrap()) {
                     if new_grid[Coord::new(row, col)].is_some() {
                         return Err(TurnError::Unreachable);
                     }
-                    col = col + 1;
                 }
 
-                let mut col = cmp::min(king_from.col, king_to.col);
-                let max_col = cmp::max(king_from.col, king_to.col);
-                while col != max_col {
+                let cols = [king_from.col, king_to.col];
+                for col in col_range_inclusive(iter_minmax(cols.into_iter()).unwrap()) {
                     let pos = Coord::new(row, col);
                     let new_grid = new_grid.scoped_set(pos, Some(PieceOnBoard::new(
                         PieceKind::King, PieceOrigin::Innate, None, force
@@ -640,7 +651,6 @@ impl Board {
                     if is_check_to(&new_grid, pos) {
                         return Err(TurnError::UnprotectedKing);
                     }
-                    col = col + 1;
                 }
 
                 new_grid[king_to] = king;
