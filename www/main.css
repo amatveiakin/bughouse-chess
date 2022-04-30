@@ -1,0 +1,64 @@
+body {
+  font-family: Verdana, sans-serif;
+}
+table {
+  border-collapse: collapse;
+}
+table, tr, th, td {
+  padding: 0;
+}
+
+.sq-black {
+  background-color: #EB984E
+}
+.sq-white {
+  background-color: #FDEBD0
+}
+.sq-side {
+  background-color: #F2F4F4
+}
+.sq-corner {
+  background-color: #E5E8E8
+}
+
+/* Improvement potential. Better size calculations: Ensure that squares are square
+   and do the rest the usual CSS/HTML style based on space left for the grid. */
+.sq-in-primary {
+  width: min(4vw, 6vh);
+  height: min(4vw, 6vh);
+}
+.sq-in-secondary {
+  width: min(3vw, 4.5vh);
+  height: min(3vw, 4.5vh);
+}
+.sq-out-primary {
+  width: min(3vw, 4.5vh);
+  height: min(3vw, 4.5vh);
+}
+.sq-out-secondary {
+  width: min(2vw, 3vh);
+  height: min(2vw, 3vh);
+}
+
+.sq-in-primary,
+.sq-in-secondary,
+.sq-out-primary,
+.sq-out-secondary {
+  text-align: center;
+  vertical-align: middle;
+  user-select: none;
+}
+
+.sq-in-primary {
+  font-size: larger;
+}
+.sq-out-primary {
+  font-size: small;
+}
+.sq-out-secondary {
+  font-size: smaller;
+}
+
+#board-sep {
+  width: 5vw;
+}

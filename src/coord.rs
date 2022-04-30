@@ -68,7 +68,7 @@ impl Row {
     }
     pub const fn to_zero_based(self) -> u8 { self.idx }
     pub const fn to_algebraic(self) -> char { (self.idx + '1' as u8) as char }
-    pub fn all() -> impl Iterator<Item = Self> + Clone {
+    pub fn all() -> impl DoubleEndedIterator<Item = Self> + Clone {
         (0..NUM_ROWS).map(|idx| Self::from_zero_based(idx))
     }
 }
@@ -103,7 +103,7 @@ impl Col {
     }
     pub const fn to_zero_based(self) -> u8 { self.idx }
     pub const fn to_algebraic(self) -> char { (self.idx + 'a' as u8) as char }
-    pub fn all() -> impl Iterator<Item = Self> + Clone {
+    pub fn all() -> impl DoubleEndedIterator<Item = Self> + Clone {
         (0..NUM_COLS).map(|idx| Self::from_zero_based(idx))
     }
 }

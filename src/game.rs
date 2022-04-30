@@ -242,6 +242,7 @@ impl BughouseGame {
     }
 
     pub fn board(&self, idx: BughouseBoard) -> &Board { &self.boards[idx] }
+    pub fn boards(&self) -> &EnumMap<BughouseBoard, Board> { &self.boards }
     pub fn status(&self) -> BughouseGameStatus { self.status }
 
     pub fn find_player(&self, player_name: &str) -> Option<(BughouseBoard, Force)> {
@@ -359,6 +360,7 @@ impl BughouseGame {
         }
     }
 
+    // TODO: Move to bughouse_console package
     pub fn view_for_player(&self, player_name: &str) -> BughouseGameView {
         use BughouseBoard::*;
         use Force::*;

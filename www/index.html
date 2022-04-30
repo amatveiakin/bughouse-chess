@@ -3,12 +3,24 @@
   <head>
     <meta charset="utf-8">
     <title>Bughouse chess</title>
+    <link rel="stylesheet" href="main.css">
   </head>
   <body>
     <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
     <script src="./bootstrap.js"></script>
-    <p><span id='loading_status'></span></p>
-    <p><div id='board'></div></p>
+    <p><span id='info-string'></span></p>
+    <p>
+      <table>
+        <tr>
+          <td id='board-primary'>
+          </td>
+          <td id='board-sep'>
+          </td>
+          <td id='board-secondary'>
+          </td>
+        </tr>
+      </table>
+    </p>
     <p><input id='command'></p>
   </body>
 </html>

@@ -4,15 +4,17 @@ import * as wasm from "bughouse-chess";
 
 
 wasm.set_panic_hook();
+wasm.init_page();
 
 let wasm_client = null;
 let socket = null;
 
-const loading_status = document.getElementById('loading_status');
-loading_status.innerText = 'Idle'
+const info_string = document.getElementById('info-string');
+info_string.innerText = 'Type "/join name team" to start'
 
 const command_input = document.getElementById('command');
 command_input.addEventListener('change', on_command);
+
 
 function on_server_event(event) {
     console.log('server: ', event);
@@ -63,19 +65,17 @@ function update() {
             socket.send(event);
         }
     }
-    const board = document.getElementById('board');
-    board.innerHTML = wasm_client.get_state();
+    wasm_client.update_state();
 }
 
 function on_socket_opened() {
-    loading_status.textContent = 'Ready';
     wasm_client.join();
     setInterval(on_tick, 100);
     update();
 }
 
 function request_join(my_name, my_team) {
-    loading_status.innerText = 'Joining...';
+    info_string.innerText = 'Joining...';
     socket = new WebSocket('ws://localhost:38617');  // TODO: get the port from Rust
     wasm_client = wasm.WebClient.new_client(my_name, my_team);
     socket.addEventListener('message', function(event) {
