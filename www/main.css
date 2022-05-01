@@ -1,5 +1,6 @@
 body {
   font-family: Verdana, sans-serif;
+  background-color: #E8ECD5;
 }
 table {
   border-collapse: collapse;
@@ -57,6 +58,35 @@ table, tr, th, td {
 }
 .sq-out-secondary {
   font-size: smaller;
+}
+
+.player-view {
+  width: 100%
+}
+
+.player-name {
+  text-align: left;
+  width: 30%;
+}
+
+.reserve {
+  text-align: center;
+  width: 40%;
+}
+
+.clock {
+  font-family: Monaco, monospace;
+  font-size: larger;
+  text-align: right;
+  width: 30%;
+}
+.clock-active {
+  font-weight: bold;
+  color: #917A00;
+}
+.clock-flag {
+  font-weight: bold;
+  color: #E74C3C;
 }
 
 #board-sep {
