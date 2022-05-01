@@ -29,9 +29,13 @@ function on_command(event) {
     if (input.startsWith('/')) {
         const args = input.slice(1).split(/\s+/);
         switch (args[0]) {
+            case 'local':
+                console.assert(args.length == 3);
+                request_join("localhost", args[1], args[2]);
+                break;
             case 'join':
                 console.assert(args.length == 3);
-                request_join(args[1], args[2]);
+                request_join("51.250.84.85", args[1], args[2]);
                 break;
             case 'resign':
                 wasm_client.resign();
@@ -75,9 +79,9 @@ function on_socket_opened() {
     update();
 }
 
-function request_join(my_name, my_team) {
+function request_join(address, my_name, my_team) {
     info_string.innerText = 'Joining...';
-    socket = new WebSocket('ws://localhost:38617');  // TODO: get the port from Rust
+    socket = new WebSocket(`ws://${address}:38617`);  // TODO: get the port from Rust
     wasm_client = wasm.WebClient.new_client(my_name, my_team);
     socket.addEventListener('message', function(event) {
         on_server_event(event.data);
