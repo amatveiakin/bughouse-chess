@@ -59,17 +59,24 @@ cargo run --package bughouse_console -- client localhost p4 blue
 Run once in the beginning and every time after changing Rust code:
 
 ```
-cd ../bughouse_wasm && wasm-pack build
+cd bughouse_wasm && wasm-pack build
 ```
 
 Run once:
 
 ```
-cd ../www && npm install
+cd www && npm install
 ```
 
 Test locally:
 
 ```
-cd ../www && npm run start
+cd www && npm run start
+```
+
+Run on Apache:
+
+```
+cd www && npm run build
+sudo cp dist/* /var/www/your-website-folder
 ```

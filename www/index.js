@@ -1,5 +1,6 @@
 // TODO: Remove logging
 
+import "./main.css"
 import * as wasm from "bughouse-chess";
 
 
