@@ -15,11 +15,12 @@ pub enum BughouseServerEvent {
     LobbyUpdated {
         players: Vec<Player>
     },
-    GameStarted {
+    GameStarted {  // TODO: Rename to take reconnection into account
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
         starting_grid: Grid,
         players: Vec<(Player, BughouseBoard)>,
+        time: GameInstant,             // for re-connection
         turn_log: Vec<TurnMadeEvent>,  // for re-connection
     },
     TurnMade(TurnMadeEvent),

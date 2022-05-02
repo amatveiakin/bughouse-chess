@@ -60,7 +60,7 @@ fn render(
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
             writeln_raw(stdout, "Loading...")?;
         },
-        ContestState::Lobby{ ref players } => {
+        ContestState::Lobby{ players } => {
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
             let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
             for p in players {
@@ -78,8 +78,8 @@ fn render(
                 writeln_raw(stdout, "")?;
             }
         },
-        ContestState::Game{ ref game_confirmed, ref local_turn, game_start } => {
-            let game_now = GameInstant::from_maybe_active_game(*game_start, now).approximate();
+        ContestState::Game{ game_confirmed, local_turn, time_pair } => {
+            let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
             let game = game_local(my_name, game_confirmed, local_turn);
             let view = game.view_for_player(my_name);
             writeln_raw(stdout, format!("{}\n", tui::render_bughouse_game(&game, view, game_now)))?;

@@ -188,7 +188,7 @@ impl ServerState {
             IncomingEvent::Network(client_id, event) => {
                 match event {
                     BughouseClientEvent::Join{ player_name, team } => {
-                        self.core.process_join(&mut clients, client_id, player_name, team);
+                        self.core.process_join(&mut clients, client_id, now, player_name, team);
                     },
                     BughouseClientEvent::MakeTurn{ turn_algebraic } => {
                         self.core.process_make_turn(&mut clients, client_id, now, turn_algebraic);
@@ -206,7 +206,7 @@ impl ServerState {
             },
         }
 
-        self.core.post_process(&mut clients);
+        self.core.post_process(&mut clients, now);
     }
 
     #[allow(non_snake_case)]
@@ -221,7 +221,7 @@ impl ServerStateCore {
         if let ContestState::Game{ ref mut game, game_start, .. } = self.contest_state {
             if let Some(game_start) = game_start {
                 if game.status() == BughouseGameStatus::Active {
-                    let game_now = GameInstant::from_active_game(game_start, now);
+                    let game_now = GameInstant::from_now_game_active(game_start, now);
                     game.test_flag(game_now);
                     if game.status() != BughouseGameStatus::Active {
                         clients.broadcast(&BughouseServerEvent::GameOver {
@@ -235,7 +235,7 @@ impl ServerStateCore {
     }
 
     fn process_join(
-        &mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId,
+        &mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant,
         player_name: String, team: Team
     ) {
         match self.contest_state {
@@ -273,7 +273,7 @@ impl ServerStateCore {
                         ));
                     } else {
                         clients[client_id].player_id = Some(existing_player_id);
-                        clients[client_id].send(self.make_game_start_event());
+                        clients[client_id].send(self.make_game_start_event(now));
                     }
                 } else {
                     clients[client_id].send_error("Cannot join: game has already started".to_owned());
@@ -291,7 +291,7 @@ impl ServerStateCore {
                 *game_start = Some(now);
             }
             if let Some(player_id) = clients[client_id].player_id {
-                let game_now = GameInstant::from_active_game(game_start.unwrap(), now);
+                let game_now = GameInstant::from_now_game_active(game_start.unwrap(), now);
                 let player_name = self.players[player_id].name.clone();
                 let turn_result = game.try_turn_by_player_from_algebraic(
                     &player_name, &turn_algebraic, game_now
@@ -319,7 +319,7 @@ impl ServerStateCore {
     fn process_resign(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant) {
         if let ContestState::Game{ ref mut game, game_start, .. } = self.contest_state {
             if let Some(player_id) = clients[client_id].player_id {
-                let game_now = GameInstant::from_maybe_active_game(game_start, now);
+                let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
                 let status = BughouseGameStatus::Victory(
                     self.players[player_id].team.opponent(),
                     VictoryReason::Resignation
@@ -343,7 +343,7 @@ impl ServerStateCore {
         // clients disconnected due to a network error would've left abandoned players.
     }
 
-    fn post_process(&mut self, clients: &mut ClientsGuard<'_>) {
+    fn post_process(&mut self, clients: &mut ClientsGuard<'_>, now: Instant) {
         if let ContestState::Lobby = self.contest_state {
             let active_player_ids: HashSet<_> = clients.map.values().filter_map(|c| c.player_id).collect();
             let mut player_removed = false;
@@ -375,22 +375,24 @@ impl ServerStateCore {
                     players_with_boards,
                     turn_log: vec![],
                 };
-                clients.broadcast(&self.make_game_start_event());
+                clients.broadcast(&self.make_game_start_event(now));
             }
         }
     }
 
-    fn make_game_start_event(&self) -> BughouseServerEvent {
+    fn make_game_start_event(&self, now: Instant) -> BughouseServerEvent {
         // Improvement potential: Pass `ContestState` from above: it should already be
         //   unpacked where the function is called.
-        if let ContestState::Game{ starting_grid, players_with_boards, turn_log, .. }
+        if let ContestState::Game{ game_start, starting_grid, players_with_boards, turn_log, .. }
             = &self.contest_state
         {
+            let time = GameInstant::from_now_game_maybe_active(*game_start, now);
             BughouseServerEvent::GameStarted {
                 chess_rules: self.chess_rules.clone(),
                 bughouse_rules: self.bughouse_rules.clone(),
                 starting_grid: starting_grid.clone(),
                 players: players_with_boards.clone(),
+                time,
                 turn_log: turn_log.clone(),
             }
         } else {

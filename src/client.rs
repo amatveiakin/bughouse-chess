@@ -4,7 +4,7 @@ use std::sync::mpsc;
 use instant::Instant;
 
 use crate::board::{TurnError};
-use crate::clock::{GameInstant};
+use crate::clock::{GameInstant, WallGameTimePair};
 use crate::game::{BughouseGameStatus, BughouseGame};
 use crate::event::{TurnMadeEvent, BughouseServerEvent, BughouseClientEvent};
 use crate::player::{Player, Team};
@@ -32,7 +32,7 @@ pub enum ContestState {
         // Local turn (algebraic), uncofirmed by the server yet, but displayed on the client.
         local_turn: Option<(String, GameInstant)>,
         // Game start time: `None` before first move, non-`None` afterwards.
-        game_start: Option<Instant>,
+        time_pair: Option<WallGameTimePair>,
     },
 }
 
@@ -80,10 +80,10 @@ impl ClientState {
     }
 
     pub fn make_turn(&mut self, turn_algebraic: String) -> Result<(), TurnCommandError> {
-        if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, game_start }
+        if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, time_pair }
             = self.contest_state
         {
-            let game_now = GameInstant::from_maybe_active_game(game_start, Instant::now()).approximate();
+            let game_now = GameInstant::from_pair_game_maybe_active(time_pair, Instant::now());
             if game_confirmed.player_is_active(&self.my_name).unwrap() && local_turn.is_none() {
                 let mut game_copy = game_confirmed.clone();
                 // Note. Not calling `test_flag`, because server is the source of truth for flag defeat.
@@ -125,16 +125,22 @@ impl ClientState {
                 }
                 Ok(())
             },
-            GameStarted{ chess_rules, bughouse_rules, starting_grid, players, turn_log } => {
+            GameStarted{ chess_rules, bughouse_rules, starting_grid, players, time, turn_log } => {
                 let player_map = BughouseGame::make_player_map(
                     players.iter().map(|(p, board_idx)| (Rc::new(p.clone()), *board_idx))
                 );
+                let time_pair = if turn_log.is_empty() {
+                    assert!(time.elapsed_since_start().is_zero());
+                    None
+                } else {
+                    Some(WallGameTimePair::new(Instant::now(), time.approximate()))
+                };
                 self.new_contest_state(ContestState::Game {
                     game_confirmed: BughouseGame::new_with_grid(
                         chess_rules, bughouse_rules, starting_grid, player_map
                     ),
                     local_turn: None,
-                    game_start: None,
+                    time_pair,
                 });
                 for event in turn_log {
                     self.apply_turn(event)?;
@@ -163,13 +169,14 @@ impl ClientState {
     fn apply_turn(&mut self, event: TurnMadeEvent) -> Result<(), EventError> {
         let TurnMadeEvent{ player_name, turn_algebraic, time, game_status } = event;
         if let ContestState::Game{
-            ref mut game_confirmed, ref mut local_turn, ref mut game_start
+            ref mut game_confirmed, ref mut local_turn, ref mut time_pair
         } = self.contest_state {
             // TODO: Simply ignore turns after game over.
             assert!(game_confirmed.status() == BughouseGameStatus::Active, "Cannot make turn: game over");
-            if game_start.is_none() {
+            if time_pair.is_none() {
                 // Improvement potential. Sync client/server times better; consider NTP.
-                *game_start = Some(Instant::now());
+                let game_start = GameInstant::game_start().approximate();
+                *time_pair = Some(WallGameTimePair::new(Instant::now(), game_start));
             }
             if player_name == self.my_name {
                 *local_turn = None;

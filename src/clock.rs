@@ -28,17 +28,39 @@ pub struct GameInstant {
 }
 
 impl GameInstant {
-    pub fn from_active_game(game_start: Instant, now: Instant) -> Self {
-        GameInstant::new(now - game_start)
+    pub fn from_now_game_active(game_start: Instant, now: Instant) -> Self {
+        GameInstant {
+            elapsed_since_start: now - game_start,
+            measurement: TimeMeasurement::Exact
+        }
     }
-    pub fn from_maybe_active_game(game_start: Option<Instant>, now: Instant) -> GameInstant {
+    pub fn from_now_game_maybe_active(game_start: Option<Instant>, now: Instant) -> GameInstant {
         match game_start {
-            Some(t) => GameInstant::from_active_game(t, now),
+            Some(t) => GameInstant::from_now_game_active(t, now),
             None => GameInstant::game_start(),
         }
     }
+    pub fn from_pair_game_active(pair: WallGameTimePair, now: Instant) -> GameInstant {
+        GameInstant {
+            elapsed_since_start: (now - pair.world_t) + pair.game_t.elapsed_since_start,
+            measurement: pair.game_t.measurement,
+        }
+    }
+    pub fn from_pair_game_maybe_active(pair: Option<WallGameTimePair>, now: Instant) -> GameInstant {
+        match pair {
+            Some(pair) => GameInstant::from_pair_game_active(pair, now),
+            None => GameInstant::game_start(),
+        }
+    }
+
     pub fn game_start() -> Self {
-        GameInstant::new(Duration::ZERO)
+        GameInstant {
+            elapsed_since_start: Duration::ZERO,
+            measurement: TimeMeasurement::Exact
+        }
+    }
+    pub fn elapsed_since_start(self) -> Duration {
+        self.elapsed_since_start
     }
     pub fn duration_since(self, earlier: GameInstant) -> Duration {
         use TimeMeasurement::*;
@@ -57,9 +79,23 @@ impl GameInstant {
         self.measurement = TimeMeasurement::Approximate;
         self
     }
+}
 
-    fn new(elapsed_since_start: Duration) -> Self {
-        GameInstant{ elapsed_since_start, measurement: TimeMeasurement::Exact }
+
+// We want to do something like
+//   game_start = Instant::now() - time.elapsed_since_start()
+// when reconnecting to existing game, but this could panic because Rust doesn't
+// allow for negative durations. So this class can be used to sync game clock and
+// real-world clock instead.
+#[derive(Clone, Copy, Debug)]
+pub struct WallGameTimePair {
+    world_t: Instant,
+    game_t: GameInstant,
+}
+
+impl WallGameTimePair {
+    pub fn new(world_t: Instant, game_t: GameInstant) -> Self {
+        WallGameTimePair{ world_t, game_t }
     }
 }
 

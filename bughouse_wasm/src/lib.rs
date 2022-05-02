@@ -97,7 +97,7 @@ impl WebClient {
             ContestState::Uninitialized => {
                 info_string.set_text_content(Some("Initializing..."));
             },
-            ContestState::Lobby{ ref players } => {
+            ContestState::Lobby{ players } => {
                 let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
                 for p in players {
                     teams[p.team].push(p.name.clone());
@@ -108,10 +108,10 @@ impl WebClient {
                     teams[Team::Blue].join(", "),
                 )));
             },
-            ContestState::Game{ ref game_confirmed, ref local_turn, game_start } => {
+            ContestState::Game{ game_confirmed, local_turn, time_pair } => {
                 let my_name = self.state.my_name();
                 let now = Instant::now();
-                let game_now = GameInstant::from_maybe_active_game(*game_start, now).approximate();
+                let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
                 let game = game_local(my_name, game_confirmed, local_turn);
                 let (my_board_idx, my_force) = game.find_player(my_name).unwrap();
                 for (board_idx, board) in game.boards() {
