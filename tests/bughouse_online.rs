@@ -69,11 +69,16 @@ impl Client {
             _ => panic!("No game in found"),
         }
     }
-    fn force(&self) -> Force {
+    fn my_force(&self) -> Force {
         self.game_local().find_player(self.my_name()).unwrap().1
     }
-    fn board(&self) -> Board {
+    fn my_board(&self) -> Board {
         self.game_local().player_board(self.my_name()).unwrap().clone()
+    }
+    fn other_board(&self) -> Board {
+        let game_local = self.game_local();
+        let (my_board_idx, _) = game_local.find_player(self.my_name()).unwrap();
+        game_local.board(my_board_idx.other()).clone()
     }
 
     fn process_outgoing_events(&mut self, server: &mut Server) -> bool {
@@ -215,7 +220,7 @@ fn play_online_misc() {
 
     world[cl1].make_turn("xd5").unwrap();
     world.process_all_events();
-    assert_eq!(world[cl2].board().reserve(world[cl2].force())[PieceKind::Pawn], 1);
+    assert_eq!(world[cl2].my_board().reserve(world[cl2].my_force())[PieceKind::Pawn], 1);
 
     world[cl4].make_turn("Nc3").unwrap();
     world.process_all_events();
@@ -300,7 +305,15 @@ fn leave_and_reconnect_lobby() {
 
 #[test]
 fn leave_and_reconnect_game() {
+    use PieceKind::*;
+
     let mut world = World::new();
+    world.server.state.TEST_override_board_assignment(vec! [
+        ("p1".to_owned(), BughouseBoard::A),
+        ("p2".to_owned(), BughouseBoard::B),
+        ("p3".to_owned(), BughouseBoard::A),
+        ("p4".to_owned(), BughouseBoard::B),
+    ]);
 
     let cl1 = world.add_client("p1", Team::Red);
     let _cl2 = world.add_client("p2", Team::Red);
@@ -308,6 +321,15 @@ fn leave_and_reconnect_game() {
     let _cl4 = world.add_client("p4", Team::Blue);
     world.process_all_events();
     assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
+
+    world[cl1].make_turn("e4").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("d5").unwrap();
+    world.process_all_events();
+    world[cl1].make_turn("xd5").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("Nf6").unwrap();
+    world.process_all_events();
 
     world[cl3].state.leave();
     world.process_all_events();
@@ -324,5 +346,23 @@ fn leave_and_reconnect_game() {
     assert!(matches!(world.process_events_for(cl2_new), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
-    // TODO: Test that it's possible to reconnect as the player who has left when it's implemented.
+    // Cannot reconnect as a different team.
+    let cl3_new = world.add_client("p3", Team::Red);
+    assert!(matches!(world.process_events_for(cl3_new), Err(client::EventError::ServerReturnedError(_))));
+    world.process_all_events();
+
+    // Reconnection successful.
+    let cl3_new = world.add_client("p3", Team::Blue);
+    world.process_events_for(cl3_new).unwrap();
+    world.process_all_events();
+
+    // Make sure turns were re-applied properly:
+    let grid = world[cl3_new].my_board().grid().clone();
+    let my_force = world[cl3_new].my_force();
+    assert!(grid[Coord::E2].is_none());
+    assert!(grid[Coord::E4].is_none());
+    assert!(grid[Coord::D7].is_none());
+    assert!(matches!(grid[Coord::D5], Some(PieceOnBoard{ kind: Pawn, .. })));
+    assert!(matches!(grid[Coord::F6], Some(PieceOnBoard{ kind: Knight, .. })));
+    assert_eq!(world[cl3_new].other_board().reserve(my_force)[Pawn], 1);
 }

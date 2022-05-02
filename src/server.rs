@@ -10,7 +10,8 @@ use rand::prelude::*;
 use crate::board::VictoryReason;
 use crate::clock::GameInstant;
 use crate::game::{BughouseBoard, BughouseGameStatus, BughouseGame};
-use crate::event::{BughouseServerEvent, BughouseClientEvent};
+use crate::grid::Grid;
+use crate::event::{TurnMadeEvent, BughouseServerEvent, BughouseClientEvent};
 use crate::player::{Player, Team};
 use crate::rules::{ChessRules, BughouseRules};
 
@@ -30,6 +31,9 @@ enum ContestState {
     Game {
         game: BughouseGame,
         game_start: Option<Instant>,
+        starting_grid: Grid,
+        players_with_boards: Vec<(Player, BughouseBoard)>,
+        turn_log: Vec<TurnMadeEvent>,
     },
 }
 
@@ -214,7 +218,7 @@ impl ServerState {
 
 impl ServerStateCore {
     fn test_flags(&mut self, clients: &mut ClientsGuard<'_>, now: Instant) {
-        if let ContestState::Game{ ref mut game, game_start } = self.contest_state {
+        if let ContestState::Game{ ref mut game, game_start, .. } = self.contest_state {
             if let Some(game_start) = game_start {
                 if game.status() == BughouseGameStatus::Active {
                     let game_now = GameInstant::from_active_game(game_start, now);
@@ -257,22 +261,23 @@ impl ServerStateCore {
                 }
             },
             ContestState::Game{ .. } => {
-                // TODO: Allow to reconnect during the game. Use this code + replay event log to
-                //   the new client.
-                /*
                 if let Some(existing_player_id) = self.players.find_by_name(&player_name) {
+                    let current_team = self.players[existing_player_id].team;
                     if clients.map.values().find(|c| c.player_id == Some(existing_player_id)).is_some() {
                         clients[client_id].send_error(format!(
-                            "Cannot join: client for player \"{}\" already connected", player_name));
+                            r#"Cannot join: client for player "{}" already connected"#, player_name));
+                    } else if current_team != team {
+                        clients[client_id].send_error(format!(
+                            r#"Cannot join: player "{}" is in team "{:?}", but connecting as team "{:?}""#,
+                            player_name, current_team, team
+                        ));
                     } else {
                         clients[client_id].player_id = Some(existing_player_id);
-                        self.send_lobby_updated(clients);
+                        clients[client_id].send(self.make_game_start_event());
                     }
                 } else {
                     clients[client_id].send_error("Cannot join: game has already started".to_owned());
                 }
-                */
-                clients[client_id].send_error("Cannot join: game has already started".to_owned());
             }
         }
     }
@@ -281,7 +286,7 @@ impl ServerStateCore {
         &mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant,
         turn_algebraic: String
     ) {
-        if let ContestState::Game{ ref mut game, ref mut game_start } = self.contest_state {
+        if let ContestState::Game{ ref mut game, ref mut game_start, ref mut turn_log, .. } = self.contest_state {
             if game_start.is_none() {
                 *game_start = Some(now);
             }
@@ -293,13 +298,16 @@ impl ServerStateCore {
                 );
                 if let Err(error) = turn_result {
                     clients[client_id].send_error(format!("Impossible turn: {:?}", error));
+                    return;
                 }
-                clients.broadcast(&BughouseServerEvent::TurnMade {
+                let turn_made_event = TurnMadeEvent {
                     player_name: player_name.to_owned(),
                     turn_algebraic,  // TODO: Rewrite turn to a standard form
                     time: game_now,
                     game_status: game.status(),
-                });
+                };
+                turn_log.push(turn_made_event.clone());
+                clients.broadcast(&BughouseServerEvent::TurnMade(turn_made_event));
             } else {
                 clients[client_id].send_error("Cannot make turn: not joined".to_owned());
             }
@@ -309,7 +317,7 @@ impl ServerStateCore {
     }
 
     fn process_resign(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant) {
-        if let ContestState::Game{ ref mut game, game_start } = self.contest_state {
+        if let ContestState::Game{ ref mut game, game_start, .. } = self.contest_state {
             if let Some(player_id) = clients[client_id].player_id {
                 let game_now = GameInstant::from_maybe_active_game(game_start, now);
                 let status = BughouseGameStatus::Victory(
@@ -357,26 +365,40 @@ impl ServerStateCore {
                     self.chess_rules.clone(), self.bughouse_rules.clone(), player_map
                 );
                 let starting_grid = game.board(BughouseBoard::A).grid().clone();
+                let players_with_boards = players_with_boards.into_iter().map(|(p, board_idx)| {
+                    ((*p).clone(), board_idx)
+                }).collect();
                 self.contest_state = ContestState::Game {
                     game,
                     game_start: None,
-                };
-                // Rust-upgrade (https://github.com/rust-lang/rust/issues/93610): Use `unwrap_or_clone`.
-                let player_to_send = players_with_boards.into_iter().map(|(p, board_idx)| {
-                    ((*p).clone(), board_idx)
-                }).collect();
-                clients.broadcast(&BughouseServerEvent::GameStarted {
-                    chess_rules: self.chess_rules.clone(),
-                    bughouse_rules: self.bughouse_rules.clone(),
                     starting_grid,
-                    players: player_to_send,
-                });
+                    players_with_boards,
+                    turn_log: vec![],
+                };
+                clients.broadcast(&self.make_game_start_event());
             }
         }
     }
 
+    fn make_game_start_event(&self) -> BughouseServerEvent {
+        // Improvement potential: Pass `ContestState` from above: it should already be
+        //   unpacked where the function is called.
+        if let ContestState::Game{ starting_grid, players_with_boards, turn_log, .. }
+            = &self.contest_state
+        {
+            BughouseServerEvent::GameStarted {
+                chess_rules: self.chess_rules.clone(),
+                bughouse_rules: self.bughouse_rules.clone(),
+                starting_grid: starting_grid.clone(),
+                players: players_with_boards.clone(),
+                turn_log: turn_log.clone(),
+            }
+        } else {
+            panic!("Expected ContestState::Game");
+        }
+    }
+
     fn send_lobby_updated(&self, clients: &mut ClientsGuard<'_>) {
-        // Rust-upgrade (https://github.com/rust-lang/rust/issues/93610): Use `unwrap_or_clone`.
         let player_to_send = self.players.iter().map(|p| (**p).clone()).collect();
         clients.broadcast(&BughouseServerEvent::LobbyUpdated {
             players: player_to_send,

@@ -20,18 +20,22 @@ pub enum BughouseServerEvent {
         bughouse_rules: BughouseRules,
         starting_grid: Grid,
         players: Vec<(Player, BughouseBoard)>,
+        turn_log: Vec<TurnMadeEvent>,  // for re-connection
     },
-    TurnMade {
-        player_name: String,
-        turn_algebraic: String,
-        time: GameInstant,
-        game_status: BughouseGameStatus,
-    },
+    TurnMade(TurnMadeEvent),
     // Used when game is ended for a reason unrelated to the last turn (flag, resign).
     GameOver {
         time: GameInstant,
         game_status: BughouseGameStatus,
     },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TurnMadeEvent {
+    pub player_name: String,
+    pub turn_algebraic: String,
+    pub time: GameInstant,
+    pub game_status: BughouseGameStatus,
 }
 
 

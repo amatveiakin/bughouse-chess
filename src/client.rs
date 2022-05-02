@@ -1,5 +1,3 @@
-// TODO: Move out console-related functionality.
-
 use std::rc::Rc;
 use std::sync::mpsc;
 
@@ -8,7 +6,7 @@ use instant::Instant;
 use crate::board::{TurnError};
 use crate::clock::{GameInstant};
 use crate::game::{BughouseGameStatus, BughouseGame};
-use crate::event::{BughouseServerEvent, BughouseClientEvent};
+use crate::event::{TurnMadeEvent, BughouseServerEvent, BughouseClientEvent};
 use crate::player::{Player, Team};
 
 
@@ -127,7 +125,7 @@ impl ClientState {
                 }
                 Ok(())
             },
-            GameStarted{ chess_rules, bughouse_rules, starting_grid, players } => {
+            GameStarted{ chess_rules, bughouse_rules, starting_grid, players, turn_log } => {
                 let player_map = BughouseGame::make_player_map(
                     players.iter().map(|(p, board_idx)| (Rc::new(p.clone()), *board_idx))
                 );
@@ -138,36 +136,13 @@ impl ClientState {
                     local_turn: None,
                     game_start: None,
                 });
+                for event in turn_log {
+                    self.apply_turn(event)?;
+                }
                 Ok(())
             },
-            TurnMade{ player_name, turn_algebraic, time, game_status } => {
-                if let ContestState::Game{
-                    ref mut game_confirmed, ref mut local_turn, ref mut game_start
-                } = self.contest_state {
-                    // TODO: Simply ignore turns after game over.
-                    assert!(game_confirmed.status() == BughouseGameStatus::Active, "Cannot make turn: game over");
-                    if game_start.is_none() {
-                        // Improvement potential. Sync client/server times better; consider NTP.
-                        *game_start = Some(Instant::now());
-                    }
-                    if player_name == self.my_name {
-                        *local_turn = None;
-                    }
-                    let turn_result = game_confirmed.try_turn_by_player_from_algebraic(
-                        &player_name, &turn_algebraic, time
-                    );
-                    turn_result.map_err(|err| {
-                        EventError::CannotApplyEvent(format!("Impossible turn: {}, error: {:?}", turn_algebraic, err))
-                    })?;
-                    if game_status != game_confirmed.status() {
-                        return Err(EventError::CannotApplyEvent(format!(
-                            "Expected game status = {:?}, actual = {:?}", game_status, game_confirmed.status()
-                        )))
-                    }
-                    Ok(())
-                } else {
-                    Err(EventError::CannotApplyEvent("Cannot make turn: no game in progress".to_owned()))
-                }
+            TurnMade(event) => {
+                self.apply_turn(event)
             },
             GameOver{ time, game_status } => {
                 if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, .. }
@@ -182,6 +157,37 @@ impl ClientState {
                     Err(EventError::CannotApplyEvent("Cannot record game result: no game in progress".to_owned()))
                 }
             },
+        }
+    }
+
+    fn apply_turn(&mut self, event: TurnMadeEvent) -> Result<(), EventError> {
+        let TurnMadeEvent{ player_name, turn_algebraic, time, game_status } = event;
+        if let ContestState::Game{
+            ref mut game_confirmed, ref mut local_turn, ref mut game_start
+        } = self.contest_state {
+            // TODO: Simply ignore turns after game over.
+            assert!(game_confirmed.status() == BughouseGameStatus::Active, "Cannot make turn: game over");
+            if game_start.is_none() {
+                // Improvement potential. Sync client/server times better; consider NTP.
+                *game_start = Some(Instant::now());
+            }
+            if player_name == self.my_name {
+                *local_turn = None;
+            }
+            let turn_result = game_confirmed.try_turn_by_player_from_algebraic(
+                &player_name, &turn_algebraic, time
+            );
+            turn_result.map_err(|err| {
+                EventError::CannotApplyEvent(format!("Impossible turn: {}, error: {:?}", turn_algebraic, err))
+            })?;
+            if game_status != game_confirmed.status() {
+                return Err(EventError::CannotApplyEvent(format!(
+                    "Expected game status = {:?}, actual = {:?}", game_status, game_confirmed.status()
+                )))
+            }
+            Ok(())
+        } else {
+            Err(EventError::CannotApplyEvent("Cannot make turn: no game in progress".to_owned()))
         }
     }
 
