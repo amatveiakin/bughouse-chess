@@ -7,29 +7,35 @@
   <body>
     <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
     <script src="./bootstrap.js"></script>
-    <p><span id='info-string'></span></p>
-    <p>
-      <table>
-        <tr>
-          <td>
-            <table>
-              <tr><td id='player-primary-top'></td></tr>
-              <tr><td id='board-primary'></td></tr>
-              <tr><td id='player-primary-bottom'></td></tr>
-            </table>
-          </td>
-          <td id='board-sep'>
-          </td>
-          <td>
-            <table>
-              <tr><td id='player-secondary-top'></td></tr>
-              <tr><td id='board-secondary'></td></tr>
-              <tr><td id='player-secondary-bottom'></td></tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </p>
-    <p><input id='command'></p>
+    <table style="height: fit-content">
+      <tr>
+        <td>
+          <table>
+            <tr><td id="player-primary-top"></td></tr>
+            <tr><td id="board-container-primary"></td></tr>
+            <tr><td id="player-primary-bottom"></td></tr>
+          </table>
+        </td>
+        <td id="board-sep">
+        </td>
+        <td>
+          <table style="height: 100%">
+            <tr><td style="vertical-align: top">
+              <table>
+                <tr><td id="player-secondary-top"></td></tr>
+                <tr><td id="board-container-secondary"></td></tr>
+                <tr><td id="player-secondary-bottom"></td></tr>
+              </table>
+            </td></tr>
+            <tr><td style="vertical-align: bottom">
+              <table>
+                <tr><td style="padding-bottom: 0.5em"><div id="info-string"></div></td></tr>
+                <tr><td><input id="command"></td></tr>
+              </table>
+            </td></tr>
+          </table>
+        </td>
+      </tr>
+    </table>
   </body>
 </html>

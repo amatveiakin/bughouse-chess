@@ -1,63 +1,67 @@
-body {
+html, body {
   font-family: Verdana, sans-serif;
-  background-color: #E8ECD5;
+  background-color: #1a340d;
+  color: #e0e0e0;
+  height: 100%;
+}
+html {
+  display: table;
+  margin: auto;
+}
+body {
+  display: table-cell;
+  vertical-align: middle;
 }
 table {
   border-collapse: collapse;
 }
 table, tr, th, td {
+  margin: 0;
   padding: 0;
 }
 
+img { display:block; }
+
+.stretch {
+  width: 100%;
+  height: 100%;
+}
+
 .sq-black {
-  background-color: #EB984E
+  background-color: #e59349;
 }
 .sq-white {
-  background-color: #FDEBD0
-}
-.sq-side {
-  background-color: #F2F4F4
-}
-.sq-corner {
-  background-color: #E5E8E8
+  background-color: #dfceb4;
 }
 
 /* Improvement potential. Better size calculations: Ensure that squares are square
    and do the rest the usual CSS/HTML style based on space left for the grid. */
-.sq-in-primary {
+.sq-primary {
+  width: min(6vw, 9vh);
+  height: min(6vw, 9vh);
+}
+.sq-secondary {
   width: min(4vw, 6vh);
   height: min(4vw, 6vh);
 }
-.sq-in-secondary {
-  width: min(3vw, 4.5vh);
-  height: min(3vw, 4.5vh);
-}
-.sq-out-primary {
-  width: min(3vw, 4.5vh);
-  height: min(3vw, 4.5vh);
-}
-.sq-out-secondary {
-  width: min(2vw, 3vh);
-  height: min(2vw, 3vh);
-}
-
-.sq-in-primary,
-.sq-in-secondary,
-.sq-out-primary,
-.sq-out-secondary {
+.sq-primary,
+.sq-secondary {
+  user-select: none;
   text-align: center;
   vertical-align: middle;
-  user-select: none;
 }
 
-.sq-in-primary {
-  font-size: larger;
+.dragover {
+  box-shadow: 0px 0px 2px 0px #00000080;
 }
-.sq-out-primary {
-  font-size: small;
+
+#board-primary {
+  border: 1px solid #101010;
+  box-shadow: 2px 2px 3px #202020;
 }
-.sq-out-secondary {
-  font-size: smaller;
+#board-secondary {
+  border: 1px solid #101010;
+  box-shadow: 1px 1px 2px #202020;
 }
 
 .player-view {
@@ -79,16 +83,25 @@ table, tr, th, td {
   font-size: larger;
   text-align: right;
   width: 30%;
+  white-space: nowrap;
 }
 .clock-active {
   font-weight: bold;
-  color: #917A00;
+  color: #917a00;
 }
 .clock-flag {
   font-weight: bold;
-  color: #E74C3C;
+  color: #e74c3c;
 }
 
 #board-sep {
   width: 5vw;
+}
+
+#info-string {
+  font-size: min(2vw, 3vh, 11pt);
+  max-height: 4em;
+  display: block;
+  width: min(32vw, 48vh);
+  overflow: hidden;
 }

@@ -1,4 +1,5 @@
 // TODO: Shrink WASM file size.
+// TODO: Consider: stop using websys at all, do all DOM manipulations in JS.
 
 extern crate enum_map;
 extern crate instant;
@@ -20,6 +21,8 @@ use wasm_bindgen::prelude::*;
 use bughouse_chess::*;
 use bughouse_chess::client::*;
 
+
+static mut PIECE_PATH: Option<EnumMap<Force, EnumMap<PieceKind, String>>> = None;
 
 #[wasm_bindgen]
 pub fn set_panic_hook() {
@@ -63,23 +66,29 @@ impl WebClient {
     pub fn leave(&mut self) {
         self.state.leave();
     }
-    pub fn make_turn(&mut self, turn_algebraic: String) -> Option<String> {
-        self.state.make_turn(turn_algebraic).err().map(|err| {
-            format!("{:?}", err)
-        })
+    pub fn make_turn(&mut self, turn_algebraic: String) {
+        let turn_result = self.state.make_turn(turn_algebraic);
+        let info_string = web_document().get_existing_element_by_id("info-string").unwrap();
+        info_string.set_text_content(turn_result.err().map(|err| format!("{:?}", err)).as_deref());
     }
 
-    pub fn process_server_event(&mut self, event: &str) {
+    pub fn process_server_event(&mut self, event: &str) -> Result<Option<String>, JsValue> {
         let game_was_active = matches!(self.state.contest_state(), ContestState::Game{ .. });
-        self.state.process_server_event(serde_json::from_str(event).unwrap()).unwrap();
+        self.state.process_server_event(serde_json::from_str(event).unwrap()).map_err(|err| {
+            JsValue::from(format!("{:?}", err))
+        })?;
         if let ContestState::Game{ ref game_confirmed, .. } = self.state.contest_state() {
             if !game_was_active {
+                let info_string = web_document().get_existing_element_by_id("info-string").unwrap();
+                info_string.set_text_content(None);
                 let my_name = self.state.my_name();
                 let (_, force) = game_confirmed.find_player(my_name).unwrap();
                 render_grids(force == Force::Black);
                 render_players();
+                return Ok(Some("game_started".to_owned()));
             }
         }
+        Ok(None)
     }
 
     pub fn next_outgoing_event(&mut self) -> Option<String> {
@@ -90,9 +99,10 @@ impl WebClient {
         }
     }
 
+    // TODO: Check exception passing and return `Result<(), JsValue>`.
     pub fn update_state(&self) {
         let document = web_document();
-        let info_string = document.get_element_by_id("info-string").unwrap();
+        let info_string = document.get_existing_element_by_id("info-string").unwrap();
         match self.state.contest_state() {
             ContestState::Uninitialized => {
                 info_string.set_text_content(Some("Initializing..."));
@@ -119,12 +129,29 @@ impl WebClient {
                     let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
                     let grid = board.grid();
                     for coord in Coord::all() {
-                        let sq = document.get_element_by_id(&square_id(web_board_idx, coord)).unwrap();
-                        let piece_str = match grid[coord] {
-                            Some(piece) => String::from(to_unicode_char(piece.kind, piece.force)),
-                            None => String::new(),
-                        };
-                        sq.set_text_content(Some(&piece_str));
+                        // This is potentially quite slow, but should't spend too much time on it:
+                        //   we'll have to switch to canvas anyway.
+                        let node = document.get_existing_element_by_id(&piece_id(web_board_idx, coord)).unwrap();
+                        let piece = grid[coord];
+                        let draggable = is_primary && piece.map(|p| p.force) == Some(my_force);
+                        if let Some(piece) = piece {
+                            let filename;
+                            unsafe {
+                                filename = &PIECE_PATH.as_ref().unwrap()[piece.force][piece.kind];
+                            }
+                            node.set_attribute("src", &filename).unwrap();
+                            node.set_attribute("data-piece-kind", &piece_notation(piece.kind)).unwrap();
+                            node.set_attribute("data-piece-image", &filename).unwrap();
+                        } else {
+                            node.set_attribute("src", transparent_1x1_image()).unwrap();
+                            node.remove_attribute("data-piece-kind").unwrap();
+                            node.remove_attribute("data-piece-image").unwrap();
+                        }
+                        if draggable {
+                            node.set_attribute("draggable", "true").unwrap();
+                        } else {
+                            node.set_attribute("draggable", "false").unwrap();
+                        }
                     }
                     for player_idx in WebPlayer::iter() {
                         use WebPlayer::*;
@@ -134,18 +161,16 @@ impl WebClient {
                             (Top, Primary) | (Bottom, Secondary) => my_force.opponent(),
                         };
                         let id_suffix = format!("{}-{}", board_id(web_board_idx), player_id(player_idx));
-                        let name_node = document.get_element_by_id(&format!("player-name-{}", id_suffix)).unwrap();
+                        let name_node = document.get_existing_element_by_id(&format!("player-name-{}", id_suffix)).unwrap();
                         name_node.set_text_content(Some(&board.player(force).name));
-                        let reserve_node = document.get_element_by_id(&format!("reserve-{}", id_suffix)).unwrap();
+                        let reserve_node = document.get_existing_element_by_id(&format!("reserve-{}", id_suffix)).unwrap();
                         reserve_node.set_text_content(Some(&reserve_string(board.reserve(force), force)));
-                        let clock_node = document.get_element_by_id(&format!("clock-{}", id_suffix)).unwrap();
+                        let clock_node = document.get_existing_element_by_id(&format!("clock-{}", id_suffix)).unwrap();
                         update_clock(board.clock(), force, game_now, &clock_node).unwrap();
                     }
                 }
                 if game_confirmed.status() != BughouseGameStatus::Active {
                     info_string.set_text_content(Some(&format!("Game over: {:?}", game_confirmed.status())));
-                } else {
-                    info_string.set_text_content(None);
                 }
             },
         }
@@ -164,15 +189,26 @@ enum WebPlayer {
     Bottom,
 }
 
-#[derive(Debug)]
-struct Square {
-    classes: Vec<String>,
-    id: Option<String>,
-    text: Option<String>,
+struct WebDocument(web_sys::Document);
+
+impl WebDocument {
+    fn get_existing_element_by_id(&self, element_id: &str) -> Result<web_sys::Element, JsValue> {
+        let element = self.0.get_element_by_id(element_id).ok_or_else(|| JsValue::from(format!(
+            "Cannot find element \"{}\"", element_id
+        )))?;
+        if !element.is_object() {
+            return Err(JsValue::from(format!("Element \"{}\" is not an object", element_id)));
+        }
+        Ok(element)
+    }
+
+    pub fn create_element(&self, local_name: &str) -> Result<web_sys::Element, JsValue> {
+        self.0.create_element(local_name)
+    }
 }
 
-fn web_document() -> web_sys::Document {
-    web_sys::window().unwrap().document().unwrap()
+fn web_document() -> WebDocument {
+    WebDocument(web_sys::window().unwrap().document().unwrap())
 }
 
 fn remove_all_children(node: &web_sys::Node) -> Result<(), JsValue> {
@@ -183,7 +219,40 @@ fn remove_all_children(node: &web_sys::Node) -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn init_page() {
+pub fn init_page(
+    white_pawn: String,
+    white_knight: String,
+    white_bishop: String,
+    white_rook: String,
+    white_queen: String,
+    white_king: String,
+    black_pawn: String,
+    black_knight: String,
+    black_bishop: String,
+    black_rook: String,
+    black_queen: String,
+    black_king: String,
+) {
+    use Force::*;
+    use PieceKind::*;
+    let mut piece_path = enum_map!{
+        _ => enum_map!{ _ => String::new() }
+    };
+    piece_path[White][Pawn] = white_pawn;
+    piece_path[White][Knight] = white_knight;
+    piece_path[White][Bishop] = white_bishop;
+    piece_path[White][Rook] = white_rook;
+    piece_path[White][Queen] = white_queen;
+    piece_path[White][King] = white_king;
+    piece_path[Black][Pawn] = black_pawn;
+    piece_path[Black][Knight] = black_knight;
+    piece_path[Black][Bishop] = black_bishop;
+    piece_path[Black][Rook] = black_rook;
+    piece_path[Black][Queen] = black_queen;
+    piece_path[Black][King] = black_king;
+    unsafe {
+        PIECE_PATH = Some(piece_path);
+    }
     render_grids(false);
 }
 
@@ -239,7 +308,7 @@ fn render_player(board_idx: WebBoard, player_idx: WebPlayer) -> Result<(), JsVal
     let document = web_document();
     let id_suffix = format!("{}-{}", board_id(board_idx), player_id(player_idx));
     let node_id = format!("player-{}", id_suffix);
-    let node = document.get_element_by_id(&node_id).unwrap();
+    let node = document.get_existing_element_by_id(&node_id)?;
     remove_all_children(&node)?;
 
     let table = document.create_element("table")?;
@@ -263,66 +332,43 @@ fn render_grids(flip_forces: bool) {
     }
 }
 
-fn render_grid(board_idx: WebBoard, flip_forces: bool) -> Result<(), JsValue> {
+// TODO: Embed notation inside the squares.
+fn render_grid(board_idx: WebBoard, mut flip_forces: bool) -> Result<(), JsValue> {
+    match board_idx {
+        WebBoard::Primary => {},
+        WebBoard::Secondary => flip_forces = !flip_forces,
+    };
+    let rows = match flip_forces {
+        false => Row::all().rev().collect_vec(),
+        true => Row::all().collect_vec(),
+    };
+
     let document = web_document();
-    let node_id = format!("board-{}", board_id(board_idx));
-    let node = document.get_element_by_id(&node_id).unwrap();
+    let node_id = format!("board-container-{}", board_id(board_idx));
+    let node = document.get_existing_element_by_id(&node_id)?;
     remove_all_children(&node)?;
 
     let table = document.create_element("table")?;
-    for line in make_grid(board_idx, flip_forces) {
+    table.set_attribute("id", &format!("board-{}", board_id(board_idx)))?;
+
+    for row in rows {
         let tr = document.create_element("tr")?;
-        for sq in line {
+        for col in Col::all() {
+            let coord = Coord::new(row, col);
             let td = document.create_element("td")?;
-            td.set_attribute("class", &sq.classes.join(" "))?;
-            if let Some(id) = sq.id {
-                td.set_attribute("id", &id)?;
-            }
-            td.set_text_content(sq.text.as_deref());
+            let classes = [square_color_class(row, col), square_size_class(board_idx)];
+            td.set_attribute("class", &classes.join(" "))?;
+            let img = document.create_element("img")?;
+            img.set_attribute("class", "stretch")?;
+            img.set_attribute("id", &piece_id(board_idx, coord))?;
+            img.set_attribute("src", transparent_1x1_image())?;
+            td.append_child(&img)?;
             tr.append_child(&td)?;
         }
         table.append_child(&tr)?;
     }
     node.append_child(&table)?;
     Ok(())
-}
-
-fn make_grid(board_idx: WebBoard, mut flip_forces: bool) -> Vec<Vec<Square>> {
-    match board_idx {
-        WebBoard::Primary => {},
-        WebBoard::Secondary => flip_forces = !flip_forces,
-    };
-    let rows = match flip_forces {
-        false => [vec![None], Row::all().rev().map(|v| Some(v)).collect(), vec![None]].concat(),
-        true => [vec![None], Row::all().map(|v| Some(v)).collect(), vec![None]].concat(),
-    };
-    let cols = [vec![None], Col::all().map(|v| Some(v)).collect(), vec![None]].concat();
-    rows.iter().map(|&row| {
-        cols.iter().map(|&col| {
-            match (row, col) {
-                (Some(row), Some(col)) => Square {
-                    classes: vec![square_color_class(row, col), inner_square_size_class(board_idx)],
-                    id: Some(square_id(board_idx, Coord::new(row, col))),
-                    text: None,
-                },
-                (Some(row), None) => Square {
-                    classes: vec!["sq-side".to_owned(), outer_square_size_class(board_idx)],
-                    id: None,
-                    text: Some(String::from(row.to_algebraic())),
-                },
-                (None, Some(col)) => Square {
-                    classes: vec!["sq-side".to_owned(), outer_square_size_class(board_idx)],
-                    id: None,
-                    text: Some(String::from(col.to_algebraic())),
-                },
-                (None, None) => Square {
-                    classes: vec!["sq-corner".to_owned(), outer_square_size_class(board_idx)],
-                    id: None,
-                    text: None,
-                },
-            }
-        }).collect()
-    }).collect()
 }
 
 fn board_id(idx: WebBoard) -> String {
@@ -339,7 +385,7 @@ fn player_id(idx: WebPlayer) -> String {
     }.to_owned()
 }
 
-fn square_id(board_idx: WebBoard, coord: Coord) -> String {
+fn piece_id(board_idx: WebBoard, coord: Coord) -> String {
     format!("{}-{}", board_id(board_idx), coord.to_algebraic())
 }
 
@@ -351,12 +397,8 @@ fn square_color_class(row: Row, col: Col) -> String {
     }
 }
 
-fn inner_square_size_class(board_idx: WebBoard) -> String {
-    format!("sq-in-{}", board_id(board_idx))
-}
-
-fn outer_square_size_class(board_idx: WebBoard) -> String {
-    format!("sq-out-{}", board_id(board_idx))
+fn square_size_class(board_idx: WebBoard) -> String {
+    format!("sq-{}", board_id(board_idx))
 }
 
 fn to_unicode_char(piece_kind: PieceKind, force: Force) -> char {
@@ -376,4 +418,22 @@ fn to_unicode_char(piece_kind: PieceKind, force: Force) -> char {
         (Black, Queen) => '♛',
         (Black, King) => '♚',
     }
+}
+
+fn piece_notation(piece_kind: PieceKind) -> &'static str {
+    use self::PieceKind::*;
+    match piece_kind {
+        Pawn => "",
+        Knight => "N",
+        Bishop => "B",
+        Rook => "R",
+        Queen => "Q",
+        King => "K",
+    }
+}
+
+fn transparent_1x1_image() -> &'static str {
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+    // semi-transparent blue alternative for testing
+    // "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
 }

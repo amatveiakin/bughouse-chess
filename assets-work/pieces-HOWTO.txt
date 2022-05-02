@@ -1,0 +1,20 @@
+Final pieces have been produced from 1200x1200 png images for black pieces.
+Some were pre-processed (see `pieces-gimp`), others were not.
+
+Black border:
+- Magic wand select
+- Selection > Border (Smooth) > 8px
+- New layer (transparent)
+- Fill with #000000
+
+Piece body:
+- [black] Fill with #202020
+- [white] Fill with #f8f8f8
+
+Outline:
+- Magic wand select
+- Selection > Border > 20px
+- Manually subtract from selection to keep only the correct side
+- Selection > Feather > 70px (60px for the king)
+- [black] Brightness > +70
+- [white] Exposure > -5
