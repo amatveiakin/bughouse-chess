@@ -7,35 +7,27 @@
   <body>
     <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
     <script src="./bootstrap.js"></script>
-    <table style="height: fit-content">
-      <tr>
-        <td>
-          <table>
-            <tr><td id="player-primary-top"></td></tr>
-            <tr><td id="board-container-primary"></td></tr>
-            <tr><td id="player-primary-bottom"></td></tr>
-          </table>
-        </td>
-        <td id="board-sep">
-        </td>
-        <td>
-          <table style="height: 100%">
-            <tr><td style="vertical-align: top">
-              <table>
-                <tr><td id="player-secondary-top"></td></tr>
-                <tr><td id="board-container-secondary"></td></tr>
-                <tr><td id="player-secondary-bottom"></td></tr>
-              </table>
-            </td></tr>
-            <tr><td style="vertical-align: bottom">
-              <table>
-                <tr><td style="padding-bottom: 0.5em"><div id="info-string"></div></td></tr>
-                <tr><td><input id="command"></td></tr>
-              </table>
-            </td></tr>
-          </table>
-        </td>
-      </tr>
-    </table>
+    <div id="page">
+      <div id="board-container-primary"></div>
+      <div id="reserve-primary-top" class="reserve"></div>
+      <div id="reserve-primary-bottom" class="reserve"></div>
+      <div id="player-name-primary-top" class="player-name"></div>
+      <div id="player-name-primary-bottom" class="player-name"></div>
+      <div id="clock-primary-top" class="clock"></div>
+      <div id="clock-primary-bottom" class="clock"></div>
+
+      <div id="board-container-secondary"></div>
+      <div id="reserve-secondary-top" class="reserve"></div>
+      <div id="reserve-secondary-bottom" class="reserve"></div>
+      <div id="player-name-secondary-top" class="player-name"></div>
+      <div id="player-name-secondary-bottom" class="player-name"></div>
+      <div id="clock-secondary-top" class="clock"></div>
+      <div id="clock-secondary-bottom" class="clock"></div>
+
+      <div id="info-panel" style="display: flex; flex-direction: column;">
+        <div id="info-string"></div>
+        <input id="command">
+      </div>
+    </div>
   </body>
 </html>

@@ -108,7 +108,9 @@ function on_command(event) {
 }
 
 function on_tick() {
-    update();
+    if (wasm_client) {
+        wasm_client.update_clock();
+    }
 }
 
 function update() {
@@ -182,7 +184,10 @@ function setup_drag_and_drop() {
             const to = coord;
             // TODO: Proper API
             // TODO: Promotions, castling, drops
-            wasm_client.make_turn(`${from}${to}`);
+            if (wasm_client) {
+                wasm_client.make_turn(`${from}${to}`);
+            }
+            update();
         });
     }
 }

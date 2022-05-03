@@ -1,5 +1,10 @@
 // TODO: Shrink WASM file size.
 // TODO: Consider: stop using websys at all, do all DOM manipulations in JS.
+// TODO: Some additional indication that it's your turn outside of clock area.
+//   Maybe even change background (add vignette) or something like that.
+//   Better yet: subtler change by default and throbbing vignette on low time
+//   like in action games!
+// TODO: Sounds.
 
 extern crate enum_map;
 extern crate instant;
@@ -22,6 +27,8 @@ use bughouse_chess::*;
 use bughouse_chess::client::*;
 
 
+type JsResult<T> = Result<T, JsValue>;
+
 static mut PIECE_PATH: Option<EnumMap<Force, EnumMap<PieceKind, String>>> = None;
 
 #[wasm_bindgen]
@@ -38,6 +45,8 @@ pub fn set_panic_hook() {
 
 #[wasm_bindgen]
 pub struct WebClient {
+    // TODO: Consider: in order to store additional information that is only relevant
+    //   during game phase, add a generic `UserData` parameter to `ContestState::Game`.
     state: ClientState,
     server_rx: mpsc::Receiver<BughouseClientEvent>,
 }
@@ -72,7 +81,7 @@ impl WebClient {
         info_string.set_text_content(turn_result.err().map(|err| format!("{:?}", err)).as_deref());
     }
 
-    pub fn process_server_event(&mut self, event: &str) -> Result<Option<String>, JsValue> {
+    pub fn process_server_event(&mut self, event: &str) -> JsResult<Option<String>> {
         let game_was_active = matches!(self.state.contest_state(), ContestState::Game{ .. });
         self.state.process_server_event(serde_json::from_str(event).unwrap()).map_err(|err| {
             JsValue::from(format!("{:?}", err))
@@ -84,7 +93,6 @@ impl WebClient {
                 let my_name = self.state.my_name();
                 let (_, force) = game_confirmed.find_player(my_name).unwrap();
                 render_grids(force == Force::Black);
-                render_players();
                 return Ok(Some("game_started".to_owned()));
             }
         }
@@ -99,7 +107,7 @@ impl WebClient {
         }
     }
 
-    // TODO: Check exception passing and return `Result<(), JsValue>`.
+    // TODO: Check exception passing and return `JsResult<()>`.
     pub fn update_state(&self) {
         let document = web_document();
         let info_string = document.get_existing_element_by_id("info-string").unwrap();
@@ -118,10 +126,8 @@ impl WebClient {
                     teams[Team::Blue].join(", "),
                 )));
             },
-            ContestState::Game{ game_confirmed, local_turn, time_pair } => {
+            ContestState::Game{ game_confirmed, local_turn, .. } => {
                 let my_name = self.state.my_name();
-                let now = Instant::now();
-                let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
                 let game = game_local(my_name, game_confirmed, local_turn);
                 let (my_board_idx, my_force) = game.find_player(my_name).unwrap();
                 for (board_idx, board) in game.boards() {
@@ -135,10 +141,7 @@ impl WebClient {
                         let piece = grid[coord];
                         let draggable = is_primary && piece.map(|p| p.force) == Some(my_force);
                         if let Some(piece) = piece {
-                            let filename;
-                            unsafe {
-                                filename = &PIECE_PATH.as_ref().unwrap()[piece.force][piece.kind];
-                            }
+                            let filename = piece_path(piece.kind, piece.force);
                             node.set_attribute("src", &filename).unwrap();
                             node.set_attribute("data-piece-kind", &piece_notation(piece.kind)).unwrap();
                             node.set_attribute("data-piece-image", &filename).unwrap();
@@ -164,15 +167,42 @@ impl WebClient {
                         let name_node = document.get_existing_element_by_id(&format!("player-name-{}", id_suffix)).unwrap();
                         name_node.set_text_content(Some(&board.player(force).name));
                         let reserve_node = document.get_existing_element_by_id(&format!("reserve-{}", id_suffix)).unwrap();
-                        reserve_node.set_text_content(Some(&reserve_string(board.reserve(force), force)));
-                        let clock_node = document.get_existing_element_by_id(&format!("clock-{}", id_suffix)).unwrap();
-                        update_clock(board.clock(), force, game_now, &clock_node).unwrap();
+                        update_reserve(board.reserve(force), force, web_board_idx, &reserve_node).unwrap();
                     }
                 }
                 if game_confirmed.status() != BughouseGameStatus::Active {
                     info_string.set_text_content(Some(&format!("Game over: {:?}", game_confirmed.status())));
                 }
             },
+        }
+        self.update_clock();
+    }
+
+    pub fn update_clock(&self) {
+        let document = web_document();
+        if let ContestState::Game{ game_confirmed, local_turn, time_pair } = self.state.contest_state() {
+            let now = Instant::now();
+            let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
+            let my_name = self.state.my_name();
+            let game = game_local(my_name, game_confirmed, local_turn);
+            let (my_board_idx, my_force) = game.find_player(my_name).unwrap();
+            for (board_idx, board) in game.boards() {
+                let is_primary = board_idx == my_board_idx;
+                let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
+                for player_idx in WebPlayer::iter() {
+                    use WebPlayer::*;
+                    use WebBoard::*;
+                    let force = match (player_idx, web_board_idx) {
+                        (Bottom, Primary) | (Top, Secondary) => my_force,
+                        (Top, Primary) | (Bottom, Secondary) => my_force.opponent(),
+                    };
+                    let id_suffix = format!("{}-{}", board_id(web_board_idx), player_id(player_idx));
+                    // TODO: Dedup against `update_state`. Everything except the two lines below
+                    //   is copy-pasted from there.
+                    let clock_node = document.get_existing_element_by_id(&format!("clock-{}", id_suffix)).unwrap();
+                    update_clock(board.clock(), force, game_now, &clock_node).unwrap();
+                }
+            }
         }
     }
 }
@@ -192,7 +222,7 @@ enum WebPlayer {
 struct WebDocument(web_sys::Document);
 
 impl WebDocument {
-    fn get_existing_element_by_id(&self, element_id: &str) -> Result<web_sys::Element, JsValue> {
+    fn get_existing_element_by_id(&self, element_id: &str) -> JsResult<web_sys::Element> {
         let element = self.0.get_element_by_id(element_id).ok_or_else(|| JsValue::from(format!(
             "Cannot find element \"{}\"", element_id
         )))?;
@@ -202,7 +232,7 @@ impl WebDocument {
         Ok(element)
     }
 
-    pub fn create_element(&self, local_name: &str) -> Result<web_sys::Element, JsValue> {
+    pub fn create_element(&self, local_name: &str) -> JsResult<web_sys::Element> {
         self.0.create_element(local_name)
     }
 }
@@ -211,7 +241,7 @@ fn web_document() -> WebDocument {
     WebDocument(web_sys::window().unwrap().document().unwrap())
 }
 
-fn remove_all_children(node: &web_sys::Node) -> Result<(), JsValue> {
+fn remove_all_children(node: &web_sys::Node) -> JsResult<()> {
     while let Some(child) = node.last_child() {
         node.remove_child(&child)?;
     }
@@ -256,73 +286,71 @@ pub fn init_page(
     render_grids(false);
 }
 
-fn reserve_string(reserve: &Reserve, force: Force) -> String {
-    let mut stacks = Vec::new();
+fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, reserve_node: &web_sys::Element)
+    -> JsResult<()>
+{
+    let document = web_document();
+    let class_base = format!("reserve-piece-{}", board_id(board_idx));
+    remove_all_children(reserve_node)?;
+    let add_separator = || -> JsResult<()> {
+        let sep = document.create_element("div")?;
+        sep.set_attribute("class", &format!("{}-separator", class_base))?;
+        reserve_node.append_child(&sep)?;
+        Ok(())
+    };
+    let mut need_separator = false;
     for (piece_kind, &amount) in reserve.iter() {
-        if amount > 0 {
-            stacks.push(String::from(to_unicode_char(piece_kind, force)).repeat(amount.into()));
+        if need_separator {
+            add_separator()?;
+            need_separator = false;
+        }
+        let filename = piece_path(piece_kind, force);
+        for _ in 0..amount {
+            need_separator = true;
+            let wrapper = document.create_element("div")?;
+            wrapper.set_attribute("class", &format!("{}-wrapper", class_base))?;
+            let img = document.create_element("img")?;
+            img.set_attribute("src", &filename)?;
+            img.set_attribute("class", &class_base)?;
+            wrapper.append_child(&img)?;
+            reserve_node.append_child(&wrapper)?;
         }
     }
-    stacks.iter().join(" ")
+    if need_separator {
+        add_separator()?;
+    }
+    Ok(())
 }
 
 fn div_ceil(a: u128, b: u128) -> u128 { (a + b - 1) / b }
 
 // TODO: Dedup against console client
-fn update_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_sys::Element) -> Result<(), JsValue> {
+fn update_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_sys::Element)
+    -> JsResult<()>
+{
     let is_active = clock.active_force() == Some(force);
     let millis = clock.time_left(force, now).as_millis();
     let sec = millis / 1000;
     let separator = |s| if !is_active || millis % 1000 >= 500 { s } else { " " };
-    let clock_str = if sec >= 20 {
-        format!("{:02}{}{:02}", sec / 60, separator(":"), sec % 60)
-    } else {
+    let low_time = sec < 20;
+    let clock_str = if low_time {
         format!("{:02}{}{}", sec, separator("."), div_ceil(millis, 100) % 10)
+    } else {
+        format!("{:02}{}{:02}", sec / 60, separator(":"), sec % 60)
     };
     clock_node.set_text_content(Some(&clock_str));
-    if is_active {
-        clock_node.set_attribute("class", "clock clock-active")?;
-    } else if millis == 0 {
-        // Note. This will not apply to an active player, which is by design.
-        // When the game is over, all clocks stop, so no player is active.
+    let mut classes = vec!["clock"];
+    if !is_active && millis == 0 {
+        // Note. When the game is over, all clocks stop, so no player is active.
         // An active player can have zero time only in an online game client.
-        // In this case we shouldn't paint the clock red (which means defeat)
-        // before the server confirmed game result, because the game may have
-        // ended earlier on the other board.
-        clock_node.set_attribute("class", "clock clock-flag")?;
-    } else {
-        clock_node.set_attribute("class", "clock")?;
+        // In this case we shouldn't signal flag defeat before the server confirmed
+        // game result, because the game may have ended earlier on the other board.
+        classes.push("clock-flag");
+    } else if low_time {
+        classes.push(if is_active { "clock-active" } else { "clock-inactive" });
+        classes.push("clock-low-time");
     }
-    Ok(())
-}
-
-fn render_players() {
-    for board_idx in WebBoard::iter() {
-        for player_idx in WebPlayer::iter() {
-            render_player(board_idx, player_idx).unwrap();
-        }
-    }
-}
-
-fn render_player(board_idx: WebBoard, player_idx: WebPlayer) -> Result<(), JsValue> {
-    let document = web_document();
-    let id_suffix = format!("{}-{}", board_id(board_idx), player_id(player_idx));
-    let node_id = format!("player-{}", id_suffix);
-    let node = document.get_existing_element_by_id(&node_id)?;
-    remove_all_children(&node)?;
-
-    let table = document.create_element("table")?;
-    table.set_attribute("class", "player-view")?;
-    let tr = document.create_element("tr")?;
-    for obj in ["player-name", "reserve", "clock"] {
-        let td = document.create_element("td")?;
-        td.set_attribute("id", &format!("{}-{}", obj, id_suffix))?;
-        td.set_attribute("class", obj)?;
-        tr.append_child(&td)?;
-    }
-    table.append_child(&tr)?;
-    node.append_child(&table)?;
-
+    clock_node.set_attribute("class", &classes.join(" "))?;
     Ok(())
 }
 
@@ -333,7 +361,7 @@ fn render_grids(flip_forces: bool) {
 }
 
 // TODO: Embed notation inside the squares.
-fn render_grid(board_idx: WebBoard, mut flip_forces: bool) -> Result<(), JsValue> {
+fn render_grid(board_idx: WebBoard, mut flip_forces: bool) -> JsResult<()> {
     match board_idx {
         WebBoard::Primary => {},
         WebBoard::Secondary => flip_forces = !flip_forces,
@@ -359,7 +387,7 @@ fn render_grid(board_idx: WebBoard, mut flip_forces: bool) -> Result<(), JsValue
             let classes = [square_color_class(row, col), square_size_class(board_idx)];
             td.set_attribute("class", &classes.join(" "))?;
             let img = document.create_element("img")?;
-            img.set_attribute("class", "stretch")?;
+            img.set_attribute("class", "stretch board-piece")?;
             img.set_attribute("id", &piece_id(board_idx, coord))?;
             img.set_attribute("src", transparent_1x1_image())?;
             td.append_child(&img)?;
@@ -401,22 +429,9 @@ fn square_size_class(board_idx: WebBoard) -> String {
     format!("sq-{}", board_id(board_idx))
 }
 
-fn to_unicode_char(piece_kind: PieceKind, force: Force) -> char {
-    use self::PieceKind::*;
-    use self::Force::*;
-    match (force, piece_kind) {
-        (White, Pawn) => '♙',
-        (White, Knight) => '♘',
-        (White, Bishop) => '♗',
-        (White, Rook) => '♖',
-        (White, Queen) => '♕',
-        (White, King) => '♔',
-        (Black, Pawn) => '♟',
-        (Black, Knight) => '♞',
-        (Black, Bishop) => '♝',
-        (Black, Rook) => '♜',
-        (Black, Queen) => '♛',
-        (Black, King) => '♚',
+fn piece_path(piece_kind: PieceKind, force: Force) -> String {
+    unsafe {
+        return PIECE_PATH.as_ref().unwrap()[force][piece_kind].clone();
     }
 }
 

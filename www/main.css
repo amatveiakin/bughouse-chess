@@ -1,6 +1,14 @@
+:root {
+  --sq-size-primary: min(6vw, 9vh);
+  --sq-size-secondary: calc(var(--sq-size-primary) / 1.5);
+  --board-size-primary: calc(var(--sq-size-primary) * 8);
+  --board-size-secondary: calc(var(--sq-size-secondary) * 8);
+}
+
 html, body {
   font-family: Verdana, sans-serif;
-  background-color: #1a340d;
+  font-size: max(calc(var(--sq-size-primary) * 0.3), 10pt);
+  background-color: #18300b;
   color: #e0e0e0;
   height: 100%;
 }
@@ -20,12 +28,40 @@ table, tr, th, td {
   padding: 0;
 }
 
-img { display:block; }
-
-.stretch {
-  width: 100%;
-  height: 100%;
+#page {
+  display: grid;
+  grid-template-areas:
+    "   fill-a       hfill-x  prim-reserve-top  hfill-y  scnd-reserve-top  hfill-z      fill-p    "
+    "prim-name-top   hfill-x  prim-reserve-top  hfill-y  scnd-reserve-top  hfill-z   scnd-name-top"
+    "prim-clock-top  hfill-x     prim-board     hfill-y     scnd-board     hfill-z  scnd-clock-top"
+    "   fill-b       hfill-x     prim-board     hfill-y     scnd-board     hfill-z      fill-q    "
+    "   fill-b       hfill-x     prim-board     hfill-y     scnd-board     hfill-z  scnd-clock-bot"
+    "   fill-b       hfill-x     prim-board     hfill-y  scnd-reserve-bot  hfill-z   scnd-name-bot"
+    "   fill-b       hfill-x     prim-board     hfill-y       fill-k       hfill-z      fill-r    "
+    "   fill-b       hfill-x     prim-board     hfill-y     info-panel     hfill-z      fill-r    "
+    "prim-clock-bot  hfill-x     prim-board     hfill-y     info-panel     hfill-z      fill-r    "
+    "prim-name-bot   hfill-x  prim-reserve-bot  hfill-y       fill-l       hfill-z      fill-r    "
+  ;
+  grid-template-columns: auto 1vw auto 5vw auto 1vw auto;
 }
+
+#board-container-primary { grid-area: prim-board; }
+#reserve-primary-top { grid-area: prim-reserve-top; }
+#reserve-primary-bottom { grid-area: prim-reserve-bot; }
+#player-name-primary-top { grid-area: prim-name-top; }
+#player-name-primary-bottom { grid-area: prim-name-bot; }
+#clock-primary-top { grid-area: prim-clock-top; }
+#clock-primary-bottom { grid-area: prim-clock-bot; }
+
+#board-container-secondary { grid-area: scnd-board; }
+#reserve-secondary-top { grid-area: scnd-reserve-top; }
+#reserve-secondary-bottom { grid-area: scnd-reserve-bot; }
+#player-name-secondary-top { grid-area: scnd-name-top; }
+#player-name-secondary-bottom { grid-area: scnd-name-bot; }
+#clock-secondary-top { grid-area: scnd-clock-top; }
+#clock-secondary-bottom { grid-area: scnd-clock-bot; }
+
+#info-panel { grid-area: info-panel; }
 
 .sq-black {
   background-color: #e59349;
@@ -34,21 +70,64 @@ img { display:block; }
   background-color: #dfceb4;
 }
 
+.reserve-piece-primary,
+.reserve-piece-secondary {
+  filter: drop-shadow(0 0 calc(var(--sq-size-primary) * 0.07) #8eab6dc0);
+}
 /* Improvement potential. Better size calculations: Ensure that squares are square
    and do the rest the usual CSS/HTML style based on space left for the grid. */
+.reserve-piece-primary,
 .sq-primary {
-  width: min(6vw, 9vh);
-  height: min(6vw, 9vh);
+  width: var(--sq-size-primary);
+  height: var(--sq-size-primary);
 }
+.reserve-piece-secondary,
 .sq-secondary {
-  width: min(4vw, 6vh);
-  height: min(4vw, 6vh);
+  width: var(--sq-size-secondary);
+  height: var(--sq-size-secondary);
 }
 .sq-primary,
 .sq-secondary {
   user-select: none;
   text-align: center;
   vertical-align: middle;
+}
+
+.board-piece {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.reserve-piece-primary,
+.reserve-piece-secondary {
+  display: block;
+}
+.reserve-piece-primary-wrapper,
+.reserve-piece-primary-separator {
+  width: calc(var(--sq-size-primary) / 2);
+}
+.reserve-piece-secondary-wrapper,
+.reserve-piece-secondary-separator {
+  width: calc(var(--sq-size-secondary) / 2);
+}
+.reserve-piece-primary-wrapper,
+.reserve-piece-secondary-wrapper,
+.reserve-piece-primary-separator,
+.reserve-piece-secondary-separator {
+  display: inline-block;
+}
+
+#reserve-primary-top,
+#reserve-primary-bottom {
+  height: var(--sq-size-primary);
+}
+#reserve-secondary-top,
+#reserve-secondary-bottom {
+  height: var(--sq-size-secondary);
+}
+.reserve {
+  text-align: center;
+  padding: calc(var(--sq-size-primary) * 0.15) 0;
 }
 
 .dragover {
@@ -64,44 +143,63 @@ img { display:block; }
   box-shadow: 1px 1px 2px #202020;
 }
 
-.player-view {
-  width: 100%
+#player-name-primary-top,
+#player-name-primary-bottom {
+  text-align: right;
 }
-
-.player-name {
+#player-name-secondary-top,
+#player-name-secondary-bottom {
   text-align: left;
-  width: 30%;
 }
-
-.reserve {
-  text-align: center;
-  width: 40%;
+.player-name {
+  color: #a4b984;
+  padding: calc(var(--sq-size-primary) * 0.1) 0;
 }
 
 .clock {
   font-family: Monaco, monospace;
-  font-size: larger;
-  text-align: right;
-  width: 30%;
+  font-size: 150%;
+  text-align: center;
   white-space: nowrap;
+  min-width: 3em;
+  outline: calc(var(--sq-size-primary) * 0.03) solid #63b32a;
+  border-radius: calc(var(--sq-size-primary) * 0.2);
+  padding: calc(var(--sq-size-primary) * 0.05) calc(var(--sq-size-primary) * 0.1);
+  margin: calc(var(--sq-size-primary) * 0.2)  0;
+}
+.clock-inactive {
+  color: #909090;
+  background-color: #272e22;
 }
 .clock-active {
   font-weight: bold;
-  color: #917a00;
+  color: #f0f0f0;
+  background-color: #1e4907;
+  outline: calc(var(--sq-size-primary) * 0.1) outset #63b32a;
+}
+.clock-active.clock-low-time {
+  font-weight: bold;
+  color: #f0f0f0;
+  background-color: #3a4c00;
+  outline: calc(var(--sq-size-primary) * 0.1) outset #d5dc1c;
 }
 .clock-flag {
   font-weight: bold;
-  color: #e74c3c;
-}
-
-#board-sep {
-  width: 5vw;
+  color: #909090;
+  background-color: #691400;
+  outline: calc(var(--sq-size-primary) * 0.1) solid #bf0000;
 }
 
 #info-string {
-  font-size: min(2vw, 3vh, 11pt);
+  font-size: 80%;
+  width: max(var(--board-size-secondary), 6em);
   max-height: 4em;
+  padding-bottom: 0.5em;
   display: block;
-  width: min(32vw, 48vh);
   overflow: hidden;
+}
+#command {
+  width: max(var(--board-size-secondary), 6em);
+  box-sizing: border-box;
+  background-color: #8ea36e;
 }
