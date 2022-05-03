@@ -144,11 +144,9 @@ impl WebClient {
                             let filename = piece_path(piece.kind, piece.force);
                             node.set_attribute("src", &filename).unwrap();
                             node.set_attribute("data-piece-kind", &piece_notation(piece.kind)).unwrap();
-                            node.set_attribute("data-piece-image", &filename).unwrap();
                         } else {
                             node.set_attribute("src", transparent_1x1_image()).unwrap();
                             node.remove_attribute("data-piece-kind").unwrap();
-                            node.remove_attribute("data-piece-image").unwrap();
                         }
                         if draggable {
                             node.set_attribute("draggable", "true").unwrap();
@@ -167,7 +165,8 @@ impl WebClient {
                         let name_node = document.get_existing_element_by_id(&format!("player-name-{}", id_suffix)).unwrap();
                         name_node.set_text_content(Some(&board.player(force).name));
                         let reserve_node = document.get_existing_element_by_id(&format!("reserve-{}", id_suffix)).unwrap();
-                        update_reserve(board.reserve(force), force, web_board_idx, &reserve_node).unwrap();
+                        let is_me = is_primary && force == my_force;
+                        update_reserve(board.reserve(force), force, web_board_idx, is_me, &reserve_node).unwrap();
                     }
                 }
                 if game_confirmed.status() != BughouseGameStatus::Active {
@@ -286,7 +285,8 @@ pub fn init_page(
     render_grids(false);
 }
 
-fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, reserve_node: &web_sys::Element)
+fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard,
+    is_me: bool, reserve_node: &web_sys::Element)
     -> JsResult<()>
 {
     let document = web_document();
@@ -312,6 +312,10 @@ fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, reserve_
             let img = document.create_element("img")?;
             img.set_attribute("src", &filename)?;
             img.set_attribute("class", &class_base)?;
+            if is_me {
+                img.set_attribute("draggable", "true").unwrap();
+                img.set_attribute("data-piece-kind", &reserve_piece_notation(piece_kind)).unwrap();
+            }
             wrapper.append_child(&img)?;
             reserve_node.append_child(&wrapper)?;
         }
@@ -444,6 +448,18 @@ fn piece_notation(piece_kind: PieceKind) -> &'static str {
         Rook => "R",
         Queen => "Q",
         King => "K",
+    }
+}
+
+fn reserve_piece_notation(piece_kind: PieceKind) -> &'static str {
+    use self::PieceKind::*;
+    match piece_kind {
+        Pawn => "P",
+        Knight => "N",
+        Bishop => "B",
+        Rook => "R",
+        Queen => "Q",
+        King => panic!("There should be no kings in reserve"),
     }
 }
 

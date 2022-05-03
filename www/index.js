@@ -127,6 +127,7 @@ function update() {
         }
     }
     wasm_client.update_state();
+    setup_drag_for_reserve();
 }
 
 function on_socket_opened() {
@@ -146,6 +147,17 @@ function request_join(address, my_name, my_team) {
     socket.addEventListener('open', function(event) {
         on_socket_opened();
     });
+}
+
+function setup_drag_for_reserve() {
+    for (const element of document.getElementsByClassName('reserve-piece-primary')) {
+        element.addEventListener('dragstart', function(e) {
+            const piece_kind = this.getAttribute('data-piece-kind');
+            const from = `${piece_kind}@`;
+            e.dataTransfer.setData('application/bughouse-move-from', from);
+            e.dataTransfer.effectAllowed = 'move';
+        });
+    }
 }
 
 function setup_drag_and_drop() {
