@@ -11,6 +11,7 @@ extern crate console;
 extern crate enum_map;
 extern crate instant;
 extern crate itertools;
+extern crate regex;
 extern crate scopeguard;
 extern crate serde;
 extern crate serde_json;
@@ -39,6 +40,8 @@ fn main() -> io::Result<()> {
         .subcommand(
             Command::new("server")
                 .about("Run as server")
+                .arg(arg!(--starting_time [TIME] "Starting time for each player")
+                    .default_value("5:00"))
         )
         .subcommand(
             Command::new("client")
@@ -50,8 +53,10 @@ fn main() -> io::Result<()> {
         .get_matches();
 
     match matches.subcommand() {
-        Some(("server", _)) => {
-            server_main::run();
+        Some(("server", sub_matches)) => {
+            server_main::run(server_main::ServerConfig {
+                starting_time: sub_matches.value_of("starting_time").unwrap().to_string(),
+            });
             Ok(())
         },
         Some(("client", sub_matches)) => {

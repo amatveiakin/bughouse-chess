@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
 
+use regex::Regex;
 use tungstenite::protocol;
 
 use bughouse_chess::*;
@@ -16,8 +17,35 @@ use bughouse_chess::server::*;
 use crate::network;
 
 
+pub struct ServerConfig {
+    pub starting_time: String,
+}
+
+fn parse_starting_time(time_str: &str) -> Duration {
+    let time_re = Regex::new(r"([0-9]+):([0-9]{2})").unwrap();
+    if let Some(cap) = time_re.captures(time_str) {
+        let minutes = cap.get(1).unwrap().as_str().parse::<u64>().unwrap();
+        let seconds = cap.get(2).unwrap().as_str().parse::<u64>().unwrap();
+        Duration::from_secs(minutes * 60 + seconds)
+    } else {
+        panic!("Invalid starting time format: '{}', expected 'm:ss'", time_str);
+    }
+}
+
 // Improvement potential: Better error handling.
-pub fn run() {
+pub fn run(config: ServerConfig) {
+    let chess_rules = ChessRules {
+        starting_position: StartingPosition::FischerRandom,
+        time_control: TimeControl {
+            starting_time: parse_starting_time(&config.starting_time)
+        },
+    };
+    let bughouse_rules = BughouseRules {
+        min_pawn_drop_row: SubjectiveRow::from_one_based(2),
+        max_pawn_drop_row: SubjectiveRow::from_one_based(6),
+        drop_aggression: DropAggression::NoChessMate,
+    };
+
     let (tx, rx) = mpsc::channel();
     let tx_tick = tx.clone();
     thread::spawn(move || {
@@ -29,15 +57,6 @@ pub fn run() {
     let clients = Arc::new(Mutex::new(Clients::new()));
     let clients_adder = Arc::clone(&clients);
     thread::spawn(move || {
-        let chess_rules = ChessRules {
-            starting_position: StartingPosition::FischerRandom,
-            time_control: TimeControl{ starting_time: Duration::from_secs(300) },
-        };
-        let bughouse_rules = BughouseRules {
-            min_pawn_drop_row: SubjectiveRow::from_one_based(2),
-            max_pawn_drop_row: SubjectiveRow::from_one_based(6),
-            drop_aggression: DropAggression::NoChessMate,
-        };
         let mut server_state = ServerState::new(clients, chess_rules, bughouse_rules);
         for event in rx {
             server_state.apply_event(event);

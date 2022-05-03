@@ -76,6 +76,7 @@ dependencies = [
  "enum-map",
  "instant",
  "itertools",
+ "regex",
  "scopeguard",
  "serde",
  "serde_json",

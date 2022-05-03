@@ -11,6 +11,7 @@ clap = { version = "3.1.9", features = ["cargo"] }
 enum-map = "2.1.0"
 instant = "0.1.12"
 itertools = "0.10.3"
+regex = "1.5.5"
 scopeguard = "1.1.0"
 tungstenite = "0.17.2"
 url = "2.2.2"
