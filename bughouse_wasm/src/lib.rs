@@ -353,9 +353,11 @@ fn update_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_
         // In this case we shouldn't signal flag defeat before the server confirmed
         // game result, because the game may have ended earlier on the other board.
         classes.push("clock-flag");
-    } else if low_time {
+    } else {
         classes.push(if is_active { "clock-active" } else { "clock-inactive" });
-        classes.push("clock-low-time");
+        if low_time {
+            classes.push("clock-low-time");
+        }
     }
     clock_node.set_attribute("class", &classes.join(" "))?;
     Ok(())
