@@ -94,6 +94,9 @@ function on_command(event) {
                 // TODO: Consistent policy for checking when wasm_client exists.
                 wasm_client.resign();
                 break;
+            case 'newgame':
+                wasm_client.new_game();
+                break;
             case 'leave':
                 wasm_client.leave();
                 break;

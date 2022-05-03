@@ -195,7 +195,10 @@ impl ServerState {
                     },
                     BughouseClientEvent::Resign => {
                         self.core.process_resign(&mut clients, client_id, now);
-                    }
+                    },
+                    BughouseClientEvent::NewGame => {
+                        self.core.process_new_game();
+                    },
                     BughouseClientEvent::Leave => {
                         self.core.process_leave(&mut clients, client_id);
                     },
@@ -335,6 +338,10 @@ impl ServerStateCore {
         } else {
             clients[client_id].send_error("Cannot resign: no game in progress".to_owned());
         }
+    }
+
+    fn process_new_game(&mut self) {
+        self.contest_state = ContestState::Lobby;
     }
 
     fn process_leave(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId) {

@@ -75,6 +75,9 @@ impl ClientState {
     pub fn resign(&mut self) {
         self.events_tx.send(BughouseClientEvent::Resign).unwrap();
     }
+    pub fn new_game(&mut self) {
+        self.events_tx.send(BughouseClientEvent::NewGame).unwrap();
+    }
     pub fn leave(&mut self) {
         self.events_tx.send(BughouseClientEvent::Leave).unwrap();
     }

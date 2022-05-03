@@ -72,6 +72,9 @@ impl WebClient {
     pub fn resign(&mut self) {
         self.state.resign();
     }
+    pub fn new_game(&mut self) {
+        self.state.new_game();
+    }
     pub fn leave(&mut self) {
         self.state.leave();
     }

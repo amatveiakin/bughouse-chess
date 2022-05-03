@@ -51,5 +51,6 @@ pub enum BughouseClientEvent {
         turn_algebraic: String,
     },
     Resign,
+    NewGame,
     Leave,
 }
