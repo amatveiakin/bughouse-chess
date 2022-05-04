@@ -162,7 +162,6 @@ table, tr, th, td {
   text-align: center;
   white-space: nowrap;
   min-width: 3em;
-  outline: calc(var(--sq-size-primary) * 0.03) solid #64b62a;
   border-radius: calc(var(--sq-size-primary) * 0.2);
   padding: calc(var(--sq-size-primary) * 0.05) calc(var(--sq-size-primary) * 0.1);
   margin: calc(var(--sq-size-primary) * 0.2)  0;
@@ -170,6 +169,7 @@ table, tr, th, td {
 .clock-inactive {
   color: #909090;
   background-color: #28351f;
+  outline: calc(var(--sq-size-primary) * 0.03) solid #74935f;
 }
 .clock-active {
   font-weight: bold;
