@@ -31,16 +31,19 @@ table, tr, th, td {
 #page {
   display: grid;
   grid-template-areas:
+    "   fill-a       hfill-x  prim-reserve-top  hfill-y       fill-k       hfill-z      fill-p    "
     "   fill-a       hfill-x  prim-reserve-top  hfill-y  scnd-reserve-top  hfill-z      fill-p    "
     "prim-name-top   hfill-x  prim-reserve-top  hfill-y  scnd-reserve-top  hfill-z   scnd-name-top"
     "prim-clock-top  hfill-x     prim-board     hfill-y     scnd-board     hfill-z  scnd-clock-top"
     "   fill-b       hfill-x     prim-board     hfill-y     scnd-board     hfill-z      fill-q    "
     "   fill-b       hfill-x     prim-board     hfill-y     scnd-board     hfill-z  scnd-clock-bot"
     "   fill-b       hfill-x     prim-board     hfill-y  scnd-reserve-bot  hfill-z   scnd-name-bot"
-    "   fill-b       hfill-x     prim-board     hfill-y       fill-k       hfill-z      fill-r    "
+    "   fill-b       hfill-x     prim-board     hfill-y  scnd-reserve-bot  hfill-z      fill-r    "
+    "   fill-b       hfill-x     prim-board     hfill-y       fill-l       hfill-z      fill-r    "
     "   fill-b       hfill-x     prim-board     hfill-y     info-panel     hfill-z      fill-r    "
     "prim-clock-bot  hfill-x     prim-board     hfill-y     info-panel     hfill-z      fill-r    "
-    "prim-name-bot   hfill-x  prim-reserve-bot  hfill-y       fill-l       hfill-z      fill-r    "
+    "prim-name-bot   hfill-x  prim-reserve-bot  hfill-y       fill-m       hfill-z      fill-r    "
+    "   fill-c       hfill-x  prim-reserve-bot  hfill-y       fill-m       hfill-z      fill-r    "
   ;
   grid-template-columns: auto 1vw auto 5vw auto 1vw auto;
 }
