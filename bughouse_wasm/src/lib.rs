@@ -85,18 +85,23 @@ impl WebClient {
     }
 
     pub fn process_server_event(&mut self, event: &str) -> JsResult<Option<String>> {
-        let game_was_active = matches!(self.state.contest_state(), ContestState::Game{ .. });
-        self.state.process_server_event(serde_json::from_str(event).unwrap()).map_err(|err| {
+        let server_event = serde_json::from_str(event).unwrap();
+        let notable_event = self.state.process_server_event(server_event).map_err(|err| {
             JsValue::from(format!("{:?}", err))
         })?;
-        if let ContestState::Game{ ref game_confirmed, .. } = self.state.contest_state() {
-            if !game_was_active {
-                let info_string = web_document().get_existing_element_by_id("info-string").unwrap();
-                info_string.set_text_content(None);
-                let my_name = self.state.my_name();
-                let (_, force) = game_confirmed.find_player(my_name).unwrap();
-                render_grids(force == Force::Black);
-                return Ok(Some("game_started".to_owned()));
+        match notable_event {
+            NotableEvent::None => {},
+            NotableEvent::GameStarted => {
+                if let ContestState::Game{ ref game_confirmed, .. } = self.state.contest_state() {
+                    let info_string = web_document().get_existing_element_by_id("info-string").unwrap();
+                    info_string.set_text_content(None);
+                    let my_name = self.state.my_name();
+                    let (_, force) = game_confirmed.find_player(my_name).unwrap();
+                    render_grids(force == Force::Black);
+                    return Ok(Some("game_started".to_owned()));
+                } else {
+                    panic!("No game in progress");
+                }
             }
         }
         Ok(None)

@@ -175,7 +175,12 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     for event in rx {
         match event {
             IncomingEvent::Network(event) => {
-                client_state.process_server_event(event).unwrap();
+                match client_state.process_server_event(event).unwrap() {
+                    NotableEvent::None => {},
+                    NotableEvent::GameStarted => {
+                        execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
+                    }
+                }
             },
             IncomingEvent::Terminal(event) => {
                 if let term_event::Event::Key(event) = event {

@@ -17,6 +17,12 @@ pub enum TurnCommandError {
 }
 
 #[derive(Clone, Debug)]
+pub enum NotableEvent {
+    None,
+    GameStarted,
+}
+
+#[derive(Clone, Debug)]
 pub enum EventError {
     ServerReturnedError(String),
     CannotApplyEvent(String),
@@ -108,7 +114,11 @@ impl ClientState {
         }
     }
 
-    pub fn process_server_event(&mut self, event: BughouseServerEvent) -> Result<(), EventError> {
+    // TODO: This is becoming a weird mixture of rendering `ContestState` AND processing `NotableEvent`s.
+    //   Consider whether `ClientState` should become a processor of turning events from server
+    //   into more digestable client events that client implementations work on (while never reading
+    //   the state directly.
+    pub fn process_server_event(&mut self, event: BughouseServerEvent) -> Result<NotableEvent, EventError> {
         use BughouseServerEvent::*;
         match event {
             Error{ message } => {
@@ -126,7 +136,7 @@ impl ClientState {
                         });
                     },
                 }
-                Ok(())
+                Ok(NotableEvent::None)
             },
             GameStarted{ chess_rules, bughouse_rules, starting_grid, players, time, turn_log } => {
                 let player_map = BughouseGame::make_player_map(
@@ -148,10 +158,11 @@ impl ClientState {
                 for event in turn_log {
                     self.apply_turn(event)?;
                 }
-                Ok(())
+                Ok(NotableEvent::GameStarted)
             },
             TurnMade(event) => {
-                self.apply_turn(event)
+                self.apply_turn(event)?;
+                Ok(NotableEvent::None)
             },
             GameOver{ time, game_status } => {
                 if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, .. }
@@ -161,7 +172,7 @@ impl ClientState {
                     assert!(game_confirmed.status() == BughouseGameStatus::Active);
                     assert!(game_status != BughouseGameStatus::Active);
                     game_confirmed.set_status(game_status, time);
-                    Ok(())
+                    Ok(NotableEvent::None)
                 } else {
                     Err(EventError::CannotApplyEvent("Cannot record game result: no game in progress".to_owned()))
                 }
@@ -201,7 +212,7 @@ impl ClientState {
         }
     }
 
-    // TODO: Is this function needed? (may notify about state change)
+    // TODO: Is this function needed? (maybe always produce a NotableEvent here)
     fn new_contest_state(&mut self, contest_state: ContestState) {
         self.contest_state = contest_state;
     }
