@@ -74,7 +74,7 @@ pub fn run(config: ServerConfig) {
                 let mut socket_in = tungstenite::accept(stream).unwrap();
                 let mut socket_out = network::clone_websocket(&socket_in, protocol::Role::Server);
                 let (client_tx, client_rx) = mpsc::channel();
-                let client_id = clients_adder.lock().unwrap().add_client(client_tx);
+                let client_id = clients_adder.lock().unwrap().add_client(client_tx, peer_addr.to_string());
                 let tx_new = tx.clone();
                 let clients_remover1 = Arc::clone(&clients_adder);
                 let clients_remover2 = Arc::clone(&clients_adder);
@@ -88,8 +88,9 @@ pub fn run(config: ServerConfig) {
                                 tx_new.send(IncomingEvent::Network(client_id, ev)).unwrap();
                             },
                             Err(err) => {
-                                println!("Client {} will be disconnected due to read error: {:?}", peer_addr, err);
-                                clients_remover1.lock().unwrap().remove_client(client_id);
+                                if let Some(logging_id) = clients_remover1.lock().unwrap().remove_client(client_id) {
+                                    println!("Client {} disconnected due to read error: {:?}", logging_id, err);
+                                }
                                 return;
                             },
                         }
@@ -100,8 +101,9 @@ pub fn run(config: ServerConfig) {
                         match network::write_obj(&mut socket_out, &ev) {
                             Ok(()) => {},
                             Err(err) => {
-                                println!("Client {} will be disconnected due to write error: {:?}", peer_addr, err);
-                                clients_remover2.lock().unwrap().remove_client(client_id);
+                                if let Some(logging_id) = clients_remover2.lock().unwrap().remove_client(client_id) {
+                                    println!("Client {} disconnected due to write error: {:?}", logging_id, err);
+                                }
                                 return;
                             },
                         }

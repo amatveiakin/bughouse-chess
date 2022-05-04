@@ -76,6 +76,7 @@ pub struct ClientId(usize);
 pub struct Client {
     events_tx: mpsc::Sender<BughouseServerEvent>,
     player_id: Option<PlayerId>,
+    logging_id: String,
 }
 
 impl Client {
@@ -95,23 +96,27 @@ pub struct Clients {
 impl Clients {
     pub fn new() -> Self { Clients{ map: HashMap::new(), next_id: 1 } }
 
-    pub fn add_client(&mut self, events_tx: mpsc::Sender<BughouseServerEvent>) -> ClientId {
+    pub fn add_client(&mut self, events_tx: mpsc::Sender<BughouseServerEvent>, logging_id: String)
+        -> ClientId
+    {
         let client = Client {
             events_tx,
             player_id: None,
+            logging_id,
         };
         let id = ClientId(self.next_id);
         self.next_id += 1;
         assert!(self.map.insert(id, client).is_none());
         id
     }
+    // Returns `logging_id` if the client existed.
     // A client can be removed multiple times, e.g. first on `Leave`, then on network
     // channel closure. This is not an error.
     // Improvement potential. Send an event informing other clients that somebody went
     // offline (for TUI: could use “ϟ” for “disconnected”; there is a plug emoji “🔌”
     // that works much better, but it's not supported by console fonts).
-    pub fn remove_client(&mut self, id: ClientId) {
-        self.map.remove(&id);
+    pub fn remove_client(&mut self, id: ClientId) -> Option<String> {
+        self.map.remove(&id).map(|client| client.logging_id)
     }
 
     fn broadcast(&mut self, event: &BughouseServerEvent) {
@@ -345,7 +350,9 @@ impl ServerStateCore {
     }
 
     fn process_leave(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId) {
-        clients.remove_client(client_id);
+        if let Some(logging_id) = clients.remove_client(client_id) {
+            println!("Client {} disconnected", logging_id);
+        }
         // Note. Player will be removed automatically. This has to be the case, otherwise
         // clients disconnected due to a network error would've left abandoned players.
     }

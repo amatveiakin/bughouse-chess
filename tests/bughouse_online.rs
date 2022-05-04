@@ -31,7 +31,7 @@ impl Server {
     }
 
     fn add_client(&mut self, events_tx: mpsc::Sender<BughouseServerEvent>) -> server::ClientId {
-        self.clients.lock().unwrap().add_client(events_tx)
+        self.clients.lock().unwrap().add_client(events_tx, "client".to_owned())
     }
 
     fn send_network_event(&mut self, id: server::ClientId, event: BughouseClientEvent) {
