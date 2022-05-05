@@ -106,7 +106,7 @@ function on_command(event) {
         }
     } else {
         if (wasm_client) {
-            wasm_client.make_turn(input);
+            wasm_client.make_turn_algebraic(input);
         }
     }
     event.target.value = '';
@@ -159,7 +159,7 @@ function setup_drag_for_reserve() {
     for (const element of document.getElementsByClassName('reserve-piece-primary')) {
         element.addEventListener('dragstart', function(e) {
             const piece_kind = this.getAttribute('data-piece-kind');
-            const from = `${piece_kind}@`;
+            const from = `reserve-${piece_kind}`;
             e.dataTransfer.setData('application/bughouse-move-from', from);
             e.dataTransfer.effectAllowed = 'move';
         });
@@ -170,9 +170,7 @@ function setup_drag_and_drop() {
     for (const coord of coords) {
         const element = document.getElementById(`primary-${coord}`);
         element.addEventListener('dragstart', function(e) {
-            const piece_kind = this.getAttribute('data-piece-kind');
-            const from = `${piece_kind}${coord}`;
-            e.dataTransfer.setData('application/bughouse-move-from', from);
+            e.dataTransfer.setData('application/bughouse-move-from', coord);
             e.dataTransfer.effectAllowed = 'move';
             // const img = new Image();
             // img.src = this.getAttribute('data-piece-image');
@@ -200,10 +198,8 @@ function setup_drag_and_drop() {
             e.target.classList.remove('dragover');
             const from = e.dataTransfer.getData('application/bughouse-move-from');
             const to = coord;
-            // TODO: Proper API
-            // TODO: Promotions, castling, drops
             if (wasm_client) {
-                wasm_client.make_turn(`${from}${to}`);
+                wasm_client.make_turn_drag_drop(from, to, e.shiftKey);
             }
             update();
         });

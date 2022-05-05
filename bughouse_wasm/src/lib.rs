@@ -78,10 +78,58 @@ impl WebClient {
     pub fn leave(&mut self) {
         self.state.leave();
     }
-    pub fn make_turn(&mut self, turn_algebraic: String) {
+    pub fn make_turn_algebraic(&mut self, turn_algebraic: String) {
         let turn_result = self.state.make_turn(turn_algebraic);
         let info_string = web_document().get_existing_element_by_id("info-string").unwrap();
         info_string.set_text_content(turn_result.err().map(|err| format!("{:?}", err)).as_deref());
+    }
+    pub fn make_turn_drag_drop(&mut self, from: &str, to: &str, alternative_promotion: bool)
+        -> JsResult<()>
+    {
+        if let ContestState::Game{ game_confirmed, local_turn, .. } = self.state.contest_state() {
+            use PieceKind::*;
+            let my_name = self.state.my_name();
+            let game = game_local(my_name, game_confirmed, local_turn);
+            if let Some(piece) = from.strip_prefix("reserve-") {
+                self.make_turn_algebraic(format!("{}@{}", piece, to));
+            } else {
+                let (_, my_force) = game.find_player(my_name).unwrap();
+                let board = game.player_board(my_name).unwrap();
+                let from_coord = Coord::from_algebraic(from);
+                let to_coord = Coord::from_algebraic(to);
+                if let Some(piece) = board.grid()[from_coord] {
+                    let last_row = SubjectiveRow::from_one_based(8).to_row(my_force);
+                    let d_col = to_coord.col - from_coord.col;
+                    let to_my_piece = if let Some(piece_to) = board.grid()[to_coord] {
+                        piece_to.force == my_force
+                    } else {
+                        false
+                    };
+                    // Castling rules: drag the king at least two squares in the rook direction
+                    // or onto a friendly piece. That later is required for Fischer random where
+                    // a king could start on b1 or g1.
+                    if piece.kind == King && d_col >= 2 || to_my_piece {
+                        if d_col > 0 {
+                            self.make_turn_algebraic("0-0".to_owned());
+                        } else {
+                            self.make_turn_algebraic("0-0-0".to_owned());
+                        }
+                    } else if piece.kind == Pawn && to_coord.row == last_row {
+                        let promote_to = if alternative_promotion { Knight } else { Queen };
+                        let promotion_str = piece_notation(promote_to);
+                        self.make_turn_algebraic(format!("{}{}/{}", from, to, promotion_str));
+                    } else {
+                        let piece_str = piece_notation(piece.kind);
+                        self.make_turn_algebraic(format!("{}{}{}", piece_str, from, to));
+                    }
+                } else {
+                    return Err(JsValue::from("Cannot make turn: no piece in the starting position"))
+                }
+            }
+        } else {
+            return Err(JsValue::from("Cannot make turn: no game in progress"))
+        }
+        Ok(())
     }
 
     pub fn process_server_event(&mut self, event: &str) -> JsResult<Option<String>> {
@@ -151,10 +199,8 @@ impl WebClient {
                         if let Some(piece) = piece {
                             let filename = piece_path(piece.kind, piece.force);
                             node.set_attribute("src", &filename).unwrap();
-                            node.set_attribute("data-piece-kind", &piece_notation(piece.kind)).unwrap();
                         } else {
                             node.set_attribute("src", transparent_1x1_image()).unwrap();
-                            node.remove_attribute("data-piece-kind").unwrap();
                         }
                         if draggable {
                             node.set_attribute("draggable", "true").unwrap();

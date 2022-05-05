@@ -42,6 +42,7 @@ pub enum ContestState {
     },
 }
 
+// TODO: Make this a method instead
 pub fn game_local(my_name: &str, game_confirmed: &BughouseGame, local_turn: &Option<(String, GameInstant)>)
     -> BughouseGame
 {
