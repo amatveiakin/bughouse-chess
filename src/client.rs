@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use std::sync::mpsc;
 
+use enum_map::EnumMap;
 use instant::Instant;
 
 use crate::board::{TurnError};
@@ -8,6 +9,7 @@ use crate::clock::{GameInstant, WallGameTimePair};
 use crate::game::{BughouseGameStatus, BughouseGame};
 use crate::event::{TurnMadeEvent, BughouseServerEvent, BughouseClientEvent};
 use crate::player::{Player, Team};
+use crate::util::try_vec_to_enum_map;
 
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -33,6 +35,8 @@ pub enum ContestState {
     Uninitialized,
     Lobby { players: Vec<Player> },
     Game {
+        // Scores from the past matches.
+        scores: EnumMap<Team, u32>,
         // State as it has been confirmed by the server.
         game_confirmed: BughouseGame,
         // Local turn (algebraic), uncofirmed by the server yet, but displayed on the client.
@@ -71,6 +75,7 @@ impl ClientState {
     }
 
     pub fn my_name(&self) -> &str { &self.my_name }
+    pub fn my_team(&self) -> Team { self.my_team }
     pub fn contest_state(&self) -> &ContestState { &self.contest_state }
 
     pub fn join(&mut self) {
@@ -82,15 +87,18 @@ impl ClientState {
     pub fn resign(&mut self) {
         self.events_tx.send(BughouseClientEvent::Resign).unwrap();
     }
-    pub fn new_game(&mut self) {
-        self.events_tx.send(BughouseClientEvent::NewGame).unwrap();
+    pub fn next_game(&mut self) {
+        self.events_tx.send(BughouseClientEvent::NextGame).unwrap();
     }
     pub fn leave(&mut self) {
         self.events_tx.send(BughouseClientEvent::Leave).unwrap();
     }
+    pub fn reset(&mut self) {
+        self.events_tx.send(BughouseClientEvent::Reset).unwrap();
+    }
 
     pub fn make_turn(&mut self, turn_algebraic: String) -> Result<(), TurnCommandError> {
-        if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, time_pair }
+        if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, time_pair, .. }
             = self.contest_state
         {
             let game_now = GameInstant::from_pair_game_maybe_active(time_pair, Instant::now());
@@ -139,7 +147,7 @@ impl ClientState {
                 }
                 Ok(NotableEvent::None)
             },
-            GameStarted{ chess_rules, bughouse_rules, starting_grid, players, time, turn_log } => {
+            GameStarted{ chess_rules, bughouse_rules, scores, starting_grid, players, time, turn_log } => {
                 let player_map = BughouseGame::make_player_map(
                     players.iter().map(|(p, board_idx)| (Rc::new(p.clone()), *board_idx))
                 );
@@ -150,6 +158,7 @@ impl ClientState {
                     Some(WallGameTimePair::new(Instant::now(), time.approximate()))
                 };
                 self.new_contest_state(ContestState::Game {
+                    scores: try_vec_to_enum_map(scores).unwrap(),
                     game_confirmed: BughouseGame::new_with_grid(
                         chess_rules, bughouse_rules, starting_grid, player_map
                     ),
@@ -165,14 +174,15 @@ impl ClientState {
                 self.apply_turn(event)?;
                 Ok(NotableEvent::None)
             },
-            GameOver{ time, game_status } => {
-                if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, .. }
+            GameOver{ time, game_status, scores: new_scores } => {
+                if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, ref mut scores, .. }
                     = self.contest_state
                 {
                     *local_turn = None;
                     assert!(game_confirmed.status() == BughouseGameStatus::Active);
                     assert!(game_status != BughouseGameStatus::Active);
                     game_confirmed.set_status(game_status, time);
+                    *scores = try_vec_to_enum_map(new_scores).unwrap();
                     Ok(NotableEvent::None)
                 } else {
                     Err(EventError::CannotApplyEvent("Cannot record game result: no game in progress".to_owned()))
@@ -182,9 +192,9 @@ impl ClientState {
     }
 
     fn apply_turn(&mut self, event: TurnMadeEvent) -> Result<(), EventError> {
-        let TurnMadeEvent{ player_name, turn_algebraic, time, game_status } = event;
+        let TurnMadeEvent{ player_name, turn_algebraic, time, game_status, scores: new_scores } = event;
         if let ContestState::Game{
-            ref mut game_confirmed, ref mut local_turn, ref mut time_pair
+            ref mut game_confirmed, ref mut local_turn, ref mut time_pair, ref mut scores, ..
         } = self.contest_state {
             // TODO: Simply ignore turns after game over.
             assert!(game_confirmed.status() == BughouseGameStatus::Active, "Cannot make turn: game over");
@@ -207,6 +217,7 @@ impl ClientState {
                     "Expected game status = {:?}, actual = {:?}", game_status, game_confirmed.status()
                 )))
             }
+            *scores = try_vec_to_enum_map(new_scores).unwrap();
             Ok(())
         } else {
             Err(EventError::CannotApplyEvent("Cannot make turn: no game in progress".to_owned()))

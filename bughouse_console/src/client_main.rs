@@ -1,4 +1,5 @@
 // TODO: Rename to client_tui (or client_console).
+// TODO: Allow all commands (including "next game" and others).
 
 use std::fmt;
 use std::io;
@@ -78,12 +79,12 @@ fn render(
                 writeln_raw(stdout, "")?;
             }
         },
-        ContestState::Game{ game_confirmed, local_turn, time_pair } => {
+        ContestState::Game{ game_confirmed, local_turn, time_pair, .. } => {
+            // TODO: Show scores
             let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
             let game = game_local(my_name, game_confirmed, local_turn);
             let view = game.view_for_player(my_name);
             writeln_raw(stdout, format!("{}\n", tui::render_bughouse_game(&game, view, game_now)))?;
-            // TODO: Clear after lobby: there are remainings of player names in empty lines
             // Note. Don't clear the board to avoid blinking.
             // TODO: Show last turn by opponent.
             execute!(stdout, terminal::Clear(terminal::ClearType::FromCursorDown))?;

@@ -31,19 +31,21 @@ table, tr, th, td {
 #page {
   display: grid;
   grid-template-areas:
-    "   fill-a       hfill-x  prim-reserve-top  hfill-y       fill-k       hfill-z      fill-p    "
-    "   fill-a       hfill-x  prim-reserve-top  hfill-y  scnd-reserve-top  hfill-z      fill-p    "
-    "prim-name-top   hfill-x  prim-reserve-top  hfill-y  scnd-reserve-top  hfill-z   scnd-name-top"
-    "prim-clock-top  hfill-x     prim-board     hfill-y     scnd-board     hfill-z  scnd-clock-top"
-    "   fill-b       hfill-x     prim-board     hfill-y     scnd-board     hfill-z      fill-q    "
-    "   fill-b       hfill-x     prim-board     hfill-y     scnd-board     hfill-z  scnd-clock-bot"
-    "   fill-b       hfill-x     prim-board     hfill-y  scnd-reserve-bot  hfill-z   scnd-name-bot"
-    "   fill-b       hfill-x     prim-board     hfill-y  scnd-reserve-bot  hfill-z      fill-r    "
-    "   fill-b       hfill-x     prim-board     hfill-y       fill-l       hfill-z      fill-r    "
-    "   fill-b       hfill-x     prim-board     hfill-y     info-panel     hfill-z      fill-r    "
-    "prim-clock-bot  hfill-x     prim-board     hfill-y     info-panel     hfill-z      fill-r    "
-    "prim-name-bot   hfill-x  prim-reserve-bot  hfill-y       fill-m       hfill-z      fill-r    "
-    "   fill-c       hfill-x  prim-reserve-bot  hfill-y       fill-m       hfill-z      fill-r    "
+    "   fill-a       fill-x  prim-reserve-top  fill-y       fill-k       fill-w      fill-p    "
+    "   fill-a       fill-x  prim-reserve-top  fill-y  scnd-reserve-top  fill-w      fill-p    "
+    "prim-name-top   fill-x  prim-reserve-top  fill-y  scnd-reserve-top  fill-w   scnd-name-top"
+    "prim-clock-top  fill-x     prim-board     fill-y     scnd-board     fill-w  scnd-clock-top"
+    "   fill-b       fill-x     prim-board     fill-y     scnd-board     fill-w      fill-q    "
+    "   fill-b       fill-x     prim-board     score      scnd-board     fill-w      fill-q    "
+    "   fill-b       fill-x     prim-board     fill-z     scnd-board     fill-w      fill-q    "
+    "   fill-b       fill-x     prim-board     fill-z     scnd-board     fill-w  scnd-clock-bot"
+    "   fill-b       fill-x     prim-board     fill-z  scnd-reserve-bot  fill-w   scnd-name-bot"
+    "   fill-b       fill-x     prim-board     fill-z  scnd-reserve-bot  fill-w      fill-r    "
+    "   fill-b       fill-x     prim-board     fill-z       fill-l       fill-w      fill-r    "
+    "   fill-b       fill-x     prim-board     fill-z     info-panel     fill-w      fill-r    "
+    "prim-clock-bot  fill-x     prim-board     fill-z     info-panel     fill-w      fill-r    "
+    "prim-name-bot   fill-x  prim-reserve-bot  fill-z       fill-m       fill-w      fill-r    "
+    "   fill-c       fill-x  prim-reserve-bot  fill-z       fill-m       fill-w      fill-r    "
   ;
   grid-template-columns: auto 1vw auto 5vw auto 1vw auto;
 }
@@ -55,6 +57,8 @@ table, tr, th, td {
 #player-name-primary-bottom { grid-area: prim-name-bot; }
 #clock-primary-top { grid-area: prim-clock-top; }
 #clock-primary-bottom { grid-area: prim-clock-bot; }
+
+#score { grid-area: score; }
 
 #board-container-secondary { grid-area: scnd-board; }
 #reserve-secondary-top { grid-area: scnd-reserve-top; }
@@ -154,9 +158,14 @@ table, tr, th, td {
 #player-name-secondary-bottom {
   text-align: left;
 }
+#score,
 .player-name {
   color: #a4b984;
   padding: calc(var(--sq-size-primary) * 0.1) 0;
+}
+#score {
+  text-align: center;
+  white-space: pre;
 }
 
 .clock {

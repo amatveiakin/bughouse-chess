@@ -72,11 +72,14 @@ impl WebClient {
     pub fn resign(&mut self) {
         self.state.resign();
     }
-    pub fn new_game(&mut self) {
-        self.state.new_game();
+    pub fn next_game(&mut self) {
+        self.state.next_game();
     }
     pub fn leave(&mut self) {
         self.state.leave();
+    }
+    pub fn reset(&mut self) {
+        self.state.reset();
     }
     pub fn make_turn_algebraic(&mut self, turn_algebraic: String) {
         let turn_result = self.state.make_turn(turn_algebraic);
@@ -181,8 +184,9 @@ impl WebClient {
                     teams[Team::Red].join(", "),
                     teams[Team::Blue].join(", "),
                 )));
+                // TODO: Reset boards, clock, etc.
             },
-            ContestState::Game{ game_confirmed, local_turn, .. } => {
+            ContestState::Game{ scores, game_confirmed, local_turn, .. } => {
                 let my_name = self.state.my_name();
                 let game = game_local(my_name, game_confirmed, local_turn);
                 let (my_board_idx, my_force) = game.find_player(my_name).unwrap();
@@ -226,6 +230,7 @@ impl WebClient {
                 if game_confirmed.status() != BughouseGameStatus::Active {
                     info_string.set_text_content(Some(&format!("Game over: {:?}", game_confirmed.status())));
                 }
+                update_scores(&scores, self.state.my_team()).unwrap();
             },
         }
         self.update_clock();
@@ -233,7 +238,7 @@ impl WebClient {
 
     pub fn update_clock(&self) {
         let document = web_document();
-        if let ContestState::Game{ game_confirmed, local_turn, time_pair } = self.state.contest_state() {
+        if let ContestState::Game{ game_confirmed, local_turn, time_pair, .. } = self.state.contest_state() {
             let now = Instant::now();
             let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
             let my_name = self.state.my_name();
@@ -411,6 +416,15 @@ fn update_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_
         }
     }
     clock_node.set_attribute("class", &classes.join(" "))?;
+    Ok(())
+}
+
+fn update_scores(scores: &EnumMap<Team, u32>, my_team: Team) -> JsResult<()> {
+    let scores_normalized = scores.map(|_, v| (v as f64) / 2.0);
+    let score_node = web_document().get_existing_element_by_id("score")?;
+    score_node.set_text_content(Some(&format!(
+        "{}\n⎯\n{}", scores_normalized[my_team.opponent()], scores_normalized[my_team]
+    )));
     Ok(())
 }
 

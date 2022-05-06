@@ -71,7 +71,6 @@ function on_server_event(event) {
         } catch (error) {
             console.warn('Error processing event from server: ', error);
             info_string.innerText = error;
-            shutdown_wasm_client();
         }
         update();
     } else {
@@ -97,11 +96,14 @@ function on_command(event) {
                 // TODO: Consistent policy for checking when wasm_client exists.
                 wasm_client.resign();
                 break;
-            case 'newgame':
-                wasm_client.new_game();
+            case 'next':
+                wasm_client.next_game();
                 break;
             case 'leave':
                 wasm_client.leave();
+                break;
+            case 'reset':
+                wasm_client.reset();
                 break;
         }
     } else {

@@ -18,6 +18,7 @@ pub enum BughouseServerEvent {
     GameStarted {  // TODO: Rename to take reconnection into account
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
+        scores: Vec<(Team, u32)>,
         starting_grid: Grid,
         players: Vec<(Player, BughouseBoard)>,
         time: GameInstant,             // for re-connection
@@ -28,6 +29,7 @@ pub enum BughouseServerEvent {
     GameOver {
         time: GameInstant,
         game_status: BughouseGameStatus,
+        scores: Vec<(Team, u32)>,
     },
 }
 
@@ -37,6 +39,7 @@ pub struct TurnMadeEvent {
     pub turn_algebraic: String,
     pub time: GameInstant,
     pub game_status: BughouseGameStatus,
+    pub scores: Vec<(Team, u32)>,
 }
 
 
@@ -51,6 +54,7 @@ pub enum BughouseClientEvent {
         turn_algebraic: String,
     },
     Resign,
-    NewGame,
+    NextGame,
     Leave,
+    Reset,
 }

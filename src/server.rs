@@ -3,8 +3,9 @@ use std::ops;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 
-use enum_map::enum_map;
+use enum_map::{EnumMap, enum_map};
 use instant::Instant;
+use itertools::Itertools;
 use rand::prelude::*;
 
 use crate::board::VictoryReason;
@@ -29,6 +30,7 @@ pub enum IncomingEvent {
 enum ContestState {
     Lobby,
     Game {
+        scores: EnumMap<Team, u32>,  // victory scored as 2:0, draw is 1:1
         game: BughouseGame,
         game_start: Option<Instant>,
         starting_grid: Grid,
@@ -201,11 +203,14 @@ impl ServerState {
                     BughouseClientEvent::Resign => {
                         self.core.process_resign(&mut clients, client_id, now);
                     },
-                    BughouseClientEvent::NewGame => {
-                        self.core.process_new_game();
+                    BughouseClientEvent::NextGame => {
+                        self.core.process_next_game(&mut clients, client_id, now);
                     },
                     BughouseClientEvent::Leave => {
                         self.core.process_leave(&mut clients, client_id);
+                    },
+                    BughouseClientEvent::Reset => {
+                        self.core.process_reset();
                     },
                 }
             },
@@ -226,13 +231,15 @@ impl ServerState {
 
 impl ServerStateCore {
     fn test_flags(&mut self, clients: &mut ClientsGuard<'_>, now: Instant) {
-        if let ContestState::Game{ ref mut game, game_start, .. } = self.contest_state {
+        if let ContestState::Game{ ref mut game, game_start, ref mut scores, .. } = self.contest_state {
             if let Some(game_start) = game_start {
                 if game.status() == BughouseGameStatus::Active {
                     let game_now = GameInstant::from_now_game_active(game_start, now);
                     game.test_flag(game_now);
                     if game.status() != BughouseGameStatus::Active {
+                        update_score_on_game_over(game.status(), scores);
                         clients.broadcast(&BughouseServerEvent::GameOver {
+                            scores: scores.clone().into_iter().collect(),
                             time: game_now,
                             game_status: game.status(),
                         });
@@ -294,7 +301,9 @@ impl ServerStateCore {
         &mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant,
         turn_algebraic: String
     ) {
-        if let ContestState::Game{ ref mut game, ref mut game_start, ref mut turn_log, .. } = self.contest_state {
+        if let ContestState::Game{ ref mut game, ref mut game_start, ref mut turn_log, ref mut scores, .. }
+            = self.contest_state
+        {
             if game_start.is_none() {
                 *game_start = Some(now);
             }
@@ -308,11 +317,15 @@ impl ServerStateCore {
                     clients[client_id].send_error(format!("Impossible turn: {:?}", error));
                     return;
                 }
+                if game.status() != BughouseGameStatus::Active {
+                    update_score_on_game_over(game.status(), scores);
+                }
                 let turn_made_event = TurnMadeEvent {
                     player_name: player_name.to_owned(),
                     turn_algebraic,  // TODO: Rewrite turn to a standard form
                     time: game_now,
                     game_status: game.status(),
+                    scores: scores.clone().into_iter().collect(),
                 };
                 turn_log.push(turn_made_event.clone());
                 clients.broadcast(&BughouseServerEvent::TurnMade(turn_made_event));
@@ -325,7 +338,11 @@ impl ServerStateCore {
     }
 
     fn process_resign(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant) {
-        if let ContestState::Game{ ref mut game, game_start, .. } = self.contest_state {
+        if let ContestState::Game{ ref mut game, game_start, ref mut scores, .. } = self.contest_state {
+            if game.status() != BughouseGameStatus::Active {
+                clients[client_id].send_error("Cannot resign: game already over".to_owned());
+                return;
+            }
             if let Some(player_id) = clients[client_id].player_id {
                 let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
                 let status = BughouseGameStatus::Victory(
@@ -333,9 +350,11 @@ impl ServerStateCore {
                     VictoryReason::Resignation
                 );
                 game.set_status(status, game_now);
+                update_score_on_game_over(status, scores);
                 clients.broadcast(&BughouseServerEvent::GameOver {
                     time: game_now,
                     game_status: status,
+                    scores: scores.clone().into_iter().collect(),
                 });
             } else {
                 clients[client_id].send_error("Cannot resign: not joined".to_owned());
@@ -345,8 +364,18 @@ impl ServerStateCore {
         }
     }
 
-    fn process_new_game(&mut self) {
-        self.contest_state = ContestState::Lobby;
+    fn process_next_game(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant) {
+        if let ContestState::Game{ ref game, ref scores, .. } = self.contest_state {
+            if game.status() == BughouseGameStatus::Active {
+                clients[client_id].send_error("Cannot start next game: game still in progress".to_owned());
+            } else {
+                let players = game.players();
+                let scores = scores.clone();
+                self.start_game(clients, now, players.into_iter(), scores);
+            }
+        } else {
+            clients[client_id].send_error("Cannot start next game: game not assembled".to_owned());
+        }
     }
 
     fn process_leave(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId) {
@@ -355,6 +384,10 @@ impl ServerStateCore {
         }
         // Note. Player will be removed automatically. This has to be the case, otherwise
         // clients disconnected due to a network error would've left abandoned players.
+    }
+
+    fn process_reset(&mut self) {
+        self.contest_state = ContestState::Lobby;
     }
 
     fn post_process(&mut self, clients: &mut ClientsGuard<'_>, now: Instant) {
@@ -373,37 +406,48 @@ impl ServerStateCore {
             }
             assert!(self.players.len() <= TOTAL_PLAYERS);
             if self.players.len() == TOTAL_PLAYERS {
-                let players_with_boards = self.assign_boards(self.players.iter());
-                let player_map = BughouseGame::make_player_map(players_with_boards.iter().cloned());
-                let game = BughouseGame::new(
-                    self.chess_rules.clone(), self.bughouse_rules.clone(), player_map
-                );
-                let starting_grid = game.board(BughouseBoard::A).grid().clone();
-                let players_with_boards = players_with_boards.into_iter().map(|(p, board_idx)| {
-                    ((*p).clone(), board_idx)
-                }).collect();
-                self.contest_state = ContestState::Game {
-                    game,
-                    game_start: None,
-                    starting_grid,
-                    players_with_boards,
-                    turn_log: vec![],
-                };
-                clients.broadcast(&self.make_game_start_event(now));
+                let players = self.players.iter().cloned().collect_vec();
+                let scores = enum_map!{ _ => 0 };
+                self.start_game(clients, now, players.into_iter(), scores);
             }
         }
+    }
+
+    fn start_game(
+        &mut self, clients: &mut ClientsGuard<'_>, now: Instant,
+        players: impl Iterator<Item = Rc<Player>>, scores: EnumMap<Team, u32>
+    ) {
+        let players_with_boards = self.assign_boards(players);
+        let player_map = BughouseGame::make_player_map(players_with_boards.iter().cloned());
+        let game = BughouseGame::new(
+            self.chess_rules.clone(), self.bughouse_rules.clone(), player_map
+        );
+        let starting_grid = game.board(BughouseBoard::A).grid().clone();
+        let players_with_boards = players_with_boards.into_iter().map(|(p, board_idx)| {
+            ((*p).clone(), board_idx)
+        }).collect();
+        self.contest_state = ContestState::Game {
+            scores,
+            game,
+            game_start: None,
+            starting_grid,
+            players_with_boards,
+            turn_log: vec![],
+        };
+        clients.broadcast(&self.make_game_start_event(now));
     }
 
     fn make_game_start_event(&self, now: Instant) -> BughouseServerEvent {
         // Improvement potential: Pass `ContestState` from above: it should already be
         //   unpacked where the function is called.
-        if let ContestState::Game{ game_start, starting_grid, players_with_boards, turn_log, .. }
+        if let ContestState::Game{ scores, game_start, starting_grid, players_with_boards, turn_log, .. }
             = &self.contest_state
         {
             let time = GameInstant::from_now_game_maybe_active(*game_start, now);
             BughouseServerEvent::GameStarted {
                 chess_rules: self.chess_rules.clone(),
                 bughouse_rules: self.bughouse_rules.clone(),
+                scores: scores.clone().into_iter().collect(),
                 starting_grid: starting_grid.clone(),
                 players: players_with_boards.clone(),
                 time,
@@ -421,19 +465,19 @@ impl ServerStateCore {
         });
     }
 
-    fn assign_boards<'a>(&self, players: impl Iterator<Item = &'a Rc<Player>>)
+    fn assign_boards(&self, players: impl Iterator<Item = Rc<Player>>)
         -> Vec<(Rc<Player>, BughouseBoard)>
     {
         if let Some(assignment) = &self.board_assignment_override {
-            let players_by_name: HashMap<_, _> = players.map(|p| (&p.name, p)).collect();
+            let players_by_name: HashMap<_, _> = players.map(|p| (p.name.clone(), p)).collect();
             assignment.iter().map(|(name, board_idx)| {
-                (Rc::clone(players_by_name[name]), *board_idx)
+                (Rc::clone(&players_by_name[name]), *board_idx)
             }).collect()
         } else {
             let mut rng = rand::thread_rng();
             let mut players_per_team = enum_map!{ _ => vec![] };
             for p in players {
-                players_per_team[p.team].push(Rc::clone(p));
+                players_per_team[p.team].push(p);
             }
             players_per_team.into_values().map(|mut team_players| {
                 team_players.shuffle(&mut rng);
@@ -444,5 +488,21 @@ impl ServerStateCore {
                 ]
             }).flatten().collect()
         }
+    }
+}
+
+fn update_score_on_game_over(status: BughouseGameStatus, scores: &mut EnumMap<Team, u32>) {
+    match status {
+        BughouseGameStatus::Active => {
+            panic!("It just so happens that the game here is only mostly over");
+        },
+        BughouseGameStatus::Victory(team, _) => {
+            scores[team] += 2;
+        },
+        BughouseGameStatus::Draw => {
+            for v in scores.values_mut() {
+                *v += 1;
+            }
+        },
     }
 }

@@ -243,6 +243,9 @@ impl BughouseGame {
 
     pub fn board(&self, idx: BughouseBoard) -> &Board { &self.boards[idx] }
     pub fn boards(&self) -> &EnumMap<BughouseBoard, Board> { &self.boards }
+    pub fn players(&self) -> Vec<Rc<Player>> {
+        self.boards.values().map(|(board)| board.players().values().cloned()).flatten().collect()
+    }
     pub fn status(&self) -> BughouseGameStatus { self.status }
 
     pub fn find_player(&self, player_name: &str) -> Option<(BughouseBoard, Force)> {
