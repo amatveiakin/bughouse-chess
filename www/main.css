@@ -134,6 +134,7 @@ table, tr, th, td {
 }
 .reserve {
   text-align: center;
+  white-space: nowrap;
   padding: calc(var(--sq-size-primary) * 0.15) 0;
 }
 
