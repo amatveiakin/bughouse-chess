@@ -142,7 +142,9 @@ impl WebClient {
             JsValue::from(format!("{:?}", err))
         })?;
         match notable_event {
-            NotableEvent::None => {},
+            NotableEvent::None => {
+                Ok(None)
+            },
             NotableEvent::GameStarted => {
                 if let ContestState::Game{ ref game_confirmed, .. } = self.state.contest_state() {
                     let info_string = web_document().get_existing_element_by_id("info-string").unwrap();
@@ -150,13 +152,20 @@ impl WebClient {
                     let my_name = self.state.my_name();
                     let (_, force) = game_confirmed.find_player(my_name).unwrap();
                     render_grids(force == Force::Black);
-                    return Ok(Some("game_started".to_owned()));
+                    Ok(Some("game_started".to_owned()))
                 } else {
-                    panic!("No game in progress");
+                    Err("No game in progress".into())
+                }
+            }
+            NotableEvent::OpponentTurnMade(_) => {
+                if let ContestState::Game{ .. } = self.state.contest_state() {
+                    // TODO: Highlight last turn
+                    return Ok(Some("opponent_turn_made".to_owned()));
+                } else {
+                    Err("No game in progress".into())
                 }
             }
         }
-        Ok(None)
     }
 
     pub fn next_outgoing_event(&mut self) -> Option<String> {

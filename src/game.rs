@@ -258,8 +258,11 @@ impl BughouseGame {
         }
         None
     }
+    pub fn player_board_idx(&self, player_name: &str) -> Option<BughouseBoard> {
+        self.find_player(player_name).map(|(board_idx, _)| board_idx)
+    }
     pub fn player_board(&self, player_name: &str) -> Option<&Board> {
-        self.find_player(player_name).map(|(board_idx, _)| &self.boards[board_idx])
+        self.player_board_idx(player_name).map(|board_idx| &self.boards[board_idx])
     }
     pub fn player_is_active(&self, player_name: &str) -> Option<bool> {
         self.find_player(player_name).map(|(board_idx, force)| {
@@ -318,13 +321,14 @@ impl BughouseGame {
         Ok(())
     }
     pub fn try_turn_from_algebraic(&mut self, board_idx: BughouseBoard, notation: &str, now: GameInstant)
-        -> Result<(), TurnError>
+        -> Result<Turn, TurnError>
     {
         let turn = self.boards[board_idx].make_turn_from_algebraic(notation)?;
-        self.try_turn(board_idx, turn, now)
+        self.try_turn(board_idx, turn.clone(), now)?;
+        Ok(turn)
     }
     pub fn try_turn_by_player_from_algebraic(&mut self, player_name: &str, notation: &str, now: GameInstant)
-        -> Result<(), TurnError>
+        -> Result<Turn, TurnError>
     {
         let (board_idx, force) = self.find_player(player_name).unwrap_or_else(
             || panic!("Player not found: {}", player_name));
@@ -354,7 +358,7 @@ impl BughouseGame {
                 _ => panic!("Unexpected bughouse player notation: {}", player_notation),
             };
             assert_eq!(self.boards[board_idx].active_force(), force);
-            self.try_turn_from_algebraic(board_idx, turn_notation, now)?
+            self.try_turn_from_algebraic(board_idx, turn_notation, now)?;
         }
         Ok(())
     }

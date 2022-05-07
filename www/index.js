@@ -18,9 +18,11 @@ import black_bishop from '../assets/pieces/black-bishop.png';
 import black_rook from '../assets/pieces/black-rook.png';
 import black_queen from '../assets/pieces/black-queen.png';
 import black_king from '../assets/pieces/black-king.png';
+import turn_sound from '../assets/sounds/turn.ogg';
 
 
 set_favicon();
+const turn_audio = new Audio(turn_sound);
 
 wasm.set_panic_hook();
 wasm.init_page(
@@ -65,6 +67,8 @@ function on_server_event(event) {
             const what_happened = wasm_client.process_server_event(event);
             if (what_happened == "game_started") {
                 setup_drag_and_drop();
+            } else if (what_happened == "opponent_turn_made") {
+                turn_audio.play();
             } else if (what_happened != null) {
                 console.error('Something unexpected happened: ', what_happened);
             }

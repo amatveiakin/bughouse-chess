@@ -4,7 +4,7 @@ use std::sync::mpsc;
 use enum_map::EnumMap;
 use instant::Instant;
 
-use crate::board::{TurnError};
+use crate::board::{Turn, TurnError};
 use crate::clock::{GameInstant, WallGameTimePair};
 use crate::game::{BughouseGameStatus, BughouseGame};
 use crate::event::{TurnMadeEvent, BughouseServerEvent, BughouseClientEvent};
@@ -22,6 +22,7 @@ pub enum TurnCommandError {
 pub enum NotableEvent {
     None,
     GameStarted,
+    OpponentTurnMade(Turn),
 }
 
 #[derive(Clone, Debug)]
@@ -173,8 +174,7 @@ impl ClientState {
                 Ok(NotableEvent::GameStarted)
             },
             TurnMade(event) => {
-                self.apply_turn(event)?;
-                Ok(NotableEvent::None)
+                self.apply_turn(event)
             },
             GameOver{ time, game_status, scores: new_scores } => {
                 if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, ref mut scores, .. }
@@ -193,7 +193,7 @@ impl ClientState {
         }
     }
 
-    fn apply_turn(&mut self, event: TurnMadeEvent) -> Result<(), EventError> {
+    fn apply_turn(&mut self, event: TurnMadeEvent) -> Result<NotableEvent, EventError> {
         let TurnMadeEvent{ player_name, turn_algebraic, time, game_status, scores: new_scores } = event;
         if let ContestState::Game{
             ref mut game_confirmed, ref mut local_turn, ref mut time_pair, ref mut scores, ..
@@ -208,10 +208,9 @@ impl ClientState {
             if player_name == self.my_name {
                 *local_turn = None;
             }
-            let turn_result = game_confirmed.try_turn_by_player_from_algebraic(
+            let turn = game_confirmed.try_turn_by_player_from_algebraic(
                 &player_name, &turn_algebraic, time
-            );
-            turn_result.map_err(|err| {
+            ).map_err(|err| {
                 EventError::CannotApplyEvent(format!("Impossible turn: {}, error: {:?}", turn_algebraic, err))
             })?;
             if game_status != game_confirmed.status() {
@@ -220,7 +219,15 @@ impl ClientState {
                 )))
             }
             *scores = try_vec_to_enum_map(new_scores).unwrap();
-            Ok(())
+            let turn_by_opponent =
+                player_name != self.my_name &&
+                game_confirmed.player_board_idx(&player_name).unwrap() ==
+                    game_confirmed.player_board_idx(&self.my_name).unwrap();
+            if turn_by_opponent {
+                Ok(NotableEvent::OpponentTurnMade(turn))
+            } else {
+                Ok(NotableEvent::None)
+            }
         } else {
             Err(EventError::CannotApplyEvent("Cannot make turn: no game in progress".to_owned()))
         }
