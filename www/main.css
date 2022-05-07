@@ -1,5 +1,5 @@
 :root {
-  --sq-size-primary: min(6vw, 9vh);
+  --sq-size-primary: min(5vw, 9vh);
   --sq-size-secondary: calc(var(--sq-size-primary) / 1.5);
   --board-size-primary: calc(var(--sq-size-primary) * 8);
   --board-size-secondary: calc(var(--sq-size-secondary) * 8);
@@ -47,7 +47,15 @@ table, tr, th, td {
     "prim-name-bot   fill-x  prim-reserve-bot  fill-z       fill-m       fill-w      fill-r    "
     "   fill-c       fill-x  prim-reserve-bot  fill-z       fill-m       fill-w      fill-r    "
   ;
-  grid-template-columns: auto 1vw auto 5vw auto 1vw auto;
+  grid-template-columns:
+    auto
+    calc(var(--sq-size-primary) * 0.2)
+    auto
+    calc(var(--sq-size-primary) * 1.2)
+    auto
+    calc(var(--sq-size-primary) * 0.2)
+    auto
+  ;
 }
 
 #board-container-primary { grid-area: prim-board; }
