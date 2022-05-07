@@ -102,7 +102,9 @@ impl ClientState {
             = self.contest_state
         {
             let game_now = GameInstant::from_pair_game_maybe_active(time_pair, Instant::now());
-            if game_confirmed.player_is_active(&self.my_name).unwrap() && local_turn.is_none() {
+            if game_confirmed.status() != BughouseGameStatus::Active {
+                Err(TurnCommandError::IllegalTurn(TurnError::GameOver))
+            } else if game_confirmed.player_is_active(&self.my_name).unwrap() && local_turn.is_none() {
                 let mut game_copy = game_confirmed.clone();
                 // Note. Not calling `test_flag`, because server is the source of truth for flag defeat.
                 game_copy.try_turn_by_player_from_algebraic(
