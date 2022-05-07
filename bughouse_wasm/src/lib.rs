@@ -103,6 +103,7 @@ impl WebClient {
                 if let Some(piece) = board.grid()[from_coord] {
                     let last_row = SubjectiveRow::from_one_based(8).to_row(my_force);
                     let d_col = to_coord.col - from_coord.col;
+                    let d_col_abs = d_col.abs();
                     let to_my_piece = if let Some(piece_to) = board.grid()[to_coord] {
                         piece_to.force == my_force
                     } else {
@@ -111,7 +112,7 @@ impl WebClient {
                     // Castling rules: drag the king at least two squares in the rook direction
                     // or onto a friendly piece. That later is required for Fischer random where
                     // a king could start on b1 or g1.
-                    if piece.kind == King && d_col >= 2 || to_my_piece {
+                    if piece.kind == King && (d_col_abs >= 2 || (d_col_abs >= 1 && to_my_piece)) {
                         if d_col > 0 {
                             self.make_turn_algebraic("0-0".to_owned());
                         } else {
