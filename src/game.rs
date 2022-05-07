@@ -303,6 +303,11 @@ impl BughouseGame {
     pub fn try_turn(&mut self, board_idx: BughouseBoard, turn: Turn, now: GameInstant)
         -> Result<(), TurnError>
     {
+        if self.status != BughouseGameStatus::Active {
+            // `Board::try_turn` will also test status, but that's not enough: the game
+            // may have ended earlier on the other board.
+            return Err(TurnError::GameOver);
+        }
         let capture_or = self.boards[board_idx].try_turn(turn, now)?;
         self.boards[board_idx.other()].start_clock(now);
         if let Some(capture) = capture_or {

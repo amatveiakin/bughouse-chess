@@ -366,3 +366,30 @@ fn leave_and_reconnect_game() {
     assert!(matches!(grid[Coord::F6], Some(PieceOnBoard{ kind: Knight, .. })));
     assert_eq!(world[cl3_new].other_board().reserve(my_force)[Pawn], 1);
 }
+
+// Regression test: server should not panic when a client tries to make a turn after the
+// game was over on another board.
+#[test]
+fn turn_after_game_ended_on_another_board() {
+    let mut world = World::new();
+    world.server.state.TEST_override_board_assignment(vec! [
+        ("p1".to_owned(), BughouseBoard::A),
+        ("p2".to_owned(), BughouseBoard::B),
+        ("p3".to_owned(), BughouseBoard::A),
+        ("p4".to_owned(), BughouseBoard::B),
+    ]);
+
+    let cl1 = world.add_client("p1", Team::Red);
+    let _cl2 = world.add_client("p2", Team::Red);
+    let _cl3 = world.add_client("p3", Team::Blue);
+    let cl4 = world.add_client("p4", Team::Blue);
+    world.process_all_events();
+    assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
+
+    world[cl1].state.resign();
+    world.process_events_for(cl1).unwrap();
+
+    world[cl4].make_turn("e4").unwrap();
+    assert!(matches!(world.process_events_for(cl4), Err(client::EventError::ServerReturnedError(_))));
+    world.process_all_events();
+}
