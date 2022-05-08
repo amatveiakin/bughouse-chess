@@ -30,6 +30,9 @@ wasm.init_page(
     black_pawn, black_knight, black_bishop, black_rook, black_queen, black_king
 );
 
+function WasmClientDoesNotExist() {}
+function InvalidCommand(msg) { this.msg = msg; }
+
 const coords = [];
 for (const row of ['1', '2', '3', '4', '5', '6', '7', '8']) {
     for (const col of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']) {
@@ -47,8 +50,13 @@ info_string.innerText = 'Type "/join name team" to start'
 const command_input = document.getElementById('command');
 command_input.addEventListener('change', on_command);
 
-// request_join('localhost', 'p1', 'red');  // uncomment to speed up debugging; TODO: Delete
-
+function wasm_client_or_throw() {
+    if (wasm_client) {
+        return wasm_client;
+    } else {
+        throw new WasmClientDoesNotExist();
+    }
+}
 
 function shutdown_wasm_client() {
     if (socket != null) {
@@ -61,13 +69,13 @@ function shutdown_wasm_client() {
 }
 
 function on_server_event(event) {
-    if (wasm_client != null) {
+    if (wasm_client) {
         console.log('server: ', event);
         try {
             const what_happened = wasm_client.process_server_event(event);
-            if (what_happened == "game_started") {
+            if (what_happened == 'game_started') {
                 setup_drag_and_drop();
-            } else if (what_happened == "opponent_turn_made") {
+            } else if (what_happened == 'opponent_turn_made') {
                 turn_audio.play();
             } else if (what_happened != null) {
                 console.error('Something unexpected happened: ', what_happened);
@@ -82,41 +90,89 @@ function on_server_event(event) {
     }
 }
 
+function usage_error(args_array, expected_args) {
+    return new InvalidCommand(`Usage: /${args_array[0]} ${expected_args.join(' ')}`);
+}
+
+function get_args(args_array, expected_args) {
+    const args_without_command_name = args_array.slice(1);
+    if (args_without_command_name.length === expected_args.length) {
+        return args_without_command_name;
+    } else {
+        throw usage_error(args_array, expected_args);
+    }
+}
+
 function on_command(event) {
     const input = String(event.target.value)
-    console.log('user: ', input);
-    if (input.startsWith('/')) {
-        const args = input.slice(1).split(/\s+/);
-        switch (args[0]) {
-            case 'local':
-                console.assert(args.length == 3);
-                request_join('localhost', args[1], args[2]);
-                break;
-            case 'join':
-                console.assert(args.length == 3);
-                request_join('51.250.84.85', args[1], args[2]);
-                break;
-            case 'resign':
-                // TODO: Consistent policy for checking when wasm_client exists.
-                wasm_client.resign();
-                break;
-            case 'next':
-                wasm_client.next_game();
-                break;
-            case 'leave':
-                wasm_client.leave();
-                break;
-            case 'reset':
-                wasm_client.reset();
-                break;
+    event.target.value = '';
+    try {
+        if (input.startsWith('/')) {
+            const args = input.slice(1).split(/\s+/);
+            switch (args[0]) {
+                case 'local': {
+                    const [name, team] = get_args(args, ['name', 'team']);
+                    request_join('localhost', name, team);
+                    break;
+                }
+                case 'join': {
+                    const [name, team] = get_args(args, ['name', 'team']);
+                    request_join('51.250.84.85', name, team);
+                    break;
+                }
+                case 'sound': {
+                    const expected_args = ['on:off:0:1:...:100'];
+                    const [value] = get_args(args, expected_args);
+                    switch (value) {
+                        case 'on': turn_audio.muted = false; break;
+                        case 'off': turn_audio.muted = true; break;
+                        default: {
+                            // Improvement potential: Stricter integer parse.
+                            let volume = parseInt(value);
+                            if (isNaN(volume) || volume < 0 || volume > 100) {
+                                throw usage_error(args, expected_args);
+                            }
+                            turn_audio.muted = false;
+                            turn_audio.volume = volume / 100.0;
+                            break;
+                        }
+                    }
+                    info_string.innerText = 'Applied';
+                    break;
+                }
+                case 'resign':
+                    get_args(args, []);
+                    wasm_client_or_throw().resign();
+                    break;
+                case 'next':
+                    get_args(args, []);
+                    wasm_client_or_throw().next_game();
+                    break;
+                case 'leave':
+                    get_args(args, []);
+                    wasm_client_or_throw().leave();
+                    break;
+                case 'reset':
+                    get_args(args, []);
+                    wasm_client_or_throw().reset();
+                    break;
+                default:
+                    throw new InvalidCommand(`Command does not exist: /${args[0]}`)
+            }
+        } else {
+            wasm_client_or_throw().make_turn_algebraic(input);
         }
-    } else {
-        if (wasm_client) {
-            wasm_client.make_turn_algebraic(input);
+        update();
+    } catch (e) {
+        if (e instanceof WasmClientDoesNotExist) {
+            info_string.innerText = 'Cannot execute command: not connected';
+        } else if (e instanceof InvalidCommand) {
+            info_string.innerText = e.msg;
+        } else {
+            info_string.innerText = `Unknown error: ${e}`;
+            throw e;
         }
     }
-    event.target.value = '';
-    update();
 }
 
 function on_tick() {
@@ -144,7 +200,7 @@ function update() {
 
 function on_socket_opened() {
     wasm_client.join();
-    setInterval(on_tick, 100);
+    setInterval(on_tick, 100);  // TODO: Should the old `setInterval` be cancelled?
     update();
 }
 
