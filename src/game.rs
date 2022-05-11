@@ -283,17 +283,17 @@ impl BughouseGame {
         use BughouseBoard::*;
         use BughouseGameStatus::*;
         use VictoryReason::Flag;
-        assert!(self.status == Active);
+        assert_eq!(self.status, Active);
         self.boards[A].test_flag(now);
         self.boards[B].test_flag(now);
         let status_a = self.game_status_for_board(A);
         let status_b = self.game_status_for_board(B);
         let status = match (status_a, status_b) {
-            (Victory(victory_a, Flag), Victory(victory_b, Flag)) => {
-                if victory_a == victory_b { Victory(victory_a, Flag) } else { Draw }
+            (Victory(winner_a, Flag), Victory(winner_b, Flag)) => {
+                if winner_a == winner_b { Victory(winner_a, Flag) } else { Draw }
             },
-            (Victory(victory, Flag), Active) => { Victory(victory, Flag) },
-            (Active, Victory(victory, Flag)) => { Victory(victory, Flag) },
+            (Victory(winner, Flag), Active) => { Victory(winner, Flag) },
+            (Active, Victory(winner, Flag)) => { Victory(winner, Flag) },
             (Active, Active) => { Active },
             (Victory(_, reason), _) => panic!("Unexpected victory reason in `test_flag`: {:?}", reason),
             (_, Victory(_, reason)) => panic!("Unexpected victory reason in `test_flag`: {:?}", reason),
