@@ -438,21 +438,25 @@ fn update_scores(scores: &EnumMap<Team, u32>, my_team: Team) -> JsResult<()> {
     Ok(())
 }
 
-fn render_grids(flip_forces: bool) {
+fn render_grids(rotate_180: bool) {
     for board_idx in WebBoard::iter() {
-        render_grid(board_idx, flip_forces).unwrap();
+        render_grid(board_idx, rotate_180).unwrap();
     }
 }
 
 // TODO: Embed notation inside the squares.
-fn render_grid(board_idx: WebBoard, mut flip_forces: bool) -> JsResult<()> {
+fn render_grid(board_idx: WebBoard, mut rotate_180: bool) -> JsResult<()> {
     match board_idx {
         WebBoard::Primary => {},
-        WebBoard::Secondary => flip_forces = !flip_forces,
+        WebBoard::Secondary => rotate_180 = !rotate_180,
     };
-    let rows = match flip_forces {
+    let rows = match rotate_180 {
         false => Row::all().rev().collect_vec(),
         true => Row::all().collect_vec(),
+    };
+    let cols = match rotate_180 {
+        false => Col::all().collect_vec(),
+        true => Col::all().rev().collect_vec(),
     };
 
     let document = web_document();
@@ -465,7 +469,7 @@ fn render_grid(board_idx: WebBoard, mut flip_forces: bool) -> JsResult<()> {
 
     for row in rows {
         let tr = document.create_element("tr")?;
-        for col in Col::all() {
+        for col in cols.iter().copied() {
             let coord = Coord::new(row, col);
             let td = document.create_element("td")?;
             let classes = [square_color_class(row, col), square_size_class(board_idx)];

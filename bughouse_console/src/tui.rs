@@ -104,6 +104,7 @@ pub fn render_bughouse_game(game: &BughouseGame, view: BughouseGameView, now: Ga
     let lines1 = board1.lines();
     let lines2 = board2.lines();
     let join_lines = |(l1, l2)| format!("{}      {}", l1, l2);
+    // TODO: Rotate board 180 degrees rather than flip horizontally.
     if view.flip_forces {
         lines1.rev().zip(lines2).map(join_lines).join("\n")
     } else {
