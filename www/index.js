@@ -29,6 +29,7 @@ wasm.init_page(
     white_pawn, white_knight, white_bishop, white_rook, white_queen, white_king,
     black_pawn, black_knight, black_bishop, black_rook, black_queen, black_king
 );
+set_up_drag_and_drop();
 
 function WasmClientDoesNotExist() {}
 function InvalidCommand(msg) { this.msg = msg; }
@@ -43,6 +44,10 @@ for (const row of ['1', '2', '3', '4', '5', '6', '7', '8']) {
 let wasm_client = null;
 let socket = null;
 let socket_incoming_listener = null;
+
+let drag_element = null;
+let drag_dx = null;
+let drag_dy = null;
 
 const info_string = document.getElementById('info-string');
 info_string.innerText = 'Type "/join name team" to start'
@@ -74,7 +79,7 @@ function on_server_event(event) {
         try {
             const what_happened = wasm_client.process_server_event(event);
             if (what_happened == 'game_started') {
-                setup_drag_and_drop();
+                // no special action
             } else if (what_happened == 'opponent_turn_made') {
                 turn_audio.play();
             } else if (what_happened != null) {
@@ -195,7 +200,6 @@ function update() {
         }
     }
     wasm_client.update_state();
-    setup_drag_for_reserve();
 }
 
 function on_socket_opened() {
@@ -217,54 +221,59 @@ function request_join(address, my_name, my_team) {
     });
 }
 
-function setup_drag_for_reserve() {
-    for (const element of document.getElementsByClassName('reserve-piece-primary')) {
-        element.addEventListener('dragstart', function(e) {
-            const piece_kind = this.getAttribute('data-piece-kind');
-            const from = `reserve-${piece_kind}`;
-            e.dataTransfer.setData('application/bughouse-move-from', from);
-            e.dataTransfer.effectAllowed = 'move';
-        });
-    }
-}
+function set_up_drag_and_drop() {
+    document.addEventListener('mousedown', start_drag);
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('mouseup', end_drag);
+    document.addEventListener('mouseleave', end_drag);
 
-function setup_drag_and_drop() {
-    for (const coord of coords) {
-        const element = document.getElementById(`primary-${coord}`);
-        element.addEventListener('dragstart', function(e) {
-            e.dataTransfer.setData('application/bughouse-move-from', coord);
-            e.dataTransfer.effectAllowed = 'move';
-            // const img = new Image();
-            // img.src = this.getAttribute('data-piece-image');
-            // var canvas = document.createElement('canvas');
-            // canvas.width = this.clientWidth;
-            // canvas.height = this.clientHeight;
-            // var ctx = canvas.getContext('2d');
-            // ctx.drawImage(img, 0, 0, this.clientWidth, this.clientHeight);
-            // img.src = canvas.toDataURL();
-            // e.dataTransfer.setDragImage(img, 0, 0);
-        });
-        element.addEventListener('dragenter', function (e) {
-            e.preventDefault();
-            e.target.classList.add('dragover');
-        });
-        element.addEventListener('dragover', function (e) {
-            e.preventDefault();
-        });
-        element.addEventListener('dragleave', function (e) {
-            e.preventDefault();
-            e.target.classList.remove('dragover');
-        });
-        element.addEventListener('drop', function (e) {
-            e.preventDefault();
-            e.target.classList.remove('dragover');
-            const from = e.dataTransfer.getData('application/bughouse-move-from');
-            const to = coord;
+    document.addEventListener('touchstart', start_drag);
+    document.addEventListener('touchmove', drag);
+    document.addEventListener('touchend', end_drag);
+    document.addEventListener('touchleave', end_drag);
+    document.addEventListener('touchcancel', end_drag);
+
+    const svg = document.getElementById('board-primary');
+
+    function viewbox_mouse_position(event) {
+        const ctm = svg.getScreenCTM();
+        const src = event.touches ? event.touches[0] : event;
+        return {
+            x: (src.clientX - ctm.e) / ctm.a,
+            y: (src.clientY - ctm.f) / ctm.d,
+        };
+    }
+    function start_drag(event) {
+        // TODO: Remove shadow from reserve piece.
+        // TODO: Choose the closest reserve piece rather then the one on top.
+        console.assert(drag_element === null);
+        if (event.target.classList.contains('draggable')) {
+            drag_element = event.target;
+            drag_element.classList.add('dragged');
+            const coord = viewbox_mouse_position(event);
+            drag_dx = parseFloat(drag_element.getAttribute("x")) - coord.x;
+            drag_dy = parseFloat(drag_element.getAttribute("y")) - coord.y;
+        }
+    }
+    function drag(event) {
+        if (drag_element) {
+            event.preventDefault();
+            const coord = viewbox_mouse_position(event);
+            drag_element.setAttribute("x", coord.x + drag_dx);
+            drag_element.setAttribute("y", coord.y + drag_dy);
+        }
+    }
+    function end_drag(event) {
+        if (drag_element) {
+            const coord = viewbox_mouse_position(event);
+            const from = drag_element.getAttribute('data-bughouse-location');
+            drag_element.classList.remove('dragged');
+            drag_element = null;
             if (wasm_client) {
-                wasm_client.make_turn_drag_drop(from, to, e.shiftKey);
+                wasm_client.make_turn_drag_drop(from, coord.x, coord.y, event.shiftKey);
             }
             update();
-        });
+        }
     }
 }
 

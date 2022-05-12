@@ -1,8 +1,7 @@
 :root {
   --sq-size-primary: min(5vw, 9vh);
   --sq-size-secondary: calc(var(--sq-size-primary) / 1.5);
-  --board-size-primary: calc(var(--sq-size-primary) * 8);
-  --board-size-secondary: calc(var(--sq-size-secondary) * 8);
+  --reserve-height-in-squares: 1.5;
 }
 
 html, body {
@@ -11,6 +10,7 @@ html, body {
   background-color: #1c3a0c;
   color: #e0e0e0;
   height: 100%;
+  overflow: visible;  /* disable scroll bars */
 }
 html {
   display: table;
@@ -20,32 +20,29 @@ body {
   display: table-cell;
   vertical-align: middle;
 }
-table {
-  border-collapse: collapse;
-}
-table, tr, th, td {
-  margin: 0;
-  padding: 0;
+svg {
+  overflow: visible;  /* allow shadows outside of svg area */
 }
 
 #page {
   display: grid;
+  /* TODO: Player name and clock alignment */
   grid-template-areas:
-    "   fill-a       fill-x  prim-reserve-top  fill-y       fill-k       fill-w      fill-p    "
-    "   fill-a       fill-x  prim-reserve-top  fill-y  scnd-reserve-top  fill-w      fill-p    "
-    "prim-name-top   fill-x  prim-reserve-top  fill-y  scnd-reserve-top  fill-w   scnd-name-top"
-    "prim-clock-top  fill-x     prim-board     fill-y     scnd-board     fill-w  scnd-clock-top"
-    "   fill-b       fill-x     prim-board     fill-y     scnd-board     fill-w      fill-q    "
-    "   fill-b       fill-x     prim-board     score      scnd-board     fill-w      fill-q    "
-    "   fill-b       fill-x     prim-board     fill-z     scnd-board     fill-w      fill-q    "
-    "   fill-b       fill-x     prim-board     fill-z     scnd-board     fill-w  scnd-clock-bot"
-    "   fill-b       fill-x     prim-board     fill-z  scnd-reserve-bot  fill-w   scnd-name-bot"
-    "   fill-b       fill-x     prim-board     fill-z  scnd-reserve-bot  fill-w      fill-r    "
-    "   fill-b       fill-x     prim-board     fill-z       fill-l       fill-w      fill-r    "
-    "   fill-b       fill-x     prim-board     fill-z     info-panel     fill-w      fill-r    "
-    "prim-clock-bot  fill-x     prim-board     fill-z     info-panel     fill-w      fill-r    "
-    "prim-name-bot   fill-x  prim-reserve-bot  fill-z       fill-m       fill-w      fill-r    "
-    "   fill-c       fill-x  prim-reserve-bot  fill-z       fill-m       fill-w      fill-r    "
+    "   fill-a       fill-x  prim-board  fill-y    fill-k    fill-w      fill-p    "
+    "   fill-a       fill-x  prim-board  fill-y  scnd-board  fill-w      fill-p    "
+    "prim-name-top   fill-x  prim-board  fill-y  scnd-board  fill-w   scnd-name-top"
+    "prim-clock-top  fill-x  prim-board  fill-y  scnd-board  fill-w  scnd-clock-top"
+    "   fill-b       fill-x  prim-board  fill-y  scnd-board  fill-w      fill-q    "
+    "   fill-b       fill-x  prim-board  score   scnd-board  fill-w      fill-q    "
+    "   fill-b       fill-x  prim-board  fill-z  scnd-board  fill-w      fill-q    "
+    "   fill-b       fill-x  prim-board  fill-z  scnd-board  fill-w  scnd-clock-bot"
+    "   fill-b       fill-x  prim-board  fill-z  scnd-board  fill-w   scnd-name-bot"
+    "   fill-b       fill-x  prim-board  fill-z  scnd-board  fill-w      fill-r    "
+    "   fill-b       fill-x  prim-board  fill-z    fill-l    fill-w      fill-r    "
+    "   fill-b       fill-x  prim-board  fill-z  info-panel  fill-w      fill-r    "
+    "prim-clock-bot  fill-x  prim-board  fill-z  info-panel  fill-w      fill-r    "
+    "prim-name-bot   fill-x  prim-board  fill-z    fill-m    fill-w      fill-r    "
+    "   fill-c       fill-x  prim-board  fill-z    fill-m    fill-w      fill-r    "
   ;
   grid-template-columns:
     auto
@@ -56,11 +53,13 @@ table, tr, th, td {
     calc(var(--sq-size-primary) * 0.2)
     auto
   ;
+  grid-template-rows:
+    calc((var(--sq-size-primary) - var(--sq-size-secondary)) * var(--reserve-height-in-squares))
+    /* everything else is `auto` */
+  ;
 }
 
-#board-container-primary { grid-area: prim-board; }
-#reserve-primary-top { grid-area: prim-reserve-top; }
-#reserve-primary-bottom { grid-area: prim-reserve-bot; }
+#board-primary { grid-area: prim-board; }
 #player-name-primary-top { grid-area: prim-name-top; }
 #player-name-primary-bottom { grid-area: prim-name-bot; }
 #clock-primary-top { grid-area: prim-clock-top; }
@@ -68,95 +67,61 @@ table, tr, th, td {
 
 #score { grid-area: score; }
 
-#board-container-secondary { grid-area: scnd-board; }
-#reserve-secondary-top { grid-area: scnd-reserve-top; }
-#reserve-secondary-bottom { grid-area: scnd-reserve-bot; }
+#board-secondary { grid-area: scnd-board; }
 #player-name-secondary-top { grid-area: scnd-name-top; }
 #player-name-secondary-bottom { grid-area: scnd-name-bot; }
 #clock-secondary-top { grid-area: scnd-clock-top; }
 #clock-secondary-bottom { grid-area: scnd-clock-bot; }
 
+/* TODO: Stabilize info panel position */
 #info-panel { grid-area: info-panel; }
 
+.board-shadow {
+  fill: #808080;
+  stroke: none;
+  filter: url(#board-shadow);
+}
+.board-border {
+  fill: none;
+  stroke: #000000;
+  stroke-width: 0.02;
+}
+
 .sq-black {
-  background-color: #e59349;
+  fill: #e59349;
 }
 .sq-white {
-  background-color: #dfceb4;
+  fill: #dfceb4;
 }
 
-.reserve-piece-primary,
-.reserve-piece-secondary {
-  filter: drop-shadow(0 0 calc(var(--sq-size-primary) * 0.1) #8eab6de0);
+.on-sq-black {
+  fill: #dfceb4;
+  font: normal 0.25px sans-serif;
 }
-/* Improvement potential. Better size calculations: Ensure that squares are square
-   and do the rest the usual CSS/HTML style based on space left for the grid. */
-.reserve-piece-primary,
-.sq-primary {
-  width: var(--sq-size-primary);
-  height: var(--sq-size-primary);
-}
-.reserve-piece-secondary,
-.sq-secondary {
-  width: var(--sq-size-secondary);
-  height: var(--sq-size-secondary);
-}
-.sq-primary,
-.sq-secondary {
-  user-select: none;
-  text-align: center;
-  vertical-align: middle;
+.on-sq-white {
+  fill: #e59349;
+  font: normal 0.25px sans-serif;
 }
 
-.board-piece {
-  display: block;
-  width: 100%;
-  height: 100%;
+.draggable {
+  cursor: grab;
 }
-.reserve-piece-primary,
-.reserve-piece-secondary {
-  display: block;
-}
-.reserve-piece-primary-wrapper,
-.reserve-piece-primary-separator {
-  width: calc(var(--sq-size-primary) / 2);
-}
-.reserve-piece-secondary-wrapper,
-.reserve-piece-secondary-separator {
-  width: calc(var(--sq-size-secondary) / 2);
-}
-.reserve-piece-primary-wrapper,
-.reserve-piece-secondary-wrapper,
-.reserve-piece-primary-separator,
-.reserve-piece-secondary-separator {
-  display: inline-block;
+.draggable.dragged {
+  cursor: grabbing;
 }
 
-#reserve-primary-top,
-#reserve-primary-bottom {
-  height: var(--sq-size-primary);
-}
-#reserve-secondary-top,
-#reserve-secondary-bottom {
-  height: var(--sq-size-secondary);
-}
 .reserve {
-  text-align: center;
-  white-space: nowrap;
-  padding: calc(var(--sq-size-primary) * 0.15) 0;
+  filter: url(#reserve-shadow);
 }
-
-.dragover {
-  box-shadow: 0px 0px 2px 0px #00000080;
-}
-
 #board-primary {
-  border: 1px solid #101010;
-  box-shadow: 2px 2px 3px #202020;
+  width: calc(var(--sq-size-primary) * 8);
+  height: calc(var(--sq-size-primary) * 11);
+  user-select: none;
 }
 #board-secondary {
-  border: 1px solid #101010;
-  box-shadow: 1px 1px 2px #202020;
+  width: calc(var(--sq-size-secondary) * 8);
+  height: calc(var(--sq-size-secondary) * 11);
+  user-select: none;
 }
 
 #player-name-primary-top,
