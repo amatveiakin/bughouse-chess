@@ -1,3 +1,4 @@
+mod altered_game;
 mod board;
 mod clock;
 mod coord;
@@ -13,6 +14,7 @@ pub mod client;
 pub mod server;
 pub mod util;
 
+pub use altered_game::*;
 pub use board::*;
 pub use clock::*;
 pub use coord::*;

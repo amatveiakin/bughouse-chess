@@ -261,21 +261,21 @@ pub struct Capture {
 }
 
 // Note. Generally speaking, it's impossible to detect castling based on king movement in Chess960.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Turn {
     Move(TurnMove),
     Drop(TurnDrop),
     Castle(CastleDirection),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct TurnMove {
     pub from: Coord,
     pub to: Coord,
     pub promote_to: Option<PieceKind>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct TurnDrop {
     pub piece_kind: PieceKind,
     pub to: Coord,

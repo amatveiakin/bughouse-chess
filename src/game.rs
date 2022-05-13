@@ -1,4 +1,3 @@
-// TODO: Remove `try_` prefix from all function names.
 // Improvement potential: Allow whitespace after turn number in `replay_log` functions.
 
 #![allow(unused_parens)]
@@ -176,6 +175,7 @@ pub fn get_bughouse_force(team: Team, board_idx: BughouseBoard) -> Force {
     }
 }
 
+// TODO: Unify board flipping for tui and web clients
 #[derive(Clone, Copy, Debug)]
 pub struct BughouseGameView {
     pub flip_boards: bool,
@@ -324,18 +324,28 @@ impl BughouseGame {
         -> Result<Turn, TurnError>
     {
         let turn = self.boards[board_idx].make_turn_from_algebraic(notation)?;
-        self.try_turn(board_idx, turn.clone(), now)?;
+        self.try_turn(board_idx, turn, now)?;
         Ok(turn)
+    }
+    pub fn try_turn_by_player(&mut self, player_name: &str, turn: Turn, now: GameInstant)
+        -> Result<(), TurnError>
+    {
+        let board_idx = self.get_active_player_board(player_name)?;
+        self.try_turn(board_idx, turn, now)
     }
     pub fn try_turn_by_player_from_algebraic(&mut self, player_name: &str, notation: &str, now: GameInstant)
         -> Result<Turn, TurnError>
     {
+        let board_idx = self.get_active_player_board(player_name)?;
+        self.try_turn_from_algebraic(board_idx, notation, now)
+    }
+    fn get_active_player_board(&self, player_name: &str) -> Result<BughouseBoard, TurnError> {
         let (board_idx, force) = self.find_player(player_name).unwrap_or_else(
             || panic!("Player not found: {}", player_name));
         if force != self.board(board_idx).active_force() {
             return Err(TurnError::WrongTurnOrder);
         }
-        self.try_turn_from_algebraic(board_idx, notation, now)
+        Ok(board_idx)
     }
     // Should be used in tests only, because it doesn't handle time properly.
     #[allow(non_snake_case)]

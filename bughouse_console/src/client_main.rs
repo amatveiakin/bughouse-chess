@@ -79,10 +79,10 @@ fn render(
                 writeln_raw(stdout, "")?;
             }
         },
-        ContestState::Game{ game_confirmed, local_turn, time_pair, .. } => {
+        ContestState::Game{ alt_game, time_pair, .. } => {
             // TODO: Show scores
             let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
-            let game = game_local(my_name, game_confirmed, local_turn);
+            let game = alt_game.local_game();
             let view = game.view_for_player(my_name);
             writeln_raw(stdout, format!("{}\n", tui::render_bughouse_game(&game, view, game_now)))?;
             // Note. Don't clear the board to avoid blinking.
@@ -180,8 +180,8 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                     NotableEvent::None => {},
                     NotableEvent::GameStarted => {
                         execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-                    }
-                    NotableEvent::OpponentTurnMade(_) => {},
+                    },
+                    NotableEvent::OpponentTurnMade => {},
                 }
             },
             IncomingEvent::Terminal(event) => {

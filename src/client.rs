@@ -4,7 +4,8 @@ use std::sync::mpsc;
 use enum_map::EnumMap;
 use instant::Instant;
 
-use crate::board::{Turn, TurnError};
+use crate::altered_game::AlteredGame;
+use crate::board::TurnError;
 use crate::clock::{GameInstant, WallGameTimePair};
 use crate::game::{BughouseGameStatus, BughouseGame};
 use crate::event::{TurnMadeEvent, BughouseServerEvent, BughouseClientEvent};
@@ -22,7 +23,7 @@ pub enum TurnCommandError {
 pub enum NotableEvent {
     None,
     GameStarted,
-    OpponentTurnMade(Turn),
+    OpponentTurnMade,
 }
 
 #[derive(Clone, Debug)]
@@ -38,24 +39,11 @@ pub enum ContestState {
     Game {
         // Scores from the past matches.
         scores: EnumMap<Team, u32>,
-        // State as it has been confirmed by the server.
-        game_confirmed: BughouseGame,
-        // Local turn (algebraic), uncofirmed by the server yet, but displayed on the client.
-        local_turn: Option<(String, GameInstant)>,
+        // Game state including unconfirmed local changes.
+        alt_game: AlteredGame,
         // Game start time: `None` before first move, non-`None` afterwards.
         time_pair: Option<WallGameTimePair>,
     },
-}
-
-// TODO: Make this a method instead
-pub fn game_local(my_name: &str, game_confirmed: &BughouseGame, local_turn: &Option<(String, GameInstant)>)
-    -> BughouseGame
-{
-    let mut game = game_confirmed.clone();
-    if let Some((turn_algebraic, turn_time)) = local_turn {
-        game.try_turn_by_player_from_algebraic(my_name, turn_algebraic, *turn_time).unwrap();
-    }
-    game
 }
 
 pub struct ClientState {
@@ -99,21 +87,16 @@ impl ClientState {
     }
 
     pub fn make_turn(&mut self, turn_algebraic: String) -> Result<(), TurnCommandError> {
-        if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, time_pair, .. }
+        if let ContestState::Game{ ref mut alt_game, time_pair, .. }
             = self.contest_state
         {
             let game_now = GameInstant::from_pair_game_maybe_active(time_pair, Instant::now());
-            if game_confirmed.status() != BughouseGameStatus::Active {
+            if alt_game.status() != BughouseGameStatus::Active {
                 Err(TurnCommandError::IllegalTurn(TurnError::GameOver))
-            } else if game_confirmed.player_is_active(&self.my_name).unwrap() && local_turn.is_none() {
-                let mut game_copy = game_confirmed.clone();
-                // Note. Not calling `test_flag`, because server is the source of truth for flag defeat.
-                game_copy.try_turn_by_player_from_algebraic(
-                    &self.my_name, &turn_algebraic, game_now
-                ).map_err(|err| {
+            } else if alt_game.can_make_local_turn() {
+                alt_game.try_local_turn_from_algebraic(&turn_algebraic, game_now).map_err(|err| {
                     TurnCommandError::IllegalTurn(err)
                 })?;
-                *local_turn = Some((turn_algebraic.clone(), game_now));
                 self.events_tx.send(BughouseClientEvent::MakeTurn {
                     turn_algebraic: turn_algebraic
                 }).unwrap();
@@ -160,30 +143,33 @@ impl ClientState {
                 } else {
                     Some(WallGameTimePair::new(Instant::now(), time.approximate()))
                 };
+                let alt_game = AlteredGame::new(
+                    self.my_name.clone(),
+                    BughouseGame::new_with_grid(
+                        chess_rules, bughouse_rules, starting_grid, player_map
+                    )
+                );
                 self.new_contest_state(ContestState::Game {
                     scores: try_vec_to_enum_map(scores).unwrap(),
-                    game_confirmed: BughouseGame::new_with_grid(
-                        chess_rules, bughouse_rules, starting_grid, player_map
-                    ),
-                    local_turn: None,
+                    alt_game,
                     time_pair,
                 });
                 for event in turn_log {
-                    self.apply_turn(event)?;
+                    self.apply_remote_turn(event)?;
                 }
                 Ok(NotableEvent::GameStarted)
             },
             TurnMade(event) => {
-                self.apply_turn(event)
+                self.apply_remote_turn(event)
             },
             GameOver{ time, game_status, scores: new_scores } => {
-                if let ContestState::Game{ ref mut game_confirmed, ref mut local_turn, ref mut scores, .. }
+                if let ContestState::Game{ ref mut alt_game, ref mut scores, .. }
                     = self.contest_state
                 {
-                    *local_turn = None;
-                    assert!(game_confirmed.status() == BughouseGameStatus::Active);
+                    alt_game.reset_local_changes();
+                    assert!(alt_game.status() == BughouseGameStatus::Active);
                     assert!(game_status != BughouseGameStatus::Active);
-                    game_confirmed.set_status(game_status, time);
+                    alt_game.set_status(game_status, time);
                     *scores = try_vec_to_enum_map(new_scores).unwrap();
                     Ok(NotableEvent::None)
                 } else {
@@ -193,38 +179,37 @@ impl ClientState {
         }
     }
 
-    fn apply_turn(&mut self, event: TurnMadeEvent) -> Result<NotableEvent, EventError> {
+    fn apply_remote_turn(&mut self, event: TurnMadeEvent) -> Result<NotableEvent, EventError> {
         let TurnMadeEvent{ player_name, turn_algebraic, time, game_status, scores: new_scores } = event;
         if let ContestState::Game{
-            ref mut game_confirmed, ref mut local_turn, ref mut time_pair, ref mut scores, ..
+            ref mut alt_game, ref mut time_pair, ref mut scores, ..
         } = self.contest_state {
-            // TODO: Simply ignore turns after game over.
-            assert!(game_confirmed.status() == BughouseGameStatus::Active, "Cannot make turn: game over");
+            if alt_game.status() != BughouseGameStatus::Active {
+                return Err(EventError::CannotApplyEvent(format!("Cannot make turn {}: game over", turn_algebraic)));
+            }
             if time_pair.is_none() {
                 // Improvement potential. Sync client/server times better; consider NTP.
                 let game_start = GameInstant::game_start().approximate();
                 *time_pair = Some(WallGameTimePair::new(Instant::now(), game_start));
             }
-            if player_name == self.my_name {
-                *local_turn = None;
-            }
-            let turn = game_confirmed.try_turn_by_player_from_algebraic(
+            alt_game.apply_remote_turn_from_algebraic(
                 &player_name, &turn_algebraic, time
             ).map_err(|err| {
                 EventError::CannotApplyEvent(format!("Impossible turn: {}, error: {:?}", turn_algebraic, err))
             })?;
-            if game_status != game_confirmed.status() {
+            if game_status != alt_game.status() {
                 return Err(EventError::CannotApplyEvent(format!(
-                    "Expected game status = {:?}, actual = {:?}", game_status, game_confirmed.status()
-                )))
+                    "Expected game status = {:?}, actual = {:?}", game_status, alt_game.status()
+                )));
             }
             *scores = try_vec_to_enum_map(new_scores).unwrap();
+            let game_confirmed = alt_game.game_confirmed();
             let turn_by_opponent =
                 player_name != self.my_name &&
                 game_confirmed.player_board_idx(&player_name).unwrap() ==
                     game_confirmed.player_board_idx(&self.my_name).unwrap();
             if turn_by_opponent {
-                Ok(NotableEvent::OpponentTurnMade(turn))
+                Ok(NotableEvent::OpponentTurnMade)
             } else {
                 Ok(NotableEvent::None)
             }

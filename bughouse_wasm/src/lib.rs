@@ -95,10 +95,10 @@ impl WebClient {
         -> JsResult<()>
     {
         if let Some(to_display) = position_to_square(to_x, to_y) {
-            if let ContestState::Game{ game_confirmed, local_turn, .. } = self.state.contest_state() {
+            if let ContestState::Game{ alt_game, .. } = self.state.contest_state() {
                 use PieceKind::*;
                 let my_name = self.state.my_name();
-                let game = game_local(my_name, game_confirmed, local_turn);
+                let game = alt_game.local_game();
                 let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
                 let to_coord = from_display_coord(to_display, board_orientation);
                 let to = to_coord.to_algebraic();
@@ -155,11 +155,11 @@ impl WebClient {
                 Ok(None)
             },
             NotableEvent::GameStarted => {
-                if let ContestState::Game{ ref game_confirmed, .. } = self.state.contest_state() {
+                if let ContestState::Game{ ref alt_game, .. } = self.state.contest_state() {
                     let info_string = web_document().get_existing_element_by_id("info-string").unwrap();
                     info_string.set_text_content(None);
                     let my_name = self.state.my_name();
-                    let (_, force) = game_confirmed.find_player(my_name).unwrap();
+                    let (_, force) = alt_game.game_confirmed().find_player(my_name).unwrap();
                     self.rotate_boards = force == Force::Black;
                     render_grids(self.rotate_boards);
                     Ok(Some("game_started".to_owned()))
@@ -167,7 +167,7 @@ impl WebClient {
                     Err("No game in progress".into())
                 }
             }
-            NotableEvent::OpponentTurnMade(_) => {
+            NotableEvent::OpponentTurnMade => {
                 if let ContestState::Game{ .. } = self.state.contest_state() {
                     // TODO: Highlight last turn
                     return Ok(Some("opponent_turn_made".to_owned()));
@@ -206,9 +206,9 @@ impl WebClient {
                 )));
                 // TODO: Reset boards, clock, etc.
             },
-            ContestState::Game{ scores, game_confirmed, local_turn, .. } => {
+            ContestState::Game{ scores, alt_game, .. } => {
                 let my_name = self.state.my_name();
-                let game = game_local(my_name, game_confirmed, local_turn);
+                let game = alt_game.local_game();
                 let (my_board_idx, my_force) = game.find_player(my_name).unwrap();
                 for (board_idx, board) in game.boards() {
                     let is_primary = board_idx == my_board_idx;
@@ -261,8 +261,8 @@ impl WebClient {
                         update_reserve(board.reserve(force), force, web_board_idx, player_idx).unwrap();
                     }
                 }
-                if game_confirmed.status() != BughouseGameStatus::Active {
-                    info_string.set_text_content(Some(&format!("Game over: {:?}", game_confirmed.status())));
+                if alt_game.status() != BughouseGameStatus::Active {
+                    info_string.set_text_content(Some(&format!("Game over: {:?}", alt_game.status())));
                 }
                 update_scores(&scores, self.state.my_team()).unwrap();
             },
@@ -272,11 +272,11 @@ impl WebClient {
 
     pub fn update_clock(&self) {
         let document = web_document();
-        if let ContestState::Game{ game_confirmed, local_turn, time_pair, .. } = self.state.contest_state() {
+        if let ContestState::Game{ alt_game, time_pair, .. } = self.state.contest_state() {
             let now = Instant::now();
             let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
             let my_name = self.state.my_name();
-            let game = game_local(my_name, game_confirmed, local_turn);
+            let game = alt_game.local_game();
             let (my_board_idx, my_force) = game.find_player(my_name).unwrap();
             for (board_idx, board) in game.boards() {
                 let is_primary = board_idx == my_board_idx;
