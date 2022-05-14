@@ -241,6 +241,8 @@ impl BughouseGame {
         })
     }
 
+    // Improvement potential. Remove mutable access to the boards.
+    pub fn board_mut(&mut self, idx: BughouseBoard) -> &mut Board { &mut self.boards[idx] }
     pub fn board(&self, idx: BughouseBoard) -> &Board { &self.boards[idx] }
     pub fn boards(&self) -> &EnumMap<BughouseBoard, Board> { &self.boards }
     pub fn players(&self) -> Vec<Rc<Player>> {
@@ -268,6 +270,12 @@ impl BughouseGame {
         self.find_player(player_name).map(|(board_idx, force)| {
             self.status == BughouseGameStatus::Active && self.boards[board_idx].active_force() == force
         })
+    }
+    pub fn are_opponents(&self, player_name_a: &str, player_name_b: &str) -> Option<bool> {
+        Some(
+            player_name_a != player_name_b &&
+            self.player_board_idx(player_name_a)? == self.player_board_idx(player_name_b)?
+        )
     }
 
     pub fn set_status(&mut self, status: BughouseGameStatus, now: GameInstant) {

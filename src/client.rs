@@ -66,6 +66,7 @@ impl ClientState {
     pub fn my_name(&self) -> &str { &self.my_name }
     pub fn my_team(&self) -> Team { self.my_team }
     pub fn contest_state(&self) -> &ContestState { &self.contest_state }
+    pub fn contest_state_mut(&mut self) -> &mut ContestState { &mut self.contest_state }
 
     pub fn join(&mut self) {
         self.events_tx.send(BughouseClientEvent::Join {
@@ -203,12 +204,7 @@ impl ClientState {
                 )));
             }
             *scores = try_vec_to_enum_map(new_scores).unwrap();
-            let game_confirmed = alt_game.game_confirmed();
-            let turn_by_opponent =
-                player_name != self.my_name &&
-                game_confirmed.player_board_idx(&player_name).unwrap() ==
-                    game_confirmed.player_board_idx(&self.my_name).unwrap();
-            if turn_by_opponent {
+            if alt_game.are_opponents(&player_name, &self.my_name).unwrap() {
                 Ok(NotableEvent::OpponentTurnMade)
             } else {
                 Ok(NotableEvent::None)

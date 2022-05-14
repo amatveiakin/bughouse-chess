@@ -1,6 +1,7 @@
 :root {
   --sq-size-primary: min(5vw, 9vh);
   --sq-size-secondary: calc(var(--sq-size-primary) / 1.5);
+  --board-size-secondary: calc(var(--sq-size-secondary) * 8);
   --reserve-height-in-squares: 1.5;
 }
 
@@ -101,6 +102,13 @@ svg {
 .on-sq-white {
   fill: #e59349;
   font: normal 0.25px sans-serif;
+}
+
+#drag-start-highlight {
+  fill: url(#drag-start-gradient);
+}
+#drag-over-highlight {
+  fill: url(#drag-over-gradient);
 }
 
 .draggable {

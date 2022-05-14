@@ -7,6 +7,8 @@ use crate::piece::{PieceOrigin, PieceOnBoard};
 use serde::{Serialize, Deserialize};
 
 
+// Improvement potential: Benchmark if it's better to change grid data type to a `Box`
+//   (inline storage makes the object expensive to move which Rust does a lot).
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Grid {
     data: [[Option<PieceOnBoard>; NUM_COLS as usize]; NUM_ROWS as usize],

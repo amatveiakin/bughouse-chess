@@ -12,7 +12,7 @@ use crate::coord::{SubjectiveRow, Row, Col, Coord};
 use crate::clock::{GameInstant, Clock};
 use crate::force::Force;
 use crate::grid::Grid;
-use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, CastleDirection};
+use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, CastleDirection, piece_from_algebraic};
 use crate::player::Player;
 use crate::rules::{DropAggression, ChessRules, BughouseRules};
 use crate::util::sort_two;
@@ -234,18 +234,6 @@ fn is_reachable(grid: &Grid, from: Coord, to: Coord, capturing: bool) -> bool {
     }
 }
 
-fn piece_from_algebraic(notation: &str) -> PieceKind {
-    match notation {
-        "P" => PieceKind::Pawn,
-        "N" => PieceKind::Knight,
-        "B" => PieceKind::Bishop,
-        "R" => PieceKind::Rook,
-        "Q" => PieceKind::Queen,
-        "K" => PieceKind::King,
-        _ => panic!("Unknown piece: {}", notation),
-    }
-}
-
 fn as_single_char(s: &str) -> char {
     let mut chars_iter = s.chars();
     let ret = chars_iter.next().unwrap();
@@ -359,6 +347,7 @@ impl Board {
     pub fn grid(&self) -> &Grid { &self.grid }
     pub fn grid_mut(&mut self) -> &mut Grid { &mut self.grid }
     pub fn reserve(&self, force: Force) -> &Reserve { &self.reserves[force] }
+    pub fn reserve_mut(&mut self, force: Force) -> &mut Reserve { &mut self.reserves[force] }
     pub fn reserves(&self) -> &EnumMap<Force, Reserve> { &self.reserves }
     pub fn clock(&self) -> &Clock { &self.clock }
     pub fn clock_mut(&mut self) -> &mut Clock { &mut self.clock }
@@ -607,6 +596,7 @@ impl Board {
         self.reserves[capture.force][capture.piece_kind] += 1;
     }
 
+    // TODO: Rename to avoid confusion with functions where "make turn" means "apply turn".
     pub fn make_turn_from_algebraic(&self, notation: &str) -> Result<Turn, TurnError> {
         let force = self.active_force;
         let notation = notation.trim();

@@ -86,63 +86,72 @@ impl WebClient {
     pub fn reset(&mut self) {
         self.state.reset();
     }
+
     pub fn make_turn_algebraic(&mut self, turn_algebraic: String) {
         let turn_result = self.state.make_turn(turn_algebraic);
         let info_string = web_document().get_existing_element_by_id("info-string").unwrap();
         info_string.set_text_content(turn_result.err().map(|err| format!("{:?}", err)).as_deref());
     }
-    pub fn make_turn_drag_drop(&mut self, from: &str, to_x: f64, to_y: f64, alternative_promotion: bool)
-        -> JsResult<()>
-    {
-        if let Some(to_display) = position_to_square(to_x, to_y) {
-            if let ContestState::Game{ alt_game, .. } = self.state.contest_state() {
-                use PieceKind::*;
-                let my_name = self.state.my_name();
-                let game = alt_game.local_game();
-                let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
-                let to_coord = from_display_coord(to_display, board_orientation);
-                let to = to_coord.to_algebraic();
-                if let Some(piece) = from.strip_prefix("reserve-") {
-                    self.make_turn_algebraic(format!("{}@{}", piece, to));
-                } else {
-                    let (_, my_force) = game.find_player(my_name).unwrap();
-                    let board = game.player_board(my_name).unwrap();
-                    let from_coord = Coord::from_algebraic(from);
-                    if let Some(piece) = board.grid()[from_coord] {
-                        let last_row = SubjectiveRow::from_one_based(8).to_row(my_force);
-                        let d_col = to_coord.col - from_coord.col;
-                        let d_col_abs = d_col.abs();
-                        let to_my_piece = if let Some(piece_to) = board.grid()[to_coord] {
-                            piece_to.force == my_force
-                        } else {
-                            false
-                        };
-                        // Castling rules: drag the king at least two squares in the rook direction
-                        // or onto a friendly piece. That later is required for Fischer random where
-                        // a king could start on b1 or g1.
-                        if piece.kind == King && (d_col_abs >= 2 || (d_col_abs >= 1 && to_my_piece)) {
-                            if d_col > 0 {
-                                self.make_turn_algebraic("0-0".to_owned());
-                            } else {
-                                self.make_turn_algebraic("0-0-0".to_owned());
-                            }
-                        } else if piece.kind == Pawn && to_coord.row == last_row {
-                            let promote_to = if alternative_promotion { Knight } else { Queen };
-                            let promotion_str = piece_notation(promote_to);
-                            self.make_turn_algebraic(format!("{}{}/{}", from, to, promotion_str));
-                        } else {
-                            let piece_str = piece_notation(piece.kind);
-                            self.make_turn_algebraic(format!("{}{}{}", piece_str, from, to));
-                        }
-                    } else {
-                        return Err(JsValue::from("Cannot make turn: no piece in the starting position"))
-                    }
-                }
+
+    pub fn start_drag_piece(&mut self, source: &str) -> JsResult<()> {
+        if let ContestState::Game{ ref mut alt_game, .. } = self.state.contest_state_mut() {
+            let source = if let Some(piece) = source.strip_prefix("reserve-") {
+                PieceDragStart::Reserve(piece_from_algebraic(piece))
             } else {
-                return Err(JsValue::from("Cannot make turn: no game in progress"))
+                let coord = Coord::from_algebraic(source);
+                let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
+                let display_coord = to_display_coord(coord, board_orientation);
+                set_square_highlight("drag-start-highlight", Some(display_coord))?;
+                PieceDragStart::Board(coord)
+            };
+            alt_game.start_drag_piece(source).map_err(|err| {
+                JsValue::from(format!("Drag&drop error: {:?}", err))
+            })?;
+        }
+        Ok(())
+    }
+    pub fn drag_piece(&mut self, dest_x: f64, dest_y: f64) -> JsResult<()> {
+        set_square_highlight("drag-over-highlight", position_to_square(dest_x, dest_y))
+    }
+    pub fn drag_piece_drop(&mut self, dest_x: f64, dest_y: f64, alternative_promotion: bool) -> JsResult<()> {
+        set_square_highlight("drag-start-highlight", None)?;
+        set_square_highlight("drag-over-highlight", None)?;
+        if let ContestState::Game{ ref mut alt_game, .. } = self.state.contest_state_mut() {
+            if let Some(dest_display) = position_to_square(dest_x, dest_y) {
+                use PieceKind::*;
+                let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
+                let dest_coord = from_display_coord(dest_display, board_orientation);
+                let promote_to = if alternative_promotion { Knight } else { Queen };
+                match alt_game.drag_piece_drop(dest_coord, promote_to) {
+                    Ok(turn_algebraic) => {
+                        self.make_turn_algebraic(turn_algebraic);
+                    },
+                    Err(PieceDragError::DragNoLongerPossible) => {
+                        // Ignore: this happen when dragged piece was captured by opponent.
+                    },
+                    Err(err) => {
+                        return Err(JsValue::from(format!("Drag&drop error: {:?}", err)));
+                    },
+                };
+            } else {
+                alt_game.abort_drag_piece();
             }
         }
         Ok(())
+    }
+    pub fn drag_state(&self) -> String {
+        (if let ContestState::Game{ ref alt_game, .. } = self.state.contest_state() {
+            if let Some(drag) = alt_game.piece_drag_state() {
+                match drag.source {
+                    PieceDragSource::Board(_) | PieceDragSource::Reserve => "yes",
+                    PieceDragSource::Defunct => "defunct",
+                }
+            } else {
+                "no"
+            }
+        } else {
+            "no"
+        }).to_owned()
     }
 
     pub fn process_server_event(&mut self, event: &str) -> JsResult<Option<String>> {
@@ -159,7 +168,7 @@ impl WebClient {
                     let info_string = web_document().get_existing_element_by_id("info-string").unwrap();
                     info_string.set_text_content(None);
                     let my_name = self.state.my_name();
-                    let (_, force) = alt_game.game_confirmed().find_player(my_name).unwrap();
+                    let (_, force) = alt_game.find_player(my_name).unwrap();
                     self.rotate_boards = force == Force::Black;
                     render_grids(self.rotate_boards);
                     Ok(Some("game_started".to_owned()))
@@ -227,8 +236,6 @@ impl WebClient {
                                 svg.append_child(&node).unwrap();
                                 node
                             });
-                            // TODO: Re-create the image when a piece is captured.
-                            //   Otherwise you are going to continue dragging enemy piece!
                             let filename = piece_path(piece.kind, piece.force);
                             let (x, y) = square_position(display_coord);
                             node.set_attribute("x", &x.to_string()).unwrap();
@@ -393,6 +400,30 @@ pub fn init_page(
     render_grids(false);
 }
 
+fn set_square_highlight(id: &str, coord: Option<DisplayCoord>) -> JsResult<()> {
+    let document = web_document();
+    let highlight_layer = document.get_existing_element_by_id("square-highlight-layer")?;
+    let node = document.get_element_by_id(id);
+    if let Some(coord) = coord {
+        let node = node.ok_or(JsValue::UNDEFINED).or_else(|_| -> JsResult<web_sys::Element> {
+            let node = document.create_svg_element("rect")?;
+            node.set_attribute("id", id)?;
+            node.set_attribute("width", "1")?;
+            node.set_attribute("height", "1")?;
+            highlight_layer.append_child(&node)?;
+            Ok(node)
+        })?;
+        let (x, y) = square_position(coord);
+        node.set_attribute("x", &x.to_string())?;
+        node.set_attribute("y", &y.to_string())?;
+    } else {
+        if let Some(node) = node {
+            node.remove();
+        }
+    }
+    Ok(())
+}
+
 fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_idx: WebPlayer)
     -> JsResult<()>
 {
@@ -417,7 +448,7 @@ fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_i
     let y = reserve_y_pos(player_idx);
     for (piece_kind, &amount) in reserve.iter().filter(|(_, &amount)| amount > 0) {
         let filename = piece_path(piece_kind, force);
-        let location = format!("reserve-{}", reserve_piece_notation(piece_kind));
+        let location = format!("reserve-{}", piece_to_full_algebraic(piece_kind));
         for iter in 0..amount {
             if iter > 0 {
                 x += piece_sep;
@@ -542,6 +573,11 @@ fn render_grid(board_idx: WebBoard, rotate_boards: bool) -> JsResult<()> {
             }
         }
     }
+
+    // Layer for square highlight that should be displayed below pieces.
+    let highlight_layer = document.create_svg_element("g")?;
+    highlight_layer.set_attribute("id", "square-highlight-layer")?;
+    svg.append_child(&highlight_layer)?;
 
     let border = make_board_rect(&document)?;
     border.set_attribute("class", "board-border")?;
@@ -672,29 +708,5 @@ fn square_color_class(row: Row, col: Col) -> String {
 fn piece_path(piece_kind: PieceKind, force: Force) -> String {
     unsafe {
         return PIECE_PATH.as_ref().unwrap()[force][piece_kind].clone();
-    }
-}
-
-fn piece_notation(piece_kind: PieceKind) -> &'static str {
-    use self::PieceKind::*;
-    match piece_kind {
-        Pawn => "",
-        Knight => "N",
-        Bishop => "B",
-        Rook => "R",
-        Queen => "Q",
-        King => "K",
-    }
-}
-
-fn reserve_piece_notation(piece_kind: PieceKind) -> &'static str {
-    use self::PieceKind::*;
-    match piece_kind {
-        Pawn => "P",
-        Knight => "N",
-        Bishop => "B",
-        Rook => "R",
-        Queen => "Q",
-        King => panic!("There should be no kings in reserve"),
     }
 }

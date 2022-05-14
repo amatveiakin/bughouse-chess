@@ -200,6 +200,24 @@ function update() {
         }
     }
     wasm_client.update_state();
+    const drag_state = wasm_client.drag_state();
+    switch (drag_state) {
+        case 'no':
+            if (drag_element) {
+                drag_element.remove();
+                drag_element = null;
+            }
+            break;
+        case 'yes':
+            console.assert(drag_element != null);
+            break;
+        case 'defunct':
+            // Improvement potential: Better image (broken piece / add red cross).
+            drag_element.setAttribute('opacity', 0.5);
+            break;
+        default:
+            console.error(`Unknown drag_state: ${drag_state}`);
+    }
 }
 
 function on_socket_opened() {
@@ -243,35 +261,47 @@ function set_up_drag_and_drop() {
             y: (src.clientY - ctm.f) / ctm.d,
         };
     }
+
     function start_drag(event) {
-        // TODO: Remove shadow from reserve piece.
-        // TODO: Choose the closest reserve piece rather then the one on top.
+        // Improvement potential. Highlight pieces outside of board area: add shadows separately
+        //   and move them to the very back, behing boards.
+        // Improvement potential: Choose the closest reserve piece rather then the one on top.
         console.assert(drag_element === null);
         if (event.target.classList.contains('draggable')) {
             drag_element = event.target;
             drag_element.classList.add('dragged');
             const coord = viewbox_mouse_position(event);
-            drag_dx = parseFloat(drag_element.getAttribute("x")) - coord.x;
-            drag_dy = parseFloat(drag_element.getAttribute("y")) - coord.y;
+            drag_dx = parseFloat(drag_element.getAttribute('x')) - coord.x;
+            drag_dy = parseFloat(drag_element.getAttribute('y')) - coord.y;
+
+            // Dissociate image from the board/reserve:
+            drag_element.id = null;
+            // Bring on top; (if reserve) remove shadow by extracting from reserve group:
+            drag_element.remove();
+            svg.appendChild(drag_element);
+
+            const source = drag_element.getAttribute('data-bughouse-location');
+            wasm_client.start_drag_piece(source);
+            update();
         }
     }
+
     function drag(event) {
         if (drag_element) {
             event.preventDefault();
             const coord = viewbox_mouse_position(event);
-            drag_element.setAttribute("x", coord.x + drag_dx);
-            drag_element.setAttribute("y", coord.y + drag_dy);
+            drag_element.setAttribute('x', coord.x + drag_dx);
+            drag_element.setAttribute('y', coord.y + drag_dy);
+            wasm_client.drag_piece(coord.x, coord.y);
         }
     }
+
     function end_drag(event) {
         if (drag_element) {
             const coord = viewbox_mouse_position(event);
-            const from = drag_element.getAttribute('data-bughouse-location');
-            drag_element.classList.remove('dragged');
+            drag_element.remove();
             drag_element = null;
-            if (wasm_client) {
-                wasm_client.make_turn_drag_drop(from, coord.x, coord.y, event.shiftKey);
-            }
+            wasm_client.drag_piece_drop(coord.x, coord.y, event.shiftKey);
             update();
         }
     }

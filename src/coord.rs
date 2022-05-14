@@ -1,3 +1,5 @@
+// Improvement potential. Return Option-s instead of failing, let the caller unwrap.
+
 use std::fmt;
 use std::ops;
 
