@@ -5,7 +5,7 @@ use enum_map::EnumMap;
 use instant::Instant;
 
 use crate::altered_game::AlteredGame;
-use crate::board::TurnError;
+use crate::board::{Turn, TurnError};
 use crate::clock::{GameInstant, WallGameTimePair};
 use crate::game::{BughouseGameStatus, BughouseGame};
 use crate::event::{TurnMadeEvent, BughouseServerEvent, BughouseClientEvent};
@@ -23,7 +23,7 @@ pub enum TurnCommandError {
 pub enum NotableEvent {
     None,
     GameStarted,
-    OpponentTurnMade,
+    OpponentTurnMade(Turn),
 }
 
 #[derive(Clone, Debug)]
@@ -193,7 +193,7 @@ impl ClientState {
                 let game_start = GameInstant::game_start().approximate();
                 *time_pair = Some(WallGameTimePair::new(Instant::now(), game_start));
             }
-            alt_game.apply_remote_turn_from_algebraic(
+            let turn = alt_game.apply_remote_turn_from_algebraic(
                 &player_name, &turn_algebraic, time
             ).map_err(|err| {
                 EventError::CannotApplyEvent(format!("Impossible turn: {}, error: {:?}", turn_algebraic, err))
@@ -205,7 +205,7 @@ impl ClientState {
             }
             *scores = try_vec_to_enum_map(new_scores).unwrap();
             if alt_game.are_opponents(&player_name, &self.my_name).unwrap() {
-                Ok(NotableEvent::OpponentTurnMade)
+                Ok(NotableEvent::OpponentTurnMade(turn))
             } else {
                 Ok(NotableEvent::None)
             }

@@ -87,10 +87,14 @@ impl WebClient {
         self.state.reset();
     }
 
-    pub fn make_turn_algebraic(&mut self, turn_algebraic: String) {
+    pub fn make_turn_algebraic(&mut self, turn_algebraic: String) -> JsResult<()> {
         let turn_result = self.state.make_turn(turn_algebraic);
-        let info_string = web_document().get_existing_element_by_id("info-string").unwrap();
+        let info_string = web_document().get_existing_element_by_id("info-string")?;
         info_string.set_text_content(turn_result.err().map(|err| format!("{:?}", err)).as_deref());
+        set_square_highlight("opponent-turn-from", None)?;
+        set_square_highlight("opponent-turn-to", None)?;
+        set_square_highlight("opponent-turn-to-extra", None)?;
+        Ok(())
     }
 
     pub fn start_drag_piece(&mut self, source: &str) -> JsResult<()> {
@@ -124,7 +128,7 @@ impl WebClient {
                 let promote_to = if alternative_promotion { Knight } else { Queen };
                 match alt_game.drag_piece_drop(dest_coord, promote_to) {
                     Ok(turn_algebraic) => {
-                        self.make_turn_algebraic(turn_algebraic);
+                        self.make_turn_algebraic(turn_algebraic)?;
                     },
                     Err(PieceDragError::DragNoLongerPossible) => {
                         // Ignore: this happen when dragged piece was captured by opponent.
@@ -176,9 +180,13 @@ impl WebClient {
                     Err("No game in progress".into())
                 }
             }
-            NotableEvent::OpponentTurnMade => {
-                if let ContestState::Game{ .. } = self.state.contest_state() {
-                    // TODO: Highlight last turn
+            NotableEvent::OpponentTurnMade(turn) => {
+                if let ContestState::Game{ ref alt_game, .. } = self.state.contest_state() {
+                    // Improvement potential: Also highlight last turn when reconnecting.
+                    let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
+                    for (id, coord) in turn_highlights(turn, alt_game.my_force().opponent()) {
+                        set_square_highlight(id, Some(to_display_coord(coord, board_orientation)))?;
+                    }
                     return Ok(Some("opponent_turn_made".to_owned()));
                 } else {
                     Err("No game in progress".into())
@@ -604,6 +612,32 @@ fn get_board_orientation(board_idx: WebBoard, rotate_180: bool) -> BoardOrientat
     match (board_idx, rotate_180) {
         (WebBoard::Primary, false) | (WebBoard::Secondary, true) => BoardOrientation::Normal,
         (WebBoard::Primary, true) | (WebBoard::Secondary, false) => BoardOrientation::Rotated,
+    }
+}
+
+fn turn_highlights(turn: Turn, force: Force) -> Vec<(&'static str, Coord)> {
+    match turn {
+        Turn::Move(mv) => vec![
+            ("opponent-turn-from", mv.from),
+            ("opponent-turn-to", mv.to),
+        ],
+        Turn::Drop(drop) => vec![
+            ("opponent-turn-to", drop.to),
+        ],
+        Turn::Castle(dir) => {
+            // Improvement potential: A more robust way to get piece positions after castling.
+            let row = SubjectiveRow::from_one_based(1).to_row(force);
+            match dir {
+                CastleDirection::ASide => vec![
+                    ("opponent-turn-to", Coord::new(row, Col::C)),
+                    ("opponent-turn-to-extra", Coord::new(row, Col::D)),
+                ],
+                CastleDirection::HSide => vec![
+                    ("opponent-turn-to", Coord::new(row, Col::G)),
+                    ("opponent-turn-to-extra", Coord::new(row, Col::F)),
+                ],
+            }
+        },
     }
 }
 

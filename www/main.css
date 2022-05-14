@@ -104,6 +104,16 @@ svg {
   font: normal 0.25px sans-serif;
 }
 
+#opponent-turn-from {
+  fill: #acbd38;
+  opacity: 0.5;
+}
+#opponent-turn-to,
+#opponent-turn-to-extra {
+  fill: #a7c000;
+  opacity: 0.5;
+}
+
 #drag-start-highlight {
   fill: url(#drag-start-gradient);
 }

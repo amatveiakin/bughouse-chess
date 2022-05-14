@@ -77,12 +77,12 @@ impl AlteredGame {
 
     pub fn apply_remote_turn_from_algebraic(
         &mut self, player_name: &str, turn_algebraic: &str, time: GameInstant)
-        -> Result<(), TurnError>
+        -> Result<Turn, TurnError>
     {
         if player_name == self.my_name {
             self.local_turn = None;
         }
-        self.game_confirmed.try_turn_by_player_from_algebraic(
+        let turn = self.game_confirmed.try_turn_by_player_from_algebraic(
             &player_name, &turn_algebraic, time
         )?;
         if let Some(ref mut drag) = self.piece_drag {
@@ -94,8 +94,12 @@ impl AlteredGame {
                 }
             }
         }
-        Ok(())
+        Ok(turn)
     }
+
+    pub fn my_name(&self) -> &str { &self.my_name }
+    pub fn my_board(&self) -> BughouseBoard { self.my_board }
+    pub fn my_force(&self) -> Force { self.my_force }
 
     // Improvement potential: Move everything related to players and sitting out of game
     //   classes and give direct access to it.
