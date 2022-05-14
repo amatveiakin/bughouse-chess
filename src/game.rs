@@ -114,8 +114,8 @@ impl ChessGame {
         self.board.try_turn(turn, now)?;
         Ok(())
     }
-    pub fn try_turn_from_algebraic(&mut self, notation: &str, now: GameInstant) -> Result<(), TurnError> {
-        let turn = self.board.make_turn_from_algebraic(notation)?;
+    pub fn try_turn_algebraic(&mut self, notation: &str, now: GameInstant) -> Result<(), TurnError> {
+        let turn = self.board.algebraic_notation_to_turn(notation)?;
         self.try_turn(turn, now)
     }
     // Should be used in tests only, because it doesn't handle time properly.
@@ -127,7 +127,7 @@ impl ChessGame {
         let now = GameInstant::game_start();
         for turn_notation in log.split_whitespace() {
             let turn_notation = TURN_NUMBER_RE.captures(turn_notation).unwrap().get(1).unwrap().as_str();
-            self.try_turn_from_algebraic(turn_notation, now)?
+            self.try_turn_algebraic(turn_notation, now)?
         }
         Ok(())
     }
@@ -328,10 +328,10 @@ impl BughouseGame {
         self.set_status(self.game_status_for_board(board_idx), now);
         Ok(())
     }
-    pub fn try_turn_from_algebraic(&mut self, board_idx: BughouseBoard, notation: &str, now: GameInstant)
+    pub fn try_turn_algebraic(&mut self, board_idx: BughouseBoard, notation: &str, now: GameInstant)
         -> Result<Turn, TurnError>
     {
-        let turn = self.boards[board_idx].make_turn_from_algebraic(notation)?;
+        let turn = self.boards[board_idx].algebraic_notation_to_turn(notation)?;
         self.try_turn(board_idx, turn, now)?;
         Ok(turn)
     }
@@ -341,11 +341,11 @@ impl BughouseGame {
         let board_idx = self.get_active_player_board(player_name)?;
         self.try_turn(board_idx, turn, now)
     }
-    pub fn try_turn_by_player_from_algebraic(&mut self, player_name: &str, notation: &str, now: GameInstant)
+    pub fn try_turn_algebraic_by_player(&mut self, player_name: &str, notation: &str, now: GameInstant)
         -> Result<Turn, TurnError>
     {
         let board_idx = self.get_active_player_board(player_name)?;
-        self.try_turn_from_algebraic(board_idx, notation, now)
+        self.try_turn_algebraic(board_idx, notation, now)
     }
     fn get_active_player_board(&self, player_name: &str) -> Result<BughouseBoard, TurnError> {
         let (board_idx, force) = self.find_player(player_name).unwrap_or_else(
@@ -376,7 +376,7 @@ impl BughouseGame {
                 _ => panic!("Unexpected bughouse player notation: {}", player_notation),
             };
             assert_eq!(self.boards[board_idx].active_force(), force);
-            self.try_turn_from_algebraic(board_idx, turn_notation, now)?;
+            self.try_turn_algebraic(board_idx, turn_notation, now)?;
         }
         Ok(())
     }

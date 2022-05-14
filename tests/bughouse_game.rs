@@ -39,7 +39,7 @@ fn no_castling_with_dropped_rook() {
         0A.R@h8  0a.d5
     ").unwrap();
     assert_eq!(
-        game.try_turn_from_algebraic(BughouseBoard::A, "0-0", GameInstant::game_start()).err().unwrap(),
+        game.try_turn_algebraic(BughouseBoard::A, "0-0", GameInstant::game_start()).err().unwrap(),
         TurnError::CastlingPieceHasMoved
     );
 }

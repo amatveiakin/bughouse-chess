@@ -596,8 +596,7 @@ impl Board {
         self.reserves[capture.force][capture.piece_kind] += 1;
     }
 
-    // TODO: Rename to avoid confusion with functions where "make turn" means "apply turn".
-    pub fn make_turn_from_algebraic(&self, notation: &str) -> Result<Turn, TurnError> {
+    pub fn algebraic_notation_to_turn(&self, notation: &str) -> Result<Turn, TurnError> {
         let force = self.active_force;
         let notation = notation.trim();
         const PIECE_RE: &str = r"[PNBRQK]";

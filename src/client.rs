@@ -95,7 +95,7 @@ impl ClientState {
             if alt_game.status() != BughouseGameStatus::Active {
                 Err(TurnCommandError::IllegalTurn(TurnError::GameOver))
             } else if alt_game.can_make_local_turn() {
-                alt_game.try_local_turn_from_algebraic(&turn_algebraic, game_now).map_err(|err| {
+                alt_game.try_local_turn_algebraic(&turn_algebraic, game_now).map_err(|err| {
                     TurnCommandError::IllegalTurn(err)
                 })?;
                 self.events_tx.send(BughouseClientEvent::MakeTurn {
@@ -193,7 +193,7 @@ impl ClientState {
                 let game_start = GameInstant::game_start().approximate();
                 *time_pair = Some(WallGameTimePair::new(Instant::now(), game_start));
             }
-            let turn = alt_game.apply_remote_turn_from_algebraic(
+            let turn = alt_game.apply_remote_turn_algebraic(
                 &player_name, &turn_algebraic, time
             ).map_err(|err| {
                 EventError::CannotApplyEvent(format!("Impossible turn: {}, error: {:?}", turn_algebraic, err))

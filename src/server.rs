@@ -310,7 +310,7 @@ impl ServerStateCore {
             if let Some(player_id) = clients[client_id].player_id {
                 let game_now = GameInstant::from_now_game_active(game_start.unwrap(), now);
                 let player_name = self.players[player_id].name.clone();
-                let turn_result = game.try_turn_by_player_from_algebraic(
+                let turn_result = game.try_turn_algebraic_by_player(
                     &player_name, &turn_algebraic, game_now
                 );
                 if let Err(error) = turn_result {

@@ -75,14 +75,14 @@ impl AlteredGame {
         self.game_confirmed.set_status(status, time)
     }
 
-    pub fn apply_remote_turn_from_algebraic(
+    pub fn apply_remote_turn_algebraic(
         &mut self, player_name: &str, turn_algebraic: &str, time: GameInstant)
         -> Result<Turn, TurnError>
     {
         if player_name == self.my_name {
             self.local_turn = None;
         }
-        let turn = self.game_confirmed.try_turn_by_player_from_algebraic(
+        let turn = self.game_confirmed.try_turn_algebraic_by_player(
             &player_name, &turn_algebraic, time
         )?;
         if let Some(ref mut drag) = self.piece_drag {
@@ -139,11 +139,11 @@ impl AlteredGame {
         self.game_confirmed.player_is_active(&self.my_name).unwrap() && self.local_turn.is_none()
     }
 
-    pub fn try_local_turn_from_algebraic(&mut self, turn_algebraic: &str, time: GameInstant)
+    pub fn try_local_turn_algebraic(&mut self, turn_algebraic: &str, time: GameInstant)
         -> Result<(), TurnError>
     {
         let mut game_copy = self.game_confirmed.clone();
-        let turn = game_copy.try_turn_by_player_from_algebraic(
+        let turn = game_copy.try_turn_algebraic_by_player(
             &self.my_name, turn_algebraic, time
         )?;
         self.local_turn = Some((turn, time));
