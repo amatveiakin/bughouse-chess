@@ -114,6 +114,7 @@ impl AlteredGame {
         let mut game = self.game_confirmed.clone();
         if let Some((turn, turn_time)) = self.local_turn {
             // Note. Not calling `test_flag`, because only server records flag defeat.
+            // TODO: Debug: This has paniced in production.
             game.try_turn_by_player(&self.my_name, turn, turn_time).unwrap();
         }
         if let Some(ref drag) = self.piece_drag {
