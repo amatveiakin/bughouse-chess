@@ -5,10 +5,10 @@ use enum_map::EnumMap;
 use instant::Instant;
 
 use crate::altered_game::AlteredGame;
-use crate::board::{Turn, TurnError};
+use crate::board::TurnError;
 use crate::clock::{GameInstant, WallGameTimePair};
 use crate::game::{BughouseGameStatus, BughouseGame};
-use crate::event::{TurnMadeEvent, BughouseServerEvent, BughouseClientEvent};
+use crate::event::{TurnRecord, BughouseServerEvent, BughouseClientEvent};
 use crate::player::{Player, Team};
 use crate::util::try_vec_to_enum_map;
 
@@ -23,7 +23,7 @@ pub enum TurnCommandError {
 pub enum NotableEvent {
     None,
     GameStarted,
-    OpponentTurnMade(Turn),
+    OpponentTurnMade,
 }
 
 #[derive(Clone, Debug)]
@@ -155,13 +155,18 @@ impl ClientState {
                     alt_game,
                     time_pair,
                 });
-                for event in turn_log {
-                    self.apply_remote_turn(event)?;
+                for turn in turn_log {
+                    self.apply_remote_turn(turn)?;
                 }
                 Ok(NotableEvent::GameStarted)
             },
-            TurnMade(event) => {
-                self.apply_remote_turn(event)
+            TurnsMade(event) => {
+                let mut opponent_turn_made = false;
+                for turn in event {
+                    let is_opponent_turn = self.apply_remote_turn(turn)?;
+                    opponent_turn_made |= is_opponent_turn;
+                }
+                Ok(if opponent_turn_made { NotableEvent::OpponentTurnMade } else { NotableEvent::None })
             },
             GameOver{ time, game_status, scores: new_scores } => {
                 if let ContestState::Game{ ref mut alt_game, ref mut scores, .. }
@@ -180,8 +185,9 @@ impl ClientState {
         }
     }
 
-    fn apply_remote_turn(&mut self, event: TurnMadeEvent) -> Result<NotableEvent, EventError> {
-        let TurnMadeEvent{ player_name, turn_algebraic, time, game_status, scores: new_scores } = event;
+    // Returns if the turn was mady by current player opponent.
+    fn apply_remote_turn(&mut self, event: TurnRecord) -> Result<bool, EventError> {
+        let TurnRecord{ player_name, turn_algebraic, time, game_status, scores: new_scores } = event;
         if let ContestState::Game{
             ref mut alt_game, ref mut time_pair, ref mut scores, ..
         } = self.contest_state {
@@ -193,7 +199,7 @@ impl ClientState {
                 let game_start = GameInstant::game_start().approximate();
                 *time_pair = Some(WallGameTimePair::new(Instant::now(), game_start));
             }
-            let turn = alt_game.apply_remote_turn_algebraic(
+            alt_game.apply_remote_turn_algebraic(
                 &player_name, &turn_algebraic, time
             ).map_err(|err| {
                 EventError::CannotApplyEvent(format!("Impossible turn: {}, error: {:?}", turn_algebraic, err))
@@ -204,11 +210,7 @@ impl ClientState {
                 )));
             }
             *scores = try_vec_to_enum_map(new_scores).unwrap();
-            if alt_game.are_opponents(&player_name, &self.my_name).unwrap() {
-                Ok(NotableEvent::OpponentTurnMade(turn))
-            } else {
-                Ok(NotableEvent::None)
-            }
+            Ok(alt_game.are_opponents(&player_name, &self.my_name).unwrap())
         } else {
             Err(EventError::CannotApplyEvent("Cannot make turn: no game in progress".to_owned()))
         }

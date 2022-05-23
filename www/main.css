@@ -114,6 +114,16 @@ svg {
   opacity: 0.5;
 }
 
+#pre-turn-from {
+  fill: #7238bd;
+  opacity: 0.5;
+}
+#pre-turn-to,
+#pre-turn-to-extra {
+  fill: #5800c0;
+  opacity: 0.5;
+}
+
 #drag-start-highlight {
   fill: url(#drag-start-gradient);
 }

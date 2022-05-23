@@ -38,15 +38,15 @@ fn col_range_inclusive((col_min, col_max): (Col, Col)) -> impl Iterator<Item = C
     (col_min.to_zero_based() ..= col_max.to_zero_based()).map(|idx| Col::from_zero_based(idx))
 }
 
-fn find_king(grid: &Grid, force: Force) -> Coord {
+fn find_king(grid: &Grid, force: Force) -> Option<Coord> {
     for pos in Coord::all() {
         if let Some(piece) = grid[pos] {
             if piece.kind == PieceKind::King && piece.force == force {
-                return pos;
+                return Some(pos);
             }
         }
     }
-    panic!("Cannot find {:?} king", force);
+    None
 }
 
 fn should_promote(force: Force, piece_kind: PieceKind, to: Coord) -> bool {
@@ -100,7 +100,7 @@ fn generate_moves_for_mate_test(grid: &mut Grid, from: Coord, last_turn: &Option
     let mut moves = Vec::new();
     for to in Coord::all() {
         let capture_or = get_capture(grid, from, to, last_turn);
-        if is_reachable(grid, from, to, capture_or.is_some()) {
+        if reachability(grid, from, to, capture_or.is_some()).ok() {
             moves.push(TurnMove{ from, to, promote_to: None });
         }
     }
@@ -162,7 +162,7 @@ fn is_check_to(grid: &Grid, king_pos: Coord) -> bool {
     let force = king_force(grid, king_pos);
     for from in Coord::all() {
         if let Some(piece) = grid[from] {
-            if piece.force != force && is_reachable(grid, from, king_pos, true) {
+            if piece.force != force && reachability(grid, from, king_pos, true).ok() {
                 return true;
             }
         }
@@ -170,11 +170,49 @@ fn is_check_to(grid: &Grid, king_pos: Coord) -> bool {
     false
 }
 
+fn reachability(grid: &Grid, from: Coord, to: Coord, capturing: bool) -> Reachability {
+    use ProtoReachability::*;
+    match proto_reachability(grid, from, to) {
+        Ok => Reachability::Ok,
+        OkIfCapturing => if capturing { Reachability::Ok } else { Reachability::Blocked },
+        OkIfNonCapturing => if !capturing { Reachability::Ok } else { Reachability::Blocked },
+        Blocked => Reachability::Blocked,
+        Impossible => Reachability::Impossible,
+    }
+}
+
+fn is_reachable_for_premove(grid: &Grid, from: Coord, to: Coord) -> bool {
+    use ProtoReachability::*;
+    match proto_reachability(grid, from, to) {
+        Ok | OkIfCapturing | OkIfNonCapturing | Blocked => true,
+        Impossible => false,
+    }
+}
+
 // Tests that the piece can move in such a way and that the path is free.
 // Does not support castling.
-fn is_reachable(grid: &Grid, from: Coord, to: Coord, capturing: bool) -> bool {
+fn proto_reachability(grid: &Grid, from: Coord, to: Coord) -> ProtoReachability {
+    use ProtoReachability::*;
+    let proto = proto_reachability_modulo_destination_square(grid, from, to);
+    match proto {
+        Blocked | Impossible => proto,
+        Ok | OkIfCapturing | OkIfNonCapturing => {
+            if let Some(piece) = grid[to] {
+                if piece.force == grid[from].unwrap().force {
+                    return Blocked;
+                }
+            }
+            proto
+        }
+    }
+}
+
+fn proto_reachability_modulo_destination_square(grid: &Grid, from: Coord, to: Coord)
+    -> ProtoReachability
+{
+    use ProtoReachability::*;
     if to == from {
-        return false;
+        return Impossible;
     }
     let force;
     let piece_kind;
@@ -184,52 +222,61 @@ fn is_reachable(grid: &Grid, from: Coord, to: Coord, capturing: bool) -> bool {
             piece_kind = piece.kind;
         },
         None => {
-            return false;
+            return Impossible;
         },
     }
-    if let Some(piece) = grid[to] {
-        if piece.force == force {
-            return false;
-        }
-    }
+
     let (d_row, d_col) = to - from;
+    let is_straight_move = d_row == 0 || d_col == 0;
+    let is_diagonal_move = d_row.abs() == d_col.abs();
+    // Tests that squares between `from` (exclusive) and `to` (exclusive) are free.
+    let has_linear_passage = || {
+        assert!(is_straight_move || is_diagonal_move);
+        let direction = (d_row.signum(), d_col.signum());
+        let mut pos = from + direction;
+        while pos != to {
+            if grid[pos].is_some() {
+                return false;
+            }
+            pos = pos + direction;
+        }
+        true
+    };
+    let simple_linear_passage = || {
+        if has_linear_passage() { Ok } else { Blocked }
+    };
+
     match piece_kind {
         PieceKind::Pawn => {
             let dir_forward = direction_forward(force);
-            if capturing {
-                d_col.abs() == 1 && d_row == dir_forward
-            } else {
-                let second_row = SubjectiveRow::from_one_based(2).to_row(force);
-                d_col == 0 && (
-                    d_row == dir_forward ||
-                    (from.row == second_row && d_row == dir_forward * 2)
-                )
+            let second_row = SubjectiveRow::from_one_based(2).to_row(force);
+            let valid_capturing_move = d_col.abs() == 1 && d_row == dir_forward;
+            let valid_non_capturing_move = d_col == 0 && (
+                d_row == dir_forward ||
+                (from.row == second_row && d_row == dir_forward * 2)
+            );
+            match (valid_capturing_move, valid_non_capturing_move) {
+                (true, true) => panic!("A pawn move cannot be both capturing and non-capturing"),
+                (true, false) => OkIfCapturing,
+                // TODO: Test that linear passage is verified for pawns too.
+                (false, true) => if has_linear_passage() { OkIfNonCapturing } else { Blocked },
+                (false, false) => Impossible,
             }
         },
         PieceKind::Knight => {
-            sort_two((d_row.abs(), d_col.abs())) == (1, 2)
+            if sort_two((d_row.abs(), d_col.abs())) == (1, 2) { Ok } else { Impossible }
         },
-        PieceKind::Bishop | PieceKind::Rook | PieceKind::Queen => {
-            let is_straight_move = d_row == 0 || d_col == 0;
-            let is_diagonal_move = d_row.abs() == d_col.abs();
-            if (is_straight_move && piece_kind != PieceKind::Bishop) ||
-               (is_diagonal_move && piece_kind != PieceKind::Rook)
-            {
-                let direction = (d_row.signum(), d_col.signum());
-                let mut pos = from + direction;
-                while pos != to {
-                    if grid[pos].is_some() {
-                        return false;
-                    }
-                    pos = pos + direction;
-                }
-                true
-            } else {
-                false
-            }
+        PieceKind::Bishop => {
+            if is_diagonal_move { simple_linear_passage() } else { Impossible }
+        },
+        PieceKind::Rook => {
+            if is_straight_move { simple_linear_passage() } else { Impossible }
+        },
+        PieceKind::Queen => {
+            if is_straight_move || is_diagonal_move { simple_linear_passage() } else { Impossible }
         },
         PieceKind::King => {
-            d_row.abs() <= 1 && d_col.abs() <= 1
+            if d_row.abs() <= 1 && d_col.abs() <= 1 { Ok } else { Impossible }
         },
     }
 }
@@ -241,6 +288,28 @@ fn as_single_char(s: &str) -> char {
     ret
 }
 
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ProtoReachability {
+    Ok,
+    OkIfCapturing,
+    OkIfNonCapturing,
+    Blocked,
+    Impossible,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Reachability {
+    Ok,
+    Blocked,
+    Impossible,
+}
+
+#[derive(Clone, Debug)]
+struct TurnOutcome {
+    new_grid: Grid,
+    capture: Option<Capture>,
+}
 
 #[derive(Clone, Debug)]
 pub struct Capture {
@@ -269,6 +338,29 @@ pub struct TurnDrop {
     pub to: Coord,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TurnMode {
+    // Regular in-order turn.
+    Normal,
+
+    // Out-of-order turn scheduled for execution. This is normally called "premove",
+    // but we reserve "move" for a turn that takes one piece from the board and moves
+    // it to another place on the board.
+    //
+    // A single preturn puts the game into an irrecoverably broken stake and should
+    // never be executed on the main copy of the game.
+    //
+    // Assumptions for preturn:
+    //   - Opponent pieces may have been removed, relocated or added.
+    //   - Current player pieces may have been removed, but NOT relocated or added.
+    // Validity test for a preturn is a strict as possible given these assuptions,
+    // but not stricter.
+    //
+    // TODO: Classify TurnError-s into those that are ok for a pre-turn and those that
+    // and not; test that a preturn is rejected iff the error is irrecoverable.
+    Preturn,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum VictoryReason {
     Checkmate,
@@ -290,18 +382,24 @@ pub enum TurnError {
     CaptureNotationRequiresCapture,
     PieceMissing,
     WrongTurnOrder,
-    Unreachable,
+    ImpossibleTrajectory,
+    PathBlocked,
     UnprotectedKing,
     CastlingPieceHasMoved,
     BadPromotion,
     DropFobidden,
     DropPieceMissing,
     DropPosition,
+    DropBlocked,
     DropAggression,
     GameOver,
 }
 
 pub type Reserve = EnumMap<PieceKind, u8>;
+
+impl Reachability {
+    pub fn ok(self) -> bool { self == Reachability::Ok }
+}
 
 // TODO: Info for draws (number of moves without action; hash map of former positions)
 // Improvement potential: Rc => references to a Box in Game classes
@@ -354,6 +452,12 @@ impl Board {
     pub fn active_force(&self) -> Force { self.active_force }
 
     fn is_bughouse(&self) -> bool { self.bughouse_rules.is_some() }
+    fn turn_owner(&self, mode: TurnMode) -> Force {
+        match mode {
+            TurnMode::Normal => self.active_force,
+            TurnMode::Preturn => self.active_force.opponent(),
+        }
+    }
 
     pub fn start_clock(&mut self, now: GameInstant) {
         if !self.clock.is_active() {
@@ -370,35 +474,20 @@ impl Board {
     }
 
     // Does not test flag. Will not update game status if a player has zero time left.
-    pub fn try_turn(&mut self, turn: Turn, now: GameInstant) -> Result<Option<Capture>, TurnError> {
-        if self.status != ChessGameStatus::Active {
-            return Err(TurnError::GameOver);
-        }
-        let force = self.active_force;
-        let (mut new_grid, capture) = self.try_turn_no_check_test(&turn)?;
-        let king_pos = find_king(&new_grid, force);
-        let opponent_king_pos = find_king(&new_grid, force.opponent());
-        if is_check_to(&mut new_grid, king_pos) {
-            return Err(TurnError::UnprotectedKing);
-        }
-        if let Turn::Drop(_) = turn {
-            let bughouse_rules = self.bughouse_rules.as_ref().ok_or(TurnError::DropFobidden)?;
-            let drop_legal = match bughouse_rules.drop_aggression {
-                DropAggression::NoCheck =>
-                    !is_check_to(&mut new_grid, opponent_king_pos),
-                DropAggression::NoChessMate =>
-                    !is_chess_mate_to(&mut new_grid, opponent_king_pos, &self.last_turn),
-                DropAggression::NoBughouseMate =>
-                    !is_bughouse_mate_to(&mut new_grid, opponent_king_pos, &self.last_turn),
-                DropAggression::MateAllowed =>
-                    true,
-            };
-            if !drop_legal {
-                return Err(TurnError::DropAggression);
-            }
-        }
-        // Turn validity verified; start updating game state.
+    pub fn try_turn(&mut self, turn: Turn, mode: TurnMode, now: GameInstant)
+        -> Result<Option<Capture>, TurnError>
+    {
+        // Turn application is split into two phases:
+        //   - First, check turn validity and determine the outcome (does not change
+        //     game state, can fail if the turn is invalid).
+        //   - Second, apply the outcome (changes game state, cannot fail).
+        let TurnOutcome{ new_grid, capture } = self.turn_outcome(turn, mode)?;
+        self.apply_turn(turn, mode, new_grid, now);
+        Ok(capture)
+    }
 
+    fn apply_turn(&mut self, turn: Turn, mode: TurnMode, new_grid: Grid, now: GameInstant) {
+        let force = self.turn_owner(mode);
         match &turn {
             Turn::Move(mv) => {
                 let piece = &mut self.grid[mv.from].unwrap();
@@ -413,29 +502,81 @@ impl Board {
             }
         }
         self.grid = new_grid;
-        if let Turn::Drop(ref drop) = turn {
+        if let Turn::Drop(drop) = turn {
             let reserve_left = &mut self.reserves[force][drop.piece_kind];
             assert!(*reserve_left > 0);
             *reserve_left -= 1;
         }
-        self.last_turn = Some(turn);
-        if self.is_bughouse() {
-            if is_bughouse_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
-                self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
-            }
-        } else {
-            if is_chess_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
-                self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
-            }
+
+        match mode {
+            TurnMode::Normal => {
+                self.last_turn = Some(turn);
+                let opponent_king_pos = find_king(&self.grid, force.opponent()).unwrap();
+                if self.is_bughouse() {
+                    if is_bughouse_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
+                        self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
+                    }
+                } else {
+                    if is_chess_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
+                        self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
+                    }
+                }
+                // TODO: Draw if position is repeated three times.
+                self.active_force = force.opponent();
+                self.clock.new_turn(self.active_force, now);
+            },
+            TurnMode::Preturn => {
+                self.last_turn = None;
+            },
         }
-        // TODO: Draw if position is repeated three times.
-        self.active_force = force.opponent();
-        self.clock.new_turn(self.active_force, now);
-        Ok(capture)
     }
 
-    fn try_turn_no_check_test(&self, turn: &Turn) -> Result<(Grid, Option<Capture>), TurnError> {
-        let force = self.active_force;
+    fn turn_outcome(&self, turn: Turn, mode: TurnMode) -> Result<TurnOutcome, TurnError> {
+        let mut outcome = self.turn_outcome_no_check_test(turn, mode)?;
+        match mode {
+            TurnMode::Normal => { self.verify_check_and_drop_aggression(turn, mode, &mut outcome)? },
+            TurnMode::Preturn => {},
+        }
+        Ok(outcome)
+    }
+
+    // `outcome` is guaratneed to be returned intact.
+    fn verify_check_and_drop_aggression(&self, turn: Turn, mode: TurnMode, outcome: &mut TurnOutcome)
+        -> Result<(), TurnError>
+    {
+        let new_grid = &mut outcome.new_grid;
+        let force = self.turn_owner(mode);
+        let king_pos = find_king(new_grid, force).unwrap();
+        let opponent_king_pos = find_king(new_grid, force.opponent()).unwrap();
+        if is_check_to(new_grid, king_pos) {
+            return Err(TurnError::UnprotectedKing);
+        }
+        if let Turn::Drop(_) = turn {
+            let bughouse_rules = self.bughouse_rules.as_ref().unwrap();  // should've been tested earlier
+            let drop_legal = match bughouse_rules.drop_aggression {
+                DropAggression::NoCheck =>
+                    !is_check_to(new_grid, opponent_king_pos),
+                DropAggression::NoChessMate =>
+                    !is_chess_mate_to(new_grid, opponent_king_pos, &self.last_turn),
+                DropAggression::NoBughouseMate =>
+                    !is_bughouse_mate_to(new_grid, opponent_king_pos, &self.last_turn),
+                DropAggression::MateAllowed =>
+                    true,
+            };
+            if !drop_legal {
+                return Err(TurnError::DropAggression);
+            }
+        }
+        Ok(())
+    }
+
+    fn turn_outcome_no_check_test(&self, turn: Turn, mode: TurnMode)
+        -> Result<TurnOutcome, TurnError>
+    {
+        if self.status != ChessGameStatus::Active {
+            return Err(TurnError::GameOver);
+        }
+        let force = self.turn_owner(mode);
         let mut new_grid = self.grid.clone();
         let mut capture = None;
         match turn {
@@ -444,10 +585,22 @@ impl Board {
                 if piece.force != force {
                     return Err(TurnError::WrongTurnOrder);
                 }
-                let capture_pos_or = get_capture(&new_grid, mv.from, mv.to, &self.last_turn);
-                let reachable = is_reachable(&new_grid, mv.from, mv.to, capture_pos_or.is_some());
-                if !reachable {
-                    return Err(TurnError::Unreachable);
+                let mut capture_pos_or = None;
+                match mode {
+                    TurnMode::Normal => {
+                        use Reachability::*;
+                        capture_pos_or = get_capture(&new_grid, mv.from, mv.to, &self.last_turn);
+                        match reachability(&new_grid, mv.from, mv.to, capture_pos_or.is_some()) {
+                            Ok => {},
+                            Blocked => return Err(TurnError::PathBlocked),
+                            Impossible => return Err(TurnError::ImpossibleTrajectory),
+                        }
+                    },
+                    TurnMode::Preturn => {
+                        if !is_reachable_for_premove(&new_grid, mv.from, mv.to) {
+                            return Err(TurnError::ImpossibleTrajectory);
+                        }
+                    },
                 }
                 new_grid[mv.from] = None;
                 if let Some(capture_pos) = capture_pos_or {
@@ -490,11 +643,17 @@ impl Board {
                 ) {
                     return Err(TurnError::DropPosition);
                 }
+                // Improvement potential: Allow pre-turns dropping missing pieces.
                 if self.reserves[force][drop.piece_kind] < 1 {
                     return Err(TurnError::DropPieceMissing);
                 }
-                if new_grid[drop.to].is_some() {
-                    return Err(TurnError::DropPosition);
+                match mode {
+                    TurnMode::Normal => {
+                        if new_grid[drop.to].is_some() {
+                            return Err(TurnError::DropBlocked);
+                        }
+                    },
+                    TurnMode::Preturn => {},
                 }
                 new_grid[drop.to] = Some(PieceOnBoard::new(
                     drop.piece_kind, PieceOrigin::Dropped, None, force
@@ -540,7 +699,7 @@ impl Board {
                 for col in Col::all() {
                     let pos = Coord{ row, col };
                     if let Some(piece) = new_grid[pos] {
-                        if piece.force == force && piece.rook_castling == Some(*dir) {
+                        if piece.force == force && piece.rook_castling == Some(dir) {
                             assert_eq!(piece.kind, PieceKind::Rook);
                             rook = new_grid[pos].take();
                             rook.unwrap().rook_castling = None;  // not that is matters, but...
@@ -567,37 +726,40 @@ impl Board {
                     },
                 };
 
-                let cols = [king_from.col, king_to.col, rook_from.col, rook_to.col];
-                for col in col_range_inclusive(iter_minmax(cols.into_iter()).unwrap()) {
-                    if new_grid[Coord::new(row, col)].is_some() {
-                        return Err(TurnError::Unreachable);
-                    }
-                }
+                match mode {
+                    TurnMode::Normal => {
+                        let cols = [king_from.col, king_to.col, rook_from.col, rook_to.col];
+                        for col in col_range_inclusive(iter_minmax(cols.into_iter()).unwrap()) {
+                            if new_grid[Coord::new(row, col)].is_some() {
+                                return Err(TurnError::PathBlocked);
+                            }
+                        }
 
-                let cols = [king_from.col, king_to.col];
-                for col in col_range_inclusive(iter_minmax(cols.into_iter()).unwrap()) {
-                    let pos = Coord::new(row, col);
-                    let new_grid = new_grid.scoped_set(pos, Some(PieceOnBoard::new(
-                        PieceKind::King, PieceOrigin::Innate, None, force
-                    )));
-                    if is_check_to(&new_grid, pos) {
-                        return Err(TurnError::UnprotectedKing);
-                    }
+                        let cols = [king_from.col, king_to.col];
+                        for col in col_range_inclusive(iter_minmax(cols.into_iter()).unwrap()) {
+                            let pos = Coord::new(row, col);
+                            let new_grid = new_grid.scoped_set(pos, king);
+                            if is_check_to(&new_grid, pos) {
+                                return Err(TurnError::UnprotectedKing);
+                            }
+                        }
+                    },
+                    TurnMode::Preturn => {},
                 }
 
                 new_grid[king_to] = king;
                 new_grid[rook_to] = rook;
             },
         }
-        Ok((new_grid, capture))
+        Ok(TurnOutcome{ new_grid, capture })
     }
 
     pub fn receive_capture(&mut self, capture: &Capture) {
         self.reserves[capture.force][capture.piece_kind] += 1;
     }
 
-    pub fn algebraic_notation_to_turn(&self, notation: &str) -> Result<Turn, TurnError> {
-        let force = self.active_force;
+    pub fn algebraic_notation_to_turn(&self, notation: &str, mode: TurnMode) -> Result<Turn, TurnError> {
+        let force = self.turn_owner(mode);
         let notation = notation.trim();
         const PIECE_RE: &str = r"[PNBRQK]";
         lazy_static! {
@@ -622,6 +784,7 @@ impl Board {
                 return Err(TurnError::BadPromotion);
             }
             let mut turn = None;
+            let mut potentially_reachable = false;
             for from in Coord::all() {
                 if let Some(piece) = self.grid[from] {
                     if (
@@ -630,12 +793,38 @@ impl Board {
                         from_row.unwrap_or(from.row) == from.row &&
                         from_col.unwrap_or(from.col) == from.col
                     ) {
-                        let capture_or = get_capture(&self.grid, from, to, &self.last_turn);
-                        if is_reachable(&self.grid, from, to, capture_or.is_some()) {
-                            if capturing && !capture_or.is_some() {
-                                return Err(TurnError::CaptureNotationRequiresCapture);
-                            }
+                        let reachable;
+                        match mode {
+                            TurnMode::Normal => {
+                                use Reachability::*;
+                                let capture_or = get_capture(&self.grid, from, to, &self.last_turn);
+                                match reachability(&self.grid, from, to, capture_or.is_some()) {
+                                    Ok => {
+                                        if capturing && !capture_or.is_some() {
+                                            return Err(TurnError::CaptureNotationRequiresCapture);
+                                        }
+                                        reachable = true;
+                                    },
+                                    Blocked => {
+                                        potentially_reachable = true;
+                                        reachable = false;
+                                    },
+                                    Impossible => {
+                                        reachable = false;
+                                    },
+                                }
+                            },
+                            TurnMode::Preturn => {
+                                reachable = is_reachable_for_premove(&self.grid, from, to)
+                            },
+                        };
+                        if reachable {
                             if turn.is_some() {
+                                // Note. Checking for a preturn may reject a turn that would
+                                // become valid by the time it's executed (because one of the
+                                // pieces that can make the move is blocked or captured, so
+                                // it's no longer ambiguous). However without this condition
+                                // it is unclear how to render the preturn on the client.
                                 return Err(TurnError::AmbiguousNotation);
                             }
                             turn = Some(Turn::Move(TurnMove{ from, to, promote_to }));
@@ -643,7 +832,13 @@ impl Board {
                     }
                 }
             }
-            return turn.ok_or(TurnError::Unreachable);
+            if let Some(turn) = turn {
+                return Ok(turn);
+            } else if potentially_reachable {
+                return Err(TurnError::PathBlocked);
+            } else {
+                return Err(TurnError::ImpossibleTrajectory);
+            }
         } else if let Some(cap) = DROP_RE.captures(notation) {
             let piece_kind = piece_from_algebraic(cap.get(1).unwrap().as_str());
             let to = Coord::from_algebraic(cap.get(2).unwrap().as_str());

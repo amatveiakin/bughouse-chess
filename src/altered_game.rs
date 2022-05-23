@@ -1,4 +1,4 @@
-use crate::board::{Turn, TurnError};
+use crate::board::{Turn, TurnMode, TurnError};
 use crate::clock::GameInstant;
 use crate::coord::{SubjectiveRow, Coord};
 use crate::force::Force;
@@ -43,9 +43,13 @@ pub struct AlteredGame {
     my_force: Force,
     // State as it has been confirmed by the server.
     game_confirmed: BughouseGame,
-    // Local turn, unconfirmed by the server yet, but displayed on the client.
-    // This is always a valid turn for the `game_confirmed`.
-    local_turn: Option<(Turn, GameInstant)>,
+    // Latest turn made by the opponent on this board, used for highlighting.
+    latest_opponent_turn: Option<Turn>,
+    // Local turn:
+    //   - if TurnMode::Normal: a turn not confirmed by the server yet, but displayed on
+    //       the client; always a valid turn for the `game_confirmed`;
+    //   - if TurnMode::Preturn: a preturn.
+    local_turn: Option<(Turn, TurnMode, GameInstant)>,
     // Drag&drop state if making turn by mouse or touch.
     piece_drag: Option<PieceDrag>,
 }
@@ -58,6 +62,7 @@ impl AlteredGame {
             my_board,
             my_force,
             game_confirmed,
+            latest_opponent_turn: None,
             local_turn: None,
             piece_drag: None,
         }
@@ -79,12 +84,15 @@ impl AlteredGame {
         &mut self, player_name: &str, turn_algebraic: &str, time: GameInstant)
         -> Result<Turn, TurnError>
     {
-        if player_name == self.my_name {
+        if self.game_confirmed.player_board_idx(player_name).unwrap() == self.my_board {
             self.local_turn = None;
         }
         let turn = self.game_confirmed.try_turn_algebraic_by_player(
-            &player_name, &turn_algebraic, time
+            &player_name, &turn_algebraic, TurnMode::Normal, time
         )?;
+        if self.are_opponents(&player_name, &self.my_name).unwrap() {
+            self.latest_opponent_turn = Some(turn);
+        }
         if let Some(ref mut drag) = self.piece_drag {
             if let PieceDragSource::Board(coord) = drag.source {
                 let board = self.game_confirmed.board(self.my_board);
@@ -110,12 +118,21 @@ impl AlteredGame {
         self.game_confirmed.are_opponents(player_name_a, player_name_b)
     }
 
+    pub fn opponent_turn_highlight(&self) -> Option<Turn> {
+        let show_highlight =
+            self.game_confirmed.player_is_active(&self.my_name).unwrap() &&
+            self.local_turn.is_none();
+        if show_highlight { self.latest_opponent_turn } else { None }
+    }
+    pub fn preturn_highlight(&self) -> Option<Turn> {
+        if let Some((turn, TurnMode::Preturn, _)) = self.local_turn { Some(turn) } else { None }
+    }
+
     pub fn local_game(&self) -> BughouseGame {
         let mut game = self.game_confirmed.clone();
-        if let Some((turn, turn_time)) = self.local_turn {
+        if let Some((turn, mode, turn_time)) = self.local_turn {
             // Note. Not calling `test_flag`, because only server records flag defeat.
-            // TODO: Debug: This has paniced in production.
-            game.try_turn_by_player(&self.my_name, turn, turn_time).unwrap();
+            game.try_turn_by_player(&self.my_name, turn, mode, turn_time).unwrap();
         }
         if let Some(ref drag) = self.piece_drag {
             let board = game.board_mut(self.my_board);
@@ -137,17 +154,18 @@ impl AlteredGame {
     }
 
     pub fn can_make_local_turn(&self) -> bool {
-        self.game_confirmed.player_is_active(&self.my_name).unwrap() && self.local_turn.is_none()
+        self.local_turn.is_none()
     }
 
     pub fn try_local_turn_algebraic(&mut self, turn_algebraic: &str, time: GameInstant)
         -> Result<(), TurnError>
     {
         let mut game_copy = self.game_confirmed.clone();
+        let mode = game_copy.turn_mode_for_player(&self.my_name)?.unwrap();
         let turn = game_copy.try_turn_algebraic_by_player(
-            &self.my_name, turn_algebraic, time
+            &self.my_name, turn_algebraic, mode, time
         )?;
-        self.local_turn = Some((turn, time));
+        self.local_turn = Some((turn, mode, time));
         self.piece_drag = None;
         Ok(())
     }

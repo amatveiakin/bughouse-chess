@@ -11,7 +11,7 @@ use rand::prelude::*;
 use regex::Regex;
 use serde::{Serialize, Deserialize};
 
-use crate::board::{Board, Turn, TurnError, ChessGameStatus, VictoryReason};
+use crate::board::{Board, Turn, TurnMode, TurnError, ChessGameStatus, VictoryReason};
 use crate::clock::GameInstant;
 use crate::coord::{Row, Col, Coord};
 use crate::force::Force;
@@ -110,13 +110,17 @@ impl ChessGame {
     // Function from `try_turn...` familiy do not test flag internally. They will not update
     // game status if a player has zero time left.
     // Thus it's recommended to `test_flag` first.
-    pub fn try_turn(&mut self, turn: Turn, now: GameInstant) -> Result<(), TurnError> {
-        self.board.try_turn(turn, now)?;
+    pub fn try_turn(&mut self, turn: Turn, mode: TurnMode, now: GameInstant)
+        -> Result<(), TurnError>
+    {
+        self.board.try_turn(turn, mode, now)?;
         Ok(())
     }
-    pub fn try_turn_algebraic(&mut self, notation: &str, now: GameInstant) -> Result<(), TurnError> {
-        let turn = self.board.algebraic_notation_to_turn(notation)?;
-        self.try_turn(turn, now)
+    pub fn try_turn_algebraic(&mut self, notation: &str, mode: TurnMode, now: GameInstant)
+        -> Result<(), TurnError>
+    {
+        let turn = self.board.algebraic_notation_to_turn(notation, mode)?;
+        self.try_turn(turn, mode, now)
     }
     // Should be used in tests only, because it doesn't handle time properly.
     #[allow(non_snake_case)]
@@ -127,7 +131,7 @@ impl ChessGame {
         let now = GameInstant::game_start();
         for turn_notation in log.split_whitespace() {
             let turn_notation = TURN_NUMBER_RE.captures(turn_notation).unwrap().get(1).unwrap().as_str();
-            self.try_turn_algebraic(turn_notation, now)?
+            self.try_turn_algebraic(turn_notation, TurnMode::Normal, now)?
         }
         Ok(())
     }
@@ -271,11 +275,25 @@ impl BughouseGame {
             self.status == BughouseGameStatus::Active && self.boards[board_idx].active_force() == force
         })
     }
+    pub fn turn_mode_for_player(&self, player_name: &str) -> Result<Option<TurnMode>, TurnError> {
+        if self.status == BughouseGameStatus::Active {
+            Ok(self.player_is_active(player_name).map(|active| {
+                if active { TurnMode::Normal } else { TurnMode::Preturn }
+            }))
+        } else {
+            Err(TurnError::GameOver)
+        }
+    }
     pub fn are_opponents(&self, player_name_a: &str, player_name_b: &str) -> Option<bool> {
         Some(
             player_name_a != player_name_b &&
             self.player_board_idx(player_name_a)? == self.player_board_idx(player_name_b)?
         )
+    }
+    pub fn opponent_name(&self, player_name: &str) -> Option<String> {
+        self.find_player(player_name).map(|(board_idx, force)| {
+            self.boards[board_idx].player(force.opponent()).name.clone()
+        })
     }
 
     pub fn set_status(&mut self, status: BughouseGameStatus, now: GameInstant) {
@@ -311,7 +329,7 @@ impl BughouseGame {
     }
 
     // Should `test_flag` first!
-    pub fn try_turn(&mut self, board_idx: BughouseBoard, turn: Turn, now: GameInstant)
+    pub fn try_turn(&mut self, board_idx: BughouseBoard, turn: Turn, mode: TurnMode, now: GameInstant)
         -> Result<(), TurnError>
     {
         if self.status != BughouseGameStatus::Active {
@@ -319,7 +337,7 @@ impl BughouseGame {
             // may have ended earlier on the other board.
             return Err(TurnError::GameOver);
         }
-        let capture_or = self.boards[board_idx].try_turn(turn, now)?;
+        let capture_or = self.boards[board_idx].try_turn(turn, mode, now)?;
         self.boards[board_idx.other()].start_clock(now);
         if let Some(capture) = capture_or {
             self.boards[board_idx.other()].receive_capture(&capture)
@@ -328,32 +346,34 @@ impl BughouseGame {
         self.set_status(self.game_status_for_board(board_idx), now);
         Ok(())
     }
-    pub fn try_turn_algebraic(&mut self, board_idx: BughouseBoard, notation: &str, now: GameInstant)
+    pub fn try_turn_algebraic(&mut self, board_idx: BughouseBoard, notation: &str, mode: TurnMode, now: GameInstant)
         -> Result<Turn, TurnError>
     {
-        let turn = self.boards[board_idx].algebraic_notation_to_turn(notation)?;
-        self.try_turn(board_idx, turn, now)?;
+        let turn = self.boards[board_idx].algebraic_notation_to_turn(notation, mode)?;
+        self.try_turn(board_idx, turn, mode, now)?;
         Ok(turn)
     }
-    pub fn try_turn_by_player(&mut self, player_name: &str, turn: Turn, now: GameInstant)
+    pub fn try_turn_by_player(
+        &mut self, player_name: &str, turn: Turn, mode: TurnMode, now: GameInstant
+    )
         -> Result<(), TurnError>
     {
-        let board_idx = self.get_active_player_board(player_name)?;
-        self.try_turn(board_idx, turn, now)
-    }
-    pub fn try_turn_algebraic_by_player(&mut self, player_name: &str, notation: &str, now: GameInstant)
-        -> Result<Turn, TurnError>
-    {
-        let board_idx = self.get_active_player_board(player_name)?;
-        self.try_turn_algebraic(board_idx, notation, now)
-    }
-    fn get_active_player_board(&self, player_name: &str) -> Result<BughouseBoard, TurnError> {
-        let (board_idx, force) = self.find_player(player_name).unwrap_or_else(
-            || panic!("Player not found: {}", player_name));
-        if force != self.board(board_idx).active_force() {
+        if mode != self.turn_mode_for_player(player_name)?.unwrap() {
             return Err(TurnError::WrongTurnOrder);
         }
-        Ok(board_idx)
+        let board_idx = self.player_board_idx(player_name).unwrap();
+        self.try_turn(board_idx, turn, mode, now)
+    }
+    pub fn try_turn_algebraic_by_player(
+        &mut self, player_name: &str, notation: &str, mode: TurnMode, now: GameInstant
+    )
+        -> Result<Turn, TurnError>
+    {
+        if mode != self.turn_mode_for_player(player_name)?.unwrap() {
+            return Err(TurnError::WrongTurnOrder);
+        }
+        let board_idx = self.player_board_idx(player_name).unwrap();
+        self.try_turn_algebraic(board_idx, notation, mode, now)
     }
     // Should be used in tests only, because it doesn't handle time properly.
     #[allow(non_snake_case)]
@@ -376,7 +396,7 @@ impl BughouseGame {
                 _ => panic!("Unexpected bughouse player notation: {}", player_notation),
             };
             assert_eq!(self.boards[board_idx].active_force(), force);
-            self.try_turn_algebraic(board_idx, turn_notation, now)?;
+            self.try_turn_algebraic(board_idx, turn_notation, TurnMode::Normal, now)?;
         }
         Ok(())
     }

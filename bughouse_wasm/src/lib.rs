@@ -4,7 +4,9 @@
 //   Maybe even change background (add vignette) or something like that.
 //   Better yet: subtler change by default and throbbing vignette on low time
 //   like in action games!
-// TODO: Sounds.
+// TODO: More sounds.
+// TODO: Allow to cancel preturns.
+// TODO: Don't render partner clock as active if black premoves first turn.
 
 extern crate enum_map;
 extern crate instant;
@@ -91,9 +93,6 @@ impl WebClient {
         let turn_result = self.state.make_turn(turn_algebraic);
         let info_string = web_document().get_existing_element_by_id("info-string")?;
         info_string.set_text_content(turn_result.err().map(|err| format!("{:?}", err)).as_deref());
-        set_square_highlight("opponent-turn-from", None)?;
-        set_square_highlight("opponent-turn-to", None)?;
-        set_square_highlight("opponent-turn-to-extra", None)?;
         Ok(())
     }
 
@@ -180,17 +179,8 @@ impl WebClient {
                     Err("No game in progress".into())
                 }
             }
-            NotableEvent::OpponentTurnMade(turn) => {
-                if let ContestState::Game{ ref alt_game, .. } = self.state.contest_state() {
-                    // Improvement potential: Also highlight last turn when reconnecting.
-                    let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
-                    for (id, coord) in turn_highlights(turn, alt_game.my_force().opponent()) {
-                        set_square_highlight(id, Some(to_display_coord(coord, board_orientation)))?;
-                    }
-                    return Ok(Some("opponent_turn_made".to_owned()));
-                } else {
-                    Err("No game in progress".into())
-                }
+            NotableEvent::OpponentTurnMade => {
+                return Ok(Some("opponent_turn_made".to_owned()));
             }
         }
     }
@@ -276,6 +266,8 @@ impl WebClient {
                         update_reserve(board.reserve(force), force, web_board_idx, player_idx).unwrap();
                     }
                 }
+                let primary_board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
+                update_turn_highlights(alt_game, primary_board_orientation).unwrap();
                 if alt_game.status() != BughouseGameStatus::Active {
                     info_string.set_text_content(Some(&format!("Game over: {:?}", alt_game.status())));
                 }
@@ -408,6 +400,7 @@ pub fn init_page(
     render_grids(false);
 }
 
+// TODO: Separate highlight layers based on z-order: put drag highlight above the rest.
 fn set_square_highlight(id: &str, coord: Option<DisplayCoord>) -> JsResult<()> {
     let document = web_document();
     let highlight_layer = document.get_existing_element_by_id("square-highlight-layer")?;
@@ -429,6 +422,31 @@ fn set_square_highlight(id: &str, coord: Option<DisplayCoord>) -> JsResult<()> {
             node.remove();
         }
     }
+    Ok(())
+}
+
+fn set_turn_highlights(turn: Option<Turn>, id_prefix: &str, force: Force, board_orientation: BoardOrientation)
+    -> JsResult<()>
+{
+    if let Some(turn) = turn {
+        for (id_suffix, coord) in turn_highlights(turn, force) {
+            let id = format!("{}-{}", id_prefix, id_suffix);
+            set_square_highlight(&id, Some(to_display_coord(coord, board_orientation)))?;
+        }
+    } else {
+        set_square_highlight(&format!("{}-turn-from", id_prefix), None)?;
+        set_square_highlight(&format!("{}-turn-to", id_prefix), None)?;
+        set_square_highlight(&format!("{}-turn-to-extra", id_prefix), None)?;
+    }
+    Ok(())
+}
+
+fn update_turn_highlights(alt_game: &AlteredGame, board_orientation: BoardOrientation) -> JsResult<()> {
+    let my_force = alt_game.my_force();
+    let opponent_turn = alt_game.opponent_turn_highlight();
+    let preturn = alt_game.preturn_highlight();
+    set_turn_highlights(opponent_turn, "opponent", my_force.opponent(), board_orientation)?;
+    set_turn_highlights(preturn, "pre", my_force, board_orientation)?;
     Ok(())
 }
 
@@ -618,23 +636,23 @@ fn get_board_orientation(board_idx: WebBoard, rotate_180: bool) -> BoardOrientat
 fn turn_highlights(turn: Turn, force: Force) -> Vec<(&'static str, Coord)> {
     match turn {
         Turn::Move(mv) => vec![
-            ("opponent-turn-from", mv.from),
-            ("opponent-turn-to", mv.to),
+            ("turn-from", mv.from),
+            ("turn-to", mv.to),
         ],
         Turn::Drop(drop) => vec![
-            ("opponent-turn-to", drop.to),
+            ("turn-to", drop.to),
         ],
         Turn::Castle(dir) => {
             // Improvement potential: A more robust way to get piece positions after castling.
             let row = SubjectiveRow::from_one_based(1).to_row(force);
             match dir {
                 CastleDirection::ASide => vec![
-                    ("opponent-turn-to", Coord::new(row, Col::C)),
-                    ("opponent-turn-to-extra", Coord::new(row, Col::D)),
+                    ("turn-to", Coord::new(row, Col::C)),
+                    ("turn-to-extra", Coord::new(row, Col::D)),
                 ],
                 CastleDirection::HSide => vec![
-                    ("opponent-turn-to", Coord::new(row, Col::G)),
-                    ("opponent-turn-to-extra", Coord::new(row, Col::F)),
+                    ("turn-to", Coord::new(row, Col::G)),
+                    ("turn-to-extra", Coord::new(row, Col::F)),
                 ],
             }
         },

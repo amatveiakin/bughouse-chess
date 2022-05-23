@@ -21,10 +21,10 @@ pub enum BughouseServerEvent {
         scores: Vec<(Team, u32)>,
         starting_grid: Grid,
         players: Vec<(Player, BughouseBoard)>,
-        time: GameInstant,             // for re-connection
-        turn_log: Vec<TurnMadeEvent>,  // for re-connection
+        time: GameInstant,          // for re-connection
+        turn_log: Vec<TurnRecord>,  // for re-connection
     },
-    TurnMade(TurnMadeEvent),
+    TurnsMade(Vec<TurnRecord>),
     // Used when game is ended for a reason unrelated to the last turn (flag, resign).
     GameOver {
         time: GameInstant,
@@ -34,7 +34,7 @@ pub enum BughouseServerEvent {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct TurnMadeEvent {
+pub struct TurnRecord {
     pub player_name: String,
     pub turn_algebraic: String,
     pub time: GameInstant,

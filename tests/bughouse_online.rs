@@ -207,10 +207,7 @@ fn play_online_misc() {
     world.process_all_events();
     assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
 
-    // Input from inactive player is not parsed.
-    assert_eq!(world[cl3].make_turn("attack!").unwrap_err(), IllegalTurn(TurnError::WrongTurnOrder));
-
-    assert_eq!(world[cl1].make_turn("e5").unwrap_err(), IllegalTurn(TurnError::Unreachable));
+    assert_eq!(world[cl1].make_turn("e5").unwrap_err(), IllegalTurn(TurnError::ImpossibleTrajectory));
     world[cl1].make_turn("e4").unwrap();
     world.process_all_events();
 
@@ -258,6 +255,40 @@ fn remote_turn_persisted() {
     world.process_events_for(cl4).unwrap();
     world.process_events_for(cl1).unwrap();
     assert!(world[cl1].local_game().board(BughouseBoard::B).grid()[Coord::D4].is_some());
+}
+
+#[test]
+fn preturn() {
+    let mut world = World::new();
+    world.server.state.TEST_override_board_assignment(vec! [
+        ("p1".to_owned(), BughouseBoard::A),
+        ("p2".to_owned(), BughouseBoard::B),
+        ("p3".to_owned(), BughouseBoard::A),
+        ("p4".to_owned(), BughouseBoard::B),
+    ]);
+
+    let cl1 = world.add_client("p1", Team::Red);
+    let _cl2 = world.add_client("p2", Team::Red);
+    let cl3 = world.add_client("p3", Team::Blue);
+    let _cl4 = world.add_client("p4", Team::Blue);
+
+    world.process_all_events();
+
+    // Valid pre-move executed after opponent's turn.
+    world[cl3].make_turn("e5").unwrap();
+    world.process_all_events();
+    assert!(world[cl1].my_board().grid()[Coord::E5].is_none());
+    world[cl1].make_turn("d4").unwrap();
+    world.process_all_events();
+    assert!(world[cl1].my_board().grid()[Coord::E5].is_some());
+
+    // Invalid pre-move ignored.
+    world[cl3].make_turn("e4").unwrap();
+    world.process_all_events();
+    world[cl1].make_turn("e4").unwrap();
+    world.process_all_events();
+    assert!(world[cl1].my_board().grid()[Coord::E5].unwrap().force == Force::Black);
+    assert!(world[cl1].my_board().grid()[Coord::E4].unwrap().force == Force::White);
 }
 
 #[test]

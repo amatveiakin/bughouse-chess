@@ -1,4 +1,4 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashSet, HashMap, hash_map};
 use std::ops;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
@@ -8,11 +8,11 @@ use instant::Instant;
 use itertools::Itertools;
 use rand::prelude::*;
 
-use crate::board::VictoryReason;
+use crate::board::{TurnMode, TurnError, VictoryReason};
 use crate::clock::GameInstant;
 use crate::game::{BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::grid::Grid;
-use crate::event::{TurnMadeEvent, BughouseServerEvent, BughouseClientEvent};
+use crate::event::{TurnRecord, BughouseServerEvent, BughouseClientEvent};
 use crate::player::{Player, Team};
 use crate::rules::{ChessRules, BughouseRules};
 
@@ -33,9 +33,10 @@ enum ContestState {
         scores: EnumMap<Team, u32>,  // victory scored as 2:0, draw is 1:1
         game: BughouseGame,
         game_start: Option<Instant>,
+        preturns: HashMap<String, String>,  // player name to turn algebraic
         starting_grid: Grid,
         players_with_boards: Vec<(Player, BughouseBoard)>,
-        turn_log: Vec<TurnMadeEvent>,
+        turn_log: Vec<TurnRecord>,
     },
 }
 
@@ -301,34 +302,56 @@ impl ServerStateCore {
         &mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant,
         turn_algebraic: String
     ) {
-        if let ContestState::Game{ ref mut game, ref mut game_start, ref mut turn_log, ref mut scores, .. }
-            = self.contest_state
+        if let ContestState::Game{
+            ref mut game, ref mut game_start, ref mut preturns, ref mut turn_log, ref mut scores, ..
+        } = self.contest_state
         {
-            if game_start.is_none() {
-                *game_start = Some(now);
-            }
             if let Some(player_id) = clients[client_id].player_id {
-                let game_now = GameInstant::from_now_game_active(game_start.unwrap(), now);
                 let player_name = self.players[player_id].name.clone();
-                let turn_result = game.try_turn_algebraic_by_player(
-                    &player_name, &turn_algebraic, game_now
-                );
-                if let Err(error) = turn_result {
-                    clients[client_id].send_error(format!("Impossible turn: {:?}", error));
-                    return;
+                let mode = game.turn_mode_for_player(&player_name).map(|o| o.unwrap());
+                match mode {
+                    Ok(TurnMode::Normal) => {
+                        let mut turns = vec![];
+                        let game_now = GameInstant::from_now_game_maybe_active(*game_start, now);
+                        match apply_turn(
+                            game_now, player_name.clone(), turn_algebraic, game, scores
+                        ) {
+                            Ok(turn_event) => {
+                                if game_start.is_none() {
+                                    *game_start = Some(now);
+                                }
+                                turns.push(turn_event);
+                                let opponent_name = game.opponent_name(&player_name).unwrap();
+                                if let Some(preturn_algebraic) = preturns.remove(&opponent_name) {
+                                    if let Ok(preturn_event) = apply_turn(
+                                        game_now, opponent_name, preturn_algebraic, game, scores
+                                    ) {
+                                        turns.push(preturn_event);
+                                    }
+                                    // Improvement potential: Report preturn error as well.
+                                }
+                            },
+                            Err(error) => {
+                                clients[client_id].send_error(format!("Impossible turn: {:?}", error));
+                            },
+                        }
+                        turn_log.extend_from_slice(&turns);
+                        clients.broadcast(&BughouseServerEvent::TurnsMade(turns));
+                    },
+                    Ok(TurnMode::Preturn) => {
+                        match preturns.entry(player_name) {
+                            hash_map::Entry::Occupied(_) => {
+                                clients[client_id].send_error("Only one premove is supported".to_owned());
+                            },
+                            hash_map::Entry::Vacant(entry) => {
+                                entry.insert(turn_algebraic);
+                            },
+                        }
+                    },
+                    Err(error) => {
+                        clients[client_id].send_error(format!("Impossible turn: {:?}", error));
+                    },
                 }
-                if game.status() != BughouseGameStatus::Active {
-                    update_score_on_game_over(game.status(), scores);
-                }
-                let turn_made_event = TurnMadeEvent {
-                    player_name: player_name.to_owned(),
-                    turn_algebraic,  // TODO: Rewrite turn to a standard form
-                    time: game_now,
-                    game_status: game.status(),
-                    scores: scores.clone().into_iter().collect(),
-                };
-                turn_log.push(turn_made_event.clone());
-                clients.broadcast(&BughouseServerEvent::TurnMade(turn_made_event));
             } else {
                 clients[client_id].send_error("Cannot make turn: not joined".to_owned());
             }
@@ -430,6 +453,7 @@ impl ServerStateCore {
             scores,
             game,
             game_start: None,
+            preturns: HashMap::new(),
             starting_grid,
             players_with_boards,
             turn_log: vec![],
@@ -489,6 +513,25 @@ impl ServerStateCore {
             }).flatten().collect()
         }
     }
+}
+
+fn apply_turn(
+    game_now: GameInstant, player_name: String, turn_algebraic: String,
+    game: &mut BughouseGame, scores: &mut EnumMap<Team, u32>,
+) -> Result<TurnRecord, TurnError> {
+    game.try_turn_algebraic_by_player(
+        &player_name, &turn_algebraic, TurnMode::Normal, game_now
+    )?;
+    if game.status() != BughouseGameStatus::Active {
+        update_score_on_game_over(game.status(), scores);
+    }
+    Ok(TurnRecord {
+        player_name,
+        turn_algebraic,  // TODO: Rewrite turn to a standard form
+        time: game_now,
+        game_status: game.status(),
+        scores: scores.clone().into_iter().collect(),
+    })
 }
 
 fn update_score_on_game_over(status: BughouseGameStatus, scores: &mut EnumMap<Team, u32>) {
