@@ -557,7 +557,7 @@ fn update_score_on_game_over(status: BughouseGameStatus, scores: &mut EnumMap<Te
         BughouseGameStatus::Victory(team, _) => {
             scores[team] += 2;
         },
-        BughouseGameStatus::Draw => {
+        BughouseGameStatus::Draw(_) => {
             for v in scores.values_mut() {
                 *v += 1;
             }

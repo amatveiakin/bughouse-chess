@@ -3,25 +3,34 @@ use std::ops;
 
 use crate::coord::{Coord, NUM_ROWS, NUM_COLS};
 use crate::janitor::Janitor;
-use crate::piece::{PieceOrigin, PieceOnBoard};
+use crate::piece::{PieceOrigin, PieceOnBoard, PieceForRepetitionDraw};
 use serde::{Serialize, Deserialize};
 
 
+pub type Grid = GenericGrid<PieceOnBoard>;
+pub type GridForRepetitionDraw = GenericGrid<PieceForRepetitionDraw>;
+
 // Improvement potential: Benchmark if it's better to change grid data type to a `Box`
 //   (inline storage makes the object expensive to move which Rust does a lot).
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Grid {
-    data: [[Option<PieceOnBoard>; NUM_COLS as usize]; NUM_ROWS as usize],
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct GenericGrid<T: Copy> {
+    data: [[Option<T>; NUM_COLS as usize]; NUM_ROWS as usize],
 }
 
-impl Grid {
-    pub fn new() -> Grid {
-        Grid { data: Default::default() }
+impl<T: Copy> GenericGrid<T> {
+    pub fn new() -> Self {
+        GenericGrid { data: Default::default() }
+    }
+
+    pub fn map<U: Copy>(&self, f: impl Fn(T) -> U + Copy) -> GenericGrid<U> {
+        GenericGrid {
+            data: self.data.map(|inner| inner.map(|v| v.map(f))),
+        }
     }
 
     // Idea. A separate class GridView that allows to make only temporary changes.
-    pub fn maybe_scoped_set(&mut self, change: Option<(Coord, Option<PieceOnBoard>)>)
-        -> impl ops::DerefMut<Target = Grid> + '_
+    pub fn maybe_scoped_set(&mut self, change: Option<(Coord, Option<T>)>)
+        -> impl ops::DerefMut<Target = Self> + '_
     {
         let original = match change {
             None => None,
@@ -38,8 +47,8 @@ impl Grid {
         })
     }
 
-    pub fn scoped_set(&mut self, pos: Coord, piece: Option<PieceOnBoard>)
-        -> impl ops::DerefMut<Target = Grid> + '_
+    pub fn scoped_set(&mut self, pos: Coord, piece: Option<T>)
+        -> impl ops::DerefMut<Target = Self> + '_
     {
         let original_piece = self[pos];
         self[pos] = piece;
@@ -47,14 +56,14 @@ impl Grid {
     }
 }
 
-impl ops::Index<Coord> for Grid {
-    type Output = Option<PieceOnBoard>;
+impl<T: Copy> ops::Index<Coord> for GenericGrid<T> {
+    type Output = Option<T>;
     fn index(&self, pos: Coord) -> &Self::Output {
         &self.data[pos.row.to_zero_based() as usize][pos.col.to_zero_based() as usize]
     }
 }
 
-impl ops::IndexMut<Coord> for Grid {
+impl<T: Copy> ops::IndexMut<Coord> for GenericGrid<T> {
     fn index_mut(&mut self, pos: Coord) -> &mut Self::Output {
         &mut self.data[pos.row.to_zero_based() as usize][pos.col.to_zero_based() as usize]
     }
@@ -79,6 +88,12 @@ impl fmt::Debug for Grid {
                 format!("{} => {}", coord.to_algebraic(), debug_format_piece(&piece))
             })
         })).finish()
+    }
+}
+
+impl fmt::Debug for GridForRepetitionDraw {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "GridForRepetitionDraw {:?}", self.data)
     }
 }
 

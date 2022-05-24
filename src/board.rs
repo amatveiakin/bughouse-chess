@@ -1,5 +1,8 @@
+// Improvement potential. Chess draws: dead position, stalemate, fifty-move rule.
+
 #![allow(unused_parens)]
 
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use enum_map::{EnumMap, enum_map};
@@ -11,8 +14,8 @@ use serde::{Serialize, Deserialize};
 use crate::coord::{SubjectiveRow, Row, Col, Coord};
 use crate::clock::{GameInstant, Clock};
 use crate::force::Force;
-use crate::grid::Grid;
-use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, CastleDirection, piece_from_algebraic};
+use crate::grid::{Grid, GridForRepetitionDraw};
+use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, PieceForRepetitionDraw, CastleDirection, piece_from_algebraic};
 use crate::player::Player;
 use crate::rules::{DropAggression, ChessRules, BughouseRules};
 use crate::util::sort_two;
@@ -368,11 +371,17 @@ pub enum VictoryReason {
     Resignation,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum DrawReason {
+    SimultaneousFlag,  // for bughouse
+    ThreefoldRepetition,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ChessGameStatus {
     Active,
     Victory(Force, VictoryReason),
-    Draw,
+    Draw(DrawReason),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -397,11 +406,22 @@ pub enum TurnError {
 
 pub type Reserve = EnumMap<PieceKind, u8>;
 
+// Improvement potential: Test threefold repetition draw according to FIDE rules.
+//   Two positions are by definition "the same" if:
+//     - [Done] the same types of pieces occupy the same squares;
+//     - [Done] the same player has the move;
+//     - [TBD] the remaining castling rights are the same;
+//     - [TBD] the possibility to capture en passant is the same;
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+struct PositionForRepetitionDraw {
+    grid: GridForRepetitionDraw,
+    active_force: Force,
+}
+
 impl Reachability {
     pub fn ok(self) -> bool { self == Reachability::Ok }
 }
 
-// TODO: Info for draws (number of moves without action; hash map of former positions)
 // Improvement potential: Rc => references to a Box in Game classes
 #[derive(Clone, Debug)]
 pub struct Board {
@@ -413,6 +433,7 @@ pub struct Board {
     king_has_moved: EnumMap<Force, bool>,
     reserves: EnumMap<Force, Reserve>,
     last_turn: Option<Turn>,  // for en passant capture
+    position_count: HashMap<PositionForRepetitionDraw, u8>,
     clock: Clock,
     active_force: Force,
 }
@@ -434,6 +455,7 @@ impl Board {
             king_has_moved: enum_map!{ _ => false },
             reserves: enum_map!{ _ => enum_map!{ _ => 0 } },
             last_turn: None,
+            position_count: HashMap::new(),
             clock: Clock::new(time_control),
             active_force: Force::White,
         }
@@ -521,9 +543,20 @@ impl Board {
                         self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
                     }
                 }
-                // TODO: Draw if position is repeated three times.
                 self.active_force = force.opponent();
                 self.clock.new_turn(self.active_force, now);
+
+                let position_for_repetition_draw = PositionForRepetitionDraw {
+                    grid: self.grid.map(|piece| {
+                        PieceForRepetitionDraw{ kind: piece.kind, force: piece.force }
+                    }),
+                    active_force: self.active_force,
+                };
+                let num_repetition = self.position_count.entry(position_for_repetition_draw).or_insert(0);
+                *num_repetition += 1;
+                if *num_repetition >= 3 {
+                    self.status = ChessGameStatus::Draw(DrawReason::ThreefoldRepetition);
+                }
             },
             TurnMode::Preturn => {
                 self.last_turn = None;

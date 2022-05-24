@@ -11,7 +11,7 @@ use rand::prelude::*;
 use regex::Regex;
 use serde::{Serialize, Deserialize};
 
-use crate::board::{Board, Turn, TurnMode, TurnError, ChessGameStatus, VictoryReason};
+use crate::board::{Board, Turn, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
 use crate::clock::GameInstant;
 use crate::coord::{Row, Col, Coord};
 use crate::force::Force;
@@ -148,7 +148,7 @@ pub enum BughouseBoard {
 pub enum BughouseGameStatus {
     Active,
     Victory(Team, VictoryReason),
-    Draw,
+    Draw(DrawReason),
 }
 
 impl BughouseBoard {
@@ -316,14 +316,18 @@ impl BughouseGame {
         let status_b = self.game_status_for_board(B);
         let status = match (status_a, status_b) {
             (Victory(winner_a, Flag), Victory(winner_b, Flag)) => {
-                if winner_a == winner_b { Victory(winner_a, Flag) } else { Draw }
+                if winner_a == winner_b {
+                    Victory(winner_a, Flag)
+                } else {
+                    Draw(DrawReason::SimultaneousFlag)
+                }
             },
             (Victory(winner, Flag), Active) => { Victory(winner, Flag) },
             (Active, Victory(winner, Flag)) => { Victory(winner, Flag) },
             (Active, Active) => { Active },
             (Victory(_, reason), _) => panic!("Unexpected victory reason in `test_flag`: {:?}", reason),
             (_, Victory(_, reason)) => panic!("Unexpected victory reason in `test_flag`: {:?}", reason),
-            (Draw, _) | (_, Draw) => panic!("Unexpected draw in `test_flag`"),
+            (Draw(_), _) | (_, Draw(_)) => panic!("Unexpected draw in `test_flag`"),
         };
         self.set_status(status, now);
     }
@@ -406,7 +410,7 @@ impl BughouseGame {
             ChessGameStatus::Active => BughouseGameStatus::Active,
             ChessGameStatus::Victory(force, reason) =>
                 BughouseGameStatus::Victory(get_bughouse_team(board_idx, force), reason),
-            ChessGameStatus::Draw => BughouseGameStatus::Draw,
+            ChessGameStatus::Draw(reason) => BughouseGameStatus::Draw(reason),
         }
     }
 

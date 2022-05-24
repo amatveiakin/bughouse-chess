@@ -5,7 +5,7 @@ use serde::{Serialize, Deserialize};
 use crate::force::Force;
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Enum, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, Serialize, Deserialize)]
 pub enum PieceKind {
     Pawn,
     Knight,
@@ -34,6 +34,13 @@ pub struct PieceOnBoard {
 pub enum CastleDirection {
     ASide,
     HSide,
+}
+
+// Improvement potential: Compress into one byte - need to store lots of these.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct PieceForRepetitionDraw {
+    pub kind: PieceKind,
+    pub force: Force,
 }
 
 // Should not be used to construct moves in algebraic notation, because it returns a
