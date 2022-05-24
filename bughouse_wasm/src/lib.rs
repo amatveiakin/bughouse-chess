@@ -5,7 +5,6 @@
 //   Better yet: subtler change by default and throbbing vignette on low time
 //   like in action games!
 // TODO: More sounds.
-// TODO: Allow to cancel preturns.
 // TODO: Don't render partner clock as active if black premoves first turn.
 
 extern crate enum_map;
@@ -155,6 +154,10 @@ impl WebClient {
         } else {
             "no"
         }).to_owned()
+    }
+
+    pub fn cancel_preturn(&mut self) {
+        self.state.cancel_preturn();
     }
 
     pub fn process_server_event(&mut self, event: &str) -> JsResult<Option<String>> {

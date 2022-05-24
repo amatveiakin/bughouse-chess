@@ -265,6 +265,14 @@ impl AlteredGame {
         }
     }
 
+    pub fn cancel_preturn(&mut self) -> bool {
+        if matches!(self.local_turn, Some((_, TurnMode::Preturn, _))) {
+            self.local_turn = None;
+            true
+        } else {
+            false
+        }
+    }
     pub fn reset_local_changes(&mut self) {
         self.local_turn = None;
     }

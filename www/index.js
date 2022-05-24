@@ -145,6 +145,10 @@ function on_command(event) {
                     info_string.innerText = 'Applied';
                     break;
                 }
+                case 'undo':
+                    get_args(args, []);
+                    wasm_client_or_throw().cancel_preturn();
+                    break;
                 case 'resign':
                     get_args(args, []);
                     wasm_client_or_throw().resign();
@@ -240,6 +244,7 @@ function request_join(address, my_name, my_team) {
 }
 
 function set_up_drag_and_drop() {
+    // Improvement potential: Check which mouse button was pressed.
     document.addEventListener('mousedown', start_drag);
     document.addEventListener('mousemove', drag);
     document.addEventListener('mouseup', end_drag);
@@ -252,6 +257,7 @@ function set_up_drag_and_drop() {
     document.addEventListener('touchcancel', end_drag);
 
     const svg = document.getElementById('board-primary');
+    svg.addEventListener('contextmenu', cancel_preturn);
 
     function viewbox_mouse_position(event) {
         const ctm = svg.getScreenCTM();
@@ -268,6 +274,7 @@ function set_up_drag_and_drop() {
         // Improvement potential: Choose the closest reserve piece rather then the one on top.
         console.assert(drag_element === null);
         if (event.target.classList.contains('draggable')) {
+            event.preventDefault();
             drag_element = event.target;
             drag_element.classList.add('dragged');
             const coord = viewbox_mouse_position(event);
@@ -298,12 +305,19 @@ function set_up_drag_and_drop() {
 
     function end_drag(event) {
         if (drag_element) {
+            event.preventDefault();
             const coord = viewbox_mouse_position(event);
             drag_element.remove();
             drag_element = null;
             wasm_client.drag_piece_drop(coord.x, coord.y, event.shiftKey);
             update();
         }
+    }
+
+    function cancel_preturn(event) {
+        event.preventDefault();
+        wasm_client.cancel_preturn();
+        update();
     }
 }
 

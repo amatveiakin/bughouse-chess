@@ -201,6 +201,9 @@ impl ServerState {
                     BughouseClientEvent::MakeTurn{ turn_algebraic } => {
                         self.core.process_make_turn(&mut clients, client_id, now, turn_algebraic);
                     },
+                    BughouseClientEvent::CancelPreturn => {
+                        self.core.process_cancel_preturn(&mut clients, client_id);
+                    },
                     BughouseClientEvent::Resign => {
                         self.core.process_resign(&mut clients, client_id, now);
                     },
@@ -357,6 +360,18 @@ impl ServerStateCore {
             }
         } else {
             clients[client_id].send_error("Cannot make turn: no game in progress".to_owned());
+        }
+    }
+
+    fn process_cancel_preturn(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId) {
+        if let ContestState::Game{ ref mut preturns, .. } = self.contest_state {
+            if let Some(player_id) = clients[client_id].player_id {
+                preturns.remove(&self.players[player_id].name);
+            } else {
+                clients[client_id].send_error("Cannot cancel pre-turn: not joined".to_owned());
+            }
+        } else {
+            clients[client_id].send_error("Cannot cancel pre-turn: no game in progress".to_owned());
         }
     }
 

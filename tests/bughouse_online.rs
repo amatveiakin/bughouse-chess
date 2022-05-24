@@ -291,6 +291,49 @@ fn preturn() {
     assert!(world[cl1].my_board().grid()[Coord::E4].unwrap().force == Force::White);
 }
 
+
+#[test]
+fn preturn_cancellation() {
+    let mut world = World::new();
+    world.server.state.TEST_override_board_assignment(vec! [
+        ("p1".to_owned(), BughouseBoard::A),
+        ("p2".to_owned(), BughouseBoard::B),
+        ("p3".to_owned(), BughouseBoard::A),
+        ("p4".to_owned(), BughouseBoard::B),
+    ]);
+
+    let cl1 = world.add_client("p1", Team::Red);
+    let _cl2 = world.add_client("p2", Team::Red);
+    let cl3 = world.add_client("p3", Team::Blue);
+    let _cl4 = world.add_client("p4", Team::Blue);
+
+    world.process_all_events();
+
+    // Cancel pre-turn
+    world[cl3].make_turn("Nc6").unwrap();
+    world.process_all_events();
+    world[cl3].state.cancel_preturn();
+    world.process_all_events();
+    world[cl1].make_turn("e4").unwrap();
+    world.process_all_events();
+    assert!(world[cl1].my_board().grid()[Coord::C6].is_none());
+
+    world[cl3].make_turn("Nf6").unwrap();
+    world.process_all_events();
+
+    // Cancel pre-turn and schedule other
+    world[cl3].make_turn("a7a6").unwrap();
+    world.process_all_events();
+    world[cl3].state.cancel_preturn();
+    world.process_all_events();
+    world[cl3].make_turn("h7h6").unwrap();
+    world.process_all_events();
+    world[cl1].make_turn("d4").unwrap();
+    world.process_all_events();
+    assert!(world[cl1].my_board().grid()[Coord::A6].is_none());
+    assert!(world[cl1].my_board().grid()[Coord::H6].is_some());
+}
+
 #[test]
 fn leave_and_reconnect_lobby() {
     let mut world = World::new();

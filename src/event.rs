@@ -23,6 +23,7 @@ pub enum BughouseServerEvent {
         players: Vec<(Player, BughouseBoard)>,
         time: GameInstant,          // for re-connection
         turn_log: Vec<TurnRecord>,  // for re-connection
+        // TODO: Send your pending pre-turn, if any
     },
     TurnsMade(Vec<TurnRecord>),
     // Used when game is ended for a reason unrelated to the last turn (flag, resign).
@@ -53,6 +54,7 @@ pub enum BughouseClientEvent {
         // TODO: Add `game_id` field to avoid replaying lingering moves from older games.
         turn_algebraic: String,
     },
+    CancelPreturn,
     Resign,
     NextGame,
     Leave,

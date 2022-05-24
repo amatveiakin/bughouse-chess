@@ -110,6 +110,14 @@ impl ClientState {
         }
     }
 
+    pub fn cancel_preturn(&mut self) {
+        if let ContestState::Game{ ref mut alt_game, .. } = self.contest_state {
+            if alt_game.cancel_preturn() {
+                self.events_tx.send(BughouseClientEvent::CancelPreturn).unwrap();
+            }
+        }
+    }
+
     // TODO: This is becoming a weird mixture of rendering `ContestState` AND processing `NotableEvent`s.
     //   Consider whether `ClientState` should become a processor of turning events from server
     //   into more digestable client events that client implementations work on (while never reading
