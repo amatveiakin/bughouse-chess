@@ -169,7 +169,9 @@ function on_command(event) {
                     throw new InvalidCommand(`Command does not exist: /${args[0]}`)
             }
         } else {
-            wasm_client_or_throw().make_turn_algebraic(input);
+            if (wasm_client_or_throw().make_turn_algebraic(input)) {
+                turn_audio.play();
+            }
         }
         update();
     } catch (e) {
@@ -309,7 +311,9 @@ function set_up_drag_and_drop() {
             const coord = viewbox_mouse_position(event);
             drag_element.remove();
             drag_element = null;
-            wasm_client.drag_piece_drop(coord.x, coord.y, event.shiftKey);
+            if (wasm_client.drag_piece_drop(coord.x, coord.y, event.shiftKey)) {
+                turn_audio.play();
+            }
             update();
         }
     }

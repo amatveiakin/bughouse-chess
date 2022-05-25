@@ -88,11 +88,12 @@ impl WebClient {
         self.state.reset();
     }
 
-    pub fn make_turn_algebraic(&mut self, turn_algebraic: String) -> JsResult<()> {
+    // Returns whether a turn was made.
+    pub fn make_turn_algebraic(&mut self, turn_algebraic: String) -> JsResult<bool> {
         let turn_result = self.state.make_turn(turn_algebraic);
         let info_string = web_document().get_existing_element_by_id("info-string")?;
-        info_string.set_text_content(turn_result.err().map(|err| format!("{:?}", err)).as_deref());
-        Ok(())
+        info_string.set_text_content(turn_result.as_ref().err().map(|err| format!("{:?}", err)).as_deref());
+        Ok(turn_result.is_ok())
     }
 
     pub fn start_drag_piece(&mut self, source: &str) -> JsResult<()> {
@@ -115,7 +116,10 @@ impl WebClient {
     pub fn drag_piece(&mut self, dest_x: f64, dest_y: f64) -> JsResult<()> {
         set_square_highlight("drag-over-highlight", position_to_square(dest_x, dest_y))
     }
-    pub fn drag_piece_drop(&mut self, dest_x: f64, dest_y: f64, alternative_promotion: bool) -> JsResult<()> {
+    // Returns whether a turn was made.
+    pub fn drag_piece_drop(&mut self, dest_x: f64, dest_y: f64, alternative_promotion: bool)
+        -> JsResult<bool>
+    {
         set_square_highlight("drag-start-highlight", None)?;
         set_square_highlight("drag-over-highlight", None)?;
         if let ContestState::Game{ ref mut alt_game, .. } = self.state.contest_state_mut() {
@@ -126,7 +130,7 @@ impl WebClient {
                 let promote_to = if alternative_promotion { Knight } else { Queen };
                 match alt_game.drag_piece_drop(dest_coord, promote_to) {
                     Ok(turn_algebraic) => {
-                        self.make_turn_algebraic(turn_algebraic)?;
+                        return self.make_turn_algebraic(turn_algebraic);
                     },
                     Err(PieceDragError::DragNoLongerPossible) => {
                         // Ignore: this happen when dragged piece was captured by opponent.
@@ -139,7 +143,7 @@ impl WebClient {
                 alt_game.abort_drag_piece();
             }
         }
-        Ok(())
+        Ok(false)
     }
     pub fn drag_state(&self) -> String {
         (if let ContestState::Game{ ref alt_game, .. } = self.state.contest_state() {
