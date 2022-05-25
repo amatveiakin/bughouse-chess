@@ -65,31 +65,34 @@ fn can_promote_to(piece_kind: PieceKind) -> bool {
     }
 }
 
-fn get_capture(grid: &Grid, from: Coord, to: Coord, last_turn: &Option<Turn>) -> Option<Coord> {
+fn get_capture(grid: &Grid, from: Coord, to: Coord, en_passant_target: Option<Coord>) -> Option<Coord> {
     let piece = grid[from].unwrap();
     if let Some(target_piece) = grid[to] {
-        if target_piece.force == piece.force {
-            None
-        } else {
-            Some(to)
+        if target_piece.force != piece.force {
+            return Some(to);
         }
-    } else if piece.kind == PieceKind::Pawn {
-        if let Some(Turn::Move(last_mv)) = last_turn {
-            let last_mv_piece_kind = grid[last_mv.to].unwrap().kind;
-            if last_mv_piece_kind == PieceKind::Pawn &&
-                last_mv.to.col == to.col &&
-                last_mv.from.row - to.row == to.row - last_mv.to.row
-            {
-                Some(last_mv.to)
-            } else {
-                None
-            }
-        } else {
-            None
+    } else if let Some(en_passant_target) = en_passant_target {
+        if piece.kind == PieceKind::Pawn && to == en_passant_target {
+            let row = en_passant_target.row + direction_forward(piece.force.opponent());
+            return Some(Coord::new(row, en_passant_target.col));
         }
-    } else {
-        None
     }
+    None
+}
+
+fn get_en_passant_target(grid: &Grid, turn: Turn) -> Option<Coord> {
+    if let Turn::Move(mv) = turn {
+        let piece_kind = grid[mv.to].unwrap().kind;
+        if piece_kind == PieceKind::Pawn &&
+            mv.to.col == mv.from.col &&
+            (mv.to.row - mv.from.row).abs() == 2
+        {
+            let row_idx = (mv.to.row.to_zero_based() + mv.from.row.to_zero_based()) / 2;
+            let row = Row::from_zero_based(row_idx);
+            return Some(Coord::new(row, mv.to.col));
+        }
+    }
+    None
 }
 
 // Generates move candidates to test whether a player can escape a mate via normal
@@ -98,11 +101,13 @@ fn get_capture(grid: &Grid, from: Coord, to: Coord, last_turn: &Option<Turn>) ->
 //   - Does not generate castles since castling cannot be done while checked.
 //   - Pawnes are not promoted.
 //   - Drops are not generated (this is done separately in `is_bughouse_mate_to`).
-fn generate_moves_for_mate_test(grid: &mut Grid, from: Coord, last_turn: &Option<Turn>) -> Vec<TurnMove> {
+fn generate_moves_for_mate_test(grid: &mut Grid, from: Coord, en_passant_target: Option<Coord>)
+    -> Vec<TurnMove>
+{
     // Improvement potential: Don't iterate over all squares.
     let mut moves = Vec::new();
     for to in Coord::all() {
-        let capture_or = get_capture(grid, from, to, last_turn);
+        let capture_or = get_capture(grid, from, to, en_passant_target);
         if reachability(grid, from, to, capture_or.is_some()).ok() {
             moves.push(TurnMove{ from, to, promote_to: None });
         }
@@ -117,7 +122,7 @@ fn king_force(grid: &Grid, king_pos: Coord) -> Force {
 }
 
 // Grid is guaratneed to be returned intact.
-fn is_chess_mate_to(grid: &mut Grid, king_pos: Coord, last_turn: &Option<Turn>) -> bool {
+fn is_chess_mate_to(grid: &mut Grid, king_pos: Coord, en_passant_target: Option<Coord>) -> bool {
     if !is_check_to(grid, king_pos) {
         return false;
     }
@@ -125,8 +130,8 @@ fn is_chess_mate_to(grid: &mut Grid, king_pos: Coord, last_turn: &Option<Turn>) 
     for pos in Coord::all() {
         if let Some(piece) = grid[pos] {
             if piece.force == force {
-                for mv in generate_moves_for_mate_test(grid, pos, last_turn) {
-                    let capture_or = get_capture(grid, mv.from, mv.to, last_turn);
+                for mv in generate_moves_for_mate_test(grid, pos, en_passant_target) {
+                    let capture_or = get_capture(grid, mv.from, mv.to, en_passant_target);
                     // Zero out capture separately because of en passant.
                     let mut grid = grid.maybe_scoped_set(capture_or.map(|pos| (pos, None)));
                     let mut grid = grid.scoped_set(mv.from, None);
@@ -143,9 +148,9 @@ fn is_chess_mate_to(grid: &mut Grid, king_pos: Coord, last_turn: &Option<Turn>) 
 }
 
 // Grid is guaratneed to be returned intact.
-fn is_bughouse_mate_to(grid: &mut Grid, king_pos: Coord, last_turn: &Option<Turn>) -> bool {
+fn is_bughouse_mate_to(grid: &mut Grid, king_pos: Coord, en_passant_target: Option<Coord>) -> bool {
     let force = king_force(grid, king_pos);
-    if !is_chess_mate_to(grid, king_pos, last_turn) {
+    if !is_chess_mate_to(grid, king_pos, en_passant_target) {
         return false;
     }
     for pos in Coord::all() {
@@ -432,7 +437,7 @@ pub struct Board {
     grid: Grid,
     king_has_moved: EnumMap<Force, bool>,
     reserves: EnumMap<Force, Reserve>,
-    last_turn: Option<Turn>,  // for en passant capture
+    en_passant_target: Option<Coord>,
     position_count: HashMap<PositionForRepetitionDraw, u8>,
     clock: Clock,
     active_force: Force,
@@ -454,7 +459,7 @@ impl Board {
             grid: starting_grid,
             king_has_moved: enum_map!{ _ => false },
             reserves: enum_map!{ _ => enum_map!{ _ => 0 } },
-            last_turn: None,
+            en_passant_target: None,
             position_count: HashMap::new(),
             clock: Clock::new(time_control),
             active_force: Force::White,
@@ -532,14 +537,14 @@ impl Board {
 
         match mode {
             TurnMode::Normal => {
-                self.last_turn = Some(turn);
+                self.en_passant_target = get_en_passant_target(&self.grid, turn);
                 let opponent_king_pos = find_king(&self.grid, force.opponent()).unwrap();
                 if self.is_bughouse() {
-                    if is_bughouse_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
+                    if is_bughouse_mate_to(&mut self.grid, opponent_king_pos, self.en_passant_target) {
                         self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
                     }
                 } else {
-                    if is_chess_mate_to(&mut self.grid, opponent_king_pos, &self.last_turn) {
+                    if is_chess_mate_to(&mut self.grid, opponent_king_pos, self.en_passant_target) {
                         self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
                     }
                 }
@@ -559,7 +564,7 @@ impl Board {
                 }
             },
             TurnMode::Preturn => {
-                self.last_turn = None;
+                self.en_passant_target = None;
             },
         }
     }
@@ -590,9 +595,9 @@ impl Board {
                 DropAggression::NoCheck =>
                     !is_check_to(new_grid, opponent_king_pos),
                 DropAggression::NoChessMate =>
-                    !is_chess_mate_to(new_grid, opponent_king_pos, &self.last_turn),
+                    !is_chess_mate_to(new_grid, opponent_king_pos, self.en_passant_target),
                 DropAggression::NoBughouseMate =>
-                    !is_bughouse_mate_to(new_grid, opponent_king_pos, &self.last_turn),
+                    !is_bughouse_mate_to(new_grid, opponent_king_pos, self.en_passant_target),
                 DropAggression::MateAllowed =>
                     true,
             };
@@ -622,7 +627,7 @@ impl Board {
                 match mode {
                     TurnMode::Normal => {
                         use Reachability::*;
-                        capture_pos_or = get_capture(&new_grid, mv.from, mv.to, &self.last_turn);
+                        capture_pos_or = get_capture(&new_grid, mv.from, mv.to, self.en_passant_target);
                         match reachability(&new_grid, mv.from, mv.to, capture_pos_or.is_some()) {
                             Ok => {},
                             Blocked => return Err(TurnError::PathBlocked),
@@ -830,7 +835,7 @@ impl Board {
                         match mode {
                             TurnMode::Normal => {
                                 use Reachability::*;
-                                let capture_or = get_capture(&self.grid, from, to, &self.last_turn);
+                                let capture_or = get_capture(&self.grid, from, to, self.en_passant_target);
                                 match reachability(&self.grid, from, to, capture_or.is_some()) {
                                     Ok => {
                                         if capturing && !capture_or.is_some() {
