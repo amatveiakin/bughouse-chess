@@ -59,25 +59,24 @@ impl Client {
         Client{ id, incoming_rx, outgoing_rx, state }
     }
 
-    fn my_name(&self) -> &str {
-        self.state.my_name()
-    }
     fn local_game(&self) -> BughouseGame {
         match &self.state.contest_state() {
             client::ContestState::Game{ alt_game, .. } => alt_game.local_game(),
             _ => panic!("No game in found"),
         }
     }
-    fn my_force(&self) -> Force {
-        self.local_game().find_player(self.my_name()).unwrap().1
+    fn my_id(&self) -> BughousePlayerId {
+        match &self.state.contest_state() {
+            client::ContestState::Game{ alt_game, .. } => alt_game.my_id(),
+            _ => panic!("No game in found"),
+        }
     }
+    fn my_force(&self) -> Force { self.my_id().force }
     fn my_board(&self) -> Board {
-        self.local_game().player_board(self.my_name()).unwrap().clone()
+        self.local_game().board(self.my_id().board_idx).clone()
     }
     fn other_board(&self) -> Board {
-        let local_game = self.local_game();
-        let (my_board_idx, _) = local_game.find_player(self.my_name()).unwrap();
-        local_game.board(my_board_idx.other()).clone()
+        self.local_game().board(self.my_id().board_idx.other()).clone()
     }
 
     fn process_outgoing_events(&mut self, server: &mut Server) -> bool {
@@ -254,7 +253,7 @@ fn remote_turn_persisted() {
     world[cl4].make_turn("d4").unwrap();
     world.process_events_for(cl4).unwrap();
     world.process_events_for(cl1).unwrap();
-    assert!(world[cl1].local_game().board(BughouseBoard::B).grid()[Coord::D4].is_some());
+    assert!(world[cl1].other_board().grid()[Coord::D4].is_some());
 }
 
 #[test]

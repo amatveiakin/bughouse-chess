@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 
 use crate::clock::GameInstant;
-use crate::game::{BughouseGameStatus, BughouseBoard};
+use crate::game::{BughouseGameStatus, BughouseBoard, BughousePlayerId};
 use crate::grid::Grid;
 use crate::player::{Player, Team};
 use crate::rules::{ChessRules, BughouseRules};
@@ -36,7 +36,7 @@ pub enum BughouseServerEvent {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TurnRecord {
-    pub player_name: String,
+    pub player_id: BughousePlayerId,
     pub turn_algebraic: String,
     pub time: GameInstant,
     pub game_status: BughouseGameStatus,

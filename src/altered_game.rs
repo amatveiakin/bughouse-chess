@@ -1,8 +1,7 @@
 use crate::board::{Turn, TurnMode, TurnError};
 use crate::clock::GameInstant;
 use crate::coord::{SubjectiveRow, Coord};
-use crate::force::Force;
-use crate::game::{BughouseBoard, BughouseGameStatus, BughouseGame};
+use crate::game::{BughousePlayerId, BughouseGameStatus, BughouseGame};
 use crate::piece::{PieceKind, piece_to_full_algebraic, piece_to_algebraic_for_move};
 
 
@@ -38,9 +37,7 @@ pub struct PieceDrag {
 #[derive(Debug)]
 pub struct AlteredGame {
     // All local actions are assumed to be made on behalf of this player.
-    my_name: String,
-    my_board: BughouseBoard,
-    my_force: Force,
+    my_id: BughousePlayerId,
     // State as it has been confirmed by the server.
     game_confirmed: BughouseGame,
     // Latest turn made by the opponent on this board, used for highlighting.
@@ -55,12 +52,9 @@ pub struct AlteredGame {
 }
 
 impl AlteredGame {
-    pub fn new(my_name: String, game_confirmed: BughouseGame) -> Self {
-        let (my_board, my_force) = game_confirmed.find_player(&my_name).unwrap();
+    pub fn new(my_id: BughousePlayerId, game_confirmed: BughouseGame) -> Self {
         AlteredGame {
-            my_name,
-            my_board,
-            my_force,
+            my_id,
             game_confirmed,
             latest_opponent_turn: None,
             local_turn: None,
@@ -81,22 +75,22 @@ impl AlteredGame {
     }
 
     pub fn apply_remote_turn_algebraic(
-        &mut self, player_name: &str, turn_algebraic: &str, time: GameInstant)
+        &mut self, player_id: BughousePlayerId, turn_algebraic: &str, time: GameInstant)
         -> Result<Turn, TurnError>
     {
-        if self.game_confirmed.player_board_idx(player_name).unwrap() == self.my_board {
+        if player_id.board_idx == self.my_id.board_idx {
             self.local_turn = None;
         }
         let turn = self.game_confirmed.try_turn_algebraic_by_player(
-            &player_name, &turn_algebraic, TurnMode::Normal, time
+            player_id, &turn_algebraic, TurnMode::Normal, time
         )?;
-        if self.are_opponents(&player_name, &self.my_name).unwrap() {
+        if player_id == self.my_id.opponent() {
             self.latest_opponent_turn = Some(turn);
         }
         if let Some(ref mut drag) = self.piece_drag {
             if let PieceDragSource::Board(coord) = drag.source {
-                let board = self.game_confirmed.board(self.my_board);
-                if board.grid()[coord].map(|piece| piece.force) != Some(self.my_force) {
+                let board = self.game_confirmed.board(self.my_id.board_idx);
+                if board.grid()[coord].map(|piece| piece.force) != Some(self.my_id.force) {
                     // Dragged piece was captured by opponent.
                     drag.source = PieceDragSource::Defunct;
                 }
@@ -105,22 +99,11 @@ impl AlteredGame {
         Ok(turn)
     }
 
-    pub fn my_name(&self) -> &str { &self.my_name }
-    pub fn my_board(&self) -> BughouseBoard { self.my_board }
-    pub fn my_force(&self) -> Force { self.my_force }
-
-    // Improvement potential: Move everything related to players and sitting out of game
-    //   classes and give direct access to it.
-    pub fn find_player(&self, player_name: &str) -> Option<(BughouseBoard, Force)> {
-        self.game_confirmed.find_player(player_name)
-    }
-    pub fn are_opponents(&self, player_name_a: &str, player_name_b: &str) -> Option<bool> {
-        self.game_confirmed.are_opponents(player_name_a, player_name_b)
-    }
+    pub fn my_id(&self) -> BughousePlayerId { self.my_id }
 
     pub fn opponent_turn_highlight(&self) -> Option<Turn> {
         let show_highlight =
-            self.game_confirmed.player_is_active(&self.my_name).unwrap() &&
+            self.game_confirmed.player_is_active(self.my_id) &&
             self.local_turn.is_none();
         if show_highlight { self.latest_opponent_turn } else { None }
     }
@@ -132,19 +115,19 @@ impl AlteredGame {
         let mut game = self.game_confirmed.clone();
         if let Some((turn, mode, turn_time)) = self.local_turn {
             // Note. Not calling `test_flag`, because only server records flag defeat.
-            game.try_turn_by_player(&self.my_name, turn, mode, turn_time).unwrap();
+            game.try_turn_by_player(self.my_id, turn, mode, turn_time).unwrap();
         }
         if let Some(ref drag) = self.piece_drag {
-            let board = game.board_mut(self.my_board);
+            let board = game.board_mut(self.my_id.board_idx);
             match drag.source {
                 PieceDragSource::Defunct => {},
                 PieceDragSource::Board(coord) => {
                     let piece = board.grid_mut()[coord].take().unwrap();
-                    assert_eq!(piece.force, self.my_force);
+                    assert_eq!(piece.force, self.my_id.force);
                     assert_eq!(piece.kind, drag.piece_kind);
                 },
                 PieceDragSource::Reserve => {
-                    let reserve = board.reserve_mut(self.my_force);
+                    let reserve = board.reserve_mut(self.my_id.force);
                     assert!(reserve[drag.piece_kind] > 0);
                     reserve[drag.piece_kind] -= 1;
                 }
@@ -161,10 +144,8 @@ impl AlteredGame {
         -> Result<(), TurnError>
     {
         let mut game_copy = self.game_confirmed.clone();
-        let mode = game_copy.turn_mode_for_player(&self.my_name)?.unwrap();
-        let turn = game_copy.try_turn_algebraic_by_player(
-            &self.my_name, turn_algebraic, mode, time
-        )?;
+        let mode = game_copy.turn_mode_for_player(self.my_id)?;
+        let turn = game_copy.try_turn_algebraic_by_player(self.my_id, turn_algebraic, mode, time)?;
         self.local_turn = Some((turn, mode, time));
         self.piece_drag = None;
         Ok(())
@@ -181,7 +162,7 @@ impl AlteredGame {
         let (piece_kind, source) = match start {
             PieceDragStart::Board(coord) => {
                 let game = self.local_game();
-                let board = game.player_board(&self.my_name).unwrap();
+                let board = game.board(self.my_id.board_idx);
                 let piece = board.grid()[coord].ok_or(PieceDragError::PieceNotFound)?;
                 (piece.kind, PieceDragSource::Board(coord))
             },
@@ -227,15 +208,16 @@ impl AlteredGame {
             },
             PieceDragSource::Board(source_coord) => {
                 use PieceKind::*;
+                let force = self.my_id.force;
                 let game = self.local_game();
-                let board = game.player_board(&self.my_name).unwrap();
-                let first_row = SubjectiveRow::from_one_based(1).to_row(self.my_force);
-                let last_row = SubjectiveRow::from_one_based(8).to_row(self.my_force);
+                let board = game.board(self.my_id.board_idx);
+                let first_row = SubjectiveRow::from_one_based(1).to_row(force);
+                let last_row = SubjectiveRow::from_one_based(8).to_row(force);
                 let d_col = dest_coord.col - source_coord.col;
                 let d_col_abs = d_col.abs();
                 let source_notation = source_coord.to_algebraic();
                 let to_my_piece = if let Some(piece_to) = board.grid()[dest_coord] {
-                    piece_to.force == self.my_force
+                    piece_to.force == force
                 } else {
                     false
                 };

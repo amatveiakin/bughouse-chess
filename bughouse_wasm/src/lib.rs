@@ -177,9 +177,8 @@ impl WebClient {
                 if let ContestState::Game{ ref alt_game, .. } = self.state.contest_state() {
                     let info_string = web_document().get_existing_element_by_id("info-string").unwrap();
                     info_string.set_text_content(None);
-                    let my_name = self.state.my_name();
-                    let (_, force) = alt_game.find_player(my_name).unwrap();
-                    self.rotate_boards = force == Force::Black;
+                    let my_id = alt_game.my_id();
+                    self.rotate_boards = my_id.force == Force::Black;
                     render_grids(self.rotate_boards);
                     Ok(Some("game_started".to_owned()))
                 } else {
@@ -221,9 +220,8 @@ impl WebClient {
                 // TODO: Reset boards, clock, etc.
             },
             ContestState::Game{ scores, alt_game, .. } => {
-                let my_name = self.state.my_name();
                 let game = alt_game.local_game();
-                let (my_board_idx, my_force) = game.find_player(my_name).unwrap();
+                let BughousePlayerId{ board_idx: my_board_idx, force: my_force } = alt_game.my_id();
                 for (board_idx, board) in game.boards() {
                     let is_primary = board_idx == my_board_idx;
                     let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
@@ -289,9 +287,8 @@ impl WebClient {
         if let ContestState::Game{ alt_game, time_pair, .. } = self.state.contest_state() {
             let now = Instant::now();
             let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
-            let my_name = self.state.my_name();
             let game = alt_game.local_game();
-            let (my_board_idx, my_force) = game.find_player(my_name).unwrap();
+            let BughousePlayerId{ board_idx: my_board_idx, force: my_force } = alt_game.my_id();
             for (board_idx, board) in game.boards() {
                 let is_primary = board_idx == my_board_idx;
                 let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
@@ -449,7 +446,7 @@ fn set_turn_highlights(turn: Option<Turn>, id_prefix: &str, force: Force, board_
 }
 
 fn update_turn_highlights(alt_game: &AlteredGame, board_orientation: BoardOrientation) -> JsResult<()> {
-    let my_force = alt_game.my_force();
+    let my_force = alt_game.my_id().force;
     let opponent_turn = alt_game.opponent_turn_highlight();
     let preturn = alt_game.preturn_highlight();
     set_turn_highlights(opponent_turn, "opponent", my_force.opponent(), board_orientation)?;

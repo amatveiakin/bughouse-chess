@@ -51,7 +51,6 @@ fn render(
 )
     -> io::Result<()>
 {
-    let my_name = client_state.my_name();
     let now = Instant::now();
     execute!(stdout, cursor::MoveTo(0, 0))?;
     let mut highlight_input = false;
@@ -81,15 +80,16 @@ fn render(
         },
         ContestState::Game{ alt_game, time_pair, .. } => {
             // TODO: Show scores
+            let my_id = alt_game.my_id();
             let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
             let game = alt_game.local_game();
-            let view = game.view_for_player(my_name);
+            let view = BughouseGameView::for_player(my_id);
             writeln_raw(stdout, format!("{}\n", tui::render_bughouse_game(&game, view, game_now)))?;
             // Note. Don't clear the board to avoid blinking.
             // TODO: Show last turn by opponent.
             execute!(stdout, terminal::Clear(terminal::ClearType::FromCursorDown))?;
             if game.status() == BughouseGameStatus::Active {
-                highlight_input = game.player_is_active(my_name).unwrap();
+                highlight_input = game.player_is_active(my_id);
             } else {
                 additional_message = Some(
                     format!("Game over: {:?}", game.status()).with(style::Color::Magenta)

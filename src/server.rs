@@ -1,3 +1,6 @@
+// Improvement potential. Replace `game.find_player(&self.players[player_id].name)`
+//   with a direct mapping (player_id -> player_bughouse_id).
+
 use std::collections::{HashSet, HashMap, hash_map};
 use std::ops;
 use std::rc::Rc;
@@ -10,7 +13,7 @@ use rand::prelude::*;
 
 use crate::board::{TurnMode, TurnError, VictoryReason};
 use crate::clock::GameInstant;
-use crate::game::{BughouseBoard, BughouseGameStatus, BughouseGame};
+use crate::game::{BughouseBoard, BughousePlayerId, BughouseGameStatus, BughouseGame};
 use crate::grid::Grid;
 use crate::event::{TurnRecord, BughouseServerEvent, BughouseClientEvent};
 use crate::player::{Player, Team};
@@ -33,7 +36,7 @@ enum ContestState {
         scores: EnumMap<Team, u32>,  // victory scored as 2:0, draw is 1:1
         game: BughouseGame,
         game_start: Option<Instant>,
-        preturns: HashMap<String, String>,  // player name to turn algebraic
+        preturns: HashMap<BughousePlayerId, String>,  // player -> turn algebraic
         starting_grid: Grid,
         players_with_boards: Vec<(Player, BughouseBoard)>,
         turn_log: Vec<TurnRecord>,
@@ -310,24 +313,24 @@ impl ServerStateCore {
         } = self.contest_state
         {
             if let Some(player_id) = clients[client_id].player_id {
-                let player_name = self.players[player_id].name.clone();
-                let mode = game.turn_mode_for_player(&player_name).map(|o| o.unwrap());
+                let player_bughouse_id = game.find_player(&self.players[player_id].name).unwrap();
+                let mode = game.turn_mode_for_player(player_bughouse_id);
                 match mode {
                     Ok(TurnMode::Normal) => {
                         let mut turns = vec![];
                         let game_now = GameInstant::from_now_game_maybe_active(*game_start, now);
                         match apply_turn(
-                            game_now, player_name.clone(), turn_algebraic, game, scores
+                            game_now, player_bughouse_id, turn_algebraic, game, scores
                         ) {
                             Ok(turn_event) => {
                                 if game_start.is_none() {
                                     *game_start = Some(now);
                                 }
                                 turns.push(turn_event);
-                                let opponent_name = game.opponent_name(&player_name).unwrap();
-                                if let Some(preturn_algebraic) = preturns.remove(&opponent_name) {
+                                let opponent_bughouse_id = player_bughouse_id.opponent();
+                                if let Some(preturn_algebraic) = preturns.remove(&opponent_bughouse_id) {
                                     if let Ok(preturn_event) = apply_turn(
-                                        game_now, opponent_name, preturn_algebraic, game, scores
+                                        game_now, opponent_bughouse_id, preturn_algebraic, game, scores
                                     ) {
                                         turns.push(preturn_event);
                                     }
@@ -342,7 +345,7 @@ impl ServerStateCore {
                         clients.broadcast(&BughouseServerEvent::TurnsMade(turns));
                     },
                     Ok(TurnMode::Preturn) => {
-                        match preturns.entry(player_name) {
+                        match preturns.entry(player_bughouse_id) {
                             hash_map::Entry::Occupied(_) => {
                                 clients[client_id].send_error("Only one premove is supported".to_owned());
                             },
@@ -364,9 +367,10 @@ impl ServerStateCore {
     }
 
     fn process_cancel_preturn(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId) {
-        if let ContestState::Game{ ref mut preturns, .. } = self.contest_state {
+        if let ContestState::Game{ ref game, ref mut preturns, .. } = self.contest_state {
             if let Some(player_id) = clients[client_id].player_id {
-                preturns.remove(&self.players[player_id].name);
+                let player_bughouse_id = game.find_player(&self.players[player_id].name).unwrap();
+                preturns.remove(&player_bughouse_id);
             } else {
                 clients[client_id].send_error("Cannot cancel pre-turn: not joined".to_owned());
             }
@@ -531,17 +535,17 @@ impl ServerStateCore {
 }
 
 fn apply_turn(
-    game_now: GameInstant, player_name: String, turn_algebraic: String,
+    game_now: GameInstant, player_bughouse_id: BughousePlayerId, turn_algebraic: String,
     game: &mut BughouseGame, scores: &mut EnumMap<Team, u32>,
 ) -> Result<TurnRecord, TurnError> {
     game.try_turn_algebraic_by_player(
-        &player_name, &turn_algebraic, TurnMode::Normal, game_now
+        player_bughouse_id, &turn_algebraic, TurnMode::Normal, game_now
     )?;
     if game.status() != BughouseGameStatus::Active {
         update_score_on_game_over(game.status(), scores);
     }
     Ok(TurnRecord {
-        player_name,
+        player_id: player_bughouse_id,
         turn_algebraic,  // TODO: Rewrite turn to a standard form
         time: game_now,
         game_status: game.status(),

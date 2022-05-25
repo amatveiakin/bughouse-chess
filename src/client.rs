@@ -152,12 +152,11 @@ impl ClientState {
                 } else {
                     Some(WallGameTimePair::new(Instant::now(), time.approximate()))
                 };
-                let alt_game = AlteredGame::new(
-                    self.my_name.clone(),
-                    BughouseGame::new_with_grid(
-                        chess_rules, bughouse_rules, starting_grid, player_map
-                    )
+                let game = BughouseGame::new_with_grid(
+                    chess_rules, bughouse_rules, starting_grid, player_map
                 );
+                let my_id = game.find_player(&self.my_name).unwrap();
+                let alt_game = AlteredGame::new(my_id, game);
                 self.new_contest_state(ContestState::Game {
                     scores: try_vec_to_enum_map(scores).unwrap(),
                     alt_game,
@@ -195,7 +194,7 @@ impl ClientState {
 
     // Returns if the turn was mady by current player opponent.
     fn apply_remote_turn(&mut self, event: TurnRecord) -> Result<bool, EventError> {
-        let TurnRecord{ player_name, turn_algebraic, time, game_status, scores: new_scores } = event;
+        let TurnRecord{ player_id, turn_algebraic, time, game_status, scores: new_scores } = event;
         if let ContestState::Game{
             ref mut alt_game, ref mut time_pair, ref mut scores, ..
         } = self.contest_state {
@@ -208,7 +207,7 @@ impl ClientState {
                 *time_pair = Some(WallGameTimePair::new(Instant::now(), game_start));
             }
             alt_game.apply_remote_turn_algebraic(
-                &player_name, &turn_algebraic, time
+                player_id, &turn_algebraic, time
             ).map_err(|err| {
                 EventError::CannotApplyEvent(format!("Impossible turn: {}, error: {:?}", turn_algebraic, err))
             })?;
@@ -218,7 +217,7 @@ impl ClientState {
                 )));
             }
             *scores = try_vec_to_enum_map(new_scores).unwrap();
-            Ok(alt_game.are_opponents(&player_name, &self.my_name).unwrap())
+            Ok(player_id == alt_game.my_id().opponent())
         } else {
             Err(EventError::CannotApplyEvent("Cannot make turn: no game in progress".to_owned()))
         }

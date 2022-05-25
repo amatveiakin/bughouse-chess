@@ -138,7 +138,7 @@ impl ChessGame {
 }
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Enum, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, Serialize, Deserialize)]
 pub enum BughouseBoard {
     A,
     B,
@@ -179,11 +179,37 @@ pub fn get_bughouse_force(team: Team, board_idx: BughouseBoard) -> Force {
     }
 }
 
+// TODO: Factor out this and other defines for bughouse.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+pub struct BughousePlayerId {
+    pub board_idx: BughouseBoard,
+    pub force: Force,
+}
+impl BughousePlayerId {
+    pub fn opponent(self) -> Self {
+        BughousePlayerId {
+            board_idx: self.board_idx,
+            force: self.force.opponent(),
+        }
+    }
+}
+
 // TODO: Unify board flipping for tui and web clients
 #[derive(Clone, Copy, Debug)]
 pub struct BughouseGameView {
     pub flip_boards: bool,
     pub flip_forces: bool,
+}
+
+impl BughouseGameView {
+    pub fn for_player(player_id: BughousePlayerId) -> Self {
+        use BughouseBoard::*;
+        use Force::*;
+        BughouseGameView {
+            flip_boards: match player_id.board_idx { A => false, B => true },
+            flip_forces: match player_id.force { White => false, Black => true },
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -254,46 +280,26 @@ impl BughouseGame {
     }
     pub fn status(&self) -> BughouseGameStatus { self.status }
 
-    pub fn find_player(&self, player_name: &str) -> Option<(BughouseBoard, Force)> {
+    pub fn find_player(&self, player_name: &str) -> Option<BughousePlayerId> {
         for (board_idx, board) in self.boards.iter() {
             for (force, player) in board.players() {
                 if player.name == player_name {
-                    return Some((board_idx, force));
+                    return Some(BughousePlayerId{ board_idx, force });
                 }
             }
         }
         None
     }
-    pub fn player_board_idx(&self, player_name: &str) -> Option<BughouseBoard> {
-        self.find_player(player_name).map(|(board_idx, _)| board_idx)
+    pub fn player_is_active(&self, player_id: BughousePlayerId) -> bool {
+        self.status == BughouseGameStatus::Active &&
+            self.boards[player_id.board_idx].active_force() == player_id.force
     }
-    pub fn player_board(&self, player_name: &str) -> Option<&Board> {
-        self.player_board_idx(player_name).map(|board_idx| &self.boards[board_idx])
-    }
-    pub fn player_is_active(&self, player_name: &str) -> Option<bool> {
-        self.find_player(player_name).map(|(board_idx, force)| {
-            self.status == BughouseGameStatus::Active && self.boards[board_idx].active_force() == force
-        })
-    }
-    pub fn turn_mode_for_player(&self, player_name: &str) -> Result<Option<TurnMode>, TurnError> {
+    pub fn turn_mode_for_player(&self, player_id: BughousePlayerId) -> Result<TurnMode, TurnError> {
         if self.status == BughouseGameStatus::Active {
-            Ok(self.player_is_active(player_name).map(|active| {
-                if active { TurnMode::Normal } else { TurnMode::Preturn }
-            }))
+            Ok(if self.player_is_active(player_id) { TurnMode::Normal } else { TurnMode::Preturn })
         } else {
             Err(TurnError::GameOver)
         }
-    }
-    pub fn are_opponents(&self, player_name_a: &str, player_name_b: &str) -> Option<bool> {
-        Some(
-            player_name_a != player_name_b &&
-            self.player_board_idx(player_name_a)? == self.player_board_idx(player_name_b)?
-        )
-    }
-    pub fn opponent_name(&self, player_name: &str) -> Option<String> {
-        self.find_player(player_name).map(|(board_idx, force)| {
-            self.boards[board_idx].player(force.opponent()).name.clone()
-        })
     }
 
     pub fn set_status(&mut self, status: BughouseGameStatus, now: GameInstant) {
@@ -350,6 +356,7 @@ impl BughouseGame {
         self.set_status(self.game_status_for_board(board_idx), now);
         Ok(())
     }
+
     pub fn try_turn_algebraic(&mut self, board_idx: BughouseBoard, notation: &str, mode: TurnMode, now: GameInstant)
         -> Result<Turn, TurnError>
     {
@@ -357,28 +364,29 @@ impl BughouseGame {
         self.try_turn(board_idx, turn, mode, now)?;
         Ok(turn)
     }
+
     pub fn try_turn_by_player(
-        &mut self, player_name: &str, turn: Turn, mode: TurnMode, now: GameInstant
+        &mut self, player_id: BughousePlayerId, turn: Turn, mode: TurnMode, now: GameInstant
     )
         -> Result<(), TurnError>
     {
-        if mode != self.turn_mode_for_player(player_name)?.unwrap() {
+        if mode != self.turn_mode_for_player(player_id)? {
             return Err(TurnError::WrongTurnOrder);
         }
-        let board_idx = self.player_board_idx(player_name).unwrap();
-        self.try_turn(board_idx, turn, mode, now)
+        self.try_turn(player_id.board_idx, turn, mode, now)
     }
+
     pub fn try_turn_algebraic_by_player(
-        &mut self, player_name: &str, notation: &str, mode: TurnMode, now: GameInstant
+        &mut self, player_id: BughousePlayerId, notation: &str, mode: TurnMode, now: GameInstant
     )
         -> Result<Turn, TurnError>
     {
-        if mode != self.turn_mode_for_player(player_name)?.unwrap() {
+        if mode != self.turn_mode_for_player(player_id)? {
             return Err(TurnError::WrongTurnOrder);
         }
-        let board_idx = self.player_board_idx(player_name).unwrap();
-        self.try_turn_algebraic(board_idx, notation, mode, now)
+        self.try_turn_algebraic(player_id.board_idx, notation, mode, now)
     }
+
     // Should be used in tests only, because it doesn't handle time properly.
     #[allow(non_snake_case)]
     pub fn TEST_try_replay_log(&mut self, log: &str) -> Result<(), TurnError> {
@@ -411,17 +419,6 @@ impl BughouseGame {
             ChessGameStatus::Victory(force, reason) =>
                 BughouseGameStatus::Victory(get_bughouse_team(board_idx, force), reason),
             ChessGameStatus::Draw(reason) => BughouseGameStatus::Draw(reason),
-        }
-    }
-
-    // TODO: Move to bughouse_console package
-    pub fn view_for_player(&self, player_name: &str) -> BughouseGameView {
-        use BughouseBoard::*;
-        use Force::*;
-        let (board_idx, force) = self.find_player(player_name).unwrap();
-        BughouseGameView {
-            flip_boards: match board_idx { A => false, B => true },
-            flip_forces: match force { White => false, Black => true },
         }
     }
 }
