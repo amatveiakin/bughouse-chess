@@ -8,13 +8,12 @@ use itertools::Itertools;
 use bughouse_chess::{
     Row, Col, Coord, NUM_COLS, Force, Player,
     Grid, PieceKind, Board, Reserve, GameInstant, Clock,
-    ChessGame, BughouseBoard, BughouseGame, BughouseGameView
+    ChessGame, BughouseBoard, BughouseGame, BughouseGameView,
+    util::div_ceil_u128,
 };
 
 
 const BOARD_WIDTH: usize = (NUM_COLS as usize + 2) * 3;
-
-fn div_ceil(a: u128, b: u128) -> u128 { (a + b - 1) / b }
 
 pub fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, usize) {
     // Improvement potential: Support longer time controls (with hours).
@@ -25,7 +24,7 @@ pub fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, u
     let mut clock_str = if sec >= 20 {
         format!("{:02}{}{:02}", sec / 60, separator(":"), sec % 60)
     } else {
-        format!(" {:02}{}{}", sec, separator("."), div_ceil(millis, 100) % 10)
+        format!(" {:02}{}{}", sec, separator("."), div_ceil_u128(millis, 100) % 10)
     };
     let clock_str_len = clock_str.len();
     if is_active {

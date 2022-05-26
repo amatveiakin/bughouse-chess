@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 
 use crate::clock::GameInstant;
-use crate::game::{BughouseGameStatus, BughouseBoard, BughousePlayerId};
+use crate::game::{TurnRecord, BughouseGameStatus, BughouseBoard};
 use crate::grid::Grid;
 use crate::player::{Player, Team};
 use crate::rules::{ChessRules, BughouseRules};
@@ -18,29 +18,25 @@ pub enum BughouseServerEvent {
     GameStarted {  // TODO: Rename to take reconnection into account
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
-        scores: Vec<(Team, u32)>,
         starting_grid: Grid,
         players: Vec<(Player, BughouseBoard)>,
-        time: GameInstant,          // for re-connection
-        turn_log: Vec<TurnRecord>,  // for re-connection
+        time: GameInstant,                // for re-connection
+        turn_log: Vec<TurnRecord>,        // for re-connection
+        game_status: BughouseGameStatus,  // for re-connection
+        scores: Vec<(Team, u32)>,
         // TODO: Send your pending pre-turn, if any
     },
-    TurnsMade(Vec<TurnRecord>),
+    TurnsMade {
+        turns: Vec<TurnRecord>,
+        game_status: BughouseGameStatus,
+        scores: Vec<(Team, u32)>,
+    },
     // Used when game is ended for a reason unrelated to the last turn (flag, resign).
     GameOver {
         time: GameInstant,
         game_status: BughouseGameStatus,
         scores: Vec<(Team, u32)>,
     },
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct TurnRecord {
-    pub player_id: BughousePlayerId,
-    pub turn_algebraic: String,
-    pub time: GameInstant,
-    pub game_status: BughouseGameStatus,
-    pub scores: Vec<(Team, u32)>,
 }
 
 

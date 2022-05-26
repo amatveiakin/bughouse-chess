@@ -353,21 +353,21 @@ pub struct Capture {
 }
 
 // Note. Generally speaking, it's impossible to detect castling based on king movement in Chess960.
-#[derive(Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Turn {
     Move(TurnMove),
     Drop(TurnDrop),
     Castle(CastleDirection),
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct TurnMove {
     pub from: Coord,
     pub to: Coord,
     pub promote_to: Option<PieceKind>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct TurnDrop {
     pub piece_kind: PieceKind,
     pub to: Coord,
@@ -453,9 +453,10 @@ impl Reachability {
 }
 
 // Improvement potential: Rc => references to a Box in Game classes
+// Improvement potential: Don't players here since they don't affect gaem process.
 #[derive(Clone, Debug)]
 pub struct Board {
-    #[allow(dead_code)] chess_rules: Rc<ChessRules>,
+    chess_rules: Rc<ChessRules>,
     bughouse_rules: Option<Rc<BughouseRules>>,
     players: EnumMap<Force, Rc<Player>>,
     status: ChessGameStatus,
@@ -500,6 +501,8 @@ impl Board {
         }
     }
 
+    pub fn chess_rules(&self) -> &Rc<ChessRules> { &self.chess_rules }
+    pub fn bughouse_rules(&self) -> &Option<Rc<BughouseRules>> { &self.bughouse_rules }
     pub fn player(&self, force: Force) -> &Player { &*self.players[force] }
     pub fn players(&self) -> &EnumMap<Force, Rc<Player>> { &self.players }
     pub fn status(&self) -> ChessGameStatus { self.status }
@@ -822,7 +825,7 @@ impl Board {
         self.reserves[capture.force][capture.piece_kind] += 1;
     }
 
-    pub fn algebraic_notation_to_turn(&self, notation: &str, mode: TurnMode) -> Result<Turn, TurnError> {
+    pub fn algebraic_to_turn(&self, notation: &str, mode: TurnMode) -> Result<Turn, TurnError> {
         let force = self.turn_owner(mode);
         let notation = notation.trim();
         const PIECE_RE: &str = r"[PNBRQK]";
@@ -913,5 +916,48 @@ impl Board {
             return Ok(Turn::Castle(CastleDirection::HSide));
         }
         Err(TurnError::InvalidNotation)
+    }
+
+    // Renders turn as algebraic notation, PGN-style, see
+    //   http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
+    // Improvement potential. Omit `from` square when possible.
+    // Improvement potential. Allow to choose formatting style (e.g. "0-0" or "O-O").
+    pub fn turn_to_algebraic(&self, turn: Turn) -> Result<String, TurnError> {
+        let notation = self.turn_to_algebraic_impl(turn)?;
+        // Improvement potential. Remove when sufficiently tested.
+        if let Ok(turn_parsed) = self.algebraic_to_turn(&notation, TurnMode::Normal) {
+            assert_eq!(turn_parsed, turn, "{}", notation);
+        }
+        Ok(notation)
+    }
+
+    fn turn_to_algebraic_impl(&self, turn: Turn) -> Result<String, TurnError> {
+        match turn {
+            Turn::Move(mv) => {
+                let piece = self.grid[mv.from].ok_or(TurnError::PieceMissing)?;
+                let capture = get_capture(&self.grid, mv.from, mv.to, self.en_passant_target);
+                let promotion = match mv.promote_to {
+                    Some(piece_kind) => format!("={}", piece_kind.to_full_algebraic()),
+                    None => "".to_owned(),
+                };
+                Ok(format!(
+                    "{}{}{}{}{}",
+                    piece.kind.to_algebraic_for_move(),
+                    mv.from.to_algebraic(),
+                    if capture.is_some() { "x" } else { "" },
+                    mv.to.to_algebraic(),
+                    promotion,
+                ))
+            },
+            Turn::Drop(drop) => {
+                Ok(format!("{}@{}", drop.piece_kind.to_full_algebraic(), drop.to.to_algebraic()))
+            },
+            Turn::Castle(dir) => {
+                Ok((match dir {
+                    CastleDirection::ASide => "O-O-O",
+                    CastleDirection::HSide => "O-O",
+                }).to_owned())
+            },
+        }
     }
 }

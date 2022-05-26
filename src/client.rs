@@ -7,8 +7,9 @@ use instant::Instant;
 use crate::altered_game::AlteredGame;
 use crate::board::TurnError;
 use crate::clock::{GameInstant, WallGameTimePair};
-use crate::game::{BughouseGameStatus, BughouseGame};
-use crate::event::{TurnRecord, BughouseServerEvent, BughouseClientEvent};
+use crate::game::{TurnRecord, BughouseGameStatus, BughouseGame};
+use crate::grid::Grid;
+use crate::event::{BughouseServerEvent, BughouseClientEvent};
 use crate::player::{Player, Team};
 use crate::util::try_vec_to_enum_map;
 
@@ -39,6 +40,8 @@ pub enum ContestState {
     Game {
         // Scores from the past matches.
         scores: EnumMap<Team, u32>,
+        // Starting position.
+        starting_grid: Grid,
         // Game state including unconfirmed local changes.
         alt_game: AlteredGame,
         // Game start time: `None` before first move, non-`None` afterwards.
@@ -142,7 +145,7 @@ impl ClientState {
                 }
                 Ok(NotableEvent::None)
             },
-            GameStarted{ chess_rules, bughouse_rules, scores, starting_grid, players, time, turn_log } => {
+            GameStarted{ chess_rules, bughouse_rules, starting_grid, players, time, turn_log, game_status, scores } => {
                 let player_map = BughouseGame::make_player_map(
                     players.iter().map(|(p, board_idx)| (Rc::new(p.clone()), *board_idx))
                 );
@@ -153,26 +156,29 @@ impl ClientState {
                     Some(WallGameTimePair::new(Instant::now(), time.approximate()))
                 };
                 let game = BughouseGame::new_with_grid(
-                    chess_rules, bughouse_rules, starting_grid, player_map
+                    chess_rules, bughouse_rules, starting_grid.clone(), player_map
                 );
                 let my_id = game.find_player(&self.my_name).unwrap();
                 let alt_game = AlteredGame::new(my_id, game);
                 self.new_contest_state(ContestState::Game {
-                    scores: try_vec_to_enum_map(scores).unwrap(),
+                    scores: try_vec_to_enum_map(scores.clone()).unwrap(),
+                    starting_grid,
                     alt_game,
                     time_pair,
                 });
                 for turn in turn_log {
                     self.apply_remote_turn(turn)?;
                 }
+                self.postprocess_remote_turns(game_status, scores)?;
                 Ok(NotableEvent::GameStarted)
             },
-            TurnsMade(event) => {
+            TurnsMade{ turns, game_status, scores } => {
                 let mut opponent_turn_made = false;
-                for turn in event {
+                for turn in turns {
                     let is_opponent_turn = self.apply_remote_turn(turn)?;
                     opponent_turn_made |= is_opponent_turn;
                 }
+                self.postprocess_remote_turns(game_status, scores)?;
                 Ok(if opponent_turn_made { NotableEvent::OpponentTurnMade } else { NotableEvent::None })
             },
             GameOver{ time, game_status, scores: new_scores } => {
@@ -193,11 +199,9 @@ impl ClientState {
     }
 
     // Returns if the turn was mady by current player opponent.
-    fn apply_remote_turn(&mut self, event: TurnRecord) -> Result<bool, EventError> {
-        let TurnRecord{ player_id, turn_algebraic, time, game_status, scores: new_scores } = event;
-        if let ContestState::Game{
-            ref mut alt_game, ref mut time_pair, ref mut scores, ..
-        } = self.contest_state {
+    fn apply_remote_turn(&mut self, turn_record: TurnRecord) -> Result<bool, EventError> {
+        let TurnRecord{ player_id, turn_algebraic, time } = turn_record;
+        if let ContestState::Game{ ref mut alt_game, ref mut time_pair, .. } = self.contest_state {
             if alt_game.status() != BughouseGameStatus::Active {
                 return Err(EventError::CannotApplyEvent(format!("Cannot make turn {}: game over", turn_algebraic)));
             }
@@ -211,15 +215,27 @@ impl ClientState {
             ).map_err(|err| {
                 EventError::CannotApplyEvent(format!("Impossible turn: {}, error: {:?}", turn_algebraic, err))
             })?;
+            Ok(player_id == alt_game.my_id().opponent())
+        } else {
+            Err(EventError::CannotApplyEvent("Cannot make turn: no game in progress".to_owned()))
+        }
+    }
+
+    fn postprocess_remote_turns(
+        &mut self, game_status: BughouseGameStatus, new_scores: Vec<(Team, u32)>
+    ) -> Result<(), EventError>
+    {
+        if let ContestState::Game{ ref mut alt_game, ref mut scores, .. } = self.contest_state {
             if game_status != alt_game.status() {
                 return Err(EventError::CannotApplyEvent(format!(
                     "Expected game status = {:?}, actual = {:?}", game_status, alt_game.status()
                 )));
             }
             *scores = try_vec_to_enum_map(new_scores).unwrap();
-            Ok(player_id == alt_game.my_id().opponent())
+            Ok(())
         } else {
-            Err(EventError::CannotApplyEvent("Cannot make turn: no game in progress".to_owned()))
+            // Should've been tested in `apply_remote_turn`.
+            panic!("Cannot post-process turns: no game in progress");
         }
     }
 

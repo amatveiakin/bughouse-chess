@@ -10,6 +10,7 @@ use lazy_static::lazy_static;
 use rand::prelude::*;
 use regex::Regex;
 use serde::{Serialize, Deserialize};
+use strum::EnumIter;
 
 use crate::board::{Board, Turn, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
 use crate::clock::GameInstant;
@@ -20,6 +21,13 @@ use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard};
 use crate::player::{Player, Team};
 use crate::rules::{StartingPosition, ChessRules, BughouseRules};
 
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TurnRecord {
+    pub player_id: BughousePlayerId,
+    pub turn_algebraic: String,
+    pub time: GameInstant,
+}
 
 fn generate_starting_grid(starting_position: StartingPosition) -> Grid {
     use PieceKind::*;
@@ -114,7 +122,7 @@ impl ChessGame {
     pub fn try_turn_algebraic(&mut self, notation: &str, mode: TurnMode, now: GameInstant)
         -> Result<(), TurnError>
     {
-        let turn = self.board.algebraic_notation_to_turn(notation, mode)?;
+        let turn = self.board.algebraic_to_turn(notation, mode)?;
         self.try_turn(turn, mode, now)
     }
     // Should be used in tests only, because it doesn't handle time properly.
@@ -133,7 +141,7 @@ impl ChessGame {
 }
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, EnumIter, Serialize, Deserialize)]
 pub enum BughouseBoard {
     A,
     B,
@@ -210,6 +218,7 @@ impl BughouseGameView {
 #[derive(Clone, Debug)]
 pub struct BughouseGame {
     boards: EnumMap<BughouseBoard, Board>,
+    turn_log: Vec<TurnRecord>,
     status: BughouseGameStatus,
 }
 
@@ -248,6 +257,7 @@ impl BughouseGame {
         BughouseGame {
             boards: boards,
             status: BughouseGameStatus::Active,
+            turn_log: Vec::new(),
         }
     }
 
@@ -266,6 +276,8 @@ impl BughouseGame {
         })
     }
 
+    pub fn chess_rules(&self) -> &Rc<ChessRules> { &self.boards[BughouseBoard::A].chess_rules() }
+    pub fn bughouse_rules(&self) -> &Rc<BughouseRules> { &self.boards[BughouseBoard::A].bughouse_rules().as_ref().unwrap() }
     // Improvement potential. Remove mutable access to the boards.
     pub fn board_mut(&mut self, idx: BughouseBoard) -> &mut Board { &mut self.boards[idx] }
     pub fn board(&self, idx: BughouseBoard) -> &Board { &self.boards[idx] }
@@ -273,6 +285,7 @@ impl BughouseGame {
     pub fn players(&self) -> Vec<Rc<Player>> {
         self.boards.values().map(|(board)| board.players().values().cloned()).flatten().collect()
     }
+    pub fn turn_log(&self) -> &Vec<TurnRecord> { &self.turn_log }
     pub fn status(&self) -> BughouseGameStatus { self.status }
 
     pub fn find_player(&self, player_name: &str) -> Option<BughousePlayerId> {
@@ -342,11 +355,15 @@ impl BughouseGame {
             // may have ended earlier on the other board.
             return Err(TurnError::GameOver);
         }
-        let capture_or = self.boards[board_idx].try_turn(turn, mode, now)?;
+        let board = &mut self.boards[board_idx];
+        let player_id = BughousePlayerId{ board_idx, force: board.active_force() };
+        let turn_algebraic = board.turn_to_algebraic(turn)?;
+        let capture_or = board.try_turn(turn, mode, now)?;
         self.boards[board_idx.other()].start_clock(now);
         if let Some(capture) = capture_or {
             self.boards[board_idx.other()].receive_capture(&capture)
         }
+        self.turn_log.push(TurnRecord{ player_id, turn_algebraic, time: now });
         assert!(self.status == BughouseGameStatus::Active);
         self.set_status(self.game_status_for_board(board_idx), now);
         Ok(())
@@ -355,7 +372,7 @@ impl BughouseGame {
     pub fn try_turn_algebraic(&mut self, board_idx: BughouseBoard, notation: &str, mode: TurnMode, now: GameInstant)
         -> Result<Turn, TurnError>
     {
-        let turn = self.boards[board_idx].algebraic_notation_to_turn(notation, mode)?;
+        let turn = self.boards[board_idx].algebraic_to_turn(notation, mode)?;
         self.try_turn(board_idx, turn, mode, now)?;
         Ok(turn)
     }

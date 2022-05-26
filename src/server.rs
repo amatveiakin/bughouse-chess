@@ -13,9 +13,9 @@ use rand::prelude::*;
 
 use crate::board::{TurnMode, TurnError, VictoryReason};
 use crate::clock::GameInstant;
-use crate::game::{BughouseBoard, BughousePlayerId, BughouseGameStatus, BughouseGame};
+use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, BughouseGameStatus, BughouseGame};
 use crate::grid::Grid;
-use crate::event::{TurnRecord, BughouseServerEvent, BughouseClientEvent};
+use crate::event::{BughouseServerEvent, BughouseClientEvent};
 use crate::player::{Player, Team};
 use crate::rules::{ChessRules, BughouseRules};
 
@@ -246,9 +246,9 @@ impl ServerStateCore {
                     if game.status() != BughouseGameStatus::Active {
                         update_score_on_game_over(game.status(), scores);
                         clients.broadcast(&BughouseServerEvent::GameOver {
-                            scores: scores.clone().into_iter().collect(),
                             time: game_now,
                             game_status: game.status(),
+                            scores: scores.clone().into_iter().collect(),
                         });
                     }
                 }
@@ -342,7 +342,11 @@ impl ServerStateCore {
                             },
                         }
                         turn_log.extend_from_slice(&turns);
-                        clients.broadcast(&BughouseServerEvent::TurnsMade(turns));
+                        clients.broadcast(&BughouseServerEvent::TurnsMade {
+                            turns,
+                            game_status: game.status(),
+                            scores: scores.clone().into_iter().collect(),
+                        });
                     },
                     Ok(TurnMode::Preturn) => {
                         match preturns.entry(player_bughouse_id) {
@@ -483,18 +487,19 @@ impl ServerStateCore {
     fn make_game_start_event(&self, now: Instant) -> BughouseServerEvent {
         // Improvement potential: Pass `ContestState` from above: it should already be
         //   unpacked where the function is called.
-        if let ContestState::Game{ scores, game_start, starting_grid, players_with_boards, turn_log, .. }
+        if let ContestState::Game{ scores, game, game_start, starting_grid, players_with_boards, turn_log, .. }
             = &self.contest_state
         {
             let time = GameInstant::from_now_game_maybe_active(*game_start, now);
             BughouseServerEvent::GameStarted {
                 chess_rules: self.chess_rules.clone(),
                 bughouse_rules: self.bughouse_rules.clone(),
-                scores: scores.clone().into_iter().collect(),
                 starting_grid: starting_grid.clone(),
                 players: players_with_boards.clone(),
                 time,
                 turn_log: turn_log.clone(),
+                game_status: game.status(),
+                scores: scores.clone().into_iter().collect(),
             }
         } else {
             panic!("Expected ContestState::Game");
@@ -548,8 +553,6 @@ fn apply_turn(
         player_id: player_bughouse_id,
         turn_algebraic,  // TODO: Rewrite turn to a standard form
         time: game_now,
-        game_status: game.status(),
-        scores: scores.clone().into_iter().collect(),
     })
 }
 

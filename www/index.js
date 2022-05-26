@@ -163,7 +163,12 @@ function on_command(event) {
                     break;
                 case 'reset':
                     get_args(args, []);
-                    wasm_client_or_throw().reset();
+                    break;
+                case 'save':
+                    const [format] = get_args(args, ['bpgn:pgn-pair']);
+                    const ext = format == 'bpgn' ? 'bpgn' : 'pgn';
+                    const content = wasm_client_or_throw().export_game(format);
+                    download(content, `game.${ext}`);
                     break;
                 default:
                     throw new InvalidCommand(`Command does not exist: /${args[0]}`)
@@ -323,6 +328,16 @@ function set_up_drag_and_drop() {
         wasm_client.cancel_preturn();
         update();
     }
+}
+
+function download(text, filename) {
+    var element = document.createElement('a');
+    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+    element.setAttribute('download', filename);
+    element.style.display = 'none';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
 }
 
 // TODO: Is it possible to set a static favicon in a way that is recognized  by webpack?

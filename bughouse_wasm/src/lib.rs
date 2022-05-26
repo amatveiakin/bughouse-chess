@@ -88,6 +88,20 @@ impl WebClient {
         self.state.reset();
     }
 
+    pub fn export_game(&self, format: &str) -> JsResult<String> {
+        if let ContestState::Game{ ref scores, ref starting_grid, ref alt_game, .. } = self.state.contest_state() {
+            // Improvement potential: More robust way to determine round number.
+            let round = scores.values().sum::<u32>() / 2 + 1;
+            match format {
+                "bpgn" => Ok(pgn::bughouse_to_bpgn(starting_grid, alt_game.game_confirmed(), round)),
+                "pgn-pair" => Ok(pgn::bughouse_to_pgn_pair(starting_grid, alt_game.game_confirmed(), round)),
+                _ => Err(format!("Unknown format: {}", format).into())
+            }
+        } else {
+            Err("No game in progress".into())
+        }
+    }
+
     // Returns whether a turn was made.
     pub fn make_turn_algebraic(&mut self, turn_algebraic: String) -> JsResult<bool> {
         let turn_result = self.state.make_turn(turn_algebraic);
@@ -129,7 +143,11 @@ impl WebClient {
                 let dest_coord = from_display_coord(dest_display, board_orientation);
                 let promote_to = if alternative_promotion { Knight } else { Queen };
                 match alt_game.drag_piece_drop(dest_coord, promote_to) {
-                    Ok(turn_algebraic) => {
+                    Ok(turn) => {
+                        // Improvement potential: Don't convert to algebraic.
+                        let game = alt_game.local_game();
+                        let my_board = game.board(alt_game.my_id().board_idx);
+                        let turn_algebraic = my_board.turn_to_algebraic(turn).unwrap();
                         return self.make_turn_algebraic(turn_algebraic);
                     },
                     Err(PieceDragError::DragNoLongerPossible) => {
@@ -500,8 +518,6 @@ fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_i
     Ok(())
 }
 
-fn div_ceil(a: u128, b: u128) -> u128 { (a + b - 1) / b }
-
 // TODO: Dedup against console client
 fn update_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_sys::Element)
     -> JsResult<()>
@@ -512,7 +528,7 @@ fn update_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_
     let separator = |s| if !is_active || millis % 1000 >= 500 { s } else { " " };
     let low_time = sec < 20;
     let clock_str = if low_time {
-        format!("{:02}{}{}", sec, separator("."), div_ceil(millis, 100) % 10)
+        format!("{:02}{}{}", sec, separator("."), util::div_ceil_u128(millis, 100) % 10)
     } else {
         format!("{:02}{}{:02}", sec / 60, separator(":"), sec % 60)
     };

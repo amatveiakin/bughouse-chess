@@ -9,9 +9,10 @@ mod grid;
 mod piece;
 mod player;
 mod rules;
+pub mod client;
 pub mod fen;
 pub mod janitor;
-pub mod client;
+pub mod pgn;
 pub mod server;
 pub mod util;
 

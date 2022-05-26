@@ -1,8 +1,8 @@
-use crate::board::{Turn, TurnMode, TurnError};
+use crate::board::{Turn, TurnMove, TurnDrop, TurnMode, TurnError};
 use crate::clock::GameInstant;
 use crate::coord::{SubjectiveRow, Coord};
 use crate::game::{BughousePlayerId, BughouseGameStatus, BughouseGame};
-use crate::piece::PieceKind;
+use crate::piece::{CastleDirection, PieceKind};
 
 
 #[derive(Clone, Copy, Debug)]
@@ -100,6 +100,7 @@ impl AlteredGame {
     }
 
     pub fn my_id(&self) -> BughousePlayerId { self.my_id }
+    pub fn game_confirmed(&self) -> &BughouseGame { &self.game_confirmed }
 
     pub fn opponent_turn_highlight(&self) -> Option<Turn> {
         let show_highlight =
@@ -191,17 +192,15 @@ impl AlteredGame {
         self.piece_drag = None;
     }
 
-    // Stop drag and returns algebraic turn notation on success.
-    // Improvement potential: Return `Turn` struct instead of turn algebraic.
+    // Stop drag and returns algebraic turn on success.
     pub fn drag_piece_drop(&mut self, dest_coord: Coord, promote_to: PieceKind)
-        -> Result<String, PieceDragError>
+        -> Result<Turn, PieceDragError>
     {
         let drag = self.piece_drag.as_ref().ok_or(PieceDragError::NoDragInProgress)?;
         let piece_kind = drag.piece_kind;
         let source = drag.source;
         self.piece_drag = None;
 
-        let dest_notation = dest_coord.to_algebraic();
         match source {
             PieceDragSource::Defunct => {
                 Err(PieceDragError::DragNoLongerPossible)
@@ -215,7 +214,6 @@ impl AlteredGame {
                 let last_row = SubjectiveRow::from_one_based(8).to_row(force);
                 let d_col = dest_coord.col - source_coord.col;
                 let d_col_abs = d_col.abs();
-                let source_notation = source_coord.to_algebraic();
                 let to_my_piece = if let Some(piece_to) = board.grid()[dest_coord] {
                     piece_to.force == force
                 } else {
@@ -231,18 +229,22 @@ impl AlteredGame {
                 ;
                 let is_promotion = piece_kind == Pawn && dest_coord.row == last_row;
                 if is_castling {
-                    Ok((if d_col > 0 { "0-0" } else { "0-0-0" }).to_owned())
-                } else if is_promotion {
-                    let promotion_str = promote_to.to_full_algebraic();
-                    Ok(format!("{}{}/{}", source_notation, dest_notation, promotion_str))
+                    use CastleDirection::*;
+                    let dir = if d_col > 0 { HSide } else { ASide };
+                    Ok(Turn::Castle(dir))
                 } else {
-                    let piece_str = piece_kind.to_algebraic_for_move();
-                    Ok(format!("{}{}{}", piece_str, source_notation, dest_notation))
+                    Ok(Turn::Move(TurnMove {
+                        from: source_coord,
+                        to: dest_coord,
+                        promote_to: if is_promotion { Some(promote_to) } else { None },
+                    }))
                 }
             },
             PieceDragSource::Reserve => {
-                let piece_str = piece_kind.to_full_algebraic();
-                Ok(format!("{}@{}", piece_str, dest_notation))
+                Ok(Turn::Drop(TurnDrop {
+                    piece_kind,
+                    to: dest_coord
+                }))
             }
         }
     }

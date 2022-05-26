@@ -12,9 +12,10 @@ authors = ["Andrei Matveiakin <a.matveiakin@gmail.com>"]
 edition = "2021"
 
 [dependencies]
+chrono = { version = "0.4.19", features = ["wasmbind"] }
 derive-new = "0.5.9"
 enum-map = "2.1.0"
-instant = { version = "0.1.12", features = [ "wasm-bindgen" ] }
+instant = { version = "0.1.12", features = ["wasm-bindgen"] }
 itertools = "0.10.3"
 lazy_static = "1.4.0"
 rand = "0.8.5"
