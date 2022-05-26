@@ -29,7 +29,7 @@ pub struct PieceOnBoard {
     pub force: Force,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Enum, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, Serialize, Deserialize)]
 pub enum CastleDirection {
     ASide,
     HSide,

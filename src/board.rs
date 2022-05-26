@@ -290,7 +290,7 @@ fn proto_reachability_modulo_destination_square(grid: &Grid, from: Coord, to: Co
     }
 }
 
-fn initial_castling_rights(grid: &Grid, force: Force) -> EnumMap<CastleDirection, Option<Col>> {
+fn initial_castling_rights(grid: &Grid, force: Force) -> CastlingRights {
     let row = SubjectiveRow::from_one_based(1).to_row(force);
     let king_pos = find_king(grid, force).unwrap();
     assert!(king_pos.row == row);
@@ -308,7 +308,7 @@ fn initial_castling_rights(grid: &Grid, force: Force) -> EnumMap<CastleDirection
     rights
 }
 
-fn remove_castling_right(castling_rights: &mut EnumMap<CastleDirection, Option<Col>>, col: Col) {
+fn remove_castling_right(castling_rights: &mut CastlingRights, col: Col) {
     for (_, col_rights) in castling_rights.iter_mut() {
         if *col_rights == Some(col) {
             *col_rights = None;
@@ -438,16 +438,14 @@ pub enum TurnError {
 
 pub type Reserve = EnumMap<PieceKind, u8>;
 
-// Improvement potential: Test threefold repetition draw according to FIDE rules.
-//   Two positions are by definition "the same" if:
-//     - [Done] the same types of pieces occupy the same squares;
-//     - [Done] the same player has the move;
-//     - [TBD] the remaining castling rights are the same;
-//     - [TBD] the possibility to capture en passant is the same;
+type CastlingRights = EnumMap<CastleDirection, Option<Col>>;
+
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 struct PositionForRepetitionDraw {
     grid: GridForRepetitionDraw,
     active_force: Force,
+    castling_rights: EnumMap<Force, CastlingRights>,
+    en_passant_target: Option<Coord>,
 }
 
 impl Reachability {
@@ -466,10 +464,10 @@ pub struct Board {
     // allowed with the rooks stand in the first row at specified columns. If the
     // king has moved then the list is empty. Not affected by temporary limitations
     // (e.g. the king being checked).
-    castling_rights: EnumMap<Force, EnumMap<CastleDirection, Option<Col>>>,
-    reserves: EnumMap<Force, Reserve>,
+    castling_rights: EnumMap<Force, CastlingRights>,
     en_passant_target: Option<Coord>,
-    position_count: HashMap<PositionForRepetitionDraw, u8>,
+    reserves: EnumMap<Force, Reserve>,
+    position_count: HashMap<PositionForRepetitionDraw, u32>,
     clock: Clock,
     active_force: Force,
 }
@@ -603,6 +601,8 @@ impl Board {
                         PieceForRepetitionDraw{ kind: piece.kind, force: piece.force }
                     }),
                     active_force: self.active_force,
+                    castling_rights: self.castling_rights,
+                    en_passant_target: self.en_passant_target,
                 };
                 let num_repetition = self.position_count.entry(position_for_repetition_draw).or_insert(0);
                 *num_repetition += 1;

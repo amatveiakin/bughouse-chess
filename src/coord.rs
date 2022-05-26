@@ -24,7 +24,7 @@ const fn const_char_sub(a: char, b: char) -> u8 {
 
 
 // Row form a force's point of view
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct SubjectiveRow {
     idx: u8,  // 0-based
 }
@@ -55,7 +55,7 @@ impl SubjectiveRow {
 }
 
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Row {
     idx: u8,  // 0-based
 }
@@ -90,7 +90,7 @@ impl ops::Sub for Row {
 }
 
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Col {
     idx: u8,  // 0-based
 }
@@ -125,7 +125,7 @@ impl ops::Sub for Col {
 }
 
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Coord {
     pub row: Row,
     pub col: Col,
