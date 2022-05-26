@@ -63,6 +63,7 @@ dependencies = [
  "scopeguard",
  "serde",
  "serde_json",
+ "strum",
 ]
 
 [[package]]

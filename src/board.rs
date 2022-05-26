@@ -10,6 +10,7 @@ use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Serialize, Deserialize};
+use strum::IntoEnumIterator;
 
 use crate::coord::{SubjectiveRow, Row, Col, Coord};
 use crate::clock::{GameInstant, Clock};
@@ -289,25 +290,30 @@ fn proto_reachability_modulo_destination_square(grid: &Grid, from: Coord, to: Co
     }
 }
 
-fn initial_castling_rights(grid: &Grid, force: Force) -> Vec<Col> {
+fn initial_castling_rights(grid: &Grid, force: Force) -> EnumMap<CastleDirection, Option<Col>> {
     let row = SubjectiveRow::from_one_based(1).to_row(force);
     let king_pos = find_king(grid, force).unwrap();
     assert!(king_pos.row == row);
-    let mut rook_cols = Vec::new();
-    let mut direction_covered = enum_map!{ _ => false };
+    let mut rights = enum_map!{ _ => None };
     for col in Col::all() {
         if let Some(piece) = grid[Coord::new(row, col)] {
             if piece.kind == PieceKind::Rook && piece.force == force {
                 use CastleDirection::*;
                 let dir = if col < king_pos.col { ASide } else { HSide };
-                assert!(!direction_covered[dir]);
-                direction_covered[dir] = true;
-                rook_cols.push(col);
+                assert!(rights[dir].is_none());
+                rights[dir] = Some(col);
             }
         }
     }
-    assert_eq!(rook_cols.len(), 2);
-    rook_cols
+    rights
+}
+
+fn remove_castling_right(castling_rights: &mut EnumMap<CastleDirection, Option<Col>>, col: Col) {
+    for (_, col_rights) in castling_rights.iter_mut() {
+        if *col_rights == Some(col) {
+            *col_rights = None;
+        }
+    }
 }
 
 fn as_single_char(s: &str) -> char {
@@ -460,7 +466,7 @@ pub struct Board {
     // allowed with the rooks stand in the first row at specified columns. If the
     // king has moved then the list is empty. Not affected by temporary limitations
     // (e.g. the king being checked).
-    castling_rights: EnumMap<Force, Vec<Col>>,
+    castling_rights: EnumMap<Force, EnumMap<CastleDirection, Option<Col>>>,
     reserves: EnumMap<Force, Reserve>,
     en_passant_target: Option<Coord>,
     position_count: HashMap<PositionForRepetitionDraw, u8>,
@@ -477,7 +483,7 @@ impl Board {
     ) -> Board {
         let time_control = chess_rules.time_control.clone();
         let castling_rights = EnumMap::from_iter(
-            vec![Force::White, Force::Black].iter().map(|&force| {
+            Force::iter().map(|force| {
                 (force, initial_castling_rights(&starting_grid, force))
             })
         );
@@ -554,11 +560,13 @@ impl Board {
                 if piece.kind == PieceKind::King {
                     self.castling_rights[force].clear();
                 } else if piece.kind == PieceKind::Rook && mv.from.row == first_row {
-                    self.castling_rights[force].retain(|col| *col != mv.from.col);
+                    remove_castling_right(&mut self.castling_rights[force], mv.from.col);
                 } else if let Some(capture) = capture {
-                    let opponent_first_row = SubjectiveRow::from_one_based(1).to_row(force.opponent());
+                    let opponent = force.opponent();
+                    assert_eq!(capture.force, opponent);
+                    let opponent_first_row = SubjectiveRow::from_one_based(1).to_row(opponent);
                     if mv.to.row == opponent_first_row && capture.piece_kind == PieceKind::Rook {
-                        self.castling_rights[force.opponent()].retain(|col| *col != mv.to.col);
+                        remove_castling_right(&mut self.castling_rights[opponent], mv.to.col);
                     }
                 }
             },
@@ -762,22 +770,8 @@ impl Board {
                 }
                 let king = new_grid[king_from].take();
 
-                let mut rook_from = None;
-                for &col in self.castling_rights[force].iter() {
-                    let pos = Coord::new(row, col);
-                    let proper_side = match dir {
-                        CastleDirection::ASide => col < king_from.col,
-                        CastleDirection::HSide => col > king_from.col,
-                    };
-                    if proper_side {
-                        assert!(rook_from.is_none());
-                        rook_from = Some(pos);
-                    }
-                }
-                if rook_from.is_none() {
-                    return Err(TurnError::CastlingPieceHasMoved);
-                }
-                let rook_from = rook_from.unwrap();
+                let rook_col = self.castling_rights[force][dir].ok_or(TurnError::CastlingPieceHasMoved)?;
+                let rook_from = Coord::new(row, rook_col);
                 let rook = new_grid[rook_from].take();
                 assert!(matches!(rook, Some(PieceOnBoard{ kind: PieceKind::Rook, .. })));
 
