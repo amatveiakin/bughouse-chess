@@ -156,7 +156,7 @@ fn is_bughouse_mate_to(grid: &mut Grid, king_pos: Coord, en_passant_target: Opti
     for pos in Coord::all() {
         if grid[pos].is_none() {
             let mut grid = grid.scoped_set(pos, Some(PieceOnBoard::new(
-                PieceKind::Queen, PieceOrigin::Dropped, None, force
+                PieceKind::Queen, PieceOrigin::Dropped, force
             )));
             if !is_check_to(&mut grid, king_pos) {
                 return false;
@@ -289,6 +289,27 @@ fn proto_reachability_modulo_destination_square(grid: &Grid, from: Coord, to: Co
     }
 }
 
+fn initial_castling_rights(grid: &Grid, force: Force) -> Vec<Col> {
+    let row = SubjectiveRow::from_one_based(1).to_row(force);
+    let king_pos = find_king(grid, force).unwrap();
+    assert!(king_pos.row == row);
+    let mut rook_cols = Vec::new();
+    let mut direction_covered = enum_map!{ _ => false };
+    for col in Col::all() {
+        if let Some(piece) = grid[Coord::new(row, col)] {
+            if piece.kind == PieceKind::Rook && piece.force == force {
+                use CastleDirection::*;
+                let dir = if col < king_pos.col { ASide } else { HSide };
+                assert!(!direction_covered[dir]);
+                direction_covered[dir] = true;
+                rook_cols.push(col);
+            }
+        }
+    }
+    assert_eq!(rook_cols.len(), 2);
+    rook_cols
+}
+
 fn as_single_char(s: &str) -> char {
     let mut chars_iter = s.chars();
     let ret = chars_iter.next().unwrap();
@@ -319,7 +340,7 @@ struct TurnOutcome {
     capture: Option<Capture>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Capture {
     piece_kind: PieceKind,
     force: Force,
@@ -435,7 +456,11 @@ pub struct Board {
     players: EnumMap<Force, Rc<Player>>,
     status: ChessGameStatus,
     grid: Grid,
-    king_has_moved: EnumMap<Force, bool>,
+    // Tracks castling availability based on which pieces have moved. Castling is
+    // allowed with the rooks stand in the first row at specified columns. If the
+    // king has moved then the list is empty. Not affected by temporary limitations
+    // (e.g. the king being checked).
+    castling_rights: EnumMap<Force, Vec<Col>>,
     reserves: EnumMap<Force, Reserve>,
     en_passant_target: Option<Coord>,
     position_count: HashMap<PositionForRepetitionDraw, u8>,
@@ -451,13 +476,18 @@ impl Board {
         starting_grid: Grid,
     ) -> Board {
         let time_control = chess_rules.time_control.clone();
+        let castling_rights = EnumMap::from_iter(
+            vec![Force::White, Force::Black].iter().map(|&force| {
+                (force, initial_castling_rights(&starting_grid, force))
+            })
+        );
         Board {
             chess_rules,
             bughouse_rules,
             players,
             status: ChessGameStatus::Active,
             grid: starting_grid,
-            king_has_moved: enum_map!{ _ => false },
+            castling_rights,
             reserves: enum_map!{ _ => enum_map!{ _ => 0 } },
             en_passant_target: None,
             position_count: HashMap::new(),
@@ -509,23 +539,32 @@ impl Board {
         //     game state, can fail if the turn is invalid).
         //   - Second, apply the outcome (changes game state, cannot fail).
         let TurnOutcome{ new_grid, capture } = self.turn_outcome(turn, mode)?;
-        self.apply_turn(turn, mode, new_grid, now);
+        self.apply_turn(turn, mode, new_grid, capture, now);
         Ok(capture)
     }
 
-    fn apply_turn(&mut self, turn: Turn, mode: TurnMode, new_grid: Grid, now: GameInstant) {
+    fn apply_turn(
+        &mut self, turn: Turn, mode: TurnMode, new_grid: Grid, capture: Option<Capture>, now: GameInstant
+    ) {
         let force = self.turn_owner(mode);
         match &turn {
             Turn::Move(mv) => {
+                let first_row = SubjectiveRow::from_one_based(1).to_row(force);
                 let piece = &mut self.grid[mv.from].unwrap();
                 if piece.kind == PieceKind::King {
-                    self.king_has_moved[force] = true;
+                    self.castling_rights[force].clear();
+                } else if piece.kind == PieceKind::Rook && mv.from.row == first_row {
+                    self.castling_rights[force].retain(|col| *col != mv.from.col);
+                } else if let Some(capture) = capture {
+                    let opponent_first_row = SubjectiveRow::from_one_based(1).to_row(force.opponent());
+                    if mv.to.row == opponent_first_row && capture.piece_kind == PieceKind::Rook {
+                        self.castling_rights[force.opponent()].retain(|col| *col != mv.to.col);
+                    }
                 }
-                piece.rook_castling = None;
             },
             Turn::Drop(_) => { },
             Turn::Castle(_) => {
-                self.king_has_moved[force] = true;
+                self.castling_rights[force].clear();
             }
         }
         self.grid = new_grid;
@@ -656,7 +695,7 @@ impl Board {
                     if let Some(promote_to) = mv.promote_to {
                         if can_promote_to(promote_to) {
                             new_grid[mv.to] = Some(PieceOnBoard::new(
-                                promote_to, PieceOrigin::Promoted, None, force
+                                promote_to, PieceOrigin::Promoted, force
                             ));
                         } else {
                             return Err(TurnError::BadPromotion);
@@ -694,7 +733,7 @@ impl Board {
                     TurnMode::Preturn => {},
                 }
                 new_grid[drop.to] = Some(PieceOnBoard::new(
-                    drop.piece_kind, PieceOrigin::Dropped, None, force
+                    drop.piece_kind, PieceOrigin::Dropped, force
                 ));
             },
             Turn::Castle(dir) => {
@@ -706,50 +745,41 @@ impl Board {
                 //   - King cannot starts in a checked square.
                 //   - King cannot pass through a checked square.
                 //   - King cannot ends up in a checked square.
+                //   - Cannot castle if rook was captured and another one was
+                //     dropped on its place.
                 //   - [Chess960] Castle successful on the first turn.
                 //   - [Chess960] Castle blocked by a piece at the destination,
-                //      which is outside or kind and rook initial positions.
+                //      which is outside of kind and rook initial positions.
                 //   - [Chess960] Castle when both rooks are on the same side,
                 //      both when it's possible (the other rook is further away)
                 //      and impossible (the other rook is in the way).
-                if self.king_has_moved[force] {
-                    return Err(TurnError::CastlingPieceHasMoved);
-                }
-                let row = SubjectiveRow::from_one_based(1).to_row(force);
-                let mut king = None;
-                let mut king_pos = None;
-                for col in Col::all() {
-                    let pos = Coord{ row, col };
-                    if let Some(piece) = new_grid[pos] {
-                        if piece.force == force && piece.kind == PieceKind::King {
-                            king = new_grid[pos].take();
-                            king_pos = Some(pos);
-                            break;
-                        }
-                    }
-                }
-                // King should be in the first row if !self.king_has_moved
-                assert!(king.is_some());
-                let king_from = king_pos.unwrap();
 
-                let mut rook = None;
-                let mut rook_pos = None;
-                for col in Col::all() {
-                    let pos = Coord{ row, col };
-                    if let Some(piece) = new_grid[pos] {
-                        if piece.force == force && piece.rook_castling == Some(dir) {
-                            assert_eq!(piece.kind, PieceKind::Rook);
-                            rook = new_grid[pos].take();
-                            rook.unwrap().rook_castling = None;  // not that is matters, but...
-                            rook_pos = Some(pos);
-                            break;
-                        }
-                    }
-                }
-                if rook.is_none() {
+                let row = SubjectiveRow::from_one_based(1).to_row(force);
+                // King can be missing in case of pre-turns.
+                let king_from = find_king(&new_grid, force).ok_or(TurnError::CastlingPieceHasMoved)?;
+                if king_from.row != row {
                     return Err(TurnError::CastlingPieceHasMoved);
                 }
-                let rook_from = rook_pos.unwrap();
+                let king = new_grid[king_from].take();
+
+                let mut rook_from = None;
+                for &col in self.castling_rights[force].iter() {
+                    let pos = Coord::new(row, col);
+                    let proper_side = match dir {
+                        CastleDirection::ASide => col < king_from.col,
+                        CastleDirection::HSide => col > king_from.col,
+                    };
+                    if proper_side {
+                        assert!(rook_from.is_none());
+                        rook_from = Some(pos);
+                    }
+                }
+                if rook_from.is_none() {
+                    return Err(TurnError::CastlingPieceHasMoved);
+                }
+                let rook_from = rook_from.unwrap();
+                let rook = new_grid[rook_from].take();
+                assert!(matches!(rook, Some(PieceOnBoard{ kind: PieceKind::Rook, .. })));
 
                 let king_to;
                 let rook_to;

@@ -74,9 +74,6 @@ fn debug_format_piece(piece: &PieceOnBoard) -> String {
     if piece.origin != PieceOrigin::Innate {
         s.push_str(&format!("-{:?}", piece.origin));
     }
-    if let Some(rook_castling) = piece.rook_castling {
-        s.push_str(&format!("-castling:{:?}", rook_castling));
-    }
     s
 }
 
@@ -105,7 +102,7 @@ mod tests {
     use crate::force::Force;
 
     fn make_piece(kind: PieceKind) -> PieceOnBoard {
-        PieceOnBoard::new(kind, PieceOrigin::Innate, None, Force::White)
+        PieceOnBoard::new(kind, PieceOrigin::Innate, Force::White)
     }
 
     #[test]

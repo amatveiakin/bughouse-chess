@@ -26,7 +26,6 @@ pub enum PieceOrigin {
 pub struct PieceOnBoard {
     pub kind: PieceKind,
     pub origin: PieceOrigin,
-    pub rook_castling: Option<CastleDirection>,  // whether rook can be used to castle
     pub force: Force,
 }
 

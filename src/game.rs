@@ -16,20 +16,15 @@ use crate::clock::GameInstant;
 use crate::coord::{Row, Col, Coord};
 use crate::force::Force;
 use crate::grid::Grid;
-use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, CastleDirection};
+use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard};
 use crate::player::{Player, Team};
 use crate::rules::{StartingPosition, ChessRules, BughouseRules};
 
 
 fn generate_starting_grid(starting_position: StartingPosition) -> Grid {
-    use CastleDirection::*;
     use PieceKind::*;
     let new_white = |kind| {
-        assert_ne!(kind, Rook);
-        PieceOnBoard::new(kind, PieceOrigin::Innate, None, Force::White)
-    };
-    let new_white_rook = |castling| {
-        PieceOnBoard::new(Rook, PieceOrigin::Innate, Some(castling), Force::White)
+        PieceOnBoard::new(kind, PieceOrigin::Innate, Force::White)
     };
     let mut grid = Grid::new();
 
@@ -38,14 +33,14 @@ fn generate_starting_grid(starting_position: StartingPosition) -> Grid {
     }
     match starting_position {
         StartingPosition::Classic => {
-            grid[Coord::A1] = Some(new_white_rook(ASide));
+            grid[Coord::A1] = Some(new_white(Rook));
             grid[Coord::B1] = Some(new_white(Knight));
             grid[Coord::C1] = Some(new_white(Bishop));
             grid[Coord::D1] = Some(new_white(Queen));
             grid[Coord::E1] = Some(new_white(King));
             grid[Coord::F1] = Some(new_white(Bishop));
             grid[Coord::G1] = Some(new_white(Knight));
-            grid[Coord::H1] = Some(new_white_rook(HSide));
+            grid[Coord::H1] = Some(new_white(Rook));
         },
         StartingPosition::FischerRandom => {
             let mut rng = rand::thread_rng();
@@ -59,9 +54,9 @@ fn generate_starting_grid(starting_position: StartingPosition) -> Grid {
                 <[&Col; 3]>::try_from(king_and_rook_cols.into_iter().sorted().collect_vec()).unwrap();
             let [queen_col, knight_col_1, knight_col_2] =
                 <[Col; 3]>::try_from(queen_and_knight_cols).unwrap();
-            grid[Coord::new(row, left_rook_col)] = Some(new_white_rook(ASide));
+            grid[Coord::new(row, left_rook_col)] = Some(new_white(Rook));
             grid[Coord::new(row, king_col)] = Some(new_white(King));
-            grid[Coord::new(row, right_rook_col)] = Some(new_white_rook(HSide));
+            grid[Coord::new(row, right_rook_col)] = Some(new_white(Rook));
             grid[Coord::new(row, queen_col)] = Some(new_white(Queen));
             grid[Coord::new(row, knight_col_1)] = Some(new_white(Knight));
             grid[Coord::new(row, knight_col_2)] = Some(new_white(Knight));
