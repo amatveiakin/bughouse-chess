@@ -1,6 +1,7 @@
 use derive_new::new;
 use enum_map::Enum;
 use serde::{Serialize, Deserialize};
+use strum::EnumIter;
 
 use crate::force::Force;
 
@@ -29,7 +30,7 @@ pub struct PieceOnBoard {
     pub force: Force,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, EnumIter, Serialize, Deserialize)]
 pub enum CastleDirection {
     ASide,
     HSide,
@@ -43,22 +44,26 @@ pub struct PieceForRepetitionDraw {
 }
 
 // Should not be used to construct moves in algebraic notation, because it returns a
-// non-empty name for a pawn.
-pub fn piece_to_full_algebraic(kind: PieceKind) -> &'static str {
+// non-empty name for a pawn (use `piece_to_algebraic_for_move` instead).
+pub fn piece_to_full_algebraic(kind: PieceKind) -> char {
     match kind {
-        PieceKind::Pawn => "P",
-        PieceKind::Knight => "N",
-        PieceKind::Bishop => "B",
-        PieceKind::Rook => "R",
-        PieceKind::Queen => "Q",
-        PieceKind::King => "K",
+        PieceKind::Pawn => 'P',
+        PieceKind::Knight => 'N',
+        PieceKind::Bishop => 'B',
+        PieceKind::Rook => 'R',
+        PieceKind::Queen => 'Q',
+        PieceKind::King => 'K',
     }
 }
 
 pub fn piece_to_algebraic_for_move(kind: PieceKind) -> &'static str {
     match kind {
         PieceKind::Pawn => "",
-        _ => piece_to_full_algebraic(kind)
+        PieceKind::Knight => "N",
+        PieceKind::Bishop => "B",
+        PieceKind::Rook => "R",
+        PieceKind::Queen => "Q",
+        PieceKind::King => "K",
     }
 }
 

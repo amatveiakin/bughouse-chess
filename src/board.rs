@@ -505,6 +505,8 @@ impl Board {
     pub fn status(&self) -> ChessGameStatus { self.status }
     pub fn grid(&self) -> &Grid { &self.grid }
     pub fn grid_mut(&mut self) -> &mut Grid { &mut self.grid }
+    pub fn castling_rights(&self) -> &EnumMap<Force, CastlingRights> { &self.castling_rights }
+    pub fn en_passant_target(&self) -> Option<Coord> { self.en_passant_target }
     pub fn reserve(&self, force: Force) -> &Reserve { &self.reserves[force] }
     pub fn reserve_mut(&mut self, force: Force) -> &mut Reserve { &mut self.reserves[force] }
     pub fn reserves(&self) -> &EnumMap<Force, Reserve> { &self.reserves }
