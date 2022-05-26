@@ -43,39 +43,41 @@ pub struct PieceForRepetitionDraw {
     pub force: Force,
 }
 
-// Should not be used to construct moves in algebraic notation, because it returns a
-// non-empty name for a pawn (use `piece_to_algebraic_for_move` instead).
-pub fn piece_to_full_algebraic(kind: PieceKind) -> char {
-    match kind {
-        PieceKind::Pawn => 'P',
-        PieceKind::Knight => 'N',
-        PieceKind::Bishop => 'B',
-        PieceKind::Rook => 'R',
-        PieceKind::Queen => 'Q',
-        PieceKind::King => 'K',
+impl PieceKind {
+    // Should not be used to construct moves in algebraic notation, because it returns a
+    // non-empty name for a pawn (use `piece_to_algebraic_for_move` instead).
+    pub fn to_full_algebraic(self) -> char {
+        match self {
+            PieceKind::Pawn => 'P',
+            PieceKind::Knight => 'N',
+            PieceKind::Bishop => 'B',
+            PieceKind::Rook => 'R',
+            PieceKind::Queen => 'Q',
+            PieceKind::King => 'K',
+        }
     }
-}
 
-pub fn piece_to_algebraic_for_move(kind: PieceKind) -> &'static str {
-    match kind {
-        PieceKind::Pawn => "",
-        PieceKind::Knight => "N",
-        PieceKind::Bishop => "B",
-        PieceKind::Rook => "R",
-        PieceKind::Queen => "Q",
-        PieceKind::King => "K",
+    pub fn to_algebraic_for_move(self) -> &'static str {
+        match self {
+            PieceKind::Pawn => "",
+            PieceKind::Knight => "N",
+            PieceKind::Bishop => "B",
+            PieceKind::Rook => "R",
+            PieceKind::Queen => "Q",
+            PieceKind::King => "K",
+        }
     }
-}
 
-// Improvement potential. Return Option, let the caller unwrap.
-pub fn piece_from_algebraic(notation: &str) -> PieceKind {
-    match notation {
-        "P" => PieceKind::Pawn,
-        "N" => PieceKind::Knight,
-        "B" => PieceKind::Bishop,
-        "R" => PieceKind::Rook,
-        "Q" => PieceKind::Queen,
-        "K" => PieceKind::King,
-        _ => panic!("Unknown piece: {}", notation),
+    // Improvement potential. Return Option, let the caller unwrap.
+    pub fn from_algebraic(notation: &str) -> Self {
+        match notation {
+            "P" => PieceKind::Pawn,
+            "N" => PieceKind::Knight,
+            "B" => PieceKind::Bishop,
+            "R" => PieceKind::Rook,
+            "Q" => PieceKind::Queen,
+            "K" => PieceKind::King,
+            _ => panic!("Unknown piece: {}", notation),
+        }
     }
 }

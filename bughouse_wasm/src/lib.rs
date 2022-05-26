@@ -99,7 +99,7 @@ impl WebClient {
     pub fn start_drag_piece(&mut self, source: &str) -> JsResult<()> {
         if let ContestState::Game{ ref mut alt_game, .. } = self.state.contest_state_mut() {
             let source = if let Some(piece) = source.strip_prefix("reserve-") {
-                PieceDragStart::Reserve(piece_from_algebraic(piece))
+                PieceDragStart::Reserve(PieceKind::from_algebraic(piece))
             } else {
                 let coord = Coord::from_algebraic(source);
                 let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
@@ -478,7 +478,7 @@ fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_i
     let y = reserve_y_pos(player_idx);
     for (piece_kind, &amount) in reserve.iter().filter(|(_, &amount)| amount > 0) {
         let filename = piece_path(piece_kind, force);
-        let location = format!("reserve-{}", piece_to_full_algebraic(piece_kind));
+        let location = format!("reserve-{}", piece_kind.to_full_algebraic());
         for iter in 0..amount {
             if iter > 0 {
                 x += piece_sep;

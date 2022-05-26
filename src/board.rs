@@ -16,7 +16,7 @@ use crate::coord::{SubjectiveRow, Row, Col, Coord};
 use crate::clock::{GameInstant, Clock};
 use crate::force::Force;
 use crate::grid::{Grid, GridForRepetitionDraw};
-use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, PieceForRepetitionDraw, CastleDirection, piece_from_algebraic};
+use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, PieceForRepetitionDraw, CastleDirection};
 use crate::player::Player;
 use crate::rules::{DropAggression, ChessRules, BughouseRules};
 use crate::util::sort_two;
@@ -837,12 +837,12 @@ impl Board {
             static ref H_CASTLING_RE: Regex = Regex::new("^(0-0|O-O)$").unwrap();
         }
         if let Some(cap) = MOVE_RE.captures(notation) {
-            let piece_kind = cap.get(1).map_or(PieceKind::Pawn, |m| piece_from_algebraic(m.as_str()));
+            let piece_kind = cap.get(1).map_or(PieceKind::Pawn, |m| PieceKind::from_algebraic(m.as_str()));
             let from_col = cap.get(2).map(|m| Col::from_algebraic(as_single_char(m.as_str())));
             let from_row = cap.get(3).map(|m| Row::from_algebraic(as_single_char(m.as_str())));
             let capturing = cap.get(4).is_some();
             let to = Coord::from_algebraic(cap.get(5).unwrap().as_str());
-            let promote_to = cap.get(6).map(|m| piece_from_algebraic(m.as_str()));
+            let promote_to = cap.get(6).map(|m| PieceKind::from_algebraic(m.as_str()));
             let _mark = cap.get(7).map(|m| m.as_str());  // TODO: Test check/mate
             if promote_to.is_some() != should_promote(force, piece_kind, to) {
                 return Err(TurnError::BadPromotion);
@@ -904,7 +904,7 @@ impl Board {
                 return Err(TurnError::ImpossibleTrajectory);
             }
         } else if let Some(cap) = DROP_RE.captures(notation) {
-            let piece_kind = piece_from_algebraic(cap.get(1).unwrap().as_str());
+            let piece_kind = PieceKind::from_algebraic(cap.get(1).unwrap().as_str());
             let to = Coord::from_algebraic(cap.get(2).unwrap().as_str());
             return Ok(Turn::Drop(TurnDrop{ piece_kind, to }));
         } else if A_CASTLING_RE.is_match(notation) {

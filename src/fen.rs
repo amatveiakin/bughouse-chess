@@ -4,7 +4,7 @@ use strum::IntoEnumIterator;
 use crate::board::Board;
 use crate::coord::{Row, Col, Coord};
 use crate::force::Force;
-use crate::piece::{CastleDirection, PieceKind, piece_to_full_algebraic};
+use crate::piece::{CastleDirection, PieceKind};
 
 
 fn force_notation(force: Force) -> char {
@@ -15,7 +15,7 @@ fn force_notation(force: Force) -> char {
 }
 
 fn piece_notation(kind: PieceKind, force: Force) -> char {
-    let s = piece_to_full_algebraic(kind);
+    let s = kind.to_full_algebraic();
     match force {
         Force::White => s.to_ascii_uppercase(),
         Force::Black => s.to_ascii_lowercase(),

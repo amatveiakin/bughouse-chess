@@ -2,7 +2,7 @@ use crate::board::{Turn, TurnMode, TurnError};
 use crate::clock::GameInstant;
 use crate::coord::{SubjectiveRow, Coord};
 use crate::game::{BughousePlayerId, BughouseGameStatus, BughouseGame};
-use crate::piece::{PieceKind, piece_to_full_algebraic, piece_to_algebraic_for_move};
+use crate::piece::PieceKind;
 
 
 #[derive(Clone, Copy, Debug)]
@@ -233,15 +233,15 @@ impl AlteredGame {
                 if is_castling {
                     Ok((if d_col > 0 { "0-0" } else { "0-0-0" }).to_owned())
                 } else if is_promotion {
-                    let promotion_str = piece_to_full_algebraic(promote_to);
+                    let promotion_str = promote_to.to_full_algebraic();
                     Ok(format!("{}{}/{}", source_notation, dest_notation, promotion_str))
                 } else {
-                    let piece_str = piece_to_algebraic_for_move(piece_kind);
+                    let piece_str = piece_kind.to_algebraic_for_move();
                     Ok(format!("{}{}{}", piece_str, source_notation, dest_notation))
                 }
             },
             PieceDragSource::Reserve => {
-                let piece_str = piece_to_full_algebraic(piece_kind);
+                let piece_str = piece_kind.to_full_algebraic();
                 Ok(format!("{}@{}", piece_str, dest_notation))
             }
         }
