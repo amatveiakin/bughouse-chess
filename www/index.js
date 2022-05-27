@@ -77,13 +77,14 @@ function on_server_event(event) {
     if (wasm_client) {
         console.log('server: ', event);
         try {
-            const what_happened = wasm_client.process_server_event(event);
-            if (what_happened == 'game_started') {
-                // no special action
-            } else if (what_happened == 'opponent_turn_made') {
+            const js_event = wasm_client.process_server_event(event);
+            const js_event_type = js_event?.constructor?.name;
+            if (js_event_type == 'JsEventOpponentTurnMade') {
                 turn_audio.play();
-            } else if (what_happened != null) {
-                console.error('Something unexpected happened: ', what_happened);
+            } else if (js_event_type == 'JsEventGameExportReady') {
+                download(js_event.content(), 'game.pgn');
+            } else if (js_event_type != null) {
+                console.error('Something unexpected happened: ', js_event);
             }
         } catch (error) {
             console.warn('Error processing event from server: ', error);
@@ -166,9 +167,7 @@ function on_command(event) {
                     break;
                 case 'save':
                     const [format] = get_args(args, ['bpgn:pgn-pair']);
-                    const ext = format == 'bpgn' ? 'bpgn' : 'pgn';
-                    const content = wasm_client_or_throw().export_game(format);
-                    download(content, `game.${ext}`);
+                    wasm_client_or_throw().request_export(format);
                     break;
                 default:
                     throw new InvalidCommand(`Command does not exist: /${args[0]}`)

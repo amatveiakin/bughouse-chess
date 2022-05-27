@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use enum_map::enum_map;
 use itertools::Itertools;
+use serde::{Serialize, Deserialize};
 use strum::IntoEnumIterator;
 
 use crate::board::Board;
@@ -14,6 +15,19 @@ use crate::grid::Grid;
 use crate::player::{Team, Player};
 use crate::util::div_ceil_u128;
 
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum BughouseExportFormat {
+    // BPGN (Bughouse Portable Game Notation) format designed specifically for bughouse.
+    // Keep accurate track of relative turn order on the two board, but it's well supported.
+    // Doc: https://bughousedb.com/Lieven_BPGN_Standard.txt
+    Bpgn,
+
+    // PGN (Portable Game Notation) format is the de-facto standard plain format for
+    // recording chess games. Bughouse game is stored as two separate games.
+    // Doc: http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
+    PgnPair,
+}
 
 const LINE_WIDTH: usize = 80;
 
@@ -69,7 +83,7 @@ fn dummy_player(team: Team) -> Rc<Player> {
 
 // Improvement potential. Add "Termination" tag with result explanation
 //   (here and in `make_bughouse_png_header`).
-fn make_bughouse_board_png_header(starting_grid: &Grid, board: &Board, board_idx: BughouseBoard, round: u32)
+fn make_bughouse_board_png_header(starting_grid: &Grid, board: &Board, board_idx: BughouseBoard, round: usize)
     -> String
 {
     use BughouseBoard::*;
@@ -109,7 +123,7 @@ r#"[Event "Friendly Bughouse Match"]
     )
 }
 
-fn make_bughouse_bpng_header(starting_grid: &Grid, game: &BughouseGame, round: u32) -> String {
+fn make_bughouse_bpng_header(starting_grid: &Grid, game: &BughouseGame, round: usize) -> String {
     use BughouseBoard::*;
     use Force::*;
     let now = chrono::offset::Utc::now();
@@ -119,6 +133,7 @@ fn make_bughouse_bpng_header(starting_grid: &Grid, game: &BughouseGame, round: u
         enum_map!{ White => dummy_player(Team::Red), Black => dummy_player(Team::Blue) },
         starting_grid.clone()
     );
+    let starting_position_fen = fen::starting_position_to_shredder_fen(&starting_board);
     format!(
 r#"[Event "Friendly Bughouse Match"]
 [Site "bughouse.pro"]
@@ -130,8 +145,9 @@ r#"[Event "Friendly Bughouse Match"]
 [WhiteB "{}"]
 [BlackB "{}"]
 [TimeControl "{}"]
+[Variant "Bughouse"]
 [SetUp "1"]
-[FEN "{}"]
+[FEN "{} | {}"]
 [Result "{}"]
 "#,
         now.format("%Y.%m.%d"),
@@ -142,7 +158,7 @@ r#"[Event "Friendly Bughouse Match"]
         game.board(B).player(White).name,
         game.board(B).player(Black).name,
         time_control_to_string(&game.chess_rules().time_control),
-        fen::starting_position_to_shredder_fen(&starting_board),
+        starting_position_fen, starting_position_fen,
         make_result_string(game),
     )
 }
@@ -158,7 +174,7 @@ fn player_notation(player_id: BughousePlayerId) -> &'static str {
     }
 }
 
-pub fn bughouse_to_pgn_pair(starting_grid: &Grid, game: &BughouseGame, round: u32)
+pub fn export_to_pgn_pair(starting_grid: &Grid, game: &BughouseGame, round: usize)
     -> String
 {
     BughouseBoard::iter().map(|board_idx| {
@@ -182,7 +198,7 @@ pub fn bughouse_to_pgn_pair(starting_grid: &Grid, game: &BughouseGame, round: u3
     }).join("\n")
 }
 
-pub fn bughouse_to_bpgn(starting_grid: &Grid, game: &BughouseGame, round: u32) -> String {
+pub fn export_to_bpgn(starting_grid: &Grid, game: &BughouseGame, round: usize) -> String {
     let header = make_bughouse_bpng_header(starting_grid, game, round);
     let total_time = game.chess_rules().time_control.starting_time;
     let mut doc = TextDocument::new();
@@ -195,6 +211,7 @@ pub fn bughouse_to_bpgn(starting_grid: &Grid, game: &BughouseGame, round: u32) -
             full_turn_idx[player_id.board_idx],
             player_notation(*player_id),
             turn_algebraic,
+            // Improvement potential: Consider using chess.com time format: "{[%clk 0:00:07.9]}".
             ceil_seconds(time_left),
         );
         if player_id.force == Force::Black {
@@ -203,4 +220,14 @@ pub fn bughouse_to_bpgn(starting_grid: &Grid, game: &BughouseGame, round: u32) -
         doc.push_word(&turn_notation);
     }
     format!("{}{}", header, doc.render())
+}
+
+pub fn export_bughouse(format: BughouseExportFormat, starting_grid: &Grid, game: &BughouseGame, round: usize)
+    -> String
+{
+    use BughouseExportFormat::*;
+    match format {
+        Bpgn => export_to_bpgn(starting_grid, game, round),
+        PgnPair => export_to_pgn_pair(starting_grid, game, round),
+    }
 }

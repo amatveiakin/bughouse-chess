@@ -2,6 +2,7 @@
 //   with a direct mapping (player_id -> player_bughouse_id).
 
 use std::collections::{HashSet, HashMap, hash_map};
+use std::iter;
 use std::ops;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
@@ -16,6 +17,7 @@ use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, BughouseGameStatus, BughouseGame};
 use crate::grid::Grid;
 use crate::event::{BughouseServerEvent, BughouseClientEvent};
+use crate::pgn::{self, BughouseExportFormat};
 use crate::player::{Player, Team};
 use crate::rules::{ChessRules, BughouseRules};
 
@@ -33,6 +35,7 @@ pub enum IncomingEvent {
 enum ContestState {
     Lobby,
     Game {
+        match_history: Vec<(Grid, BughouseGame)>,  // starting position, final state
         scores: EnumMap<Team, u32>,  // victory scored as 2:0, draw is 1:1
         game: BughouseGame,
         game_start: Option<Instant>,
@@ -218,6 +221,9 @@ impl ServerState {
                     },
                     BughouseClientEvent::Reset => {
                         self.core.process_reset();
+                    },
+                    BughouseClientEvent::RequestExport{ format } => {
+                        self.core.process_request_export(&mut clients, client_id, format);
                     },
                 }
             },
@@ -411,13 +417,16 @@ impl ServerStateCore {
     }
 
     fn process_next_game(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant) {
-        if let ContestState::Game{ ref game, ref scores, .. } = self.contest_state {
+        if let ContestState::Game{ ref match_history, ref scores, ref game, ref starting_grid, .. } = self.contest_state {
             if game.status() == BughouseGameStatus::Active {
                 clients[client_id].send_error("Cannot start next game: game still in progress".to_owned());
             } else {
+                // Improvement potential: Remove these `clone`s.
+                let mut match_history = match_history.clone();
+                match_history.push((starting_grid.clone(), game.clone()));
                 let players = game.players();
                 let scores = scores.clone();
-                self.start_game(clients, now, players.into_iter(), scores);
+                self.start_game(clients, now, players.into_iter(), match_history, scores);
             }
         } else {
             clients[client_id].send_error("Cannot start next game: game not assembled".to_owned());
@@ -436,6 +445,22 @@ impl ServerStateCore {
         self.contest_state = ContestState::Lobby;
     }
 
+    fn process_request_export(
+        &self, clients: &mut ClientsGuard<'_>, client_id: ClientId, format: BughouseExportFormat)
+    {
+        if let ContestState::Game{ ref match_history, ref starting_grid, ref game, .. } = self.contest_state {
+            // Improvement potential: Replace map lambda with something more elegant.
+            let all_games = match_history.iter().map(|(grid, game)| (grid, game))
+                .chain(iter::once((starting_grid, game)));
+            let content = all_games.enumerate().map(|(round, (grid, game))| {
+                pgn::export_bughouse(format, grid, game, round + 1)
+            }).join("\n");
+            clients[client_id].send(BughouseServerEvent::GameExportReady{ content });
+        } else {
+            clients[client_id].send_error("Cannot export: no game in progress".to_owned());
+        }
+    }
+
     fn post_process(&mut self, clients: &mut ClientsGuard<'_>, now: Instant) {
         if let ContestState::Lobby = self.contest_state {
             let active_player_ids: HashSet<_> = clients.map.values().filter_map(|c| c.player_id).collect();
@@ -452,16 +477,18 @@ impl ServerStateCore {
             }
             assert!(self.players.len() <= TOTAL_PLAYERS);
             if self.players.len() == TOTAL_PLAYERS {
+                let match_history = Vec::new();
                 let players = self.players.iter().cloned().collect_vec();
                 let scores = enum_map!{ _ => 0 };
-                self.start_game(clients, now, players.into_iter(), scores);
+                self.start_game(clients, now, players.into_iter(), match_history, scores);
             }
         }
     }
 
     fn start_game(
         &mut self, clients: &mut ClientsGuard<'_>, now: Instant,
-        players: impl Iterator<Item = Rc<Player>>, scores: EnumMap<Team, u32>
+        players: impl Iterator<Item = Rc<Player>>,
+        match_history: Vec<(Grid, BughouseGame)>, scores: EnumMap<Team, u32>
     ) {
         let players_with_boards = self.assign_boards(players);
         let player_map = BughouseGame::make_player_map(players_with_boards.iter().cloned());
@@ -473,6 +500,7 @@ impl ServerStateCore {
             ((*p).clone(), board_idx)
         }).collect();
         self.contest_state = ContestState::Game {
+            match_history,
             scores,
             game,
             game_start: None,

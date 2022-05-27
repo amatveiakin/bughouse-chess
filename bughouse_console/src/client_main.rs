@@ -182,6 +182,9 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                         execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
                     },
                     NotableEvent::OpponentTurnMade => {},
+                    NotableEvent::GameExportReady(..) => {
+                        // Improvemt potential: Implement.
+                    },
                 }
             },
             IncomingEvent::Terminal(event) => {

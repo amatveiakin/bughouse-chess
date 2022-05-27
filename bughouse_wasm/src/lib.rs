@@ -48,6 +48,18 @@ pub fn set_panic_hook() {
 }
 
 #[wasm_bindgen]
+pub struct JsEventOpponentTurnMade {}
+
+#[wasm_bindgen]
+pub struct JsEventGameExportReady {
+    content: String,
+}
+#[wasm_bindgen]
+impl JsEventGameExportReady {
+    pub fn content(&self) -> String { self.content.clone() }
+}
+
+#[wasm_bindgen]
 pub struct WebClient {
     // TODO: Consider: in order to store additional information that is only relevant
     //   during game phase, add a generic `UserData` parameter to `ContestState::Game`.
@@ -87,19 +99,14 @@ impl WebClient {
     pub fn reset(&mut self) {
         self.state.reset();
     }
-
-    pub fn export_game(&self, format: &str) -> JsResult<String> {
-        if let ContestState::Game{ ref scores, ref starting_grid, ref alt_game, .. } = self.state.contest_state() {
-            // Improvement potential: More robust way to determine round number.
-            let round = scores.values().sum::<u32>() / 2 + 1;
-            match format {
-                "bpgn" => Ok(pgn::bughouse_to_bpgn(starting_grid, alt_game.game_confirmed(), round)),
-                "pgn-pair" => Ok(pgn::bughouse_to_pgn_pair(starting_grid, alt_game.game_confirmed(), round)),
-                _ => Err(format!("Unknown format: {}", format).into())
-            }
-        } else {
-            Err("No game in progress".into())
-        }
+    pub fn request_export(&mut self, format: &str) -> JsResult<()> {
+        let format = match format {
+            "bpgn" => pgn::BughouseExportFormat::Bpgn,
+            "pgn-pair" => pgn::BughouseExportFormat::PgnPair,
+            _ => { return Err(format!("Unknown format: {}", format).into()); }
+        };
+        self.state.request_export(format);
+        Ok(())
     }
 
     // Returns whether a turn was made.
@@ -182,14 +189,14 @@ impl WebClient {
         self.state.cancel_preturn();
     }
 
-    pub fn process_server_event(&mut self, event: &str) -> JsResult<Option<String>> {
+    pub fn process_server_event(&mut self, event: &str) -> JsResult<JsValue> {
         let server_event = serde_json::from_str(event).unwrap();
         let notable_event = self.state.process_server_event(server_event).map_err(|err| {
             JsValue::from(format!("{:?}", err))
         })?;
         match notable_event {
             NotableEvent::None => {
-                Ok(None)
+                Ok(JsValue::NULL)
             },
             NotableEvent::GameStarted => {
                 if let ContestState::Game{ ref alt_game, .. } = self.state.contest_state() {
@@ -198,13 +205,17 @@ impl WebClient {
                     let my_id = alt_game.my_id();
                     self.rotate_boards = my_id.force == Force::Black;
                     render_grids(self.rotate_boards);
-                    Ok(Some("game_started".to_owned()))
+                    Ok(JsValue::NULL)
                 } else {
                     Err("No game in progress".into())
                 }
             }
             NotableEvent::OpponentTurnMade => {
-                return Ok(Some("opponent_turn_made".to_owned()));
+                    Ok(JsEventOpponentTurnMade{}.into())
+            }
+            NotableEvent::GameExportReady(content) => {
+                // return Ok(Some(format!("game_export_ready:\n{}", content)));
+                Ok(JsEventGameExportReady{ content }.into())
             }
         }
     }

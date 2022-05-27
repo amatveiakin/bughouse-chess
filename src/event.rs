@@ -3,6 +3,7 @@ use serde::{Serialize, Deserialize};
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseGameStatus, BughouseBoard};
 use crate::grid::Grid;
+use crate::pgn::BughouseExportFormat;
 use crate::player::{Player, Team};
 use crate::rules::{ChessRules, BughouseRules};
 
@@ -37,6 +38,9 @@ pub enum BughouseServerEvent {
         game_status: BughouseGameStatus,
         scores: Vec<(Team, u32)>,
     },
+    GameExportReady {
+        content: String,
+    },
 }
 
 
@@ -55,4 +59,7 @@ pub enum BughouseClientEvent {
     NextGame,
     Leave,
     Reset,
+    RequestExport {
+        format: BughouseExportFormat,
+    },
 }

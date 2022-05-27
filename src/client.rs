@@ -10,6 +10,7 @@ use crate::clock::{GameInstant, WallGameTimePair};
 use crate::game::{TurnRecord, BughouseGameStatus, BughouseGame};
 use crate::grid::Grid;
 use crate::event::{BughouseServerEvent, BughouseClientEvent};
+use crate::pgn::BughouseExportFormat;
 use crate::player::{Player, Team};
 use crate::util::try_vec_to_enum_map;
 
@@ -25,6 +26,7 @@ pub enum NotableEvent {
     None,
     GameStarted,
     OpponentTurnMade,
+    GameExportReady(String),
 }
 
 #[derive(Clone, Debug)]
@@ -88,6 +90,9 @@ impl ClientState {
     }
     pub fn reset(&mut self) {
         self.events_tx.send(BughouseClientEvent::Reset).unwrap();
+    }
+    pub fn request_export(&mut self, format: BughouseExportFormat) {
+        self.events_tx.send(BughouseClientEvent::RequestExport{ format }).unwrap();
     }
 
     pub fn make_turn(&mut self, turn_algebraic: String) -> Result<(), TurnCommandError> {
@@ -194,6 +199,9 @@ impl ClientState {
                 } else {
                     Err(EventError::CannotApplyEvent("Cannot record game result: no game in progress".to_owned()))
                 }
+            },
+            GameExportReady{ content } => {
+                Ok(NotableEvent::GameExportReady(content))
             },
         }
     }
