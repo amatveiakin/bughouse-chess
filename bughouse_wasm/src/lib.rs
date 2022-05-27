@@ -233,9 +233,7 @@ impl WebClient {
         let document = web_document();
         let info_string = document.get_existing_element_by_id("info-string").unwrap();
         match self.state.contest_state() {
-            ContestState::Uninitialized => {
-                info_string.set_text_content(Some("Initializing..."));
-            },
+            ContestState::Uninitialized => {},
             ContestState::Lobby{ players } => {
                 let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
                 for p in players {

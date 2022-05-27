@@ -246,9 +246,9 @@ function on_socket_opened() {
 
 function request_join(address, my_name, my_team) {
     shutdown_wasm_client();
-    info_string.innerText = 'Joining...';
     socket = new WebSocket(`ws://${address}:38617`);  // TODO: get the port from Rust
     wasm_client = wasm.WebClient.new_client(my_name, my_team);
+    info_string.innerText = 'Joining...';
     socket_incoming_listener = socket.addEventListener('message', function(event) {
         on_server_event(event.data);
     });
