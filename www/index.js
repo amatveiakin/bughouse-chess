@@ -119,6 +119,7 @@ function on_command(event) {
 }
 
 function execute_command(input) {
+    info_string.innerText = '';
     try {
         if (input.startsWith('/')) {
             const args = input.slice(1).split(/\s+/);
