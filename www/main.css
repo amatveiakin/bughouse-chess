@@ -39,7 +39,6 @@ svg {
     "   fill-b       fill-x  prim-board  fill-z  scnd-board  fill-w  scnd-clock-bot"
     "   fill-b       fill-x  prim-board  fill-z  scnd-board  fill-w   scnd-name-bot"
     "   fill-b       fill-x  prim-board  fill-z  scnd-board  fill-w      fill-r    "
-    "   fill-b       fill-x  prim-board  fill-z    fill-l    fill-w      fill-r    "
     "   fill-b       fill-x  prim-board  fill-z  info-panel  fill-w      fill-r    "
     "prim-clock-bot  fill-x  prim-board  fill-z  info-panel  fill-w      fill-r    "
     "prim-name-bot   fill-x  prim-board  fill-z    fill-m    fill-w      fill-r    "
@@ -207,12 +206,16 @@ svg {
 #info-panel {
   width: max(var(--board-size-secondary), 6em);
 }
+#info-string-container {
+  height: 4em;
+  margin-bottom: 0.5em;
+  position: relative;
+}
 #info-string {
   font-size: 80%;
-  max-height: 4em;
-  padding-bottom: 0.5em;
-  display: block;
-  overflow: hidden;
+  position: absolute;
+  bottom: 0;
+  left: 0;
 }
 #command {
   flex-grow: 1;
