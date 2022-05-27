@@ -70,18 +70,18 @@ pub struct WebClient {
 
 #[wasm_bindgen]
 impl WebClient {
-    pub fn new_client(my_name: &str, my_team: &str) -> Self {
+    pub fn new_client(my_name: &str, my_team: &str) -> JsResult<WebClient> {
         let my_team = match my_team {
             "red" => Team::Red,
             "blue" => Team::Blue,
-            _ => panic!("Unexpected team: {}", my_team),
+            _ => { return Err(format!("Unexpected team: {}", my_team).into()); }
         };
         let (server_tx, server_rx) = mpsc::channel();
-        WebClient {
+        Ok(WebClient {
             state: ClientState::new(my_name.to_owned(), my_team, server_tx),
             server_rx,
             rotate_boards: false,
-        }
+        })
     }
 
     pub fn join(&mut self) {
