@@ -55,6 +55,9 @@ info_string.innerText = 'Type "/join name team" to start'
 const command_input = document.getElementById('command');
 command_input.addEventListener('change', on_command);
 
+const next_button = document.getElementById('next-button');
+next_button.addEventListener('click', function() { execute_command('/next') });
+
 function wasm_client_or_throw() {
     if (wasm_client) {
         return wasm_client;
@@ -112,6 +115,10 @@ function get_args(args_array, expected_args) {
 function on_command(event) {
     const input = String(event.target.value)
     event.target.value = '';
+    execute_command(input);
+}
+
+function execute_command(input) {
     try {
         if (input.startsWith('/')) {
             const args = input.slice(1).split(/\s+/);

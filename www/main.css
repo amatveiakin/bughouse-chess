@@ -204,16 +204,49 @@ svg {
   outline: calc(var(--sq-size-primary) * 0.1) solid #bf0000;
 }
 
+#info-panel {
+  width: max(var(--board-size-secondary), 6em);
+}
 #info-string {
   font-size: 80%;
-  width: max(var(--board-size-secondary), 6em);
   max-height: 4em;
   padding-bottom: 0.5em;
   display: block;
   overflow: hidden;
 }
 #command {
-  width: max(var(--board-size-secondary), 6em);
+  flex-grow: 1;
   box-sizing: border-box;
   background-color: #8ea36e;
+}
+
+#button-panel {
+  width: max(var(--board-size-secondary), 6em);
+  display: flex;
+  flex-direction: row;
+  gap: calc(var(--sq-size-primary) * 0.1);
+}
+
+.btn {
+  box-sizing: border-box;
+  padding: 0;
+  border: none;
+  border-radius: calc(var(--sq-size-primary) * 0.1);  /* for hover hightlight */
+  background-color: transparent;
+  width: calc(var(--sq-size-primary) * 0.4);
+  height: calc(var(--sq-size-primary) * 0.4);
+  cursor: pointer;
+}
+.btn:hover {
+  background-color: #ffffff30;
+}
+.btn:active {
+  background-color: #ffffff50;
+}
+
+.btn-icon {
+  fill: #ffffff;
+}
+.btn-icon:active {
+  fill: #ceffb4;
 }
