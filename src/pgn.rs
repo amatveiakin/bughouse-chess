@@ -81,8 +81,6 @@ fn dummy_player(team: Team) -> Rc<Player> {
     Rc::new(Player{ name: format!("{:?}", team), team })
 }
 
-// Improvement potential. Add "Termination" tag with result explanation
-//   (here and in `make_bughouse_png_header`).
 fn make_bughouse_board_png_header(starting_grid: &Grid, board: &Board, board_idx: BughouseBoard, round: usize)
     -> String
 {
@@ -123,6 +121,7 @@ r#"[Event "Friendly Bughouse Match"]
     )
 }
 
+// Improvement potential. More human-readable "Termination" tag values.
 fn make_bughouse_bpng_header(starting_grid: &Grid, game: &BughouseGame, round: usize) -> String {
     use BughouseBoard::*;
     use Force::*;
@@ -149,6 +148,7 @@ r#"[Event "Friendly Bughouse Match"]
 [SetUp "1"]
 [FEN "{} | {}"]
 [Result "{}"]
+[Termination "{:?}"]
 "#,
         now.format("%Y.%m.%d"),
         now.format("%H:%M:%S"),
@@ -160,6 +160,7 @@ r#"[Event "Friendly Bughouse Match"]
         time_control_to_string(&game.chess_rules().time_control),
         starting_position_fen, starting_position_fen,
         make_result_string(game),
+        game.status(),
     )
 }
 
