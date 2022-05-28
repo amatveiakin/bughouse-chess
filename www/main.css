@@ -180,6 +180,7 @@ svg {
   text-align: center;
   white-space: nowrap;
   min-width: 3em;
+  display: inline-block;
   border-radius: calc(var(--sq-size-primary) * 0.2);
   padding: calc(var(--sq-size-primary) * 0.05) calc(var(--sq-size-primary) * 0.1);
   margin: calc(var(--sq-size-primary) * 0.2)  0;
