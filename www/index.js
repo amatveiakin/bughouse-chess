@@ -172,6 +172,7 @@ function execute_command(input) {
                     break;
                 case 'reset':
                     get_args(args, []);
+                    wasm_client_or_throw().reset();
                     break;
                 case 'save':
                     const [format] = get_args(args, ['bpgn:pgn-pair']);
