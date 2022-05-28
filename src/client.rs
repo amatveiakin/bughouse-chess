@@ -235,6 +235,7 @@ impl ClientState {
     {
         if let ContestState::Game{ ref mut alt_game, ref mut scores, .. } = self.contest_state {
             if game_status != alt_game.status() {
+                // TODO: Fix: this triggers when reconnecting to a game that ended on flag.
                 return Err(EventError::CannotApplyEvent(format!(
                     "Expected game status = {:?}, actual = {:?}", game_status, alt_game.status()
                 )));
