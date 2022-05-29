@@ -46,8 +46,6 @@ let socket = null;
 let socket_incoming_listener = null;
 
 let drag_element = null;
-let drag_dx = null;
-let drag_dy = null;
 
 const info_string = document.getElementById('info-string');
 info_string.innerText = 'Type "/join name team" to start'
@@ -292,10 +290,6 @@ function set_up_drag_and_drop() {
             event.preventDefault();
             drag_element = event.target;
             drag_element.classList.add('dragged');
-            const coord = viewbox_mouse_position(event);
-            drag_dx = parseFloat(drag_element.getAttribute('x')) - coord.x;
-            drag_dy = parseFloat(drag_element.getAttribute('y')) - coord.y;
-
             // Dissociate image from the board/reserve:
             drag_element.id = null;
             // Bring on top; (if reserve) remove shadow by extracting from reserve group:
@@ -312,8 +306,8 @@ function set_up_drag_and_drop() {
         if (drag_element) {
             event.preventDefault();
             const coord = viewbox_mouse_position(event);
-            drag_element.setAttribute('x', coord.x + drag_dx);
-            drag_element.setAttribute('y', coord.y + drag_dy);
+            drag_element.setAttribute('x', coord.x - 0.5);
+            drag_element.setAttribute('y', coord.y - 0.5);
             wasm_client.drag_piece(coord.x, coord.y);
         }
     }
