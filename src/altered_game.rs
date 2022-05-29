@@ -71,7 +71,9 @@ impl AlteredGame {
     }
 
     pub fn set_status(&mut self, status: BughouseGameStatus, time: GameInstant) {
-        self.game_confirmed.set_status(status, time)
+        assert!(status != BughouseGameStatus::Active);
+        self.reset_local_changes();
+        self.game_confirmed.set_status(status, time);
     }
 
     pub fn apply_remote_turn_algebraic(
@@ -86,6 +88,9 @@ impl AlteredGame {
         )?;
         if player_id == self.my_id.opponent() {
             self.latest_opponent_turn = Some(turn);
+        }
+        if self.game_confirmed.status() != BughouseGameStatus::Active {
+            self.reset_local_changes();
         }
         if let Some(ref mut drag) = self.piece_drag {
             if let PieceDragSource::Board(coord) = drag.source {

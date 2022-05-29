@@ -290,7 +290,6 @@ fn preturn() {
     assert!(world[cl1].my_board().grid()[Coord::E4].unwrap().force == Force::White);
 }
 
-
 #[test]
 fn preturn_cancellation() {
     let mut world = World::new();
@@ -331,6 +330,68 @@ fn preturn_cancellation() {
     world.process_all_events();
     assert!(world[cl1].my_board().grid()[Coord::A6].is_none());
     assert!(world[cl1].my_board().grid()[Coord::H6].is_some());
+}
+
+// Regression test: having preturn when game ends shouldn't panic.
+#[test]
+fn preturn_auto_cancellation_on_resign() {
+    let mut world = World::new();
+    world.server.state.TEST_override_board_assignment(vec! [
+        ("p1".to_owned(), BughouseBoard::A),
+        ("p2".to_owned(), BughouseBoard::B),
+        ("p3".to_owned(), BughouseBoard::A),
+        ("p4".to_owned(), BughouseBoard::B),
+    ]);
+
+    let cl1 = world.add_client("p1", Team::Red);
+    let cl2 = world.add_client("p2", Team::Red);
+    let _cl3 = world.add_client("p3", Team::Blue);
+    let _cl4 = world.add_client("p4", Team::Blue);
+
+    world.process_all_events();
+
+    world[cl2].make_turn("e5").unwrap();
+    world.process_all_events();
+    assert!(world[cl2].my_board().grid()[Coord::E5].is_some());
+
+    world[cl1].state.resign();
+    world.process_all_events();
+    assert!(world[cl2].my_board().grid()[Coord::E5].is_none());
+}
+
+// Regression test: having preturn when game ends shouldn't panic.
+#[test]
+fn preturn_auto_cancellation_on_checkmate() {
+    let mut world = World::new();
+    world.server.state.TEST_override_board_assignment(vec! [
+        ("p1".to_owned(), BughouseBoard::A),
+        ("p2".to_owned(), BughouseBoard::B),
+        ("p3".to_owned(), BughouseBoard::A),
+        ("p4".to_owned(), BughouseBoard::B),
+    ]);
+
+    let cl1 = world.add_client("p1", Team::Red);
+    let cl2 = world.add_client("p2", Team::Red);
+    let cl3 = world.add_client("p3", Team::Blue);
+    let _cl4 = world.add_client("p4", Team::Blue);
+
+    world.process_all_events();
+
+    world[cl2].make_turn("e5").unwrap();
+    world.process_all_events();
+    assert!(world[cl2].my_board().grid()[Coord::E5].is_some());
+
+    world[cl1].make_turn("Nf3").unwrap();   world.process_all_events();
+    world[cl3].make_turn("h6").unwrap();    world.process_all_events();
+    world[cl1].make_turn("Ng5").unwrap();   world.process_all_events();
+    world[cl3].make_turn("h5").unwrap();    world.process_all_events();
+    world[cl1].make_turn("e4").unwrap();    world.process_all_events();
+    world[cl3].make_turn("h4").unwrap();    world.process_all_events();
+    world[cl1].make_turn("Qf3").unwrap();   world.process_all_events();
+    world[cl3].make_turn("h3").unwrap();    world.process_all_events();
+    world[cl1].make_turn("Qxf7").unwrap();  world.process_all_events();
+
+    assert!(world[cl2].my_board().grid()[Coord::E5].is_none());
 }
 
 #[test]

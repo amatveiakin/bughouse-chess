@@ -190,9 +190,7 @@ impl ClientState {
                 if let ContestState::Game{ ref mut alt_game, ref mut scores, .. }
                     = self.contest_state
                 {
-                    alt_game.reset_local_changes();
                     assert!(alt_game.status() == BughouseGameStatus::Active);
-                    assert!(game_status != BughouseGameStatus::Active);
                     alt_game.set_status(game_status, time);
                     *scores = try_vec_to_enum_map(new_scores).unwrap();
                     Ok(NotableEvent::None)
