@@ -131,6 +131,20 @@ impl World {
         self.clients.push(client);
         idx
     }
+    fn default_clients(&mut self) -> (TestClientId, TestClientId, TestClientId, TestClientId) {
+        self.server.state.TEST_override_board_assignment(vec! [
+            ("p1".to_owned(), BughouseBoard::A),
+            ("p2".to_owned(), BughouseBoard::B),
+            ("p3".to_owned(), BughouseBoard::A),
+            ("p4".to_owned(), BughouseBoard::B),
+        ]);
+        (
+            self.add_client("p1", Team::Red),
+            self.add_client("p2", Team::Red),
+            self.add_client("p3", Team::Blue),
+            self.add_client("p4", Team::Blue),
+        )
+    }
 
     fn process_events_for(&mut self, client_id: TestClientId) -> Result<(), client::EventError> {
         let client = &mut self.clients[client_id.0];
@@ -235,18 +249,7 @@ fn play_online_misc() {
 #[test]
 fn remote_turn_persisted() {
     let mut world = World::new();
-    world.server.state.TEST_override_board_assignment(vec! [
-        ("p1".to_owned(), BughouseBoard::A),
-        ("p2".to_owned(), BughouseBoard::B),
-        ("p3".to_owned(), BughouseBoard::A),
-        ("p4".to_owned(), BughouseBoard::B),
-    ]);
-
-    let cl1 = world.add_client("p1", Team::Red);
-    let _cl2 = world.add_client("p2", Team::Red);
-    let _cl3 = world.add_client("p3", Team::Blue);
-    let cl4 = world.add_client("p4", Team::Blue);
-
+    let (cl1, _cl2, _cl3, cl4) = world.default_clients();
     world.process_all_events();
 
     world[cl1].make_turn("e4").unwrap();
@@ -259,18 +262,7 @@ fn remote_turn_persisted() {
 #[test]
 fn preturn() {
     let mut world = World::new();
-    world.server.state.TEST_override_board_assignment(vec! [
-        ("p1".to_owned(), BughouseBoard::A),
-        ("p2".to_owned(), BughouseBoard::B),
-        ("p3".to_owned(), BughouseBoard::A),
-        ("p4".to_owned(), BughouseBoard::B),
-    ]);
-
-    let cl1 = world.add_client("p1", Team::Red);
-    let _cl2 = world.add_client("p2", Team::Red);
-    let cl3 = world.add_client("p3", Team::Blue);
-    let _cl4 = world.add_client("p4", Team::Blue);
-
+    let (cl1, _cl2, cl3, _cl4) = world.default_clients();
     world.process_all_events();
 
     // Valid pre-move executed after opponent's turn.
@@ -293,18 +285,7 @@ fn preturn() {
 #[test]
 fn preturn_cancellation() {
     let mut world = World::new();
-    world.server.state.TEST_override_board_assignment(vec! [
-        ("p1".to_owned(), BughouseBoard::A),
-        ("p2".to_owned(), BughouseBoard::B),
-        ("p3".to_owned(), BughouseBoard::A),
-        ("p4".to_owned(), BughouseBoard::B),
-    ]);
-
-    let cl1 = world.add_client("p1", Team::Red);
-    let _cl2 = world.add_client("p2", Team::Red);
-    let cl3 = world.add_client("p3", Team::Blue);
-    let _cl4 = world.add_client("p4", Team::Blue);
-
+    let (cl1, _cl2, cl3, _cl4) = world.default_clients();
     world.process_all_events();
 
     // Cancel pre-turn
@@ -336,18 +317,7 @@ fn preturn_cancellation() {
 #[test]
 fn preturn_auto_cancellation_on_resign() {
     let mut world = World::new();
-    world.server.state.TEST_override_board_assignment(vec! [
-        ("p1".to_owned(), BughouseBoard::A),
-        ("p2".to_owned(), BughouseBoard::B),
-        ("p3".to_owned(), BughouseBoard::A),
-        ("p4".to_owned(), BughouseBoard::B),
-    ]);
-
-    let cl1 = world.add_client("p1", Team::Red);
-    let cl2 = world.add_client("p2", Team::Red);
-    let _cl3 = world.add_client("p3", Team::Blue);
-    let _cl4 = world.add_client("p4", Team::Blue);
-
+    let (cl1, cl2, _cl3, _cl4) = world.default_clients();
     world.process_all_events();
 
     world[cl2].make_turn("e5").unwrap();
@@ -363,18 +333,7 @@ fn preturn_auto_cancellation_on_resign() {
 #[test]
 fn preturn_auto_cancellation_on_checkmate() {
     let mut world = World::new();
-    world.server.state.TEST_override_board_assignment(vec! [
-        ("p1".to_owned(), BughouseBoard::A),
-        ("p2".to_owned(), BughouseBoard::B),
-        ("p3".to_owned(), BughouseBoard::A),
-        ("p4".to_owned(), BughouseBoard::B),
-    ]);
-
-    let cl1 = world.add_client("p1", Team::Red);
-    let cl2 = world.add_client("p2", Team::Red);
-    let cl3 = world.add_client("p3", Team::Blue);
-    let _cl4 = world.add_client("p4", Team::Blue);
-
+    let (cl1, cl2, cl3, _cl4) = world.default_clients();
     world.process_all_events();
 
     world[cl2].make_turn("e5").unwrap();
@@ -505,17 +464,7 @@ fn leave_and_reconnect_game() {
 #[test]
 fn turn_after_game_ended_on_another_board() {
     let mut world = World::new();
-    world.server.state.TEST_override_board_assignment(vec! [
-        ("p1".to_owned(), BughouseBoard::A),
-        ("p2".to_owned(), BughouseBoard::B),
-        ("p3".to_owned(), BughouseBoard::A),
-        ("p4".to_owned(), BughouseBoard::B),
-    ]);
-
-    let cl1 = world.add_client("p1", Team::Red);
-    let _cl2 = world.add_client("p2", Team::Red);
-    let _cl3 = world.add_client("p3", Team::Blue);
-    let cl4 = world.add_client("p4", Team::Blue);
+    let (cl1, _cl2, _cl3, cl4) = world.default_clients();
     world.process_all_events();
     assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
 
