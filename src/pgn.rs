@@ -206,7 +206,13 @@ pub fn export_to_bpgn(starting_grid: &Grid, game: &BughouseGame, round: usize) -
     let mut full_turn_idx = enum_map!{ _ => 1 };
     for turn_record in game.turn_log() {
         let TurnRecord{ player_id, turn_algebraic, time } = turn_record;
-        let time_left = total_time - time.elapsed_since_start();
+        let time_left = total_time.checked_sub(time.elapsed_since_start()).unwrap_or_else(|| {
+            // TODO: Remove when debugging is finished.
+            panic!(
+                "total_time = {:?}, elapsed_since_start = {:?}, turn: {:?}",
+                total_time, time.elapsed_since_start(), turn_record
+            );
+        });
         let turn_notation = format!(
             "{}{}. {} {{{}}}",
             full_turn_idx[player_id.board_idx],
