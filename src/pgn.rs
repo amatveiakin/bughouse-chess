@@ -209,8 +209,8 @@ pub fn export_to_bpgn(starting_grid: &Grid, game: &BughouseGame, round: usize) -
         let time_left = total_time.checked_sub(time.elapsed_since_start()).unwrap_or_else(|| {
             // TODO: Remove when debugging is finished.
             panic!(
-                "total_time = {:?}, elapsed_since_start = {:?}, turn: {:?}",
-                total_time, time.elapsed_since_start(), turn_record
+                "total_time = {:?}, elapsed_since_start = {:?}, turn: {:?}, history:\n{}",
+                total_time, time.elapsed_since_start(), turn_record, doc.render()
             );
         });
         let turn_notation = format!(
