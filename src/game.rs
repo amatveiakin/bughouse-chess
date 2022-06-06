@@ -361,7 +361,7 @@ impl BughouseGame {
         let capture_or = board.try_turn(turn, mode, now)?;
         self.boards[board_idx.other()].start_clock(now);
         if let Some(capture) = capture_or {
-            self.boards[board_idx.other()].receive_capture(&capture)
+            self.boards[board_idx.other()].receive_capture(&capture);
         }
         self.turn_log.push(TurnRecord{ player_id, turn_algebraic, time: now });
         assert!(self.status == BughouseGameStatus::Active);
