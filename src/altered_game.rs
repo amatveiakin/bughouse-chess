@@ -1,6 +1,6 @@
 use crate::board::{Turn, TurnMove, TurnDrop, TurnMode, TurnError};
 use crate::clock::GameInstant;
-use crate::coord::{SubjectiveRow, Coord};
+use crate::coord::{SubjectiveRow, Col, Coord};
 use crate::game::{BughousePlayerId, BughouseGameStatus, BughouseGame};
 use crate::piece::{CastleDirection, PieceKind};
 
@@ -215,21 +215,29 @@ impl AlteredGame {
                 let force = self.my_id.force;
                 let game = self.local_game();
                 let board = game.board(self.my_id.board_idx);
+                let castling_rights = board.castling_rights()[force];
                 let first_row = SubjectiveRow::from_one_based(1).to_row(force);
                 let last_row = SubjectiveRow::from_one_based(8).to_row(force);
                 let d_col = dest_coord.col - source_coord.col;
                 let d_col_abs = d_col.abs();
-                let to_my_piece = if let Some(piece_to) = board.grid()[dest_coord] {
-                    piece_to.force == force
+                let corner_castling = if let Some(piece_to) = board.grid()[dest_coord] {
+                    piece_to.force == force &&
+                    piece_to.kind == PieceKind::Rook &&
+                    ((dest_coord.col == Col::A && castling_rights[CastleDirection::ASide] == Some(Col::A)) ||
+                     (dest_coord.col == Col::H && castling_rights[CastleDirection::HSide] == Some(Col::H)))
                 } else {
                     false
                 };
                 // Castling rules: drag the king at least two squares in the rook direction
-                // or onto a friendly piece. That later is required for Fischer random where
-                // a king could start on b1 or g1.
+                // or onto a rook standing in the corner next to the king. That later is
+                // required for Fischer random when king starts on b or g.
+                // Note. The rule is made as strict as possible (e.g. not just "move king onto
+                // a friedly piece in the castling direction") in order to disambiguate premoves
+                // better.
+                // Improvement potential: Allow premove capturing a rook on a1/a8/h1/h8.
                 let is_castling =
                     piece_kind == King &&
-                    (d_col_abs >= 2 || (d_col_abs >= 1 && to_my_piece)) &&
+                    (d_col_abs >= 2 || (d_col_abs == 1 && corner_castling)) &&
                     (source_coord.row == first_row && dest_coord.row == first_row)
                 ;
                 let is_promotion = piece_kind == Pawn && dest_coord.row == last_row;
