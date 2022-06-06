@@ -347,7 +347,7 @@ function set_favicon() {
     if (!link) {
         link = document.createElement('link');
         link.rel = 'icon';
-        document.getElementsByTagName('head')[0].appendChild(link);
+        document.head.appendChild(link);
     }
     link.href = favicon;
 }
