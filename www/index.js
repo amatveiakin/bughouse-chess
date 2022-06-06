@@ -1,5 +1,4 @@
 // TODO: Remove logging
-// TODO: Scale down images
 // TODO: Check if ==/!= have to be replaced with ===/!== and other JS weirdness.
 
 import './main.css'
