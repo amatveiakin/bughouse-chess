@@ -8,6 +8,33 @@ use bughouse_chess::*;
 use bughouse_chess::client::TurnCommandError::IllegalTurn;
 
 
+#[derive(Clone, Copy, Debug)]
+struct PieceMatcher {
+    kind: PieceKind,
+    force: Force,
+}
+
+trait PieceIs {
+    fn is(self, matcher: PieceMatcher) -> bool;
+}
+
+impl PieceIs for Option<PieceOnBoard> {
+    fn is(self, matcher: PieceMatcher) -> bool {
+        if let Some(piece) = self {
+            piece.kind == matcher.kind && piece.force == matcher.force
+        } else {
+            false
+        }
+    }
+}
+
+macro_rules! piece {
+    ($force:ident $kind:ident) => {
+        PieceMatcher{ force: Force::$force, kind: PieceKind::$kind }
+    };
+}
+
+
 struct Server {
     clients: Arc<Mutex<server::Clients>>,
     state: server::ServerState,
@@ -133,10 +160,10 @@ impl World {
     }
     fn default_clients(&mut self) -> (TestClientId, TestClientId, TestClientId, TestClientId) {
         self.server.state.TEST_override_board_assignment(vec! [
-            ("p1".to_owned(), BughouseBoard::A),
-            ("p2".to_owned(), BughouseBoard::B),
-            ("p3".to_owned(), BughouseBoard::A),
-            ("p4".to_owned(), BughouseBoard::B),
+            ("p1".to_owned(), BughouseBoard::A),  // white
+            ("p2".to_owned(), BughouseBoard::B),  // black
+            ("p3".to_owned(), BughouseBoard::A),  // black
+            ("p4".to_owned(), BughouseBoard::B),  // white
         ]);
         (
             self.add_client("p1", Team::Red),
@@ -256,7 +283,7 @@ fn remote_turn_persisted() {
     world[cl4].make_turn("d4").unwrap();
     world.process_events_for(cl4).unwrap();
     world.process_events_for(cl1).unwrap();
-    assert!(world[cl1].other_board().grid()[Coord::D4].is_some());
+    assert!(world[cl1].other_board().grid()[Coord::D4].is(piece!(White Pawn)));
 }
 
 #[test]
@@ -271,15 +298,15 @@ fn preturn() {
     assert!(world[cl1].my_board().grid()[Coord::E5].is_none());
     world[cl1].make_turn("d4").unwrap();
     world.process_all_events();
-    assert!(world[cl1].my_board().grid()[Coord::E5].is_some());
+    assert!(world[cl1].my_board().grid()[Coord::E5].is(piece!(Black Pawn)));
 
     // Invalid pre-move ignored.
     world[cl3].make_turn("e4").unwrap();
     world.process_all_events();
     world[cl1].make_turn("e4").unwrap();
     world.process_all_events();
-    assert!(world[cl1].my_board().grid()[Coord::E5].unwrap().force == Force::Black);
-    assert!(world[cl1].my_board().grid()[Coord::E4].unwrap().force == Force::White);
+    assert!(world[cl1].my_board().grid()[Coord::E5].is(piece!(Black Pawn)));
+    assert!(world[cl1].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
 }
 
 #[test]
@@ -310,7 +337,7 @@ fn preturn_cancellation() {
     world[cl1].make_turn("d4").unwrap();
     world.process_all_events();
     assert!(world[cl1].my_board().grid()[Coord::A6].is_none());
-    assert!(world[cl1].my_board().grid()[Coord::H6].is_some());
+    assert!(world[cl1].my_board().grid()[Coord::H6].is(piece!(Black Pawn)));
 }
 
 // Regression test: having preturn when game ends shouldn't panic.
@@ -322,7 +349,7 @@ fn preturn_auto_cancellation_on_resign() {
 
     world[cl2].make_turn("e5").unwrap();
     world.process_all_events();
-    assert!(world[cl2].my_board().grid()[Coord::E5].is_some());
+    assert!(world[cl2].my_board().grid()[Coord::E5].is(piece!(Black Pawn)));
 
     world[cl1].state.resign();
     world.process_all_events();
@@ -338,7 +365,7 @@ fn preturn_auto_cancellation_on_checkmate() {
 
     world[cl2].make_turn("e5").unwrap();
     world.process_all_events();
-    assert!(world[cl2].my_board().grid()[Coord::E5].is_some());
+    assert!(world[cl2].my_board().grid()[Coord::E5].is(piece!(Black Pawn)));
 
     world[cl1].make_turn("Nf3").unwrap();   world.process_all_events();
     world[cl3].make_turn("h6").unwrap();    world.process_all_events();
@@ -397,31 +424,15 @@ fn leave_and_reconnect_lobby() {
 
 #[test]
 fn leave_and_reconnect_game() {
-    use PieceKind::*;
-
     let mut world = World::new();
-    world.server.state.TEST_override_board_assignment(vec! [
-        ("p1".to_owned(), BughouseBoard::A),
-        ("p2".to_owned(), BughouseBoard::B),
-        ("p3".to_owned(), BughouseBoard::A),
-        ("p4".to_owned(), BughouseBoard::B),
-    ]);
-
-    let cl1 = world.add_client("p1", Team::Red);
-    let _cl2 = world.add_client("p2", Team::Red);
-    let cl3 = world.add_client("p3", Team::Blue);
-    let _cl4 = world.add_client("p4", Team::Blue);
+    let (cl1, _cl2, cl3, _cl4) = world.default_clients();
     world.process_all_events();
     assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
 
-    world[cl1].make_turn("e4").unwrap();
-    world.process_all_events();
-    world[cl3].make_turn("d5").unwrap();
-    world.process_all_events();
-    world[cl1].make_turn("xd5").unwrap();
-    world.process_all_events();
-    world[cl3].make_turn("Nf6").unwrap();
-    world.process_all_events();
+    world[cl1].make_turn("e4").unwrap();   world.process_all_events();
+    world[cl3].make_turn("d5").unwrap();   world.process_all_events();
+    world[cl1].make_turn("xd5").unwrap();  world.process_all_events();
+    world[cl3].make_turn("Nf6").unwrap();  world.process_all_events();
 
     world[cl3].state.leave();
     world.process_all_events();
@@ -454,9 +465,9 @@ fn leave_and_reconnect_game() {
     assert!(grid[Coord::E2].is_none());
     assert!(grid[Coord::E4].is_none());
     assert!(grid[Coord::D7].is_none());
-    assert!(matches!(grid[Coord::D5], Some(PieceOnBoard{ kind: Pawn, .. })));
-    assert!(matches!(grid[Coord::F6], Some(PieceOnBoard{ kind: Knight, .. })));
-    assert_eq!(world[cl3_new].other_board().reserve(my_force)[Pawn], 1);
+    assert!(grid[Coord::D5].is(piece!(White Pawn)));
+    assert!(grid[Coord::F6].is(piece!(Black Knight)));
+    assert_eq!(world[cl3_new].other_board().reserve(my_force)[PieceKind::Pawn], 1);
 }
 
 // Regression test: server should not panic when a client tries to make a turn after the
