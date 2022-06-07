@@ -86,18 +86,14 @@ impl Client {
         Client{ id, incoming_rx, outgoing_rx, state }
     }
 
-    fn local_game(&self) -> BughouseGame {
+    fn alt_game(&self) -> &AlteredGame {
         match &self.state.contest_state() {
-            client::ContestState::Game{ alt_game, .. } => alt_game.local_game(),
+            client::ContestState::Game{ alt_game, .. } => alt_game,
             _ => panic!("No game in found"),
         }
     }
-    fn my_id(&self) -> BughousePlayerId {
-        match &self.state.contest_state() {
-            client::ContestState::Game{ alt_game, .. } => alt_game.my_id(),
-            _ => panic!("No game in found"),
-        }
-    }
+    fn my_id(&self) -> BughousePlayerId { self.alt_game().my_id() }
+    fn local_game(&self) -> BughouseGame { self.alt_game().local_game() }
     fn my_force(&self) -> Force { self.my_id().force }
     fn my_board(&self) -> Board {
         self.local_game().board(self.my_id().board_idx).clone()
@@ -211,6 +207,18 @@ impl World {
                 something_changed = true;
             }
         }
+    }
+
+    fn replay_white_checkmates_black(&mut self, white_id: TestClientId, black_id: TestClientId) {
+        self[white_id].make_turn("Nf3").unwrap();   self.process_all_events();
+        self[black_id].make_turn("h6").unwrap();    self.process_all_events();
+        self[white_id].make_turn("Ng5").unwrap();   self.process_all_events();
+        self[black_id].make_turn("h5").unwrap();    self.process_all_events();
+        self[white_id].make_turn("e4").unwrap();    self.process_all_events();
+        self[black_id].make_turn("h4").unwrap();    self.process_all_events();
+        self[white_id].make_turn("Qf3").unwrap();   self.process_all_events();
+        self[black_id].make_turn("h3").unwrap();    self.process_all_events();
+        self[white_id].make_turn("Qxf7").unwrap();  self.process_all_events();
     }
 }
 
@@ -367,21 +375,12 @@ fn preturn_auto_cancellation_on_checkmate() {
     world.process_all_events();
     assert!(world[cl2].my_board().grid()[Coord::E5].is(piece!(Black Pawn)));
 
-    world[cl1].make_turn("Nf3").unwrap();   world.process_all_events();
-    world[cl3].make_turn("h6").unwrap();    world.process_all_events();
-    world[cl1].make_turn("Ng5").unwrap();   world.process_all_events();
-    world[cl3].make_turn("h5").unwrap();    world.process_all_events();
-    world[cl1].make_turn("e4").unwrap();    world.process_all_events();
-    world[cl3].make_turn("h4").unwrap();    world.process_all_events();
-    world[cl1].make_turn("Qf3").unwrap();   world.process_all_events();
-    world[cl3].make_turn("h3").unwrap();    world.process_all_events();
-    world[cl1].make_turn("Qxf7").unwrap();  world.process_all_events();
-
+    world.replay_white_checkmates_black(cl1, cl3);
     assert!(world[cl2].my_board().grid()[Coord::E5].is_none());
 }
 
 #[test]
-fn leave_and_reconnect_lobby() {
+fn reconnect_lobby() {
     let mut world = World::new();
 
     let cl1 = world.add_client("p1", Team::Red);
@@ -423,7 +422,7 @@ fn leave_and_reconnect_lobby() {
 }
 
 #[test]
-fn leave_and_reconnect_game() {
+fn reconnect_game_active() {
     let mut world = World::new();
     let (cl1, _cl2, cl3, _cl4) = world.default_clients();
     world.process_all_events();
@@ -468,6 +467,49 @@ fn leave_and_reconnect_game() {
     assert!(grid[Coord::D5].is(piece!(White Pawn)));
     assert!(grid[Coord::F6].is(piece!(Black Knight)));
     assert_eq!(world[cl3_new].other_board().reserve(my_force)[PieceKind::Pawn], 1);
+}
+
+#[test]
+fn reconnect_game_over_checkmate() {
+    let mut world = World::new();
+    let (cl1, _cl2, cl3, cl4) = world.default_clients();
+    world.process_all_events();
+
+    world[cl4].make_turn("e4").unwrap();
+    world.process_all_events();
+    world[cl4].state.leave();
+    world.process_all_events();
+
+    world.replay_white_checkmates_black(cl1, cl3);
+    let cl4_new = world.add_client("p4", Team::Blue);
+    world.process_all_events();
+    assert!(world[cl4_new].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
+    assert_eq!(
+        world[cl4_new].alt_game().status(),
+        BughouseGameStatus::Victory(Team::Red, VictoryReason::Checkmate)
+    );
+}
+
+#[test]
+fn reconnect_game_over_resignation() {
+    let mut world = World::new();
+    let (cl1, _cl2, _cl3, cl4) = world.default_clients();
+    world.process_all_events();
+
+    world[cl4].make_turn("e4").unwrap();
+    world.process_all_events();
+    world[cl4].state.leave();
+    world.process_all_events();
+
+    world[cl1].state.resign();
+    world.process_all_events();
+    let cl4_new = world.add_client("p4", Team::Blue);
+    world.process_all_events();
+    assert!(world[cl4_new].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
+    assert_eq!(
+        world[cl4_new].alt_game().status(),
+        BughouseGameStatus::Victory(Team::Blue, VictoryReason::Resignation)
+    );
 }
 
 // Regression test: server should not panic when a client tries to make a turn after the

@@ -174,7 +174,8 @@ impl ClientState {
                 for turn in turn_log {
                     self.apply_remote_turn(turn)?;
                 }
-                self.postprocess_remote_turns(game_status, scores)?;
+                self.update_game_status(game_status, time)?;
+                self.update_scores(scores)?;
                 Ok(NotableEvent::GameStarted)
             },
             TurnsMade{ turns, game_status, scores } => {
@@ -183,7 +184,8 @@ impl ClientState {
                     let is_opponent_turn = self.apply_remote_turn(turn)?;
                     opponent_turn_made |= is_opponent_turn;
                 }
-                self.postprocess_remote_turns(game_status, scores)?;
+                self.verify_game_status(game_status)?;
+                self.update_scores(scores)?;
                 Ok(if opponent_turn_made { NotableEvent::OpponentTurnMade } else { NotableEvent::None })
             },
             GameOver{ time, game_status, scores: new_scores } => {
@@ -227,22 +229,42 @@ impl ClientState {
         }
     }
 
-    fn postprocess_remote_turns(
-        &mut self, game_status: BughouseGameStatus, new_scores: Vec<(Team, u32)>
-    ) -> Result<(), EventError>
-    {
-        if let ContestState::Game{ ref mut alt_game, ref mut scores, .. } = self.contest_state {
+    fn verify_game_status(&mut self, game_status: BughouseGameStatus) -> Result<(), EventError> {
+        if let ContestState::Game{ ref mut alt_game, .. } = self.contest_state {
             if game_status != alt_game.status() {
-                // TODO: Fix: this triggers when reconnecting to a game that ended on flag.
                 return Err(EventError::CannotApplyEvent(format!(
                     "Expected game status = {:?}, actual = {:?}", game_status, alt_game.status()
                 )));
             }
+            Ok(())
+        } else {
+            Err(EventError::CannotApplyEvent("Cannot verify game status: no game in progress".to_owned()))
+        }
+    }
+
+    fn update_game_status(&mut self, game_status: BughouseGameStatus, game_now: GameInstant)
+        -> Result<(), EventError>
+    {
+        if let ContestState::Game{ ref mut alt_game, .. } = self.contest_state {
+            if alt_game.status() == BughouseGameStatus::Active {
+                if game_status != BughouseGameStatus::Active {
+                    alt_game.set_status(game_status, game_now);
+                }
+                Ok(())
+            } else {
+                self.verify_game_status(game_status)
+            }
+        } else {
+            Err(EventError::CannotApplyEvent("Cannot update game status: no game in progress".to_owned()))
+        }
+    }
+
+    fn update_scores(&mut self, new_scores: Vec<(Team, u32)>) -> Result<(), EventError> {
+        if let ContestState::Game{ ref mut scores, .. } = self.contest_state {
             *scores = try_vec_to_enum_map(new_scores).unwrap();
             Ok(())
         } else {
-            // Should've been tested in `apply_remote_turn`.
-            panic!("Cannot post-process turns: no game in progress");
+            Err(EventError::CannotApplyEvent("Cannot update scores: no game in progress".to_owned()))
         }
     }
 

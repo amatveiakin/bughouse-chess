@@ -27,6 +27,8 @@ pub enum BughouseServerEvent {
         scores: Vec<(Team, u32)>,
         // TODO: Send your pending pre-turn, if any
     },
+    // Improvement potential: unite `TurnsMade` and `GameOver` into a single event "something happened".
+    // This would make reconnection more consistent with normal game flow.
     TurnsMade {
         turns: Vec<TurnRecord>,
         game_status: BughouseGameStatus,
