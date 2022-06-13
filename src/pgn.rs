@@ -16,8 +16,9 @@ use crate::util::div_ceil_u128;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct BughouseExportFormat {
-    // TODO: Time exporting options:
-    //   - as described in https://bughousedb.com/Lieven_BPGN_Standard.txt
+    // TODO: Support time export and allow to choose format here:
+    //   - as described in https://bughousedb.com/Lieven_BPGN_Standard.txt, but export
+    //       with milliseconds precision, like https://bughousedb.com itself does.
     //   - as in chess.com, e.g. "{[%clk 0:00:07.9]}"
     //   - precise
     //   - none
@@ -48,10 +49,6 @@ impl TextDocument {
         let trailing_newline = if self.last_line_len > 0 { "\n" } else { "" };
         format!("{}{}", self.text, trailing_newline)
     }
-}
-
-fn ceil_seconds(duration: Duration) -> u128 {
-    div_ceil_u128(duration.as_nanos(), 1_000_000_000)
 }
 
 fn time_control_to_string(control: &TimeControl) -> String {
@@ -137,24 +134,15 @@ pub fn export_to_bpgn(_format: BughouseExportFormat, starting_grid: &Grid, game:
     -> String
 {
     let header = make_bughouse_bpng_header(starting_grid, game, round);
-    let total_time = game.chess_rules().time_control.starting_time;
     let mut doc = TextDocument::new();
     let mut full_turn_idx = enum_map!{ _ => 1 };
     for turn_record in game.turn_log() {
-        let TurnRecord{ player_id, turn_algebraic, time } = turn_record;
-        let time_left = total_time.checked_sub(time.elapsed_since_start()).unwrap_or_else(|| {
-            // TODO: Remove when debugging is finished.
-            panic!(
-                "total_time = {:?}, elapsed_since_start = {:?}, turn: {:?}, history:\n{}",
-                total_time, time.elapsed_since_start(), turn_record, doc.render()
-            );
-        });
+        let TurnRecord{ player_id, turn_algebraic, .. } = turn_record;
         let turn_notation = format!(
-            "{}{}. {} {{{}}}",
+            "{}{}. {}",
             full_turn_idx[player_id.board_idx],
             player_notation(*player_id),
             turn_algebraic,
-            ceil_seconds(time_left),
         );
         if player_id.force == Force::Black {
             full_turn_idx[player_id.board_idx] += 1;
