@@ -453,7 +453,7 @@ impl ServerStateCore {
             let all_games = match_history.iter().map(|(grid, game)| (grid, game))
                 .chain(iter::once((starting_grid, game)));
             let content = all_games.enumerate().map(|(round, (grid, game))| {
-                pgn::export_bughouse(format, grid, game, round + 1)
+                pgn::export_to_bpgn(format, grid, game, round + 1)
             }).join("\n");
             clients[client_id].send(BughouseServerEvent::GameExportReady{ content });
         } else {
