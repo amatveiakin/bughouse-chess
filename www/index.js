@@ -172,8 +172,8 @@ function execute_command(input) {
                     wasm_client_or_throw().reset();
                     break;
                 case 'save':
-                    const [format] = get_args(args, ['bpgn:pgn-pair']);
-                    wasm_client_or_throw().request_export(format);
+                    get_args(args, []);
+                    wasm_client_or_throw().request_export();
                     break;
                 default:
                     throw new InvalidCommand(`Command does not exist: /${args[0]}`)

@@ -99,12 +99,8 @@ impl WebClient {
     pub fn reset(&mut self) {
         self.state.reset();
     }
-    pub fn request_export(&mut self, format: &str) -> JsResult<()> {
-        let format = match format {
-            "bpgn" => pgn::BughouseExportFormat::Bpgn,
-            "pgn-pair" => pgn::BughouseExportFormat::PgnPair,
-            _ => { return Err(format!("Unknown format: {}", format).into()); }
-        };
+    pub fn request_export(&mut self) -> JsResult<()> {
+        let format = pgn::BughouseExportFormat{};
         self.state.request_export(format);
         Ok(())
     }

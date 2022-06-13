@@ -2,9 +2,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use enum_map::enum_map;
-use itertools::Itertools;
 use serde::{Serialize, Deserialize};
-use strum::IntoEnumIterator;
 
 use crate::board::Board;
 use crate::clock::TimeControl;
@@ -17,16 +15,12 @@ use crate::util::div_ceil_u128;
 
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum BughouseExportFormat {
-    // BPGN (Bughouse Portable Game Notation) format designed specifically for bughouse.
-    // Keep accurate track of relative turn order on the two board, but it's well supported.
-    // Doc: https://bughousedb.com/Lieven_BPGN_Standard.txt
-    Bpgn,
-
-    // PGN (Portable Game Notation) format is the de-facto standard plain format for
-    // recording chess games. Bughouse game is stored as two separate games.
-    // Doc: http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
-    PgnPair,
+pub struct BughouseExportFormat {
+    // TODO: Time exporting options:
+    //   - as described in https://bughousedb.com/Lieven_BPGN_Standard.txt
+    //   - as in chess.com, e.g. "{[%clk 0:00:07.9]}"
+    //   - precise
+    //   - none
 }
 
 const LINE_WIDTH: usize = 80;
@@ -79,46 +73,6 @@ fn make_result_string(game: &BughouseGame) -> &'static str {
 // Dummy player object. Will not appear anywhere in the produced PGN.
 fn dummy_player(team: Team) -> Rc<Player> {
     Rc::new(Player{ name: format!("{:?}", team), team })
-}
-
-fn make_bughouse_board_png_header(starting_grid: &Grid, board: &Board, board_idx: BughouseBoard, round: usize)
-    -> String
-{
-    use BughouseBoard::*;
-    use Force::*;
-    let now = chrono::offset::Utc::now();
-    let starting_board = Board::new(
-        board.chess_rules().clone(),
-        board.bughouse_rules().clone(),
-        enum_map!{ White => dummy_player(Team::Red), Black => dummy_player(Team::Blue) },
-        starting_grid.clone()
-    );
-    let board_name = match board_idx {
-        A => "A",
-        B => "B",
-    };
-    format!(
-r#"[Event "Friendly Bughouse Match"]
-[Site "bughouse.pro"]
-[UTCDate "{}"]
-[UTCTime "{}"]
-[Round "{}-{}"]
-[White "{}"]
-[Black "{}"]
-[TimeControl "{}"]
-[SetUp "1"]
-[FEN "{}"]
-[Result "*"]
-"#,
-        now.format("%Y.%m.%d"),
-        now.format("%H:%M:%S"),
-        round,
-        board_name,
-        board.player(White).name,
-        board.player(Black).name,
-        time_control_to_string(&board.chess_rules().time_control),
-        fen::starting_position_to_shredder_fen(&starting_board),
-    )
 }
 
 // Improvement potential. More human-readable "Termination" tag values.
@@ -175,31 +129,13 @@ fn player_notation(player_id: BughousePlayerId) -> &'static str {
     }
 }
 
-pub fn export_to_pgn_pair(starting_grid: &Grid, game: &BughouseGame, round: usize)
+// Exports to BPGN (Bughouse Portable Game Notation) - format designed specifically for
+// bughouse. Doc: https://bughousedb.com/Lieven_BPGN_Standard.txt
+// Based on PGN (Portable Game Notation), the de-facto standard plain format for recording
+// chess games. Doc: http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
+pub fn export_to_bpgn(_format: BughouseExportFormat, starting_grid: &Grid, game: &BughouseGame, round: usize)
     -> String
 {
-    BughouseBoard::iter().map(|board_idx| {
-        let board = game.board(board_idx);
-        let header = make_bughouse_board_png_header(starting_grid, board, board_idx, round);
-        let mut doc = TextDocument::new();
-        let mut full_turn_idx = 1;
-        let turn_record_pair_iter = game.turn_log().iter().filter(|record| {
-            record.player_id.board_idx == board_idx
-        }).chunks(2);
-        for turn_record_pair in &turn_record_pair_iter {
-            let turn_notation = format!(
-                "{}. {}",
-                full_turn_idx,
-                turn_record_pair.map(|record| &record.turn_algebraic).join(" "),
-            );
-            full_turn_idx += 1;
-            doc.push_word(&turn_notation);
-        }
-        format!("{}{}", header, doc.render())
-    }).join("\n")
-}
-
-pub fn export_to_bpgn(starting_grid: &Grid, game: &BughouseGame, round: usize) -> String {
     let header = make_bughouse_bpng_header(starting_grid, game, round);
     let total_time = game.chess_rules().time_control.starting_time;
     let mut doc = TextDocument::new();
@@ -218,7 +154,6 @@ pub fn export_to_bpgn(starting_grid: &Grid, game: &BughouseGame, round: usize) -
             full_turn_idx[player_id.board_idx],
             player_notation(*player_id),
             turn_algebraic,
-            // Improvement potential: Consider using chess.com time format: "{[%clk 0:00:07.9]}".
             ceil_seconds(time_left),
         );
         if player_id.force == Force::Black {
@@ -227,14 +162,4 @@ pub fn export_to_bpgn(starting_grid: &Grid, game: &BughouseGame, round: usize) -
         doc.push_word(&turn_notation);
     }
     format!("{}{}", header, doc.render())
-}
-
-pub fn export_bughouse(format: BughouseExportFormat, starting_grid: &Grid, game: &BughouseGame, round: usize)
-    -> String
-{
-    use BughouseExportFormat::*;
-    match format {
-        Bpgn => export_to_bpgn(starting_grid, game, round),
-        PgnPair => export_to_pgn_pair(starting_grid, game, round),
-    }
 }
