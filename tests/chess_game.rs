@@ -4,14 +4,14 @@ use enum_map::{EnumMap, enum_map};
 
 use bughouse_chess::{
     ChessRules, ChessGame, ChessGameStatus, VictoryReason,
-    TurnError, Player, Team, Force
+    TurnError, PlayerInGame, Team, Force
 };
 
 
-fn players() -> EnumMap<Force, Rc<Player>> {
+fn players() -> EnumMap<Force, Rc<PlayerInGame>> {
     enum_map! {
-        Force::White => Rc::new(Player{ name: "Alice".to_owned(), team: Team::Red }),
-        Force::Black => Rc::new(Player{ name: "Bob".to_owned(), team: Team::Blue }),
+        Force::White => Rc::new(PlayerInGame{ name: "Alice".to_owned(), team: Team::Red }),
+        Force::Black => Rc::new(PlayerInGame{ name: "Bob".to_owned(), team: Team::Blue }),
     }
 }
 

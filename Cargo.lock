@@ -95,6 +95,7 @@ dependencies = [
  "enum-map",
  "getrandom",
  "instant",
+ "itertools",
  "serde_json",
  "strum",
  "wasm-bindgen",

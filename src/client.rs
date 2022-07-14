@@ -1,7 +1,6 @@
 use std::rc::Rc;
 use std::sync::mpsc;
 
-use enum_map::EnumMap;
 use instant::Instant;
 
 use crate::altered_game::AlteredGame;
@@ -12,7 +11,8 @@ use crate::grid::Grid;
 use crate::event::{BughouseServerEvent, BughouseClientEvent};
 use crate::pgn::BughouseExportFormat;
 use crate::player::{Player, Team};
-use crate::util::try_vec_to_enum_map;
+use crate::rules::Teaming;
+use crate::scores::Scores;
 
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -35,13 +35,21 @@ pub enum EventError {
     CannotApplyEvent(String),
 }
 
+// Information that stays unchanged during an entire game series.
+#[derive(Debug)]
+pub struct ContestParams {
+    pub teaming: Teaming,
+}
+
 #[derive(Debug)]
 pub enum ContestState {
     Uninitialized,
-    Lobby { players: Vec<Player> },
+    Lobby {
+        players: Vec<Player>,
+    },
     Game {
         // Scores from the past matches.
-        scores: EnumMap<Team, u32>,
+        scores: Scores,
         // Starting position.
         starting_grid: Grid,
         // Game state including unconfirmed local changes.
@@ -53,23 +61,26 @@ pub enum ContestState {
 
 pub struct ClientState {
     my_name: String,
-    my_team: Team,
+    my_team: Option<Team>,
     events_tx: mpsc::Sender<BughouseClientEvent>,
+    contest_params: Option<ContestParams>,
     contest_state: ContestState,
 }
 
 impl ClientState {
-    pub fn new(my_name: String, my_team: Team, events_tx: mpsc::Sender<BughouseClientEvent>) -> Self {
+    pub fn new(my_name: String, my_team: Option<Team>, events_tx: mpsc::Sender<BughouseClientEvent>) -> Self {
         ClientState {
             my_name,
             my_team,
             events_tx,
+            contest_params: None,
             contest_state: ContestState::Uninitialized,
         }
     }
 
     pub fn my_name(&self) -> &str { &self.my_name }
-    pub fn my_team(&self) -> Team { self.my_team }
+    pub fn my_team(&self) -> Option<Team> { self.my_team }
+    pub fn contest_params(&self) -> &Option<ContestParams> { &self.contest_params }
     pub fn contest_state(&self) -> &ContestState { &self.contest_state }
     pub fn contest_state_mut(&mut self) -> &mut ContestState { &mut self.contest_state }
 
@@ -136,21 +147,21 @@ impl ClientState {
             Error{ message } => {
                 Err(EventError::ServerReturnedError(format!("Got error from server: {}", message)))
             },
+            ContestStarted{ teaming } => {
+                self.contest_params = Some(ContestParams {
+                    teaming,
+                });
+                Ok(NotableEvent::None)
+            },
             LobbyUpdated{ players } => {
-                let new_players = players;
-                match self.contest_state {
-                    ContestState::Lobby{ ref mut players } => {
-                        *players = new_players;
-                    },
-                    _ => {
-                        self.new_contest_state(ContestState::Lobby {
-                            players: new_players
-                        });
-                    },
-                }
+                assert!(self.contest_params.is_some());
+                self.contest_state = ContestState::Lobby {
+                    players,
+                };
                 Ok(NotableEvent::None)
             },
             GameStarted{ chess_rules, bughouse_rules, starting_grid, players, time, turn_log, game_status, scores } => {
+                assert!(self.contest_params.is_some());
                 let player_map = BughouseGame::make_player_map(
                     players.iter().map(|(p, board_idx)| (Rc::new(p.clone()), *board_idx))
                 );
@@ -165,12 +176,12 @@ impl ClientState {
                 );
                 let my_id = game.find_player(&self.my_name).unwrap();
                 let alt_game = AlteredGame::new(my_id, game);
-                self.new_contest_state(ContestState::Game {
-                    scores: try_vec_to_enum_map(scores.clone()).unwrap(),
+                self.contest_state = ContestState::Game {
+                    scores: scores.clone(),
                     starting_grid,
                     alt_game,
                     time_pair,
-                });
+                };
                 for turn in turn_log {
                     self.apply_remote_turn(turn)?;
                 }
@@ -179,6 +190,7 @@ impl ClientState {
                 Ok(NotableEvent::GameStarted)
             },
             TurnsMade{ turns, game_status, scores } => {
+                assert!(self.contest_params.is_some());
                 let mut opponent_turn_made = false;
                 for turn in turns {
                     let is_opponent_turn = self.apply_remote_turn(turn)?;
@@ -189,12 +201,13 @@ impl ClientState {
                 Ok(if opponent_turn_made { NotableEvent::OpponentTurnMade } else { NotableEvent::None })
             },
             GameOver{ time, game_status, scores: new_scores } => {
+                assert!(self.contest_params.is_some());
                 if let ContestState::Game{ ref mut alt_game, ref mut scores, .. }
                     = self.contest_state
                 {
                     assert!(alt_game.status() == BughouseGameStatus::Active);
                     alt_game.set_status(game_status, time);
-                    *scores = try_vec_to_enum_map(new_scores).unwrap();
+                    *scores = new_scores;
                     Ok(NotableEvent::None)
                 } else {
                     Err(EventError::CannotApplyEvent("Cannot record game result: no game in progress".to_owned()))
@@ -259,17 +272,12 @@ impl ClientState {
         }
     }
 
-    fn update_scores(&mut self, new_scores: Vec<(Team, u32)>) -> Result<(), EventError> {
+    fn update_scores(&mut self, new_scores: Scores) -> Result<(), EventError> {
         if let ContestState::Game{ ref mut scores, .. } = self.contest_state {
-            *scores = try_vec_to_enum_map(new_scores).unwrap();
+            *scores = new_scores;
             Ok(())
         } else {
             Err(EventError::CannotApplyEvent("Cannot update scores: no game in progress".to_owned()))
         }
-    }
-
-    // TODO: Is this function needed? (maybe always produce a NotableEvent here)
-    fn new_contest_state(&mut self, contest_state: ContestState) {
-        self.contest_state = contest_state;
     }
 }

@@ -18,7 +18,7 @@ use crate::coord::{Row, Col, Coord};
 use crate::force::Force;
 use crate::grid::Grid;
 use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard};
-use crate::player::{Player, Team};
+use crate::player::{PlayerInGame, Team};
 use crate::rules::{StartingPosition, ChessRules, BughouseRules};
 
 
@@ -91,7 +91,7 @@ pub struct ChessGame {
 }
 
 impl ChessGame {
-    pub fn new(rules: ChessRules, players: EnumMap<Force, Rc<Player>>) -> ChessGame {
+    pub fn new(rules: ChessRules, players: EnumMap<Force, Rc<PlayerInGame>>) -> ChessGame {
         let starting_position = rules.starting_position;
         ChessGame {
             board: Board::new(
@@ -189,6 +189,9 @@ pub struct BughousePlayerId {
     pub force: Force,
 }
 impl BughousePlayerId {
+    pub fn team(self) -> Team {
+        get_bughouse_team(self.board_idx, self.force)
+    }
     pub fn opponent(self) -> Self {
         BughousePlayerId {
             board_idx: self.board_idx,
@@ -226,7 +229,7 @@ impl BughouseGame {
     pub fn new(
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
-        players: EnumMap<BughouseBoard, EnumMap<Force, Rc<Player>>>
+        players: EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>>
     ) -> BughouseGame {
         let starting_grid = generate_starting_grid(chess_rules.starting_position);
         Self::new_with_grid(chess_rules, bughouse_rules, starting_grid, players)
@@ -236,7 +239,7 @@ impl BughouseGame {
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
         starting_grid: Grid,
-        players: EnumMap<BughouseBoard, EnumMap<Force, Rc<Player>>>
+        players: EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>>
     ) -> BughouseGame {
         let chess_rules = Rc::new(chess_rules);
         let bughouse_rules = Rc::new(bughouse_rules);
@@ -261,10 +264,10 @@ impl BughouseGame {
         }
     }
 
-    pub fn make_player_map(players: impl Iterator<Item = (Rc<Player>, BughouseBoard)>)
-        -> EnumMap<BughouseBoard, EnumMap<Force, Rc<Player>>>
+    pub fn make_player_map(players: impl Iterator<Item = (Rc<PlayerInGame>, BughouseBoard)>)
+        -> EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>>
     {
-        let mut player_map: EnumMap<BughouseBoard, EnumMap<Force, Option<Rc<Player>>>> =
+        let mut player_map: EnumMap<BughouseBoard, EnumMap<Force, Option<Rc<PlayerInGame>>>> =
             enum_map!{ _ => enum_map!{ _ => None } };
         for (p, board_idx) in players {
             let player_ref = &mut player_map[board_idx][get_bughouse_force(p.team, board_idx)];
@@ -282,7 +285,7 @@ impl BughouseGame {
     pub fn board_mut(&mut self, idx: BughouseBoard) -> &mut Board { &mut self.boards[idx] }
     pub fn board(&self, idx: BughouseBoard) -> &Board { &self.boards[idx] }
     pub fn boards(&self) -> &EnumMap<BughouseBoard, Board> { &self.boards }
-    pub fn players(&self) -> Vec<Rc<Player>> {
+    pub fn players(&self) -> Vec<Rc<PlayerInGame>> {
         self.boards.values().map(|(board)| board.players().values().cloned()).flatten().collect()
     }
     pub fn turn_log(&self) -> &Vec<TurnRecord> { &self.turn_log }

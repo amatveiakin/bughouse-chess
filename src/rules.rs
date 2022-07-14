@@ -20,6 +20,12 @@ pub enum DropAggression {
     MateAllowed,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum Teaming {
+    FixedTeams,
+    IndividualMode,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChessRules {
     pub starting_position: StartingPosition,
@@ -28,6 +34,9 @@ pub struct ChessRules {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BughouseRules {
+    // Improvement potential. Should `teaming` reside in `BughouseRules` or be moved to
+    //   a separate struct (e.g. `ContestRules`)?
+    pub teaming: Teaming,
     pub min_pawn_drop_row: SubjectiveRow,
     pub max_pawn_drop_row: SubjectiveRow,
     pub drop_aggression: DropAggression,
@@ -45,6 +54,7 @@ impl ChessRules {
 impl BughouseRules {
     pub fn chess_com() -> Self {
         Self{
+            teaming: Teaming::FixedTeams,
             min_pawn_drop_row: SubjectiveRow::from_one_based(2),
             max_pawn_drop_row: SubjectiveRow::from_one_based(7),
             drop_aggression: DropAggression::MateAllowed,

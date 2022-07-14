@@ -17,7 +17,7 @@ use crate::clock::{GameInstant, Clock};
 use crate::force::Force;
 use crate::grid::{Grid, GridForRepetitionDraw};
 use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, PieceForRepetitionDraw, CastleDirection};
-use crate::player::Player;
+use crate::player::PlayerInGame;
 use crate::rules::{DropAggression, ChessRules, BughouseRules};
 use crate::util::sort_two;
 
@@ -458,7 +458,7 @@ impl Reachability {
 pub struct Board {
     chess_rules: Rc<ChessRules>,
     bughouse_rules: Option<Rc<BughouseRules>>,
-    players: EnumMap<Force, Rc<Player>>,
+    players: EnumMap<Force, Rc<PlayerInGame>>,
     status: ChessGameStatus,
     grid: Grid,
     // Tracks castling availability based on which pieces have moved. Castling is
@@ -477,7 +477,7 @@ impl Board {
     pub fn new(
         chess_rules: Rc<ChessRules>,
         bughouse_rules: Option<Rc<BughouseRules>>,
-        players: EnumMap<Force, Rc<Player>>,
+        players: EnumMap<Force, Rc<PlayerInGame>>,
         starting_grid: Grid,
     ) -> Board {
         let time_control = chess_rules.time_control.clone();
@@ -503,8 +503,8 @@ impl Board {
 
     pub fn chess_rules(&self) -> &Rc<ChessRules> { &self.chess_rules }
     pub fn bughouse_rules(&self) -> &Option<Rc<BughouseRules>> { &self.bughouse_rules }
-    pub fn player(&self, force: Force) -> &Player { &*self.players[force] }
-    pub fn players(&self) -> &EnumMap<Force, Rc<Player>> { &self.players }
+    pub fn player(&self, force: Force) -> &PlayerInGame { &*self.players[force] }
+    pub fn players(&self) -> &EnumMap<Force, Rc<PlayerInGame>> { &self.players }
     pub fn status(&self) -> ChessGameStatus { self.status }
     pub fn grid(&self) -> &Grid { &self.grid }
     pub fn grid_mut(&mut self) -> &mut Grid { &mut self.grid }

@@ -18,6 +18,7 @@ use crate::network;
 
 
 pub struct ServerConfig {
+    pub teaming: String,
     pub starting_time: String,
 }
 
@@ -34,6 +35,11 @@ fn parse_starting_time(time_str: &str) -> Duration {
 
 // Improvement potential: Better error handling.
 pub fn run(config: ServerConfig) {
+    let teaming = match config.teaming.as_str() {
+        "fixed" => Teaming::FixedTeams,
+        "dynamic" => Teaming::IndividualMode,
+        other => panic!("Unexpected teaming: {}", other),
+    };
     let chess_rules = ChessRules {
         starting_position: StartingPosition::FischerRandom,
         time_control: TimeControl {
@@ -41,6 +47,7 @@ pub fn run(config: ServerConfig) {
         },
     };
     let bughouse_rules = BughouseRules {
+        teaming,
         min_pawn_drop_row: SubjectiveRow::from_one_based(2),
         max_pawn_drop_row: SubjectiveRow::from_one_based(6),
         drop_aggression: DropAggression::NoChessMate,
