@@ -109,6 +109,17 @@ function get_args(args_array, expected_args) {
     }
 }
 
+function get_join_args(args_array) {
+    const args_without_command_name = args_array.slice(1);
+    if (args_without_command_name.length === 1) {
+        return args_without_command_name.concat([""]);
+    } else if (args_without_command_name.length === 2) {
+        return args_without_command_name;
+    } else {
+        throw new InvalidCommand(`Usage: /join name [team]`);
+    }
+}
+
 function on_command(event) {
     const input = String(event.target.value)
     event.target.value = '';
@@ -122,12 +133,12 @@ function execute_command(input) {
             const args = input.slice(1).split(/\s+/);
             switch (args[0]) {
                 case 'local': {
-                    const [name, team] = get_args(args, ['name', 'team']);
+                    const [name, team] = get_join_args(args);
                     request_join('localhost', name, team);
                     break;
                 }
                 case 'join': {
-                    const [name, team] = get_args(args, ['name', 'team']);
+                    const [name, team] = get_join_args(args);
                     request_join('51.250.84.85', name, team);
                     break;
                 }

@@ -19,6 +19,7 @@ use std::sync::mpsc;
 
 use enum_map::{EnumMap, enum_map};
 use instant::Instant;
+use itertools::Itertools;
 use strum::{EnumIter, IntoEnumIterator};
 use wasm_bindgen::prelude::*;
 
@@ -72,8 +73,9 @@ pub struct WebClient {
 impl WebClient {
     pub fn new_client(my_name: &str, my_team: &str) -> JsResult<WebClient> {
         let my_team = match my_team {
-            "red" => Team::Red,
-            "blue" => Team::Blue,
+            "red" => Some(Team::Red),
+            "blue" => Some(Team::Blue),
+            "" => None,
             _ => { return Err(format!("Unexpected team: {}", my_team).into()); }
         };
         let (server_tx, server_rx) = mpsc::channel();
@@ -231,18 +233,30 @@ impl WebClient {
         match self.state.contest_state() {
             ContestState::Uninitialized => {},
             ContestState::Lobby{ players } => {
-                let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
-                for p in players {
-                    teams[p.team].push(p.name.clone());
+                let contest_params = self.state.contest_params().as_ref().unwrap();
+                match contest_params.teaming {
+                    Teaming::FixedTeams => {
+                        let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
+                        for p in players {
+                            teams[p.fixed_team.unwrap()].push(p.name.clone());
+                        }
+                        info_string.set_text_content(Some(&format!(
+                            "red: {}; blue: {}",
+                            teams[Team::Red].join(", "),
+                            teams[Team::Blue].join(", "),
+                        )));
+                    },
+                    Teaming::IndividualMode => {
+                        info_string.set_text_content(Some(&players.iter().map(|p| {
+                            assert!(p.fixed_team.is_none());
+                            p.name.clone()
+                        }).join(", ")))
+                    },
                 }
-                info_string.set_text_content(Some(&format!(
-                    "red: {}; blue: {}",
-                    teams[Team::Red].join(", "),
-                    teams[Team::Blue].join(", "),
-                )));
                 // TODO: Reset boards, clock, etc.
             },
             ContestState::Game{ scores, alt_game, .. } => {
+                let contest_params = self.state.contest_params().as_ref().unwrap();
                 let game = alt_game.local_game();
                 let BughousePlayerId{ board_idx: my_board_idx, force: my_force } = alt_game.my_id();
                 for (board_idx, board) in game.boards() {
@@ -299,7 +313,7 @@ impl WebClient {
                 if alt_game.status() != BughouseGameStatus::Active {
                     info_string.set_text_content(Some(&format!("Game over: {:?}", alt_game.status())));
                 }
-                update_scores(&scores, self.state.my_team()).unwrap();
+                update_scores(&scores, contest_params.teaming, self.state.my_team()).unwrap();
             },
         }
         self.update_clock();
@@ -555,12 +569,29 @@ fn update_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_
     Ok(())
 }
 
-fn update_scores(scores: &EnumMap<Team, u32>, my_team: Team) -> JsResult<()> {
-    let scores_normalized = scores.map(|_, v| (v as f64) / 2.0);
+fn update_scores(scores: &Scores, teaming: Teaming, my_team: Option<Team>) -> JsResult<()> {
+    let normalize = |score: u32| (score as f64) / 2.0;
     let score_node = web_document().get_existing_element_by_id("score")?;
-    score_node.set_text_content(Some(&format!(
-        "{}\n⎯\n{}", scores_normalized[my_team.opponent()], scores_normalized[my_team]
-    )));
+    match teaming {
+        Teaming::FixedTeams => {
+            assert!(scores.per_player.is_empty());
+            let my_team = my_team.unwrap();
+            score_node.set_text_content(Some(&format!(
+                "{}\n⎯\n{}",
+                normalize(*scores.per_team.get(&my_team.opponent()).unwrap_or(&0)),
+                normalize(*scores.per_team.get(&my_team).unwrap_or(&0)),
+            )));
+        },
+        Teaming::IndividualMode => {
+            assert!(scores.per_team.is_empty());
+            // TODO: Proper score display
+            let mut score_vec: Vec<_> = scores.per_player.iter().map(|(player, score)| {
+                format!("{}:\n{}", player, normalize(*score))
+            }).collect();
+            score_vec.sort();
+            score_node.set_text_content(Some(&score_vec.join("\n")));
+        }
+    }
     Ok(())
 }
 

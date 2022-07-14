@@ -6,7 +6,7 @@ use console::Style;
 use itertools::Itertools;
 
 use bughouse_chess::{
-    Row, Col, Coord, NUM_COLS, Force, Player,
+    Row, Col, Coord, NUM_COLS, Force, PlayerInGame,
     Grid, PieceKind, Board, Reserve, GameInstant, Clock,
     ChessGame, BughouseBoard, BughouseGame, BughouseGameView,
     util::div_ceil_u128,
@@ -41,11 +41,11 @@ pub fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, u
     (clock_str, clock_str_len)
 }
 
-pub fn render_player(player: &Player) -> (String, usize) {
+pub fn render_player(player: &PlayerInGame) -> (String, usize) {
     (player.name.clone(), player.name.len())
 }
 
-pub fn render_header(clock: &Clock, player: &Player, force: Force, now: GameInstant, flip: bool) -> String {
+pub fn render_header(clock: &Clock, player: &PlayerInGame, force: Force, now: GameInstant, flip: bool) -> String {
     let (clock_str, clock_str_len) = render_clock(clock, force, now);
     let (player_str, player_str_len) = render_player(player);
     let space = String::from(' ').repeat(BOARD_WIDTH - clock_str_len - player_str_len);

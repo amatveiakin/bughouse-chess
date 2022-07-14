@@ -4,8 +4,9 @@ use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseGameStatus, BughouseBoard};
 use crate::grid::Grid;
 use crate::pgn::BughouseExportFormat;
-use crate::player::{Player, Team};
-use crate::rules::{ChessRules, BughouseRules};
+use crate::player::{PlayerInGame, Player, Team};
+use crate::rules::{Teaming, ChessRules, BughouseRules};
+use crate::scores::Scores;
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -13,18 +14,22 @@ pub enum BughouseServerEvent {
     Error {
         message: String,
     },
+    ContestStarted {
+        // TODO: Consider moving chess_rules and bughouse_rules here
+        teaming: Teaming,
+    },
     LobbyUpdated {
-        players: Vec<Player>
+        players: Vec<Player>,
     },
     GameStarted {  // TODO: Rename to take reconnection into account
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
         starting_grid: Grid,
-        players: Vec<(Player, BughouseBoard)>,
+        players: Vec<(PlayerInGame, BughouseBoard)>,
         time: GameInstant,                // for re-connection
         turn_log: Vec<TurnRecord>,        // for re-connection
         game_status: BughouseGameStatus,  // for re-connection
-        scores: Vec<(Team, u32)>,
+        scores: Scores,
         // TODO: Send your pending pre-turn, if any
     },
     // Improvement potential: unite `TurnsMade` and `GameOver` into a single event "something happened".
@@ -32,13 +37,13 @@ pub enum BughouseServerEvent {
     TurnsMade {
         turns: Vec<TurnRecord>,
         game_status: BughouseGameStatus,
-        scores: Vec<(Team, u32)>,
+        scores: Scores,
     },
     // Used when game is ended for a reason unrelated to the last turn (flag, resign).
     GameOver {
         time: GameInstant,
         game_status: BughouseGameStatus,
-        scores: Vec<(Team, u32)>,
+        scores: Scores,
     },
     GameExportReady {
         content: String,
@@ -50,7 +55,7 @@ pub enum BughouseServerEvent {
 pub enum BughouseClientEvent {
     Join {
         player_name: String,
-        team: Team,
+        team: Option<Team>,
     },
     MakeTurn {
         // TODO: Add `game_id` field to avoid replaying lingering moves from older games.

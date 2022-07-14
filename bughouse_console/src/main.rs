@@ -42,19 +42,22 @@ fn main() -> io::Result<()> {
                 .about("Run as server")
                 .arg(arg!(--starting_time [TIME] "Starting time for each player")
                     .default_value("5:00"))
+                .arg(arg!(--teaming [TEAMING] "How players are split into teams")
+                    .possible_values(["fixed", "dynamic"]).default_value("fixed"))
         )
         .subcommand(
             Command::new("client")
                 .about("Run as client")
                 .arg(arg!(<server_address> "Server address"))
                 .arg(arg!(<player_name> "Player name"))
-                .arg(arg!(<team> "Team").possible_values(["red", "blue"]))
+                .arg(arg!([team] "Team").possible_values(["red", "blue"]))
         )
         .get_matches();
 
     match matches.subcommand() {
         Some(("server", sub_matches)) => {
             server_main::run(server_main::ServerConfig {
+                teaming: sub_matches.value_of("teaming").unwrap().to_string(),
                 starting_time: sub_matches.value_of("starting_time").unwrap().to_string(),
             });
             Ok(())
@@ -63,7 +66,7 @@ fn main() -> io::Result<()> {
             client_main::run(client_main::ClientConfig {
                 server_address: sub_matches.value_of("server_address").unwrap().to_string(),
                 player_name: sub_matches.value_of("player_name").unwrap().to_string(),
-                team: sub_matches.value_of("team").unwrap().to_string(),
+                team: sub_matches.value_of("team").map(|s| s.to_string()),
             })
         },
         _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),

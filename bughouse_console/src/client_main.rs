@@ -27,7 +27,7 @@ use crate::tui;
 pub struct ClientConfig {
     pub server_address: String,
     pub player_name: String,
-    pub team: String,
+    pub team: Option<String>,
 }
 
 enum IncomingEvent {
@@ -62,20 +62,30 @@ fn render(
         },
         ContestState::Lobby{ players } => {
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-            let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
-            for p in players {
-                teams[p.team].push(p.name.clone());
-            }
-            for (team, team_players) in teams {
-                writeln_raw(stdout, &format!("Team {:?}:", team))?;
-                let color = match team {
-                    Team::Red => style::Color::Red,
-                    Team::Blue => style::Color::Blue,
-                };
-                for p in team_players {
-                    writeln_raw(stdout, format!("  {} {}", "•".with(color), p))?;
-                }
-                writeln_raw(stdout, "")?;
+            match client_state.contest_params().as_ref().unwrap().teaming {
+                Teaming::FixedTeams => {
+                    let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
+                    for p in players {
+                        teams[p.fixed_team.unwrap()].push(p.name.clone());
+                    }
+                    for (team, team_players) in teams {
+                        writeln_raw(stdout, &format!("Team {:?}:", team))?;
+                        let color = match team {
+                            Team::Red => style::Color::Red,
+                            Team::Blue => style::Color::Blue,
+                        };
+                        for p in team_players {
+                            writeln_raw(stdout, format!("  {} {}", "•".with(color), p))?;
+                        }
+                        writeln_raw(stdout, "")?;
+                    }
+                },
+                Teaming::IndividualMode => {
+                    for p in players {
+                        assert!(p.fixed_team.is_none());
+                        writeln_raw(stdout, format!("  {} {}", "•", p.name))?;
+                    }
+                },
             }
         },
         ContestState::Game{ alt_game, time_pair, .. } => {
@@ -118,11 +128,11 @@ fn render(
 
 pub fn run(config: ClientConfig) -> io::Result<()> {
     let my_name = config.player_name.trim().to_owned();
-    let my_team = match config.team.as_str() {
+    let my_team = config.team.as_ref().map(|t| match t.as_str() {
         "red" => Team::Red,
         "blue" => Team::Blue,
-        _ => panic!("Unexpected team: {}", config.team),
-    };
+        other => panic!("Unexpected team: {}", other),
+    });
     let server_addr = (config.server_address.as_str(), network::PORT).to_socket_addrs().unwrap().collect_vec();
     println!("Connecting to {:?}...", server_addr);
     let stream = TcpStream::connect(&server_addr[..])?;

@@ -9,7 +9,7 @@ use crate::fen;
 use crate::force::Force;
 use crate::game::{TurnRecord, BughousePlayerId, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::grid::Grid;
-use crate::player::{Team, Player};
+use crate::player::{Team, PlayerInGame};
 
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -66,8 +66,8 @@ fn make_result_string(game: &BughouseGame) -> &'static str {
 }
 
 // Dummy player object. Will not appear anywhere in the produced PGN.
-fn dummy_player(team: Team) -> Rc<Player> {
-    Rc::new(Player{ name: format!("{:?}", team), team })
+fn dummy_player(team: Team) -> Rc<PlayerInGame> {
+    Rc::new(PlayerInGame{ name: format!("{:?}", team), team })
 }
 
 // Improvement potential. More human-readable "Termination" tag values.
