@@ -55,14 +55,28 @@ fn render(
     execute!(stdout, cursor::MoveTo(0, 0))?;
     let mut highlight_input = false;
     let mut additional_message = None;
-    match client_state.contest_state() {
-        ContestState::Uninitialized => {
+    if let Some(contest) = client_state.contest() {
+        if let Some(GameState{ ref alt_game, time_pair, .. }) = contest.game_state {
+            // TODO: Show scores
+            let my_id = alt_game.my_id();
+            let game_now = GameInstant::from_pair_game_maybe_active(time_pair, now);
+            let game = alt_game.local_game();
+            let view = BughouseGameView::for_player(my_id);
+            writeln_raw(stdout, format!("{}\n", tui::render_bughouse_game(&game, view, game_now)))?;
+            // Note. Don't clear the board to avoid blinking.
+            // TODO: Show last turn by opponent.
+            execute!(stdout, terminal::Clear(terminal::ClearType::FromCursorDown))?;
+            if game.status() == BughouseGameStatus::Active {
+                highlight_input = game.player_is_active(my_id);
+            } else {
+                additional_message = Some(
+                    format!("Game over: {:?}", game.status()).with(style::Color::Magenta)
+                );
+            }
+        } else {
+            let players = &contest.players;
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-            writeln_raw(stdout, "Loading...")?;
-        },
-        ContestState::Lobby{ players } => {
-            execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-            match client_state.contest_params().as_ref().unwrap().teaming {
+            match contest.teaming {
                 Teaming::FixedTeams => {
                     let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
                     for p in players {
@@ -87,25 +101,10 @@ fn render(
                     }
                 },
             }
-        },
-        ContestState::Game{ alt_game, time_pair, .. } => {
-            // TODO: Show scores
-            let my_id = alt_game.my_id();
-            let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
-            let game = alt_game.local_game();
-            let view = BughouseGameView::for_player(my_id);
-            writeln_raw(stdout, format!("{}\n", tui::render_bughouse_game(&game, view, game_now)))?;
-            // Note. Don't clear the board to avoid blinking.
-            // TODO: Show last turn by opponent.
-            execute!(stdout, terminal::Clear(terminal::ClearType::FromCursorDown))?;
-            if game.status() == BughouseGameStatus::Active {
-                highlight_input = game.player_is_active(my_id);
-            } else {
-                additional_message = Some(
-                    format!("Game over: {:?}", game.status()).with(style::Color::Magenta)
-                );
-            }
-        },
+        }
+    } else {
+        execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
+        writeln_raw(stdout, "Loading...")?;
     }
 
     // Improvement potential. Fix: the bottom is blinking and input is lagging.

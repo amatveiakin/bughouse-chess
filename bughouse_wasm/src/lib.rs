@@ -92,8 +92,10 @@ impl WebClient {
     pub fn resign(&mut self) {
         self.state.resign();
     }
-    pub fn next_game(&mut self) {
-        self.state.next_game();
+    pub fn toggle_ready(&mut self) {
+        if let Some(is_ready) = self.state.is_ready() {
+            self.state.set_ready(!is_ready);
+        }
     }
     pub fn leave(&mut self) {
         self.state.leave();
@@ -116,7 +118,7 @@ impl WebClient {
     }
 
     pub fn start_drag_piece(&mut self, source: &str) -> JsResult<()> {
-        if let ContestState::Game{ ref mut alt_game, .. } = self.state.contest_state_mut() {
+        if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
             let source = if let Some(piece) = source.strip_prefix("reserve-") {
                 PieceDragStart::Reserve(PieceKind::from_algebraic(piece))
             } else {
@@ -141,7 +143,7 @@ impl WebClient {
     {
         set_square_highlight("drag-start-highlight", None)?;
         set_square_highlight("drag-over-highlight", None)?;
-        if let ContestState::Game{ ref mut alt_game, .. } = self.state.contest_state_mut() {
+        if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
             if let Some(dest_display) = position_to_square(dest_x, dest_y) {
                 use PieceKind::*;
                 let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
@@ -169,7 +171,7 @@ impl WebClient {
         Ok(false)
     }
     pub fn drag_state(&self) -> String {
-        (if let ContestState::Game{ ref alt_game, .. } = self.state.contest_state() {
+        (if let Some(GameState{ ref alt_game, .. }) = self.state.game_state() {
             if let Some(drag) = alt_game.piece_drag_state() {
                 match drag.source {
                     PieceDragSource::Board(_) | PieceDragSource::Reserve => "yes",
@@ -197,7 +199,7 @@ impl WebClient {
                 Ok(JsValue::NULL)
             },
             NotableEvent::GameStarted => {
-                if let ContestState::Game{ ref alt_game, .. } = self.state.contest_state() {
+                if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
                     let info_string = web_document().get_existing_element_by_id("info-string").unwrap();
                     info_string.set_text_content(None);
                     let my_id = alt_game.my_id();
@@ -230,33 +232,9 @@ impl WebClient {
     pub fn update_state(&self) {
         let document = web_document();
         let info_string = document.get_existing_element_by_id("info-string").unwrap();
-        match self.state.contest_state() {
-            ContestState::Uninitialized => {},
-            ContestState::Lobby{ players } => {
-                let contest_params = self.state.contest_params().as_ref().unwrap();
-                match contest_params.teaming {
-                    Teaming::FixedTeams => {
-                        let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
-                        for p in players {
-                            teams[p.fixed_team.unwrap()].push(p.name.clone());
-                        }
-                        info_string.set_text_content(Some(&format!(
-                            "red: {}; blue: {}",
-                            teams[Team::Red].join(", "),
-                            teams[Team::Blue].join(", "),
-                        )));
-                    },
-                    Teaming::IndividualMode => {
-                        info_string.set_text_content(Some(&players.iter().map(|p| {
-                            assert!(p.fixed_team.is_none());
-                            p.name.clone()
-                        }).join(", ")))
-                    },
-                }
-                // TODO: Reset boards, clock, etc.
-            },
-            ContestState::Game{ scores, alt_game, .. } => {
-                let contest_params = self.state.contest_params().as_ref().unwrap();
+        if let Some(contest) = self.state.contest() {
+            if let Some(GameState{ ref alt_game, .. }) = contest.game_state {
+                // TODO: Better readiness status display.
                 let game = alt_game.local_game();
                 let BughousePlayerId{ board_idx: my_board_idx, force: my_force } = alt_game.my_id();
                 for (board_idx, board) in game.boards() {
@@ -304,7 +282,13 @@ impl WebClient {
                         let name_node = document.get_existing_element_by_id(
                             &player_name_node_id(web_board_idx, player_idx)
                         ).unwrap();
-                        name_node.set_text_content(Some(&board.player(force).name));
+                        let player_name = &board.player(force).name;
+                        let player_string = if game.status() == BughouseGameStatus::Active {
+                            player_name.clone()
+                        } else {
+                            player_with_readiness_status(&contest.players.iter().find(|p| p.name == *player_name).unwrap())
+                        };
+                        name_node.set_text_content(Some(&player_string));
                         update_reserve(board.reserve(force), force, web_board_idx, player_idx).unwrap();
                     }
                 }
@@ -313,15 +297,37 @@ impl WebClient {
                 if alt_game.status() != BughouseGameStatus::Active {
                     info_string.set_text_content(Some(&format!("Game over: {:?}", alt_game.status())));
                 }
-                update_scores(&scores, contest_params.teaming, self.state.my_team()).unwrap();
-            },
+            } else {
+                // TODO: Show teams for the news game in individual mode.
+                match contest.teaming {
+                    Teaming::FixedTeams => {
+                        let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
+                        for p in &contest.players {
+                            teams[p.fixed_team.unwrap()].push(player_with_readiness_status(p));
+                        }
+                        info_string.set_text_content(Some(&format!(
+                            "red:\n{}\nblue:\n{}",
+                            teams[Team::Red].join("\n"),
+                            teams[Team::Blue].join("\n"),
+                        )));
+                    },
+                    Teaming::IndividualMode => {
+                        info_string.set_text_content(Some(&contest.players.iter().map(|p| {
+                            assert!(p.fixed_team.is_none());
+                            player_with_readiness_status(p)
+                        }).join("\n")))
+                    },
+                }
+                // TODO: Reset boards, clock, etc.
+            }
+            update_scores(&contest.scores, contest.teaming, self.state.my_team()).unwrap();
         }
         self.update_clock();
     }
 
     pub fn update_clock(&self) {
         let document = web_document();
-        if let ContestState::Game{ alt_game, time_pair, .. } = self.state.contest_state() {
+        if let Some(GameState{ ref alt_game, time_pair, .. }) = self.state.game_state() {
             let now = Instant::now();
             let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
             let game = alt_game.local_game();
@@ -480,6 +486,14 @@ fn set_turn_highlights(turn: Option<Turn>, id_prefix: &str, force: Force, board_
         set_square_highlight(&format!("{}-turn-to-extra", id_prefix), None)?;
     }
     Ok(())
+}
+
+fn player_with_readiness_status(p: &Player) -> String {
+    format!(
+        "{} {}",
+        if p.is_ready { "☑" } else { "☐" },
+        p.name
+    )
 }
 
 fn update_turn_highlights(alt_game: &AlteredGame, board_orientation: BoardOrientation) -> JsResult<()> {

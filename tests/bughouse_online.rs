@@ -4,6 +4,8 @@ use std::ops;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
+use itertools::Itertools;
+
 use bughouse_chess::*;
 use bughouse_chess::client::TurnCommandError::IllegalTurn;
 
@@ -87,12 +89,7 @@ impl Client {
         Client{ id, incoming_rx, outgoing_rx, state }
     }
 
-    fn alt_game(&self) -> &AlteredGame {
-        match &self.state.contest_state() {
-            client::ContestState::Game{ alt_game, .. } => alt_game,
-            _ => panic!("No game in found"),
-        }
-    }
+    fn alt_game(&self) -> &AlteredGame { &self.state.game_state().unwrap().alt_game }
     fn my_id(&self) -> BughousePlayerId { self.alt_game().my_id() }
     fn local_game(&self) -> BughouseGame { self.alt_game().local_game() }
     fn my_force(&self) -> Force { self.my_id().force }
@@ -162,12 +159,18 @@ impl World {
             ("p3".to_owned(), BughouseBoard::A),  // black
             ("p4".to_owned(), BughouseBoard::B),  // white
         ]);
-        (
+        let mut clients = [
             self.add_client("p1", Team::Red),
             self.add_client("p2", Team::Red),
             self.add_client("p3", Team::Blue),
             self.add_client("p4", Team::Blue),
-        )
+        ];
+        self.process_all_events();
+        for cl in clients.iter_mut() {
+            self[*cl].state.set_ready(true);
+        }
+        self.process_all_events();
+        clients.into_iter().collect_tuple().unwrap()
     }
 
     fn process_events_for(&mut self, client_id: TestClientId) -> Result<(), client::EventError> {
@@ -247,14 +250,18 @@ fn play_online_misc() {
     let cl1 = world.add_client("p1", Team::Red);
     let cl2 = world.add_client("p2", Team::Red);
     let cl3 = world.add_client("p3", Team::Blue);
-
-    world.process_all_events();
-    assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Lobby{ .. }));
-
     let cl4 = world.add_client("p4", Team::Blue);
-
     world.process_all_events();
-    assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
+
+    world[cl1].state.set_ready(true);
+    world[cl2].state.set_ready(true);
+    world[cl3].state.set_ready(true);
+    world.process_all_events();
+    assert!(world[cl1].state.game_state().is_none());
+
+    world[cl4].state.set_ready(true);
+    world.process_all_events();
+    assert!(world[cl1].state.game_state().is_some());
 
     assert_eq!(world[cl1].make_turn("e5").unwrap_err(), IllegalTurn(TurnError::ImpossibleTrajectory));
     world[cl1].make_turn("e4").unwrap();
@@ -286,7 +293,6 @@ fn play_online_misc() {
 fn remote_turn_persisted() {
     let mut world = World::new();
     let (cl1, _cl2, _cl3, cl4) = world.default_clients();
-    world.process_all_events();
 
     world[cl1].make_turn("e4").unwrap();
     world[cl4].make_turn("d4").unwrap();
@@ -299,7 +305,6 @@ fn remote_turn_persisted() {
 fn preturn() {
     let mut world = World::new();
     let (cl1, _cl2, cl3, _cl4) = world.default_clients();
-    world.process_all_events();
 
     // Valid pre-move executed after opponent's turn.
     world[cl3].make_turn("e5").unwrap();
@@ -322,7 +327,6 @@ fn preturn() {
 fn preturn_cancellation() {
     let mut world = World::new();
     let (cl1, _cl2, cl3, _cl4) = world.default_clients();
-    world.process_all_events();
 
     // Cancel pre-turn
     world[cl3].make_turn("Nc6").unwrap();
@@ -354,7 +358,6 @@ fn preturn_cancellation() {
 fn preturn_auto_cancellation_on_resign() {
     let mut world = World::new();
     let (cl1, cl2, _cl3, _cl4) = world.default_clients();
-    world.process_all_events();
 
     world[cl2].make_turn("e5").unwrap();
     world.process_all_events();
@@ -370,7 +373,6 @@ fn preturn_auto_cancellation_on_resign() {
 fn preturn_auto_cancellation_on_checkmate() {
     let mut world = World::new();
     let (cl1, cl2, cl3, _cl4) = world.default_clients();
-    world.process_all_events();
 
     world[cl2].make_turn("e5").unwrap();
     world.process_all_events();
@@ -388,26 +390,24 @@ fn reconnect_lobby() {
     let cl2 = world.add_client("p2", Team::Red);
     let cl3 = world.add_client("p3", Team::Blue);
     world.process_all_events();
-    match world[cl1].state.contest_state() {
-        client::ContestState::Lobby{ players, .. } => assert_eq!(players.len(), 3),
-        _ => panic!("Expected client to be in Lobby state"),
-    }
+    world[cl1].state.set_ready(true);
+    world[cl2].state.set_ready(true);
+    world[cl3].state.set_ready(true);
+    world.process_all_events();
+    assert_eq!(world[cl1].state.contest().unwrap().players.len(), 3);
 
     world[cl2].state.leave();
     world[cl3].state.leave();
     world.process_all_events();
-    match world[cl1].state.contest_state() {
-        client::ContestState::Lobby{ players, .. } => assert_eq!(players.len(), 1),
-        _ => panic!("Expected client to be in Lobby state"),
-    }
+    assert_eq!(world[cl1].state.contest().unwrap().players.len(), 1);
 
-    let _cl4 = world.add_client("p4", Team::Blue);
+    let cl4 = world.add_client("p4", Team::Blue);
+    world.process_all_events();
+    world[cl4].state.set_ready(true);
     world.process_all_events();
     // Game should not start yet because some players have been removed.
-    match world[cl1].state.contest_state() {
-        client::ContestState::Lobby{ players, .. } => assert_eq!(players.len(), 2),
-        _ => panic!("Expected client to be in Lobby state"),
-    }
+    assert!(world[cl1].state.game_state().is_none());
+    assert_eq!(world[cl1].state.contest().unwrap().players.len(), 2);
 
     // Cannot reconnect as an active player.
     let cl1_new = world.add_client("p1", Team::Blue);
@@ -415,19 +415,23 @@ fn reconnect_lobby() {
     world.process_all_events();
 
     // Can reconnect with the same name - that's fine.
-    let _cl2_new = world.add_client("p2", Team::Red);
+    let cl2_new = world.add_client("p2", Team::Red);
     // Can use free spot to connect with a different name - that's fine too.
-    let _cl5 = world.add_client("p5", Team::Blue);
+    let cl5 = world.add_client("p5", Team::Blue);
     world.process_all_events();
-    assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
+    assert!(world[cl1].state.game_state().is_none());
+
+    world[cl2_new].state.set_ready(true);
+    world[cl5].state.set_ready(true);
+    world.process_all_events();
+    assert!(world[cl1].state.game_state().is_some());
 }
 
 #[test]
 fn reconnect_game_active() {
     let mut world = World::new();
     let (cl1, _cl2, cl3, _cl4) = world.default_clients();
-    world.process_all_events();
-    assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
+    assert!(world[cl1].state.game_state().is_some());
 
     world[cl1].make_turn("e4").unwrap();   world.process_all_events();
     world[cl3].make_turn("d5").unwrap();   world.process_all_events();
@@ -437,7 +441,7 @@ fn reconnect_game_active() {
     world[cl3].state.leave();
     world.process_all_events();
     // Show must go on - the game has started.
-    assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
+    assert!(world[cl1].state.game_state().is_some());
 
     // Cannot connect as a different player even though somebody has left.
     let cl5 = world.add_client("p5", Team::Blue);
@@ -474,7 +478,6 @@ fn reconnect_game_active() {
 fn reconnect_game_over_checkmate() {
     let mut world = World::new();
     let (cl1, _cl2, cl3, cl4) = world.default_clients();
-    world.process_all_events();
 
     world[cl4].make_turn("e4").unwrap();
     world.process_all_events();
@@ -495,7 +498,6 @@ fn reconnect_game_over_checkmate() {
 fn reconnect_game_over_resignation() {
     let mut world = World::new();
     let (cl1, _cl2, _cl3, cl4) = world.default_clients();
-    world.process_all_events();
 
     world[cl4].make_turn("e4").unwrap();
     world.process_all_events();
@@ -519,8 +521,7 @@ fn reconnect_game_over_resignation() {
 fn turn_after_game_ended_on_another_board() {
     let mut world = World::new();
     let (cl1, _cl2, _cl3, cl4) = world.default_clients();
-    world.process_all_events();
-    assert!(matches!(world[cl1].state.contest_state(), client::ContestState::Game{ .. }));
+    assert!(world[cl1].state.game_state().is_some());
 
     world[cl1].state.resign();
     world.process_events_for(cl1).unwrap();

@@ -230,6 +230,7 @@ svg {
 }
 #info-string {
   font-size: 80%;
+  white-space: pre-line;
   position: absolute;
   bottom: 0;
   left: 0;

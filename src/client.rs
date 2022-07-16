@@ -29,42 +29,42 @@ pub enum NotableEvent {
     GameExportReady(String),
 }
 
+// TODO: Does it make sense to have CannotApplyEvent instead of panic (that can be caused by many
+//   invariant violations in case of bad server behavior anyway).
 #[derive(Clone, Debug)]
 pub enum EventError {
     ServerReturnedError(String),
     CannotApplyEvent(String),
 }
 
-// Information that stays unchanged during an entire game series.
 #[derive(Debug)]
-pub struct ContestParams {
-    pub teaming: Teaming,
+pub struct GameState {
+    // Starting position.
+    pub starting_grid: Grid,
+    // Game state including unconfirmed local changes.
+    pub alt_game: AlteredGame,
+    // Game start time: `None` before first move, non-`None` afterwards.
+    pub time_pair: Option<WallGameTimePair>,
 }
 
 #[derive(Debug)]
-pub enum ContestState {
-    Uninitialized,
-    Lobby {
-        players: Vec<Player>,
-    },
-    Game {
-        // Scores from the past matches.
-        scores: Scores,
-        // Starting position.
-        starting_grid: Grid,
-        // Game state including unconfirmed local changes.
-        alt_game: AlteredGame,
-        // Game start time: `None` before first move, non-`None` afterwards.
-        time_pair: Option<WallGameTimePair>,
-    },
+pub struct Contest {
+    pub teaming: Teaming,
+    // All players including those not participating in the current game.
+    pub players: Vec<Player>,
+    // Scores from the past matches.
+    pub scores: Scores,
+    // Whether this client is ready to start a new game.
+    pub is_ready: bool,
+    // Active game or latest game
+    pub game_state: Option<GameState>,
 }
 
 pub struct ClientState {
     my_name: String,
     my_team: Option<Team>,
     events_tx: mpsc::Sender<BughouseClientEvent>,
-    contest_params: Option<ContestParams>,
-    contest_state: ContestState,
+    contest: Option<Contest>,
 }
 
 impl ClientState {
@@ -73,16 +73,16 @@ impl ClientState {
             my_name,
             my_team,
             events_tx,
-            contest_params: None,
-            contest_state: ContestState::Uninitialized,
+            contest: None,
         }
     }
 
     pub fn my_name(&self) -> &str { &self.my_name }
     pub fn my_team(&self) -> Option<Team> { self.my_team }
-    pub fn contest_params(&self) -> &Option<ContestParams> { &self.contest_params }
-    pub fn contest_state(&self) -> &ContestState { &self.contest_state }
-    pub fn contest_state_mut(&mut self) -> &mut ContestState { &mut self.contest_state }
+    pub fn is_ready(&self) -> Option<bool> { self.contest.as_ref().map(|c| c.is_ready) }
+    pub fn contest(&self) -> Option<&Contest> { self.contest.as_ref() }
+    pub fn game_state(&self) -> Option<&GameState> { self.contest.as_ref().and_then(|c| c.game_state.as_ref()) }
+    pub fn game_state_mut(&mut self) -> Option<&mut GameState> { self.contest.as_mut().and_then(|c| c.game_state.as_mut()) }
 
     pub fn join(&mut self) {
         self.events_tx.send(BughouseClientEvent::Join {
@@ -93,8 +93,11 @@ impl ClientState {
     pub fn resign(&mut self) {
         self.events_tx.send(BughouseClientEvent::Resign).unwrap();
     }
-    pub fn next_game(&mut self) {
-        self.events_tx.send(BughouseClientEvent::NextGame).unwrap();
+    pub fn set_ready(&mut self, is_ready: bool) {
+        if let Some(contest) = self.contest.as_mut() {
+            contest.is_ready = is_ready;
+            self.events_tx.send(BughouseClientEvent::SetReady{ is_ready }).unwrap();
+        }
     }
     pub fn leave(&mut self) {
         self.events_tx.send(BughouseClientEvent::Leave).unwrap();
@@ -107,30 +110,26 @@ impl ClientState {
     }
 
     pub fn make_turn(&mut self, turn_algebraic: String) -> Result<(), TurnCommandError> {
-        if let ContestState::Game{ ref mut alt_game, time_pair, .. }
-            = self.contest_state
-        {
-            let game_now = GameInstant::from_pair_game_maybe_active(time_pair, Instant::now());
-            if alt_game.status() != BughouseGameStatus::Active {
-                Err(TurnCommandError::IllegalTurn(TurnError::GameOver))
-            } else if alt_game.can_make_local_turn() {
-                alt_game.try_local_turn_algebraic(&turn_algebraic, game_now).map_err(|err| {
-                    TurnCommandError::IllegalTurn(err)
-                })?;
-                self.events_tx.send(BughouseClientEvent::MakeTurn {
-                    turn_algebraic: turn_algebraic
-                }).unwrap();
-                Ok(())
-            } else {
-                Err(TurnCommandError::IllegalTurn(TurnError::WrongTurnOrder))
-            }
+        let game_state = self.game_state_mut().ok_or(TurnCommandError::NoGameInProgress)?;
+        let GameState{ ref mut alt_game, time_pair, .. } = game_state;
+        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, Instant::now());
+        if alt_game.status() != BughouseGameStatus::Active {
+            Err(TurnCommandError::IllegalTurn(TurnError::GameOver))
+        } else if alt_game.can_make_local_turn() {
+            alt_game.try_local_turn_algebraic(&turn_algebraic, game_now).map_err(|err| {
+                TurnCommandError::IllegalTurn(err)
+            })?;
+            self.events_tx.send(BughouseClientEvent::MakeTurn {
+                turn_algebraic: turn_algebraic
+            }).unwrap();
+            Ok(())
         } else {
-            Err(TurnCommandError::NoGameInProgress)
+            Err(TurnCommandError::IllegalTurn(TurnError::WrongTurnOrder))
         }
     }
 
     pub fn cancel_preturn(&mut self) {
-        if let ContestState::Game{ ref mut alt_game, .. } = self.contest_state {
+        if let Some(GameState{ ref mut alt_game, .. }) = self.game_state_mut() {
             if alt_game.cancel_preturn() {
                 self.events_tx.send(BughouseClientEvent::CancelPreturn).unwrap();
             }
@@ -148,20 +147,25 @@ impl ClientState {
                 Err(EventError::ServerReturnedError(format!("Got error from server: {}", message)))
             },
             ContestStarted{ teaming } => {
-                self.contest_params = Some(ContestParams {
+                self.contest = Some(Contest {
                     teaming,
+                    players: Vec::new(),
+                    scores: Scores::new(),
+                    is_ready: false,
+                    game_state: None,
                 });
                 Ok(NotableEvent::None)
             },
             LobbyUpdated{ players } => {
-                assert!(self.contest_params.is_some());
-                self.contest_state = ContestState::Lobby {
-                    players,
-                };
+                let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot apply LobbyUpdated: no contest in progress".to_owned()))?;
+                // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
+                //   (e.g. is_ready from another player) arrived before is_ready update from this
+                //   client reached the server.
+                contest.is_ready = players.iter().find(|p| p.name == self.my_name).unwrap().is_ready;
+                contest.players = players;
                 Ok(NotableEvent::None)
             },
             GameStarted{ chess_rules, bughouse_rules, starting_grid, players, time, turn_log, game_status, scores } => {
-                assert!(self.contest_params.is_some());
                 let player_map = BughouseGame::make_player_map(
                     players.iter().map(|(p, board_idx)| (Rc::new(p.clone()), *board_idx))
                 );
@@ -176,12 +180,12 @@ impl ClientState {
                 );
                 let my_id = game.find_player(&self.my_name).unwrap();
                 let alt_game = AlteredGame::new(my_id, game);
-                self.contest_state = ContestState::Game {
-                    scores: scores.clone(),
+                let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot apply GameStarted: no contest in progress".to_owned()))?;
+                contest.game_state = Some(GameState {
                     starting_grid,
                     alt_game,
                     time_pair,
-                };
+                });
                 for turn in turn_log {
                     self.apply_remote_turn(turn)?;
                 }
@@ -190,7 +194,6 @@ impl ClientState {
                 Ok(NotableEvent::GameStarted)
             },
             TurnsMade{ turns, game_status, scores } => {
-                assert!(self.contest_params.is_some());
                 let mut opponent_turn_made = false;
                 for turn in turns {
                     let is_opponent_turn = self.apply_remote_turn(turn)?;
@@ -201,17 +204,12 @@ impl ClientState {
                 Ok(if opponent_turn_made { NotableEvent::OpponentTurnMade } else { NotableEvent::None })
             },
             GameOver{ time, game_status, scores: new_scores } => {
-                assert!(self.contest_params.is_some());
-                if let ContestState::Game{ ref mut alt_game, ref mut scores, .. }
-                    = self.contest_state
-                {
-                    assert!(alt_game.status() == BughouseGameStatus::Active);
-                    alt_game.set_status(game_status, time);
-                    *scores = new_scores;
-                    Ok(NotableEvent::None)
-                } else {
-                    Err(EventError::CannotApplyEvent("Cannot record game result: no game in progress".to_owned()))
-                }
+                let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot apply GameOver: no contest in progress".to_owned()))?;
+                let game_state = contest.game_state.as_mut().ok_or(EventError::CannotApplyEvent("Cannot apply GameOver: no game in progress".to_owned()))?;
+                assert!(game_state.alt_game.status() == BughouseGameStatus::Active);
+                game_state.alt_game.set_status(game_status, time);
+                contest.scores = new_scores;
+                Ok(NotableEvent::None)
             },
             GameExportReady{ content } => {
                 Ok(NotableEvent::GameExportReady(content))
@@ -222,62 +220,56 @@ impl ClientState {
     // Returns if the turn was mady by current player opponent.
     fn apply_remote_turn(&mut self, turn_record: TurnRecord) -> Result<bool, EventError> {
         let TurnRecord{ player_id, turn_algebraic, time } = turn_record;
-        if let ContestState::Game{ ref mut alt_game, ref mut time_pair, .. } = self.contest_state {
-            if alt_game.status() != BughouseGameStatus::Active {
-                return Err(EventError::CannotApplyEvent(format!("Cannot make turn {}: game over", turn_algebraic)));
-            }
-            if time_pair.is_none() {
-                // Improvement potential. Sync client/server times better; consider NTP.
-                let game_start = GameInstant::game_start().approximate();
-                *time_pair = Some(WallGameTimePair::new(Instant::now(), game_start));
-            }
-            alt_game.apply_remote_turn_algebraic(
-                player_id, &turn_algebraic, time
-            ).map_err(|err| {
-                EventError::CannotApplyEvent(format!("Impossible turn: {}, error: {:?}", turn_algebraic, err))
-            })?;
-            Ok(player_id == alt_game.my_id().opponent())
-        } else {
-            Err(EventError::CannotApplyEvent("Cannot make turn: no game in progress".to_owned()))
+        let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot make turn: no contest in progress".to_owned()))?;
+        let game_state = contest.game_state.as_mut().ok_or(EventError::CannotApplyEvent("Cannot make turn: no game in progress".to_owned()))?;
+        let GameState{ ref mut alt_game, ref mut time_pair, .. } = game_state;
+        if alt_game.status() != BughouseGameStatus::Active {
+            return Err(EventError::CannotApplyEvent(format!("Cannot make turn {}: game over", turn_algebraic)));
         }
+        if time_pair.is_none() {
+            // Improvement potential. Sync client/server times better; consider NTP.
+            let game_start = GameInstant::game_start().approximate();
+            *time_pair = Some(WallGameTimePair::new(Instant::now(), game_start));
+        }
+        alt_game.apply_remote_turn_algebraic(
+            player_id, &turn_algebraic, time
+        ).map_err(|err| {
+            EventError::CannotApplyEvent(format!("Impossible turn: {}, error: {:?}", turn_algebraic, err))
+        })?;
+        Ok(player_id == alt_game.my_id().opponent())
     }
 
     fn verify_game_status(&mut self, game_status: BughouseGameStatus) -> Result<(), EventError> {
-        if let ContestState::Game{ ref mut alt_game, .. } = self.contest_state {
-            if game_status != alt_game.status() {
-                return Err(EventError::CannotApplyEvent(format!(
-                    "Expected game status = {:?}, actual = {:?}", game_status, alt_game.status()
-                )));
-            }
-            Ok(())
-        } else {
-            Err(EventError::CannotApplyEvent("Cannot verify game status: no game in progress".to_owned()))
+        let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot verify game status: no contest in progress".to_owned()))?;
+        let game_state = contest.game_state.as_mut().ok_or(EventError::CannotApplyEvent("Cannot verify game status: no game in progress".to_owned()))?;
+        let GameState{ ref mut alt_game, .. } = game_state;
+        if game_status != alt_game.status() {
+            return Err(EventError::CannotApplyEvent(format!(
+                "Expected game status = {:?}, actual = {:?}", game_status, alt_game.status()
+            )));
         }
+        Ok(())
     }
 
     fn update_game_status(&mut self, game_status: BughouseGameStatus, game_now: GameInstant)
         -> Result<(), EventError>
     {
-        if let ContestState::Game{ ref mut alt_game, .. } = self.contest_state {
-            if alt_game.status() == BughouseGameStatus::Active {
-                if game_status != BughouseGameStatus::Active {
-                    alt_game.set_status(game_status, game_now);
-                }
-                Ok(())
-            } else {
-                self.verify_game_status(game_status)
+        let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot update game status: no contest in progress".to_owned()))?;
+        let game_state = contest.game_state.as_mut().ok_or(EventError::CannotApplyEvent("Cannot update game status: no game in progress".to_owned()))?;
+        let GameState{ ref mut alt_game, .. } = game_state;
+        if alt_game.status() == BughouseGameStatus::Active {
+            if game_status != BughouseGameStatus::Active {
+                alt_game.set_status(game_status, game_now);
             }
+            Ok(())
         } else {
-            Err(EventError::CannotApplyEvent("Cannot update game status: no game in progress".to_owned()))
+            self.verify_game_status(game_status)
         }
     }
 
     fn update_scores(&mut self, new_scores: Scores) -> Result<(), EventError> {
-        if let ContestState::Game{ ref mut scores, .. } = self.contest_state {
-            *scores = new_scores;
-            Ok(())
-        } else {
-            Err(EventError::CannotApplyEvent("Cannot update scores: no game in progress".to_owned()))
-        }
+        let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot update scores: no contest in progress".to_owned()))?;
+        contest.scores = new_scores;
+        Ok(())
     }
 }
