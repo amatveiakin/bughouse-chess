@@ -24,6 +24,8 @@ impl Team {
 pub struct Player {
     pub name: String,
     pub fixed_team: Option<Team>,
+    pub is_online: bool,
+    pub is_ready: bool,
 }
 
 // Player in an active game. Always has a team.

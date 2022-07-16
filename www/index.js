@@ -52,8 +52,8 @@ info_string.innerText = 'Type "/join name team" to start'
 const command_input = document.getElementById('command');
 command_input.addEventListener('change', on_command);
 
-const next_button = document.getElementById('next-button');
-next_button.addEventListener('click', function() { execute_command('/next') });
+const ready_button = document.getElementById('ready-button');
+ready_button.addEventListener('click', function() { execute_command('/ready') });
 
 function wasm_client_or_throw() {
     if (wasm_client) {
@@ -170,9 +170,9 @@ function execute_command(input) {
                     get_args(args, []);
                     wasm_client_or_throw().resign();
                     break;
-                case 'next':
+                case 'ready':
                     get_args(args, []);
-                    wasm_client_or_throw().next_game();
+                    wasm_client_or_throw().toggle_ready();
                     break;
                 case 'leave':
                     get_args(args, []);

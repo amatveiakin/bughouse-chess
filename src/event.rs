@@ -63,7 +63,9 @@ pub enum BughouseClientEvent {
     },
     CancelPreturn,
     Resign,
-    NextGame,
+    SetReady {
+        is_ready: bool,
+    },
     Leave,
     Reset,
     RequestExport {
