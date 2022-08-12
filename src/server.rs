@@ -539,6 +539,7 @@ impl ServerStateCore {
             turn_log: vec![],
         });
         clients.broadcast(&self.make_game_start_event(now));
+        self.send_lobby_updated(clients);  // update readiness flags
     }
 
     fn make_game_start_event(&self, now: Instant) -> BughouseServerEvent {
