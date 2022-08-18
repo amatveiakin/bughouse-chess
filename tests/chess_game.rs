@@ -1,10 +1,12 @@
 use std::rc::Rc;
 
 use enum_map::{EnumMap, enum_map};
+use lazy_static::lazy_static;
+use regex::Regex;
 
 use bughouse_chess::{
     ChessRules, ChessGame, ChessGameStatus, VictoryReason,
-    TurnError, PlayerInGame, Team, Force
+    TurnMode, TurnError, PlayerInGame, Team, Force, GameInstant
 };
 
 
@@ -19,26 +21,43 @@ fn game_classic() -> ChessGame {
     ChessGame::new(ChessRules::classic_blitz(), players())
 }
 
+// Improvement potential: Allow whitespace after turn number.
+fn replay_log(game: &mut ChessGame, log: &str) -> Result<(), TurnError> {
+    lazy_static! {
+        static ref TURN_NUMBER_RE: Regex = Regex::new(r"^(?:[0-9]+\.)?(.*)$").unwrap();
+    }
+    let now = GameInstant::game_start();
+    for turn_notation in log.split_whitespace() {
+        let turn_notation = TURN_NUMBER_RE.captures(turn_notation).unwrap().get(1).unwrap().as_str();
+        game.try_turn_algebraic(turn_notation, TurnMode::Normal, now)?
+    }
+    Ok(())
+}
+
+fn replay_log_from_start(log: &str) -> Result<(), TurnError> {
+    replay_log(&mut game_classic(), log)
+}
+
 
 #[test]
 fn capture_notation() {
     // Capture marks + capture = ok.
-    game_classic().TEST_try_replay_log("1.Nc3 d5 2.Nxd5").unwrap();
-    game_classic().TEST_try_replay_log("1.e4 d5 2.xd5").unwrap();
-    game_classic().TEST_try_replay_log("1.e4 Nc6 2.e5 d5 3.xd6").unwrap();
+    replay_log_from_start("1.Nc3 d5 2.Nxd5").unwrap();
+    replay_log_from_start("1.e4 d5 2.xd5").unwrap();
+    replay_log_from_start("1.e4 Nc6 2.e5 d5 3.xd6").unwrap();
 
     // No capture marks + capture = ok (capture mark is optional).
-    game_classic().TEST_try_replay_log("1.Nc3 d5 2.Nd5").unwrap();
-    game_classic().TEST_try_replay_log("1.e4 d5 2.d5").unwrap();
-    game_classic().TEST_try_replay_log("1.e4 Nc6 2.e5 d5 3.d6").unwrap();
+    replay_log_from_start("1.Nc3 d5 2.Nd5").unwrap();
+    replay_log_from_start("1.e4 d5 2.d5").unwrap();
+    replay_log_from_start("1.e4 Nc6 2.e5 d5 3.d6").unwrap();
 
     // Capture marks + no capture = fail (capture mark requires capture).
     assert_eq!(
-        game_classic().TEST_try_replay_log("1.xe3").unwrap_err(),
+        replay_log_from_start("1.xe3").unwrap_err(),
         TurnError::CaptureNotationRequiresCapture
     );
     assert_eq!(
-        game_classic().TEST_try_replay_log("1.Nxf3").unwrap_err(),
+        replay_log_from_start("1.Nxf3").unwrap_err(),
         TurnError::CaptureNotationRequiresCapture
     );
 }
@@ -46,7 +65,7 @@ fn capture_notation() {
 #[test]
 fn wikipedia_example() {
     let mut game = ChessGame::new(ChessRules::classic_blitz(), players());
-    game.TEST_try_replay_log("
+    replay_log(&mut game, "
         1.Nf3 Nf6 2.c4 g6 3.Nc3 Bg7 4.d4 O-O 5.Bf4 d5
         6.Qb3 dxc4 7.Qxc4 c6 8.e4 Nbd7 9.Rd1 Nb6 10.Qc5 Bg4
         11.Bg5 Na4 12.Qa3 Nxc3 13.bxc3 Nxe4 14.Bxe7 Qb6 15.Bc4 Nxc3
