@@ -440,12 +440,28 @@ pub type Reserve = EnumMap<PieceKind, u8>;
 
 type CastlingRights = EnumMap<CastleDirection, Option<Col>>;
 
+// In classic chess, positions are compared for threefold repetition using FIDE rules:
+//
+//   Two positions are by definition "the same" if the same types of pieces occupy the same
+//   squares, the same player has the move, the remaining castling rights are the same and
+//   the possibility to capture en passant is the same.
+//
+// For bughouse the total number of drops is included in addition. This effectively resets
+// the counter every time a piece is dropped. Note that it could potentially lead to an
+// infinite exchange loop involving both boards. But, given how unlikely this outcome is,
+// it seems better than not having this rule.
+//
+// Improvement potential. Add rules to detect infinite loops involving both boards.
+// Improvement potential. If this becomes a performance bottleneck, we could remove
+// `total_drops` and instead clear the position set after every drop (as well as every
+// capture, castling and pawn move).
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 struct PositionForRepetitionDraw {
     grid: GridForRepetitionDraw,
     active_force: Force,
     castling_rights: EnumMap<Force, CastlingRights>,
     en_passant_target: Option<Coord>,
+    total_drops: u32,
 }
 
 impl Reachability {
@@ -468,6 +484,7 @@ pub struct Board {
     castling_rights: EnumMap<Force, CastlingRights>,
     en_passant_target: Option<Coord>,
     reserves: EnumMap<Force, Reserve>,
+    total_drops: u32,  // total number of drops from both sides
     position_count: HashMap<PositionForRepetitionDraw, u32>,
     clock: Clock,
     active_force: Force,
@@ -486,19 +503,22 @@ impl Board {
                 (force, initial_castling_rights(&starting_grid, force))
             })
         );
-        Board {
+        let mut board = Board {
             chess_rules,
             bughouse_rules,
             players,
             status: ChessGameStatus::Active,
             grid: starting_grid,
             castling_rights,
-            reserves: enum_map!{ _ => enum_map!{ _ => 0 } },
             en_passant_target: None,
+            reserves: enum_map!{ _ => enum_map!{ _ => 0 } },
+            total_drops: 0,
             position_count: HashMap::new(),
             clock: Clock::new(time_control),
             active_force: Force::White,
-        }
+        };
+        board.log_position_for_repetition_draw();
+        board
     }
 
     pub fn chess_rules(&self) -> &Rc<ChessRules> { &self.chess_rules }
@@ -552,6 +572,23 @@ impl Board {
         Ok(capture)
     }
 
+    fn log_position_for_repetition_draw(&mut self) {
+        let position_for_repetition_draw = PositionForRepetitionDraw {
+            grid: self.grid.map(|piece| {
+                PieceForRepetitionDraw{ kind: piece.kind, force: piece.force }
+            }),
+            active_force: self.active_force,
+            castling_rights: self.castling_rights,
+            en_passant_target: self.en_passant_target,
+            total_drops: self.total_drops,
+        };
+        let num_repetition = self.position_count.entry(position_for_repetition_draw).or_insert(0);
+        *num_repetition += 1;
+        if *num_repetition >= 3 {
+            self.status = ChessGameStatus::Draw(DrawReason::ThreefoldRepetition);
+        }
+    }
+
     fn apply_turn(
         &mut self, turn: Turn, mode: TurnMode, new_grid: Grid, capture: Option<Capture>, now: GameInstant
     ) {
@@ -573,7 +610,9 @@ impl Board {
                     }
                 }
             },
-            Turn::Drop(_) => { },
+            Turn::Drop(_) => {
+                self.total_drops += 1;
+            },
             Turn::Castle(_) => {
                 self.castling_rights[force].clear();
             }
@@ -600,20 +639,7 @@ impl Board {
                 }
                 self.active_force = force.opponent();
                 self.clock.new_turn(self.active_force, now);
-
-                let position_for_repetition_draw = PositionForRepetitionDraw {
-                    grid: self.grid.map(|piece| {
-                        PieceForRepetitionDraw{ kind: piece.kind, force: piece.force }
-                    }),
-                    active_force: self.active_force,
-                    castling_rights: self.castling_rights,
-                    en_passant_target: self.en_passant_target,
-                };
-                let num_repetition = self.position_count.entry(position_for_repetition_draw).or_insert(0);
-                *num_repetition += 1;
-                if *num_repetition >= 3 {
-                    self.status = ChessGameStatus::Draw(DrawReason::ThreefoldRepetition);
-                }
+                self.log_position_for_repetition_draw();
             },
             TurnMode::Preturn => {
                 self.en_passant_target = None;

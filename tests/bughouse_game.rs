@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use bughouse_chess::{
-    ChessRules, BughouseRules, BughouseBoard, BughouseGame,
+    ChessRules, BughouseRules, BughouseBoard, BughouseGame, BughouseGameStatus, DrawReason,
     GameInstant, TurnMode, TurnError, PlayerInGame, Team, Force
 };
 
@@ -48,6 +48,15 @@ fn replay_log(game: &mut BughouseGame, log: &str) -> Result<(), TurnError> {
     Ok(())
 }
 
+fn replay_log_symmetric(game: &mut BughouseGame, log: &str) -> Result<(), TurnError> {
+    let now = GameInstant::game_start();
+    for turn_notation in log.split_whitespace() {
+        game.try_turn_algebraic(BughouseBoard::A, turn_notation, TurnMode::Normal, now)?;
+        game.try_turn_algebraic(BughouseBoard::B, turn_notation, TurnMode::Normal, now)?;
+    }
+    Ok(())
+}
+
 #[test]
 fn no_castling_with_dropped_rook() {
     let mut game = BughouseGame::new(ChessRules::classic_blitz(), BughouseRules::chess_com(), players());
@@ -69,4 +78,43 @@ fn no_castling_with_dropped_rook() {
         game.try_turn_algebraic(BughouseBoard::A, "0-0", TurnMode::Normal, GameInstant::game_start()).err().unwrap(),
         TurnError::CastlingPieceHasMoved
     );
+}
+
+// Test that after dropping a piece the threefold repetition counter starts anew. Note that
+// in this particular case this is harmful, because it leads to an infinite loops involving
+// both boards. However this scenario is extremely rare. Much more common are cases when a
+// position was repeated only on one board, but changes in reserves actually make the
+// situation different.
+#[test]
+fn threefold_repetition_draw_prevented_by_drops() {
+    let mut game = BughouseGame::new(ChessRules::classic_blitz(), BughouseRules::chess_com(), players());
+    replay_log_symmetric(&mut game, "
+        e4 b6
+        Qf3 Ba6
+        Bxa6 e5
+        b3 Ba3
+        Bc4 Ne7
+        Bxa3 B@g6
+    ").unwrap();
+    for _ in 0..10 {
+        replay_log_symmetric(&mut game, "
+            Bxf7 Bxf7
+            B@c4 B@g6
+        ").unwrap();
+    }
+    assert!(game.status() == BughouseGameStatus::Active);
+}
+
+#[test]
+fn threefold_repetition_draw_ignores_reserve() {
+    let mut game = BughouseGame::new(ChessRules::classic_blitz(), BughouseRules::chess_com(), players());
+    replay_log(&mut game, "
+        1A.Nc3  1a.Nf6
+        2A.Nb1  2a.Ng8
+        3A.Nc3  3a.Nf6
+        1B.e4  1b.d5
+        2B.xd5
+        4A.Nb1  4a.Ng8
+    ").unwrap();
+    assert!(game.status() == BughouseGameStatus::Draw(DrawReason::ThreefoldRepetition));
 }
