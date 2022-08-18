@@ -8,6 +8,7 @@ use rand::prelude::*;
 use serde::{Serialize, Deserialize};
 use strum::EnumIter;
 
+use crate::NUM_ROWS;
 use crate::board::{Board, Turn, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
 use crate::clock::GameInstant;
 use crate::coord::{Row, Col, Coord};
@@ -25,18 +26,37 @@ pub struct TurnRecord {
     pub time: GameInstant,
 }
 
+fn new_white(kind: PieceKind) -> PieceOnBoard {
+    PieceOnBoard::new(kind, PieceOrigin::Innate, Force::White)
+}
+
+fn setup_white_pawns_on_2nd_row(grid: &mut Grid) {
+    for col in Col::all() {
+        grid[Coord::new(Row::_2, col)] = Some(new_white(PieceKind::Pawn));
+    }
+}
+
+fn setup_black_pieces_mirrorlike(grid: &mut Grid) {
+    for coord in Coord::all() {
+        if let Some(piece) = grid[coord] {
+            if piece.force == Force::White {
+                let mirror_row = Row::from_zero_based(NUM_ROWS - coord.row.to_zero_based() - 1);
+                let mirror_coord = Coord::new(mirror_row, coord.col);
+                assert!(grid[mirror_coord].is_none(), "{:?}", grid);
+                grid[mirror_coord] = Some(PieceOnBoard {
+                    force: Force::Black,
+                    ..piece
+                });
+            }
+        }
+    }
+}
+
 fn generate_starting_grid(starting_position: StartingPosition) -> Grid {
     use PieceKind::*;
-    let new_white = |kind| {
-        PieceOnBoard::new(kind, PieceOrigin::Innate, Force::White)
-    };
-    let mut grid = Grid::new();
-
-    for col in Col::all() {
-        grid[Coord::new(Row::_2, col)] = Some(new_white(Pawn));
-    }
     match starting_position {
         StartingPosition::Classic => {
+            let mut grid = Grid::new();
             grid[Coord::A1] = Some(new_white(Rook));
             grid[Coord::B1] = Some(new_white(Knight));
             grid[Coord::C1] = Some(new_white(Bishop));
@@ -45,9 +65,13 @@ fn generate_starting_grid(starting_position: StartingPosition) -> Grid {
             grid[Coord::F1] = Some(new_white(Bishop));
             grid[Coord::G1] = Some(new_white(Knight));
             grid[Coord::H1] = Some(new_white(Rook));
+            setup_white_pawns_on_2nd_row(&mut grid);
+            setup_black_pieces_mirrorlike(&mut grid);
+            grid
         },
         StartingPosition::FischerRandom => {
             let mut rng = rand::thread_rng();
+            let mut grid = Grid::new();
             let row = Row::_1;
             grid[Coord::new(row, Col::from_zero_based(rng.gen_range(0..4) * 2))] = Some(new_white(Bishop));
             grid[Coord::new(row, Col::from_zero_based(rng.gen_range(0..4) * 2 + 1))] = Some(new_white(Bishop));
@@ -64,20 +88,11 @@ fn generate_starting_grid(starting_position: StartingPosition) -> Grid {
             grid[Coord::new(row, queen_col)] = Some(new_white(Queen));
             grid[Coord::new(row, knight_col_1)] = Some(new_white(Knight));
             grid[Coord::new(row, knight_col_2)] = Some(new_white(Knight));
+            setup_white_pawns_on_2nd_row(&mut grid);
+            setup_black_pieces_mirrorlike(&mut grid);
+            grid
         },
     }
-
-    for col in Col::all() {
-        grid[Coord::new(Row::_7, col)] = grid[Coord::new(Row::_2, col)].map(|mut piece| {
-            piece.force = Force::Black;
-            piece
-        });
-        grid[Coord::new(Row::_8, col)] = grid[Coord::new(Row::_1, col)].map(|mut piece| {
-            piece.force = Force::Black;
-            piece
-        });
-    }
-    grid
 }
 
 
@@ -87,14 +102,22 @@ pub struct ChessGame {
 }
 
 impl ChessGame {
-    pub fn new(rules: ChessRules, players: EnumMap<Force, Rc<PlayerInGame>>) -> ChessGame {
-        let starting_position = rules.starting_position;
+    pub fn new(rules: ChessRules, players: EnumMap<Force, Rc<PlayerInGame>>) -> Self {
+        let starting_grid = generate_starting_grid(rules.starting_position);
+        Self::new_with_grid(rules, starting_grid, players)
+    }
+
+    pub fn new_with_grid(
+        rules: ChessRules,
+        starting_grid: Grid,
+        players: EnumMap<Force, Rc<PlayerInGame>>
+    ) -> Self {
         ChessGame {
             board: Board::new(
                 Rc::new(rules),
                 None,
                 players,
-                generate_starting_grid(starting_position)
+                starting_grid,
             ),
         }
     }
@@ -213,7 +236,7 @@ impl BughouseGame {
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
         players: EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>>
-    ) -> BughouseGame {
+    ) -> Self {
         let starting_grid = generate_starting_grid(chess_rules.starting_position);
         Self::new_with_grid(chess_rules, bughouse_rules, starting_grid, players)
     }
@@ -223,7 +246,7 @@ impl BughouseGame {
         bughouse_rules: BughouseRules,
         starting_grid: Grid,
         players: EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>>
-    ) -> BughouseGame {
+    ) -> Self {
         let chess_rules = Rc::new(chess_rules);
         let bughouse_rules = Rc::new(bughouse_rules);
         let boards = enum_map!{

@@ -120,7 +120,7 @@ impl WebClient {
     pub fn start_drag_piece(&mut self, source: &str) -> JsResult<()> {
         if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
             let source = if let Some(piece) = source.strip_prefix("reserve-") {
-                PieceDragStart::Reserve(PieceKind::from_algebraic(piece))
+                PieceDragStart::Reserve(PieceKind::from_algebraic(piece).unwrap())
             } else {
                 let coord = Coord::from_algebraic(source);
                 let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);

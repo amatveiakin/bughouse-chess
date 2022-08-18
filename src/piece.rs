@@ -4,6 +4,7 @@ use serde::{Serialize, Deserialize};
 use strum::EnumIter;
 
 use crate::force::Force;
+use crate::util::as_single_char;
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, Serialize, Deserialize)]
@@ -68,16 +69,19 @@ impl PieceKind {
         }
     }
 
-    // Improvement potential. Return Option, let the caller unwrap.
-    pub fn from_algebraic(notation: &str) -> Self {
+    pub fn from_algebraic_char(notation: char) -> Option<Self> {
         match notation {
-            "P" => PieceKind::Pawn,
-            "N" => PieceKind::Knight,
-            "B" => PieceKind::Bishop,
-            "R" => PieceKind::Rook,
-            "Q" => PieceKind::Queen,
-            "K" => PieceKind::King,
-            _ => panic!("Unknown piece: {}", notation),
+            'P' => Some(PieceKind::Pawn),
+            'N' => Some(PieceKind::Knight),
+            'B' => Some(PieceKind::Bishop),
+            'R' => Some(PieceKind::Rook),
+            'Q' => Some(PieceKind::Queen),
+            'K' => Some(PieceKind::King),
+            _ => None,
         }
+    }
+
+    pub fn from_algebraic(notation: &str) -> Option<Self> {
+        as_single_char(notation).and_then(|ch| Self::from_algebraic_char(ch))
     }
 }

@@ -1,12 +1,13 @@
 use std::rc::Rc;
+use std::time::Duration;
 
 use enum_map::{EnumMap, enum_map};
 use lazy_static::lazy_static;
 use regex::Regex;
 
 use bughouse_chess::{
-    ChessRules, ChessGame, ChessGameStatus, VictoryReason,
-    TurnMode, TurnError, PlayerInGame, Team, Force, GameInstant
+    StartingPosition, TimeControl, ChessRules, ChessGame, ChessGameStatus, VictoryReason,
+    TurnMode, TurnError, PlayerInGame, Team, Force, GameInstant, fen::shredder_fen_to_starting_position
 };
 
 
@@ -17,8 +18,20 @@ fn players() -> EnumMap<Force, Rc<PlayerInGame>> {
     }
 }
 
-fn game_classic() -> ChessGame {
+fn chess_classic() -> ChessGame {
     ChessGame::new(ChessRules::classic_blitz(), players())
+}
+
+fn chess960_from_short_fen(pieces: &str) -> ChessGame {
+    let rules = ChessRules {
+        starting_position: StartingPosition::FischerRandom,
+        time_control: TimeControl{ starting_time: Duration::from_secs(300) }
+    };
+    let white_pieces = pieces.to_ascii_uppercase();
+    let black_pieces = pieces.to_ascii_lowercase();
+    let fen = format!("{black_pieces}/pppppppp/8/8/8/8/PPPPPPPP/{white_pieces} w KQkq - 0 1");
+    let grid = shredder_fen_to_starting_position(&fen).unwrap();
+    ChessGame::new_with_grid(rules, grid, players())
 }
 
 // Improvement potential: Allow whitespace after turn number.
@@ -35,7 +48,7 @@ fn replay_log(game: &mut ChessGame, log: &str) -> Result<(), TurnError> {
 }
 
 fn replay_log_from_start(log: &str) -> Result<(), TurnError> {
-    replay_log(&mut game_classic(), log)
+    replay_log(&mut chess_classic(), log)
 }
 
 
@@ -64,7 +77,7 @@ fn capture_notation() {
 
 #[test]
 fn wikipedia_example() {
-    let mut game = ChessGame::new(ChessRules::classic_blitz(), players());
+    let mut game = chess_classic();
     replay_log(&mut game, "
         1.Nf3 Nf6 2.c4 g6 3.Nc3 Bg7 4.d4 O-O 5.Bf4 d5
         6.Qb3 dxc4 7.Qxc4 c6 8.e4 Nbd7 9.Rd1 Nb6 10.Qc5 Bg4
@@ -77,4 +90,10 @@ fn wikipedia_example() {
         41.Kc1 Rc2#
     ").unwrap();
     assert_eq!(game.status(), ChessGameStatus::Victory(Force::Black, VictoryReason::Checkmate));
+}
+
+#[test]
+fn chess960_first_move_castle() {
+    let mut game = chess960_from_short_fen("RBNNBKRQ");
+    replay_log(&mut game, "1.0-0").unwrap();
 }
