@@ -225,7 +225,7 @@ impl ServerState {
                         self.core.process_leave(&mut clients, client_id);
                     },
                     BughouseClientEvent::Reset => {
-                        self.core.process_reset();
+                        self.core.process_reset(&mut clients);
                     },
                     BughouseClientEvent::RequestExport{ format } => {
                         self.core.process_request_export(&mut clients, client_id, format);
@@ -271,9 +271,6 @@ impl ServerStateCore {
         &mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant,
         player_name: String, fixed_team: Option<Team>
     ) {
-        let new_contest_event = BughouseServerEvent::ContestStarted {
-            teaming: self.bughouse_rules.teaming,
-        };
         if self.game_state.is_none() {
             if clients[client_id].player_id.is_some() {
                 clients[client_id].send_error("Cannot join: already joined".to_owned());
@@ -289,7 +286,7 @@ impl ServerStateCore {
                         clients[client_id].send_error(format!("Cannot join: team {:?} is full", fixed_team));
                     } else {
                         println!("Player {} joined team {:?}", player_name, fixed_team);
-                        clients[client_id].send(new_contest_event);
+                        clients[client_id].send(self.make_contest_start_event());
                         let player_id = self.players.add_player(Player {
                             name: player_name,
                             fixed_team,
@@ -314,7 +311,7 @@ impl ServerStateCore {
                     ));
                 } else {
                     clients[client_id].player_id = Some(existing_player_id);
-                    clients[client_id].send(new_contest_event);
+                    clients[client_id].send(self.make_contest_start_event());
                     clients[client_id].send(self.make_game_start_event(now));
                 }
             } else {
@@ -457,10 +454,13 @@ impl ServerStateCore {
         // clients disconnected due to a network error would've left abandoned players.
     }
 
-    fn process_reset(&mut self) {
+    fn process_reset(&mut self, clients: &mut ClientsGuard<'_>) {
         self.scores = Scores::new();
         self.match_history = Vec::new();
         self.game_state = None;
+        self.reset_readiness();
+        clients.broadcast(&self.make_contest_start_event());
+        self.send_lobby_updated(clients);
     }
 
     fn process_request_export(
@@ -520,7 +520,7 @@ impl ServerStateCore {
     }
 
     fn start_game(&mut self, clients: &mut ClientsGuard<'_>, now: Instant, previous_players: Option<Vec<String>>) {
-        self.players.iter_mut().for_each(|p| p.is_ready = false);
+        self.reset_readiness();
         let players_with_boards = self.assign_boards(previous_players);
         let player_map = BughouseGame::make_player_map(players_with_boards.iter().cloned());
         let game = BughouseGame::new(
@@ -540,6 +540,12 @@ impl ServerStateCore {
         });
         clients.broadcast(&self.make_game_start_event(now));
         self.send_lobby_updated(clients);  // update readiness flags
+    }
+
+    fn make_contest_start_event(&self) -> BughouseServerEvent {
+        BughouseServerEvent::ContestStarted {
+            teaming: self.bughouse_rules.teaming,
+        }
     }
 
     fn make_game_start_event(&self, now: Instant) -> BughouseServerEvent {
@@ -565,6 +571,10 @@ impl ServerStateCore {
         clients.broadcast(&BughouseServerEvent::LobbyUpdated {
             players: player_to_send,
         });
+    }
+
+    fn reset_readiness(&mut self) {
+        self.players.iter_mut().for_each(|p| p.is_ready = false);
     }
 
     fn assign_boards(&self, previous_players: Option<Vec<String>>)

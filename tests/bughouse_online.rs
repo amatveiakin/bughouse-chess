@@ -530,3 +530,17 @@ fn turn_after_game_ended_on_another_board() {
     assert!(matches!(world.process_events_for(cl4), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 }
+
+#[test]
+fn game_reset() {
+    let mut world = World::new();
+    let (cl1, cl2, cl3, cl4) = world.default_clients();
+
+    world.replay_white_checkmates_black(cl1, cl3);
+    world.process_all_events();
+    assert_eq!(world[cl2].state.contest().unwrap().scores.per_team.get(&Team::Red), Some(&2));
+
+    world[cl4].state.reset();
+    world.process_all_events();
+    assert_eq!(world[cl2].state.contest().unwrap().scores.per_team.get(&Team::Red), None);
+}
