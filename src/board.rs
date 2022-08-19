@@ -367,9 +367,34 @@ pub struct TurnDrop {
 }
 
 // Turn, as entered by user.
+//
+// Since each turn can be interpreted slightly differently depending on input method (details
+// below), all pre-turns should be stored as `TurnInput` until they are ready to be executed
+// as in-order turns.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum TurnInput {
+    // Explicit turn can be used when a turn has already been parsed earlier, e.g. for replays.
     Explicit(Turn),
+
+    // Turn made via mouse or touch drag&drop. The `Turn` object inside is preliminary, it can
+    //   be altered in order to allow reinterpreting king movement as castling.
+    //
+    // Castling rules for drag-and-drop interfaces:
+    //   (a) drag the king at least two squares in the rook direction, or
+    //   (b) onto a rook.
+    // In case (a) castling in unambiguous and DragDrop will contain Turn::Castle.
+    // In case (b) DragDrop will contain Turn::Move that resolves to a castle if the rook is
+    //   still there or to a move if the rook was captured.
+    //
+    // The difference is only meaningful for pre-turns. Options (a) and (b) are synonyms for
+    //   in-order turns.
+    // Note. In some starting positions in Fischer random option (b) is the only way to castle.
+    DragDrop(Turn),
+
+    // Turn entered as algebraic notation.
+    //
+    // Note. Only by storing the text as is we can preserve some useful pieces of metainformation
+    //   for preturns, e.g. to make sure that "xd5" fails if it's not capturing.
     Algebraic(String),
 }
 
@@ -463,6 +488,7 @@ struct PositionForRepetitionDraw {
     en_passant_target: Option<Coord>,
     total_drops: u32,
 }
+
 
 impl Reachability {
     pub fn ok(self) -> bool { self == Reachability::Ok }
@@ -575,6 +601,7 @@ impl Board {
     pub fn parse_turn_input(&self, turn_input: &TurnInput, mode: TurnMode) -> Result<Turn, TurnError> {
         Ok(match turn_input {
             TurnInput::Explicit(turn) => *turn,
+            TurnInput::DragDrop(turn) => self.parse_drag_drop_turn(*turn, mode)?,
             TurnInput::Algebraic(notation) => self.algebraic_to_turn(&notation, mode)?,
         })
     }
@@ -855,6 +882,40 @@ impl Board {
 
     pub fn receive_capture(&mut self, capture: &Capture) {
         self.reserves[capture.force][capture.piece_kind] += 1;
+    }
+
+    fn parse_drag_drop_turn(&self, prototurn: Turn, mode: TurnMode) -> Result<Turn, TurnError> {
+        if let Turn::Move(mv) = prototurn {
+            let force = self.turn_owner(mode);
+            let piece = self.grid[mv.from].ok_or(TurnError::PieceMissing)?;
+            assert_eq!(piece.force, force);
+            match mode {
+                TurnMode::Normal => {
+                    if piece.kind == PieceKind::King {
+                        if let Some(dst_piece) = self.grid[mv.to] {
+                            let first_row = SubjectiveRow::from_one_based(1).to_row(force);
+                            let maybe_is_special_castling =
+                                dst_piece.force == force &&
+                                dst_piece.kind == PieceKind::Rook &&
+                                mv.to.row == first_row;
+                            if maybe_is_special_castling {
+                                let castle_direction = self.castling_rights[force].iter().find_map(|(dir, &col)| {
+                                    if col == Some(mv.to.col) { Some(dir) } else { None }
+                                });
+                                if let Some(castle_direction) = castle_direction {
+                                    assert_eq!(mv.from.row, first_row);  // implied by having castling rights
+                                    return Ok(Turn::Castle(castle_direction));
+                                }
+                            }
+                        }
+                    }
+                },
+                TurnMode::Preturn => {
+                    // Too early to interpret the turn yet.
+                },
+            }
+        }
+        Ok(prototurn)
     }
 
     pub fn algebraic_to_turn(&self, notation: &str, mode: TurnMode) -> Result<Turn, TurnError> {

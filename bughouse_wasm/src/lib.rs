@@ -155,7 +155,7 @@ impl WebClient {
                 let promote_to = if alternative_promotion { Knight } else { Queen };
                 match alt_game.drag_piece_drop(dest_coord, promote_to) {
                     Ok(turn) => {
-                        return self.make_turn(TurnInput::Explicit(turn));
+                        return self.make_turn(turn);
                     },
                     Err(PieceDragError::DragNoLongerPossible) => {
                         // Ignore: this happen when dragged piece was captured by opponent.

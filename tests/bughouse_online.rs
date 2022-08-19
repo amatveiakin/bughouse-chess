@@ -1,5 +1,7 @@
 // Improvement potential. Test time-related things with mock clock.
 
+mod common;
+
 use std::ops;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
@@ -8,33 +10,7 @@ use itertools::Itertools;
 
 use bughouse_chess::*;
 use bughouse_chess::client::TurnCommandError::IllegalTurn;
-
-
-#[derive(Clone, Copy, Debug)]
-struct PieceMatcher {
-    kind: PieceKind,
-    force: Force,
-}
-
-trait PieceIs {
-    fn is(self, matcher: PieceMatcher) -> bool;
-}
-
-impl PieceIs for Option<PieceOnBoard> {
-    fn is(self, matcher: PieceMatcher) -> bool {
-        if let Some(piece) = self {
-            piece.kind == matcher.kind && piece.force == matcher.force
-        } else {
-            false
-        }
-    }
-}
-
-macro_rules! piece {
-    ($force:ident $kind:ident) => {
-        PieceMatcher{ force: Force::$force, kind: PieceKind::$kind }
-    };
-}
+use common::*;
 
 
 struct Server {
