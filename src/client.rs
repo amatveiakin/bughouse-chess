@@ -4,7 +4,7 @@ use std::sync::mpsc;
 use instant::Instant;
 
 use crate::altered_game::AlteredGame;
-use crate::board::TurnError;
+use crate::board::{TurnError, TurnInput};
 use crate::clock::{GameInstant, WallGameTimePair};
 use crate::game::{TurnRecord, BughouseGameStatus, BughouseGame};
 use crate::grid::Grid;
@@ -109,19 +109,17 @@ impl ClientState {
         self.events_tx.send(BughouseClientEvent::RequestExport{ format }).unwrap();
     }
 
-    pub fn make_turn(&mut self, turn_algebraic: String) -> Result<(), TurnCommandError> {
+    pub fn make_turn(&mut self, turn_input: TurnInput) -> Result<(), TurnCommandError> {
         let game_state = self.game_state_mut().ok_or(TurnCommandError::NoGameInProgress)?;
         let GameState{ ref mut alt_game, time_pair, .. } = game_state;
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, Instant::now());
         if alt_game.status() != BughouseGameStatus::Active {
             Err(TurnCommandError::IllegalTurn(TurnError::GameOver))
         } else if alt_game.can_make_local_turn() {
-            alt_game.try_local_turn_algebraic(&turn_algebraic, game_now).map_err(|err| {
+            alt_game.try_local_turn(&turn_input, game_now).map_err(|err| {
                 TurnCommandError::IllegalTurn(err)
             })?;
-            self.events_tx.send(BughouseClientEvent::MakeTurn {
-                turn_algebraic: turn_algebraic
-            }).unwrap();
+            self.events_tx.send(BughouseClientEvent::MakeTurn{ turn_input }).unwrap();
             Ok(())
         } else {
             Err(TurnCommandError::IllegalTurn(TurnError::WrongTurnOrder))

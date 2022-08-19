@@ -9,7 +9,7 @@ use serde::{Serialize, Deserialize};
 use strum::EnumIter;
 
 use crate::NUM_ROWS;
-use crate::board::{Board, Turn, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
+use crate::board::{Board, Turn, TurnInput, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
 use crate::clock::GameInstant;
 use crate::coord::{Row, Col, Coord};
 use crate::force::Force;
@@ -132,17 +132,12 @@ impl ChessGame {
     // Function from `try_turn...` familiy do not test flag internally. They will not update
     // game status if a player has zero time left.
     // Thus it's recommended to `test_flag` first.
-    pub fn try_turn(&mut self, turn: Turn, mode: TurnMode, now: GameInstant)
-        -> Result<(), TurnError>
+    pub fn try_turn(&mut self, turn_input: &TurnInput, mode: TurnMode, now: GameInstant)
+        -> Result<Turn, TurnError>
     {
+        let turn = self.board.parse_turn_input(turn_input, mode)?;
         self.board.try_turn(turn, mode, now)?;
-        Ok(())
-    }
-    pub fn try_turn_algebraic(&mut self, notation: &str, mode: TurnMode, now: GameInstant)
-        -> Result<(), TurnError>
-    {
-        let turn = self.board.algebraic_to_turn(notation, mode)?;
-        self.try_turn(turn, mode, now)
+        Ok(turn)
     }
 }
 
@@ -295,6 +290,7 @@ impl BughouseGame {
         self.boards.values().map(|(board)| board.players().values().cloned()).flatten().collect()
     }
     pub fn turn_log(&self) -> &Vec<TurnRecord> { &self.turn_log }
+    pub fn last_turn_record(&self) -> Option<&TurnRecord> { self.turn_log.last() }
     pub fn status(&self) -> BughouseGameStatus { self.status }
 
     pub fn find_player(&self, player_name: &str) -> Option<BughousePlayerId> {
@@ -356,8 +352,10 @@ impl BughouseGame {
     }
 
     // Should `test_flag` first!
-    pub fn try_turn(&mut self, board_idx: BughouseBoard, turn: Turn, mode: TurnMode, now: GameInstant)
-        -> Result<(), TurnError>
+    pub fn try_turn(
+        &mut self, board_idx: BughouseBoard, turn_input: &TurnInput, mode: TurnMode, now: GameInstant
+    )
+        -> Result<Turn, TurnError>
     {
         if self.status != BughouseGameStatus::Active {
             // `Board::try_turn` will also test status, but that's not enough: the game
@@ -366,46 +364,29 @@ impl BughouseGame {
         }
         let board = &mut self.boards[board_idx];
         let player_id = BughousePlayerId{ board_idx, force: board.active_force() };
+        let turn = board.parse_turn_input(turn_input, mode)?;
         let turn_algebraic = board.turn_to_algebraic(turn)?;
         let capture_or = board.try_turn(turn, mode, now)?;
-        self.boards[board_idx.other()].start_clock(now);
+        let other_board = &mut self.boards[board_idx.other()];
+        other_board.start_clock(now);
         if let Some(capture) = capture_or {
-            self.boards[board_idx.other()].receive_capture(&capture);
+            other_board.receive_capture(&capture);
         }
         self.turn_log.push(TurnRecord{ player_id, turn_algebraic, time: now });
         assert!(self.status == BughouseGameStatus::Active);
         self.set_status(self.game_status_for_board(board_idx), now);
-        Ok(())
-    }
-
-    pub fn try_turn_algebraic(&mut self, board_idx: BughouseBoard, notation: &str, mode: TurnMode, now: GameInstant)
-        -> Result<Turn, TurnError>
-    {
-        let turn = self.boards[board_idx].algebraic_to_turn(notation, mode)?;
-        self.try_turn(board_idx, turn, mode, now)?;
         Ok(turn)
     }
 
     pub fn try_turn_by_player(
-        &mut self, player_id: BughousePlayerId, turn: Turn, mode: TurnMode, now: GameInstant
-    )
-        -> Result<(), TurnError>
-    {
-        if mode != self.turn_mode_for_player(player_id)? {
-            return Err(TurnError::WrongTurnOrder);
-        }
-        self.try_turn(player_id.board_idx, turn, mode, now)
-    }
-
-    pub fn try_turn_algebraic_by_player(
-        &mut self, player_id: BughousePlayerId, notation: &str, mode: TurnMode, now: GameInstant
+        &mut self, player_id: BughousePlayerId, turn_input: &TurnInput, mode: TurnMode, now: GameInstant
     )
         -> Result<Turn, TurnError>
     {
         if mode != self.turn_mode_for_player(player_id)? {
             return Err(TurnError::WrongTurnOrder);
         }
-        self.try_turn_algebraic(player_id.board_idx, notation, mode, now)
+        self.try_turn(player_id.board_idx, turn_input, mode, now)
     }
 
     fn game_status_for_board(&self, board_idx: BughouseBoard) -> BughouseGameStatus {

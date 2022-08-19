@@ -6,7 +6,7 @@ use regex::Regex;
 
 use bughouse_chess::{
     ChessRules, BughouseRules, BughouseBoard, BughouseGame, BughouseGameStatus, DrawReason,
-    GameInstant, TurnMode, TurnError, PlayerInGame, Team, Force
+    GameInstant, TurnInput, TurnMode, TurnError, PlayerInGame, Team, Force
 };
 
 
@@ -21,6 +21,14 @@ fn players() -> EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>> {
             Force::Black => Rc::new(PlayerInGame{ name: "Dave".to_owned(), team: Team::Red }),
         }
     }
+}
+
+fn make_turn(game: &mut BughouseGame, board_idx: BughouseBoard, turn_notation: &str)
+    -> Result<(), TurnError>
+{
+    let turn_input = TurnInput::Algebraic(turn_notation.to_owned());
+    game.try_turn(board_idx, &turn_input, TurnMode::Normal, GameInstant::game_start())?;
+    Ok(())
 }
 
 // Improvement potential: Allow whitespace after turn number.
@@ -43,7 +51,8 @@ fn replay_log(game: &mut BughouseGame, log: &str) -> Result<(), TurnError> {
             _ => panic!("Unexpected bughouse player notation: {}", player_notation),
         };
         assert_eq!(game.board(board_idx).active_force(), force);
-        game.try_turn_algebraic(board_idx, turn_notation, TurnMode::Normal, now)?;
+        let turn_input = TurnInput::Algebraic(turn_notation.to_owned());
+        game.try_turn(board_idx, &turn_input, TurnMode::Normal, now)?;
     }
     Ok(())
 }
@@ -51,8 +60,9 @@ fn replay_log(game: &mut BughouseGame, log: &str) -> Result<(), TurnError> {
 fn replay_log_symmetric(game: &mut BughouseGame, log: &str) -> Result<(), TurnError> {
     let now = GameInstant::game_start();
     for turn_notation in log.split_whitespace() {
-        game.try_turn_algebraic(BughouseBoard::A, turn_notation, TurnMode::Normal, now)?;
-        game.try_turn_algebraic(BughouseBoard::B, turn_notation, TurnMode::Normal, now)?;
+        let turn_input = TurnInput::Algebraic(turn_notation.to_owned());
+        game.try_turn(BughouseBoard::A, &turn_input, TurnMode::Normal, now)?;
+        game.try_turn(BughouseBoard::B, &turn_input, TurnMode::Normal, now)?;
     }
     Ok(())
 }
@@ -75,7 +85,7 @@ fn no_castling_with_dropped_rook() {
         0A.R@h8  0a.d5
     ").unwrap();
     assert_eq!(
-        game.try_turn_algebraic(BughouseBoard::A, "0-0", TurnMode::Normal, GameInstant::game_start()).err().unwrap(),
+        make_turn(&mut game, BughouseBoard::A, "0-0").err().unwrap(),
         TurnError::CastlingPieceHasMoved
     );
 }

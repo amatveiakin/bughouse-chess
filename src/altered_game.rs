@@ -1,4 +1,4 @@
-use crate::board::{Turn, TurnMove, TurnDrop, TurnMode, TurnError};
+use crate::board::{Turn, TurnInput, TurnMove, TurnDrop, TurnMode, TurnError};
 use crate::clock::GameInstant;
 use crate::coord::{SubjectiveRow, Col, Coord};
 use crate::game::{BughousePlayerId, BughouseGameStatus, BughouseGame};
@@ -83,8 +83,9 @@ impl AlteredGame {
         if player_id.board_idx == self.my_id.board_idx {
             self.local_turn = None;
         }
-        let turn = self.game_confirmed.try_turn_algebraic_by_player(
-            player_id, &turn_algebraic, TurnMode::Normal, time
+        let turn_input = TurnInput::Algebraic(turn_algebraic.to_owned());
+        let turn = self.game_confirmed.try_turn_by_player(
+            player_id, &turn_input, TurnMode::Normal, time
         )?;
         if player_id == self.my_id.opponent() {
             self.latest_opponent_turn = Some(turn);
@@ -120,8 +121,9 @@ impl AlteredGame {
     pub fn local_game(&self) -> BughouseGame {
         let mut game = self.game_confirmed.clone();
         if let Some((turn, mode, turn_time)) = self.local_turn {
+            let turn_input = TurnInput::Explicit(turn);
             // Note. Not calling `test_flag`, because only server records flag defeat.
-            game.try_turn_by_player(self.my_id, turn, mode, turn_time).unwrap();
+            game.try_turn_by_player(self.my_id, &turn_input, mode, turn_time).unwrap();
         }
         if let Some(ref drag) = self.piece_drag {
             let board = game.board_mut(self.my_id.board_idx);
@@ -146,12 +148,12 @@ impl AlteredGame {
         self.local_turn.is_none()
     }
 
-    pub fn try_local_turn_algebraic(&mut self, turn_algebraic: &str, time: GameInstant)
+    pub fn try_local_turn(&mut self, turn_input: &TurnInput, time: GameInstant)
         -> Result<(), TurnError>
     {
         let mut game_copy = self.game_confirmed.clone();
         let mode = game_copy.turn_mode_for_player(self.my_id)?;
-        let turn = game_copy.try_turn_algebraic_by_player(self.my_id, turn_algebraic, mode, time)?;
+        let turn = game_copy.try_turn_by_player(self.my_id, turn_input, mode, time)?;
         self.local_turn = Some((turn, mode, time));
         self.piece_drag = None;
         Ok(())

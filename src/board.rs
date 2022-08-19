@@ -346,24 +346,31 @@ pub struct Capture {
 }
 
 // Note. Generally speaking, it's impossible to detect castling based on king movement in Chess960.
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Turn {
     Move(TurnMove),
     Drop(TurnDrop),
     Castle(CastleDirection),
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct TurnMove {
     pub from: Coord,
     pub to: Coord,
     pub promote_to: Option<PieceKind>,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct TurnDrop {
     pub piece_kind: PieceKind,
     pub to: Coord,
+}
+
+// Turn, as entered by user.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum TurnInput {
+    Explicit(Turn),
+    Algebraic(String),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -563,6 +570,13 @@ impl Board {
         let TurnOutcome{ new_grid, capture } = self.turn_outcome(turn, mode)?;
         self.apply_turn(turn, mode, new_grid, capture, now);
         Ok(capture)
+    }
+
+    pub fn parse_turn_input(&self, turn_input: &TurnInput, mode: TurnMode) -> Result<Turn, TurnError> {
+        Ok(match turn_input {
+            TurnInput::Explicit(turn) => *turn,
+            TurnInput::Algebraic(notation) => self.algebraic_to_turn(&notation, mode)?,
+        })
     }
 
     fn log_position_for_repetition_draw(&mut self) {

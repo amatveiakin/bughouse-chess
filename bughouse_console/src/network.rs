@@ -1,3 +1,6 @@
+// TODO: Switch from JSON to a binary format.
+// TODO: Move all serialization/deserialization from bughouse_wasm/src/lib.rs here.
+
 use std::io;
 use std::net::TcpStream;
 

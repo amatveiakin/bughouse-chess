@@ -122,7 +122,7 @@ impl Client {
         (something_changed, Ok(()))
     }
     fn make_turn(&mut self, turn_algebraic: &str) -> Result<(), client::TurnCommandError> {
-        self.state.make_turn(turn_algebraic.to_owned())
+        self.state.make_turn(TurnInput::Algebraic(turn_algebraic.to_owned()))
     }
 }
 

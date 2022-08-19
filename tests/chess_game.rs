@@ -7,7 +7,8 @@ use regex::Regex;
 
 use bughouse_chess::{
     StartingPosition, TimeControl, ChessRules, ChessGame, ChessGameStatus, VictoryReason,
-    TurnMode, TurnError, PlayerInGame, Team, Force, GameInstant, fen::shredder_fen_to_starting_position
+    TurnInput, TurnMode, TurnError, PlayerInGame, Team, Force, GameInstant,
+    fen::shredder_fen_to_starting_position,
 };
 
 
@@ -42,7 +43,8 @@ fn replay_log(game: &mut ChessGame, log: &str) -> Result<(), TurnError> {
     let now = GameInstant::game_start();
     for turn_notation in log.split_whitespace() {
         let turn_notation = TURN_NUMBER_RE.captures(turn_notation).unwrap().get(1).unwrap().as_str();
-        game.try_turn_algebraic(turn_notation, TurnMode::Normal, now)?
+        let turn_input = TurnInput::Algebraic(turn_notation.to_owned());
+        game.try_turn(&turn_input, TurnMode::Normal, now)?;
     }
     Ok(())
 }

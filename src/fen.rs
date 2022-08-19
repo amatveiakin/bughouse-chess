@@ -117,7 +117,7 @@ pub fn shredder_fen_to_starting_position(fen: &str) -> Result<Grid, String> {
         return Err("Only starting positions are supported".to_owned());
     }
     let rows = grid_notation.split('/').collect_vec();
-    if rows.len() != NUM_ROWS.into() {
+    if rows.len() != usize::from(NUM_ROWS) {
         return Err(format!("Expected {NUM_ROWS} rows, found '{grid_notation}'"));
     }
     let mut grid = Grid::new();
@@ -142,7 +142,7 @@ pub fn shredder_fen_to_starting_position(fen: &str) -> Result<Grid, String> {
                 col_idx += 1;
             }
         }
-        if col_idx != NUM_COLS.into() {
+        if col_idx != u32::from(NUM_COLS) {
             return Err(format!("Expected {NUM_COLS} cols, found '{row_fen}'"));
         }
     }

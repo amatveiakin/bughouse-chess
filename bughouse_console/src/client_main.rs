@@ -221,7 +221,8 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                                     },
                                 }
                             } else {
-                                command_error = match client_state.make_turn(keyboard_input.clone()) {
+                                let turn_input = TurnInput::Algebraic(keyboard_input.clone());
+                                command_error = match client_state.make_turn(turn_input) {
                                     Ok(()) => None,
                                     Err(TurnCommandError::IllegalTurn(TurnError::WrongTurnOrder)) => {
                                         keep_input = true;

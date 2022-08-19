@@ -110,11 +110,15 @@ impl WebClient {
     }
 
     // Returns whether a turn was made.
-    pub fn make_turn_algebraic(&mut self, turn_algebraic: String) -> JsResult<bool> {
-        let turn_result = self.state.make_turn(turn_algebraic);
+    fn make_turn(&mut self, turn_input: TurnInput) -> JsResult<bool> {
+        let turn_result = self.state.make_turn(turn_input);
         let info_string = web_document().get_existing_element_by_id("info-string")?;
         info_string.set_text_content(turn_result.as_ref().err().map(|err| format!("{:?}", err)).as_deref());
         Ok(turn_result.is_ok())
+    }
+
+    pub fn make_turn_algebraic(&mut self, turn_algebraic: String) -> JsResult<bool> {
+        self.make_turn(TurnInput::Algebraic(turn_algebraic))
     }
 
     pub fn start_drag_piece(&mut self, source: &str) -> JsResult<()> {
@@ -151,11 +155,7 @@ impl WebClient {
                 let promote_to = if alternative_promotion { Knight } else { Queen };
                 match alt_game.drag_piece_drop(dest_coord, promote_to) {
                     Ok(turn) => {
-                        // Improvement potential: Don't convert to algebraic.
-                        let game = alt_game.local_game();
-                        let my_board = game.board(alt_game.my_id().board_idx);
-                        let turn_algebraic = my_board.turn_to_algebraic(turn).unwrap();
-                        return self.make_turn_algebraic(turn_algebraic);
+                        return self.make_turn(TurnInput::Explicit(turn));
                     },
                     Err(PieceDragError::DragNoLongerPossible) => {
                         // Ignore: this happen when dragged piece was captured by opponent.

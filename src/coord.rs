@@ -55,7 +55,7 @@ impl SubjectiveRow {
 }
 
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct Row {
     idx: u8,  // 0-based
 }
@@ -90,7 +90,7 @@ impl ops::Sub for Row {
 }
 
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct Col {
     idx: u8,  // 0-based
 }
@@ -125,7 +125,7 @@ impl ops::Sub for Col {
 }
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Coord {
     pub row: Row,
     pub col: Col,

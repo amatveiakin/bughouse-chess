@@ -1,5 +1,6 @@
 use serde::{Serialize, Deserialize};
 
+use crate::board::TurnInput;
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseGameStatus, BughouseBoard};
 use crate::grid::Grid;
@@ -59,7 +60,7 @@ pub enum BughouseClientEvent {
     },
     MakeTurn {
         // TODO: Add `game_id` field to avoid replaying lingering moves from older games.
-        turn_algebraic: String,
+        turn_input: TurnInput,
     },
     CancelPreturn,
     Resign,
