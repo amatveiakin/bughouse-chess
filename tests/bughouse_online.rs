@@ -97,8 +97,8 @@ impl Client {
         }
         (something_changed, Ok(()))
     }
-    fn make_turn(&mut self, turn_algebraic: &str) -> Result<(), client::TurnCommandError> {
-        self.state.make_turn(TurnInput::Algebraic(turn_algebraic.to_owned()))
+    fn make_turn(&mut self, turn: impl AutoTurnInput) -> Result<(), client::TurnCommandError> {
+        self.state.make_turn(turn.to_turn_input())
     }
 }
 
@@ -278,25 +278,48 @@ fn remote_turn_persisted() {
 }
 
 #[test]
-fn preturn() {
+fn preturn_successful() {
     let mut world = World::new();
     let (cl1, _cl2, cl3, _cl4) = world.default_clients();
 
     // Valid pre-move executed after opponent's turn.
-    world[cl3].make_turn("e5").unwrap();
+    world[cl3].make_turn("d5").unwrap();
     world.process_all_events();
-    assert!(world[cl1].my_board().grid()[Coord::E5].is_none());
-    world[cl1].make_turn("d4").unwrap();
-    world.process_all_events();
-    assert!(world[cl1].my_board().grid()[Coord::E5].is(piece!(Black Pawn)));
-
-    // Invalid pre-move ignored.
-    world[cl3].make_turn("e4").unwrap();
-    world.process_all_events();
+    assert!(world[cl1].my_board().grid()[Coord::D5].is_none());
     world[cl1].make_turn("e4").unwrap();
     world.process_all_events();
-    assert!(world[cl1].my_board().grid()[Coord::E5].is(piece!(Black Pawn)));
-    assert!(world[cl1].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
+    assert!(world[cl1].my_board().grid()[Coord::D5].is(piece!(Black Pawn)));
+}
+
+#[test]
+fn preturn_failed_square_occupied() {
+    let mut world = World::new();
+    let (cl1, _cl2, cl3, _cl4) = world.default_clients();
+
+    world[cl1].make_turn("e4").unwrap();  world.process_all_events();
+    world[cl3].make_turn("d5").unwrap();  world.process_all_events();
+
+    // Invalid pre-move ignored.
+    world[cl3].make_turn("d4").unwrap();  world.process_all_events();
+    world[cl1].make_turn("d4").unwrap();  world.process_all_events();
+    assert!(world[cl1].my_board().grid()[Coord::D5].is(piece!(Black Pawn)));
+    assert!(world[cl1].my_board().grid()[Coord::D4].is(piece!(White Pawn)));
+}
+
+// Regression test: `parse_drag_drop_turn` shouldn't panic if the piece was captured.
+#[test]
+fn preturn_failed_piece_captured() {
+    let mut world = World::new();
+    let (cl1, _cl2, cl3, _cl4) = world.default_clients();
+
+    world[cl1].make_turn(drag_move!(E2 -> E4)).unwrap();  world.process_all_events();
+    world[cl3].make_turn(drag_move!(D7 -> D5)).unwrap();  world.process_all_events();
+
+    // Invalid pre-move ignored.
+    world[cl3].make_turn(drag_move!(D5 -> D4)).unwrap();  world.process_all_events();
+    world[cl1].make_turn(drag_move!(E4 -> D5)).unwrap();  world.process_all_events();
+    assert!(world[cl1].my_board().grid()[Coord::D5].is(piece!(White Pawn)));
+    assert!(world[cl1].my_board().grid()[Coord::D4].is_none());
 }
 
 #[test]

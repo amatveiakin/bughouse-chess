@@ -884,13 +884,16 @@ impl Board {
         self.reserves[capture.force][capture.piece_kind] += 1;
     }
 
+    // Note. This function should not assume that the turn is valid: it could be a stale preturn.
     fn parse_drag_drop_turn(&self, prototurn: Turn, mode: TurnMode) -> Result<Turn, TurnError> {
         if let Turn::Move(mv) = prototurn {
-            let force = self.turn_owner(mode);
-            let piece = self.grid[mv.from].ok_or(TurnError::PieceMissing)?;
-            assert_eq!(piece.force, force);
             match mode {
                 TurnMode::Normal => {
+                    let force = self.turn_owner(mode);
+                    let piece = self.grid[mv.from].ok_or(TurnError::PieceMissing)?;
+                    if piece.force != force {
+                        return Err(TurnError::WrongTurnOrder);
+                    }
                     if piece.kind == PieceKind::King {
                         if let Some(dst_piece) = self.grid[mv.to] {
                             let first_row = SubjectiveRow::from_one_based(1).to_row(force);

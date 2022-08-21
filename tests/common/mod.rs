@@ -31,6 +31,21 @@ macro_rules! piece {
     };
 }
 
+
+pub trait AutoTurnInput {
+    fn to_turn_input(self) -> TurnInput;
+}
+
+impl AutoTurnInput for &str {
+    fn to_turn_input(self) -> TurnInput {
+        TurnInput::Algebraic(self.to_owned())
+    }
+}
+
+impl AutoTurnInput for TurnInput {
+    fn to_turn_input(self) -> TurnInput { self }
+}
+
 #[macro_export]
 macro_rules! drag_move {
     ($from:ident -> $to:ident) => {
