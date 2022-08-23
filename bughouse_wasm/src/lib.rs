@@ -160,6 +160,9 @@ impl WebClient {
                     Err(PieceDragError::DragNoLongerPossible) => {
                         // Ignore: this happen when dragged piece was captured by opponent.
                     },
+                    Err(PieceDragError::Cancelled) => {
+                        // Ignore: user cancelled the move by putting the piece back in place.
+                    },
                     Err(err) => {
                         return Err(JsValue::from(format!("Drag&drop error: {:?}", err)));
                     },

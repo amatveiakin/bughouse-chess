@@ -17,6 +17,7 @@ pub enum PieceDragError {
     NoDragInProgress,
     DragNoLongerPossible,
     PieceNotFound,
+    Cancelled,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -214,6 +215,9 @@ impl AlteredGame {
             },
             PieceDragSource::Board(source_coord) => {
                 use PieceKind::*;
+                if source_coord == dest_coord {
+                    return Err(PieceDragError::Cancelled);
+                }
                 let force = self.my_id.force;
                 let first_row = SubjectiveRow::from_one_based(1).to_row(force);
                 let last_row = SubjectiveRow::from_one_based(8).to_row(force);
