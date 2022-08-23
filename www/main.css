@@ -149,6 +149,7 @@ svg {
   width: calc(var(--sq-size-primary) * 8);
   height: calc(var(--sq-size-primary) * 11);
   user-select: none;
+  touch-action: none;
 }
 #board-secondary {
   width: calc(var(--sq-size-secondary) * 8);

@@ -267,7 +267,18 @@ function request_join(address, my_name, my_team) {
 }
 
 function set_up_drag_and_drop() {
-    // Improvement potential: Check which mouse button was pressed.
+    // Note. One would think that the new and shiny pointer events
+    // (https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events) are the
+    // answer to supporting both mouse and touch events in a uniform fashion.
+    // Unfortunately pointer events don't work here for two reasons:
+    //   - It seems impossible to implement drag cancellation with a right-click,
+    //     because pointer API does not report nested mouse events.
+    //   - The `drag_element.id = null; svg.appendChild(drag_element);` trick
+    ///    starts to break `touch-action: none`, i.e. the drag gets cancelled and
+    //     the page is panned instead. This is really quite bizarre: the same code
+    //     works differently depending on whether it was called from 'touchstart'
+    //     or from 'pointerdown'. But what can you do?
+
     document.addEventListener('mousedown', start_drag);
     document.addEventListener('mousemove', drag);
     document.addEventListener('mouseup', end_drag);
@@ -276,15 +287,18 @@ function set_up_drag_and_drop() {
     document.addEventListener('touchstart', start_drag);
     document.addEventListener('touchmove', drag);
     document.addEventListener('touchend', end_drag);
-    document.addEventListener('touchleave', end_drag);
     document.addEventListener('touchcancel', end_drag);
 
     const svg = document.getElementById('board-primary');
     svg.addEventListener('contextmenu', cancel_preturn);
 
+    function is_main_pointer(event) {
+        return event.button == 0 || event.changedTouches?.length >= 1;
+    }
+
     function viewbox_mouse_position(event) {
         const ctm = svg.getScreenCTM();
-        const src = event.touches ? event.touches[0] : event;
+        const src = event.changedTouches ? event.changedTouches[0] : event;
         return {
             x: (src.clientX - ctm.e) / ctm.a,
             y: (src.clientY - ctm.f) / ctm.d,
@@ -295,15 +309,14 @@ function set_up_drag_and_drop() {
         // Improvement potential. Highlight pieces outside of board area: add shadows separately
         //   and move them to the very back, behing boards.
         // Improvement potential: Choose the closest reserve piece rather then the one on top.
-        console.assert(drag_element === null);
-        if (event.target.classList.contains('draggable')) {
-            event.preventDefault();
+        // Note. For a mouse we can simple assume that drag_element is null here. For multi-touch
+        //   screens however this is not always the case.
+        if (!drag_element && event.target.classList.contains('draggable') && is_main_pointer(event)) {
             drag_element = event.target;
             drag_element.classList.add('dragged');
             // Dissociate image from the board/reserve:
             drag_element.id = null;
             // Bring on top; (if reserve) remove shadow by extracting from reserve group:
-            drag_element.remove();
             svg.appendChild(drag_element);
 
             const source = drag_element.getAttribute('data-bughouse-location');
@@ -314,7 +327,6 @@ function set_up_drag_and_drop() {
 
     function drag(event) {
         if (drag_element) {
-            event.preventDefault();
             const coord = viewbox_mouse_position(event);
             drag_element.setAttribute('x', coord.x - 0.5);
             drag_element.setAttribute('y', coord.y - 0.5);
@@ -323,8 +335,7 @@ function set_up_drag_and_drop() {
     }
 
     function end_drag(event) {
-        if (drag_element) {
-            event.preventDefault();
+        if (drag_element && is_main_pointer(event)) {
             const coord = viewbox_mouse_position(event);
             drag_element.remove();
             drag_element = null;
@@ -337,7 +348,11 @@ function set_up_drag_and_drop() {
 
     function cancel_preturn(event) {
         event.preventDefault();
-        wasm_client.cancel_preturn();
+        if (drag_element) {
+            wasm_client.abort_drag_piece();
+        } else {
+            wasm_client.cancel_preturn();
+        }
         update();
     }
 }

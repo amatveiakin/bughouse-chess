@@ -173,6 +173,14 @@ impl WebClient {
         }
         Ok(false)
     }
+    pub fn abort_drag_piece(&mut self) -> JsResult<()> {
+        set_square_highlight("drag-start-highlight", None)?;
+        set_square_highlight("drag-over-highlight", None)?;
+        if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
+            alt_game.abort_drag_piece();
+        }
+        Ok(())
+    }
     pub fn drag_state(&self) -> String {
         (if let Some(GameState{ ref alt_game, .. }) = self.state.game_state() {
             if let Some(drag) = alt_game.piece_drag_state() {
