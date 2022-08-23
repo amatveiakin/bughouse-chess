@@ -31,16 +31,17 @@ struct TextDocument {
 impl TextDocument {
     fn new() -> Self { TextDocument{ text: String::new(), last_line_len: 0 } }
     fn push_word(&mut self, word: &str) {
+        const SPACE_WIDTH: usize = 1;
         if self.last_line_len == 0 {
             // no separators: first record
-        } else if self.last_line_len + word.len() + 1 <= LINE_WIDTH {
+        } else if self.last_line_len + word.len() + SPACE_WIDTH <= LINE_WIDTH {
             self.text.push(' ');
-            self.last_line_len += 1;
+            self.last_line_len += SPACE_WIDTH;
         } else {
             self.text.push('\n');
             self.last_line_len = 0;
         }
-        self.text.push_str(&word);
+        self.text.push_str(word);
         self.last_line_len += word.len();
     }
     fn render(&self) -> String {

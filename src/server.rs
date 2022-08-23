@@ -643,14 +643,14 @@ impl ServerStateCore {
                 }
             },
         }
-        players_per_team.into_values().map(|mut team_players| {
+        players_per_team.into_values().flat_map(|mut team_players| {
             team_players.shuffle(&mut rng);
             let [a, b] = <[Rc<PlayerInGame>; TOTAL_PLAYERS_PER_TEAM]>::try_from(team_players).unwrap();
             vec![
                 (a, BughouseBoard::A),
                 (b, BughouseBoard::B),
             ]
-        }).flatten().collect()
+        }).collect()
     }
 }
 

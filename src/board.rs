@@ -39,7 +39,7 @@ fn direction_forward(force: Force) -> i8 {
 
 fn col_range_inclusive((col_min, col_max): (Col, Col)) -> impl Iterator<Item = Col> {
     assert!(col_min <= col_max);
-    (col_min.to_zero_based() ..= col_max.to_zero_based()).map(|idx| Col::from_zero_based(idx))
+    (col_min.to_zero_based() ..= col_max.to_zero_based()).map(Col::from_zero_based)
 }
 
 fn find_king(grid: &Grid, force: Force) -> Option<Coord> {
@@ -602,7 +602,7 @@ impl Board {
         Ok(match turn_input {
             TurnInput::Explicit(turn) => *turn,
             TurnInput::DragDrop(turn) => self.parse_drag_drop_turn(*turn, mode)?,
-            TurnInput::Algebraic(notation) => self.algebraic_to_turn(&notation, mode)?,
+            TurnInput::Algebraic(notation) => self.algebraic_to_turn(notation, mode)?,
         })
     }
 
@@ -963,7 +963,7 @@ impl Board {
                                 let capture_or = get_capture(&self.grid, from, to, self.en_passant_target);
                                 match reachability(&self.grid, from, to, capture_or.is_some()) {
                                     Ok => {
-                                        if capturing && !capture_or.is_some() {
+                                        if capturing && capture_or.is_none() {
                                             return Err(TurnError::CaptureNotationRequiresCapture);
                                         }
                                         reachable = true;

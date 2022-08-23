@@ -259,7 +259,7 @@ impl BughouseGame {
             ),
         };
         BughouseGame {
-            boards: boards,
+            boards,
             status: BughouseGameStatus::Active,
             turn_log: Vec::new(),
         }
@@ -280,14 +280,14 @@ impl BughouseGame {
         })
     }
 
-    pub fn chess_rules(&self) -> &Rc<ChessRules> { &self.boards[BughouseBoard::A].chess_rules() }
-    pub fn bughouse_rules(&self) -> &Rc<BughouseRules> { &self.boards[BughouseBoard::A].bughouse_rules().as_ref().unwrap() }
+    pub fn chess_rules(&self) -> &Rc<ChessRules> { self.boards[BughouseBoard::A].chess_rules() }
+    pub fn bughouse_rules(&self) -> &Rc<BughouseRules> { self.boards[BughouseBoard::A].bughouse_rules().as_ref().unwrap() }
     // Improvement potential. Remove mutable access to the boards.
     pub fn board_mut(&mut self, idx: BughouseBoard) -> &mut Board { &mut self.boards[idx] }
     pub fn board(&self, idx: BughouseBoard) -> &Board { &self.boards[idx] }
     pub fn boards(&self) -> &EnumMap<BughouseBoard, Board> { &self.boards }
     pub fn players(&self) -> Vec<Rc<PlayerInGame>> {
-        self.boards.values().map(|(board)| board.players().values().cloned()).flatten().collect()
+        self.boards.values().flat_map(|(board)| board.players().values().cloned()).collect()
     }
     pub fn turn_log(&self) -> &Vec<TurnRecord> { &self.turn_log }
     pub fn last_turn_record(&self) -> Option<&TurnRecord> { self.turn_log.last() }

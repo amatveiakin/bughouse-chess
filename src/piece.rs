@@ -82,6 +82,6 @@ impl PieceKind {
     }
 
     pub fn from_algebraic(notation: &str) -> Option<Self> {
-        as_single_char(notation).and_then(|ch| Self::from_algebraic_char(ch))
+        as_single_char(notation).and_then(Self::from_algebraic_char)
     }
 }
