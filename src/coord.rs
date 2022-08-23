@@ -13,13 +13,13 @@ pub const NUM_ROWS: u8 = 8;
 pub const NUM_COLS: u8 = 8;
 
 
-const fn const_char_sub(a: char, b: char) -> u8 {
-    let a_idx = a as u32;
-    let b_idx = b as u32;
-    assert!(a_idx >= b_idx);
-    let diff = a_idx - b_idx;
-    assert!(diff <= u8::MAX as u32);
-    diff as u8
+// Const equivalent of `a.checked_sub(b).unwrap()`.
+// See https://github.com/rust-lang/rust/issues/66753 for why `Option::unwrap` can't be const.
+const fn checked_sub_or_panic(a: u8, b: u8) -> u8 {
+    match a.checked_sub(b) {
+        Some(v) => v,
+        None => panic!("Integer overflow"),
+    }
 }
 
 
@@ -66,10 +66,10 @@ impl Row {
         Self { idx }
     }
     pub const fn from_algebraic(idx: char) -> Self {
-        Self::from_zero_based(const_char_sub(idx, '1'))
+        Self::from_zero_based(checked_sub_or_panic(idx as u8, b'1'))
     }
     pub const fn to_zero_based(self) -> u8 { self.idx }
-    pub const fn to_algebraic(self) -> char { (self.idx + '1' as u8) as char }
+    pub const fn to_algebraic(self) -> char { (self.idx + b'1') as char }
     pub fn all() -> impl DoubleEndedIterator<Item = Self> + Clone {
         (0..NUM_ROWS).map(Self::from_zero_based)
     }
@@ -101,10 +101,10 @@ impl Col {
         Col { idx }
     }
     pub const fn from_algebraic(idx: char) -> Self {
-        Self::from_zero_based(const_char_sub(idx, 'a'))
+        Self::from_zero_based(checked_sub_or_panic(idx as u8, b'a'))
     }
     pub const fn to_zero_based(self) -> u8 { self.idx }
-    pub const fn to_algebraic(self) -> char { (self.idx + 'a' as u8) as char }
+    pub const fn to_algebraic(self) -> char { (self.idx + b'a') as char }
     pub fn all() -> impl DoubleEndedIterator<Item = Self> + Clone {
         (0..NUM_COLS).map(Self::from_zero_based)
     }

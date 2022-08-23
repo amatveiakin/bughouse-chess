@@ -78,10 +78,10 @@ fn generate_starting_grid(starting_position: StartingPosition) -> Grid {
             let mut cols = Col::all().filter(|col| grid[Coord::new(row, *col)].is_none()).collect_vec();
             cols.shuffle(&mut rng);
             let (king_and_rook_cols, queen_and_knight_cols) = cols.split_at(3);
-            let [&left_rook_col, &king_col, &right_rook_col] =
-                <[&Col; 3]>::try_from(king_and_rook_cols.into_iter().sorted().collect_vec()).unwrap();
-            let [queen_col, knight_col_1, knight_col_2] =
-                <[Col; 3]>::try_from(queen_and_knight_cols).unwrap();
+            let (&left_rook_col, &king_col, &right_rook_col) =
+                king_and_rook_cols.iter().sorted().collect_tuple().unwrap();
+            let (&queen_col, &knight_col_1, &knight_col_2) =
+                queen_and_knight_cols.iter().collect_tuple().unwrap();
             grid[Coord::new(row, left_rook_col)] = Some(new_white(Rook));
             grid[Coord::new(row, king_col)] = Some(new_white(King));
             grid[Coord::new(row, right_rook_col)] = Some(new_white(Rook));
