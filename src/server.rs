@@ -128,7 +128,7 @@ impl Clients {
 
     // Sends the event to each client who has joined the game.
     fn broadcast(&mut self, event: &BughouseServerEvent) {
-        for (_, Client{events_tx, player_id, ..}) in &self.map {
+        for Client{events_tx, player_id, ..} in self.map.values() {
             if player_id.is_some() {
                 events_tx.send(event.clone()).unwrap();
             }
@@ -301,7 +301,7 @@ impl ServerStateCore {
         } else {
             if let Some(existing_player_id) = self.players.find_by_name(&player_name) {
                 let current_fixed_team = self.players[existing_player_id].fixed_team;
-                if clients.map.values().find(|c| c.player_id == Some(existing_player_id)).is_some() {
+                if clients.map.values().any(|c| c.player_id == Some(existing_player_id)) {
                     clients[client_id].send_error(format!(
                         r#"Cannot join: client for player "{}" already connected"#, player_name));
                 } else if current_fixed_team != fixed_team {

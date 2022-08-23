@@ -136,9 +136,9 @@ fn is_chess_mate_to(grid: &mut Grid, king_pos: Coord, en_passant_target: Option<
                     // Zero out capture separately because of en passant.
                     let mut grid = grid.maybe_scoped_set(capture_or.map(|pos| (pos, None)));
                     let mut grid = grid.scoped_set(mv.from, None);
-                    let mut grid = grid.scoped_set(mv.to, Some(piece));
+                    let     grid = grid.scoped_set(mv.to, Some(piece));
                     let new_king_pos = if piece.kind == PieceKind::King { mv.to } else { king_pos };
-                    if !is_check_to(&mut grid, new_king_pos) {
+                    if !is_check_to(&grid, new_king_pos) {
                         return false;
                     }
                 }
@@ -156,10 +156,10 @@ fn is_bughouse_mate_to(grid: &mut Grid, king_pos: Coord, en_passant_target: Opti
     }
     for pos in Coord::all() {
         if grid[pos].is_none() {
-            let mut grid = grid.scoped_set(pos, Some(PieceOnBoard::new(
+            let grid = grid.scoped_set(pos, Some(PieceOnBoard::new(
                 PieceKind::Queen, PieceOrigin::Dropped, force
             )));
-            if !is_check_to(&mut grid, king_pos) {
+            if !is_check_to(&grid, king_pos) {
                 return false;
             }
         }

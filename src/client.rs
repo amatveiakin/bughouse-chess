@@ -29,8 +29,8 @@ pub enum NotableEvent {
     GameExportReady(String),
 }
 
-// TODO: Does it make sense to have CannotApplyEvent instead of panic (that can be caused by many
-//   invariant violations in case of bad server behavior anyway).
+// TODO: Does it make sense to have CannotApplyEvent instead of panic? Both can be caused by many
+//   invariant violations in case of bad server behavior anyway.
 #[derive(Clone, Debug)]
 pub enum EventError {
     ServerReturnedError(String),
@@ -65,6 +65,12 @@ pub struct ClientState {
     my_team: Option<Team>,
     events_tx: mpsc::Sender<BughouseClientEvent>,
     contest: Option<Contest>,
+}
+
+macro_rules! cannot_apply_event {
+    ($($arg:tt)*) => {
+        EventError::CannotApplyEvent(format!($($arg)*))
+    }
 }
 
 impl ClientState {
@@ -155,7 +161,7 @@ impl ClientState {
                 Ok(NotableEvent::None)
             },
             LobbyUpdated{ players } => {
-                let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot apply LobbyUpdated: no contest in progress".to_owned()))?;
+                let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply LobbyUpdated: no contest in progress"))?;
                 // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
                 //   (e.g. is_ready from another player) arrived before is_ready update from this
                 //   client reached the server.
@@ -178,7 +184,7 @@ impl ClientState {
                 );
                 let my_id = game.find_player(&self.my_name).unwrap();
                 let alt_game = AlteredGame::new(my_id, game);
-                let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot apply GameStarted: no contest in progress".to_owned()))?;
+                let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameStarted: no contest in progress"))?;
                 contest.game_state = Some(GameState {
                     starting_grid,
                     alt_game,
@@ -202,8 +208,8 @@ impl ClientState {
                 Ok(if opponent_turn_made { NotableEvent::OpponentTurnMade } else { NotableEvent::None })
             },
             GameOver{ time, game_status, scores: new_scores } => {
-                let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot apply GameOver: no contest in progress".to_owned()))?;
-                let game_state = contest.game_state.as_mut().ok_or(EventError::CannotApplyEvent("Cannot apply GameOver: no game in progress".to_owned()))?;
+                let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameOver: no contest in progress"))?;
+                let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameOver: no game in progress"))?;
                 assert!(game_state.alt_game.status() == BughouseGameStatus::Active);
                 game_state.alt_game.set_status(game_status, time);
                 contest.scores = new_scores;
@@ -218,11 +224,11 @@ impl ClientState {
     // Returns if the turn was mady by current player opponent.
     fn apply_remote_turn(&mut self, turn_record: TurnRecord) -> Result<bool, EventError> {
         let TurnRecord{ player_id, turn_algebraic, time } = turn_record;
-        let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot make turn: no contest in progress".to_owned()))?;
-        let game_state = contest.game_state.as_mut().ok_or(EventError::CannotApplyEvent("Cannot make turn: no game in progress".to_owned()))?;
+        let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot make turn: no contest in progress"))?;
+        let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot make turn: no game in progress"))?;
         let GameState{ ref mut alt_game, ref mut time_pair, .. } = game_state;
         if alt_game.status() != BughouseGameStatus::Active {
-            return Err(EventError::CannotApplyEvent(format!("Cannot make turn {}: game over", turn_algebraic)));
+            return Err(cannot_apply_event!("Cannot make turn {}: game over", turn_algebraic));
         }
         if time_pair.is_none() {
             // Improvement potential. Sync client/server times better; consider NTP.
@@ -232,19 +238,19 @@ impl ClientState {
         alt_game.apply_remote_turn_algebraic(
             player_id, &turn_algebraic, time
         ).map_err(|err| {
-            EventError::CannotApplyEvent(format!("Impossible turn: {}, error: {:?}", turn_algebraic, err))
+            cannot_apply_event!("Impossible turn: {}, error: {:?}", turn_algebraic, err)
         })?;
         Ok(player_id == alt_game.my_id().opponent())
     }
 
     fn verify_game_status(&mut self, game_status: BughouseGameStatus) -> Result<(), EventError> {
-        let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot verify game status: no contest in progress".to_owned()))?;
-        let game_state = contest.game_state.as_mut().ok_or(EventError::CannotApplyEvent("Cannot verify game status: no game in progress".to_owned()))?;
+        let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot verify game status: no contest in progress"))?;
+        let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot verify game status: no game in progress"))?;
         let GameState{ ref mut alt_game, .. } = game_state;
         if game_status != alt_game.status() {
-            return Err(EventError::CannotApplyEvent(format!(
+            return Err(cannot_apply_event!(
                 "Expected game status = {:?}, actual = {:?}", game_status, alt_game.status()
-            )));
+            ));
         }
         Ok(())
     }
@@ -252,8 +258,8 @@ impl ClientState {
     fn update_game_status(&mut self, game_status: BughouseGameStatus, game_now: GameInstant)
         -> Result<(), EventError>
     {
-        let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot update game status: no contest in progress".to_owned()))?;
-        let game_state = contest.game_state.as_mut().ok_or(EventError::CannotApplyEvent("Cannot update game status: no game in progress".to_owned()))?;
+        let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot update game status: no contest in progress"))?;
+        let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot update game status: no game in progress"))?;
         let GameState{ ref mut alt_game, .. } = game_state;
         if alt_game.status() == BughouseGameStatus::Active {
             if game_status != BughouseGameStatus::Active {
@@ -266,7 +272,7 @@ impl ClientState {
     }
 
     fn update_scores(&mut self, new_scores: Scores) -> Result<(), EventError> {
-        let contest = self.contest.as_mut().ok_or(EventError::CannotApplyEvent("Cannot update scores: no contest in progress".to_owned()))?;
+        let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot update scores: no contest in progress"))?;
         contest.scores = new_scores;
         Ok(())
     }
