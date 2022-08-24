@@ -7,6 +7,7 @@
 // TODO: More sounds.
 // TODO: Don't render partner clock as active if black premoves first turn.
 
+extern crate console_error_panic_hook;
 extern crate enum_map;
 extern crate instant;
 extern crate serde_json;
@@ -34,18 +35,81 @@ const BOARD_TOP: f64 = RESERVE_HEIGHT;
 const BOARD_BOTTOM: f64 = BOARD_TOP + NUM_ROWS as f64;
 // TODO: Viewbox size assert.
 
+// Mutable singleton should be ok since the relevant code is single-threaded.
+// TODO: Consider wrapping into lazy_static or thread_local for better safety.
 static mut PIECE_PATH: Option<EnumMap<Force, EnumMap<PieceKind, String>>> = None;
+static mut LAST_PANIC: String = String::new();
 
+// Copied from console_error_panic_hook
+#[wasm_bindgen]
+extern {
+    type Error;
+    #[wasm_bindgen(constructor)]
+    fn new() -> Error;
+    #[wasm_bindgen(structural, method, getter)]
+    fn stack(error: &Error) -> String;
+}
+
+// Optimization potential: Remove or shrink the panic hook when the client is stable.
 #[wasm_bindgen]
 pub fn set_panic_hook() {
-    // When the `console_error_panic_hook` feature is enabled, we can call the
-    // `set_panic_hook` function at least once during initialization, and then
-    // we will get better error messages if our code ever panics.
-    //
-    // For more details see
-    // https://github.com/rustwasm/console_error_panic_hook#readme
-    #[cfg(feature = "console_error_panic_hook")]
-    console_error_panic_hook::set_once();
+    use std::panic;
+    use std::sync::Once;
+    static SET_HOOK: Once = Once::new();
+    SET_HOOK.call_once(|| {
+        panic::set_hook(Box::new(|panic_info| {
+            // Log to the browser developer console. For more details see
+            // https://github.com/rustwasm/console_error_panic_hook#readme
+            console_error_panic_hook::hook(panic_info);
+
+            // Generate error report to be sent to the server.
+            let js_error = Error::new();
+            let backtrace = js_error.stack();
+            let event = BughouseClientEvent::ReportError(BughouseClientErrorReport::RustPanic {
+                panic_info: panic_info.to_string(),
+                backtrace,
+            });
+            unsafe {
+                LAST_PANIC = serde_json::to_string(&event).unwrap();
+            }
+        }));
+    });
+}
+
+#[wasm_bindgen]
+pub fn last_panic() -> String {
+    unsafe {
+        LAST_PANIC.clone()
+    }
+}
+
+#[wasm_bindgen]
+pub struct RustError {
+    message: String,
+}
+#[wasm_bindgen]
+impl RustError {
+    pub fn message(&self) -> String { self.message.clone() }
+}
+
+macro_rules! rust_error {
+    ($($arg:tt)*) => {
+        JsValue::from(RustError{ message: format!($($arg)*) })
+    };
+}
+
+#[wasm_bindgen]
+pub fn make_rust_error_event(error: RustError) -> String {
+    let event = BughouseClientEvent::ReportError(BughouseClientErrorReport::RustError{
+        message: error.message
+    });
+    serde_json::to_string(&event).unwrap()
+}
+
+#[wasm_bindgen]
+pub fn make_unknown_error_event(message: String) -> String {
+    let event = BughouseClientEvent::ReportError(BughouseClientErrorReport::UnknownError { message });
+    serde_json::to_string(&event).unwrap()
 }
 
 #[wasm_bindgen]
@@ -76,7 +140,7 @@ impl WebClient {
             "red" => Some(Team::Red),
             "blue" => Some(Team::Blue),
             "" => None,
-            _ => { return Err(format!("Unexpected team: {}", my_team).into()); }
+            _ => { return Err(rust_error!("Unexpected team: {}", my_team)); }
         };
         let (server_tx, server_rx) = mpsc::channel();
         Ok(WebClient {
@@ -118,6 +182,9 @@ impl WebClient {
     }
 
     pub fn make_turn_algebraic(&mut self, turn_algebraic: String) -> JsResult<bool> {
+        // if turn_algebraic == "panic" { panic!("Test panic!"); }
+        // if turn_algebraic == "error" { return Err(rust_error!("Test Rust error")); }
+        // if turn_algebraic == "bad" { return Err("Test unknown error".into()); }
         self.make_turn(TurnInput::Algebraic(turn_algebraic))
     }
 
@@ -132,9 +199,7 @@ impl WebClient {
                 set_square_highlight("drag-start-highlight", Some(display_coord))?;
                 PieceDragStart::Board(coord)
             };
-            alt_game.start_drag_piece(source).map_err(|err| {
-                JsValue::from(format!("Drag&drop error: {:?}", err))
-            })?;
+            alt_game.start_drag_piece(source).map_err(|err| rust_error!("Drag&drop error: {:?}", err))?;
         }
         Ok(())
     }
@@ -164,7 +229,7 @@ impl WebClient {
                         // Ignore: user cancelled the move by putting the piece back in place.
                     },
                     Err(err) => {
-                        return Err(JsValue::from(format!("Drag&drop error: {:?}", err)));
+                        return Err(rust_error!("Drag&drop error: {:?}", err));
                     },
                 };
             } else {
@@ -203,7 +268,7 @@ impl WebClient {
     pub fn process_server_event(&mut self, event: &str) -> JsResult<JsValue> {
         let server_event = serde_json::from_str(event).unwrap();
         let notable_event = self.state.process_server_event(server_event).map_err(|err| {
-            JsValue::from(format!("{:?}", err))
+            rust_error!("{:?}", err)
         })?;
         match notable_event {
             NotableEvent::None => {
@@ -218,7 +283,7 @@ impl WebClient {
                     render_grids(self.rotate_boards);
                     Ok(JsValue::NULL)
                 } else {
-                    Err("No game in progress".into())
+                    Err(rust_error!("No game in progress"))
                 }
             }
             NotableEvent::OpponentTurnMade => {
@@ -401,11 +466,11 @@ impl WebDocument {
         self.0.get_element_by_id(element_id)
     }
     fn get_existing_element_by_id(&self, element_id: &str) -> JsResult<web_sys::Element> {
-        let element = self.0.get_element_by_id(element_id).ok_or_else(|| JsValue::from(format!(
+        let element = self.0.get_element_by_id(element_id).ok_or_else(|| rust_error!(
             "Cannot find element \"{}\"", element_id
-        )))?;
+        ))?;
         if !element.is_object() {
-            return Err(JsValue::from(format!("Element \"{}\" is not an object", element_id)));
+            return Err(rust_error!("Element \"{}\" is not an object", element_id));
         }
         Ok(element)
     }

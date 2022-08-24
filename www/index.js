@@ -30,8 +30,9 @@ wasm.init_page(
 );
 set_up_drag_and_drop();
 
-function WasmClientDoesNotExist() {}
-function InvalidCommand(msg) { this.msg = msg; }
+class WasmClientDoesNotExist {}
+class WasmClientPanicked {}
+class InvalidCommand { constructor(msg) { this.msg = msg; } }
 
 const coords = [];
 for (const row of ['1', '2', '3', '4', '5', '6', '7', '8']) {
@@ -40,9 +41,11 @@ for (const row of ['1', '2', '3', '4', '5', '6', '7', '8']) {
     }
 }
 
-let wasm_client = null;
+let wasm_client_object = null;
+let wasm_client_panicked = false;
 let socket = null;
 let socket_incoming_listener = null;
+let on_tick_interval_id = null;
 
 let drag_element = null;
 
@@ -55,9 +58,61 @@ command_input.addEventListener('change', on_command);
 const ready_button = document.getElementById('ready-button');
 ready_button.addEventListener('click', function() { execute_command('/ready') });
 
-function wasm_client_or_throw() {
-    if (wasm_client) {
-        return wasm_client;
+function with_error_handling(f) {
+    // Note. Re-throw all unexpected errors to get a stacktrace.
+    try {
+        f()
+    } catch (e) {
+        if (e instanceof WasmClientDoesNotExist) {
+            const msg = 'Not connected'
+            info_string.innerText = msg;
+            throw msg;
+        } else if (e instanceof WasmClientPanicked) {
+            const msg = 'The client is dead. Please reload the page.'
+            info_string.innerText = msg;
+            throw msg;
+        } else if (e instanceof InvalidCommand) {
+            info_string.innerText = e.msg;
+        } else if (e?.constructor?.name == 'RustError') {
+            const msg = `Internal Rust error: ${e.message()}`;
+            info_string.innerText = msg;
+            if (socket) {
+                socket.send(wasm.make_rust_error_event(e));
+            }
+            throw msg;
+        } else {
+            const rust_panic = wasm.last_panic();
+            if (rust_panic) {
+                wasm_client_panicked = true;
+                let reported = '';
+                if (socket) {
+                    socket.send(rust_panic);
+                    reported = 'The error has been reported (unless that failed too).';
+                } else {
+                    reported = 'The error has NOT been reported: not connected to server.';
+                }
+                info_string.innerText =
+                    'Internal error! This client is now dead 💀 ' +
+                    'Only refreshing the page may help you. We are very sorry. ' +
+                    reported;
+                shutdown_wasm_client();
+            } else {
+                const msg = `Unknown error: ${e}`;
+                info_string.innerText = msg;
+                if (socket) {
+                    socket.send(wasm.make_unknown_error_event(e));
+                }
+                throw msg;
+            }
+        }
+    }
+}
+
+function wasm_client() {
+    if (wasm_client_panicked) {
+        throw new WasmClientPanicked();
+    } else if (wasm_client_object) {
+        return wasm_client_object;
     } else {
         throw new WasmClientDoesNotExist();
     }
@@ -70,30 +125,27 @@ function shutdown_wasm_client() {
     }
     socket = null;
     socket_incoming_listener = null;
-    wasm_client = null;
+    wasm_client_object = null;
+    if (on_tick_interval_id != null) {
+        clearInterval(on_tick_interval_id);
+        on_tick_interval_id = null;
+    }
 }
 
 function on_server_event(event) {
-    if (wasm_client) {
+    with_error_handling(function() {
         console.log('server: ', event);
-        try {
-            const js_event = wasm_client.process_server_event(event);
-            const js_event_type = js_event?.constructor?.name;
-            if (js_event_type == 'JsEventOpponentTurnMade') {
-                turn_audio.play();
-            } else if (js_event_type == 'JsEventGameExportReady') {
-                download(js_event.content(), 'game.pgn');
-            } else if (js_event_type != null) {
-                console.error('Something unexpected happened: ', js_event);
-            }
-        } catch (error) {
-            console.warn('Error processing event from server: ', error);
-            info_string.innerText = error;
+        const js_event = wasm_client().process_server_event(event);
+        const js_event_type = js_event?.constructor?.name;
+        if (js_event_type == 'JsEventOpponentTurnMade') {
+            turn_audio.play();
+        } else if (js_event_type == 'JsEventGameExportReady') {
+            download(js_event.content(), 'game.pgn');
+        } else if (js_event_type != null) {
+            throw 'Unexpected reaction to a server event: ' + js_event.toString();
         }
         update();
-    } else {
-        console.warn('WASM client missing; could not process server event: ', event);
-    }
+    });
 }
 
 function usage_error(args_array, expected_args) {
@@ -127,8 +179,8 @@ function on_command(event) {
 }
 
 function execute_command(input) {
-    info_string.innerText = '';
-    try {
+    with_error_handling(function() {
+        info_string.innerText = '';
         if (input.startsWith('/')) {
             const args = input.slice(1).split(/\s+/);
             switch (args[0]) {
@@ -164,105 +216,99 @@ function execute_command(input) {
                 }
                 case 'undo':
                     get_args(args, []);
-                    wasm_client_or_throw().cancel_preturn();
+                    wasm_client().cancel_preturn();
                     break;
                 case 'resign':
                     get_args(args, []);
-                    wasm_client_or_throw().resign();
+                    wasm_client().resign();
                     break;
                 case 'ready':
                     get_args(args, []);
-                    wasm_client_or_throw().toggle_ready();
+                    wasm_client().toggle_ready();
                     break;
                 case 'leave':
                     get_args(args, []);
-                    wasm_client_or_throw().leave();
+                    wasm_client().leave();
                     break;
                 case 'reset':
                     get_args(args, []);
-                    wasm_client_or_throw().reset();
+                    wasm_client().reset();
                     break;
                 case 'save':
                     get_args(args, []);
-                    wasm_client_or_throw().request_export();
+                    wasm_client().request_export();
                     break;
                 default:
                     throw new InvalidCommand(`Command does not exist: /${args[0]}`)
             }
         } else {
-            if (wasm_client_or_throw().make_turn_algebraic(input)) {
+            if (wasm_client().make_turn_algebraic(input)) {
                 turn_audio.play();
             }
         }
         update();
-    } catch (e) {
-        if (e instanceof WasmClientDoesNotExist) {
-            info_string.innerText = 'Cannot execute command: not connected';
-        } else if (e instanceof InvalidCommand) {
-            info_string.innerText = e.msg;
-        } else {
-            info_string.innerText = `Unknown error: ${e}`;
-            throw e;
-        }
-    }
+    });
 }
 
 function on_tick() {
-    if (wasm_client) {
-        wasm_client.update_clock();
-    }
+    with_error_handling(function() {
+        wasm_client().update_clock();
+    });
 }
 
 function update() {
-    if (!wasm_client) {
-        return;
-    }
-    while (true) {
-        let event = wasm_client.next_outgoing_event();
-        if (event == null) {
-            break;
-        } else {
-            console.log('sending: ', event);
-            socket.send(event);
-        }
-    }
-    wasm_client.update_state();
-    const drag_state = wasm_client.drag_state();
-    switch (drag_state) {
-        case 'no':
-            if (drag_element) {
-                drag_element.remove();
-                drag_element = null;
+    with_error_handling(function() {
+        while (true) {
+            let event = wasm_client().next_outgoing_event();
+            if (event == null) {
+                break;
+            } else {
+                console.log('sending: ', event);
+                socket.send(event);
             }
-            break;
-        case 'yes':
-            console.assert(drag_element != null);
-            break;
-        case 'defunct':
-            // Improvement potential: Better image (broken piece / add red cross).
-            drag_element.setAttribute('opacity', 0.5);
-            break;
-        default:
-            console.error(`Unknown drag_state: ${drag_state}`);
-    }
+        }
+        wasm_client().update_state();
+        const drag_state = wasm_client().drag_state();
+        switch (drag_state) {
+            case 'no':
+                if (drag_element) {
+                    drag_element.remove();
+                    drag_element = null;
+                }
+                break;
+            case 'yes':
+                console.assert(drag_element != null);
+                break;
+            case 'defunct':
+                // Improvement potential: Better image (broken piece / add red cross).
+                drag_element.setAttribute('opacity', 0.5);
+                break;
+            default:
+                console.error(`Unknown drag_state: ${drag_state}`);
+        }
+    });
 }
 
 function on_socket_opened() {
-    wasm_client.join();
-    setInterval(on_tick, 100);  // TODO: Should the old `setInterval` be cancelled?
-    update();
+    with_error_handling(function() {
+        wasm_client().join();
+        on_tick_interval_id = setInterval(on_tick, 100);
+        update();
+    });
 }
 
 function request_join(address, my_name, my_team) {
-    shutdown_wasm_client();
-    socket = new WebSocket(`ws://${address}:38617`);  // TODO: get the port from Rust
-    wasm_client = wasm.WebClient.new_client(my_name, my_team);
-    info_string.innerText = 'Joining...';
-    socket_incoming_listener = socket.addEventListener('message', function(event) {
-        on_server_event(event.data);
-    });
-    socket.addEventListener('open', function(event) {
-        on_socket_opened();
+    with_error_handling(function() {
+        shutdown_wasm_client();
+        socket = new WebSocket(`ws://${address}:38617`);  // TODO: get the port from Rust
+        wasm_client_object = wasm.WebClient.new_client(my_name, my_team);
+        info_string.innerText = 'Joining...';
+        socket_incoming_listener = socket.addEventListener('message', function(event) {
+            on_server_event(event.data);
+        });
+        socket.addEventListener('open', function(event) {
+            on_socket_opened();
+        });
     });
 }
 
@@ -306,54 +352,62 @@ function set_up_drag_and_drop() {
     }
 
     function start_drag(event) {
-        // Improvement potential. Highlight pieces outside of board area: add shadows separately
-        //   and move them to the very back, behing boards.
-        // Improvement potential: Choose the closest reserve piece rather then the one on top.
-        // Note. For a mouse we can simple assume that drag_element is null here. For multi-touch
-        //   screens however this is not always the case.
-        if (!drag_element && event.target.classList.contains('draggable') && is_main_pointer(event)) {
-            drag_element = event.target;
-            drag_element.classList.add('dragged');
-            // Dissociate image from the board/reserve:
-            drag_element.id = null;
-            // Bring on top; (if reserve) remove shadow by extracting from reserve group:
-            svg.appendChild(drag_element);
+        with_error_handling(function() {
+            // Improvement potential. Highlight pieces outside of board area: add shadows separately
+            //   and move them to the very back, behing boards.
+            // Improvement potential: Choose the closest reserve piece rather then the one on top.
+            // Note. For a mouse we can simple assume that drag_element is null here. For multi-touch
+            //   screens however this is not always the case.
+            if (!drag_element && event.target.classList.contains('draggable') && is_main_pointer(event)) {
+                drag_element = event.target;
+                drag_element.classList.add('dragged');
+                // Dissociate image from the board/reserve:
+                drag_element.id = null;
+                // Bring on top; (if reserve) remove shadow by extracting from reserve group:
+                svg.appendChild(drag_element);
 
-            const source = drag_element.getAttribute('data-bughouse-location');
-            wasm_client.start_drag_piece(source);
-            update();
-        }
+                const source = drag_element.getAttribute('data-bughouse-location');
+                wasm_client().start_drag_piece(source);
+                update();
+            }
+        });
     }
 
     function drag(event) {
-        if (drag_element) {
-            const coord = viewbox_mouse_position(event);
-            drag_element.setAttribute('x', coord.x - 0.5);
-            drag_element.setAttribute('y', coord.y - 0.5);
-            wasm_client.drag_piece(coord.x, coord.y);
-        }
+        with_error_handling(function() {
+            if (drag_element) {
+                const coord = viewbox_mouse_position(event);
+                drag_element.setAttribute('x', coord.x - 0.5);
+                drag_element.setAttribute('y', coord.y - 0.5);
+                wasm_client().drag_piece(coord.x, coord.y);
+            }
+        });
     }
 
     function end_drag(event) {
-        if (drag_element && is_main_pointer(event)) {
-            const coord = viewbox_mouse_position(event);
-            drag_element.remove();
-            drag_element = null;
-            if (wasm_client.drag_piece_drop(coord.x, coord.y, event.shiftKey)) {
-                turn_audio.play();
+        with_error_handling(function() {
+            if (drag_element && is_main_pointer(event)) {
+                const coord = viewbox_mouse_position(event);
+                drag_element.remove();
+                drag_element = null;
+                if (wasm_client().drag_piece_drop(coord.x, coord.y, event.shiftKey)) {
+                    turn_audio.play();
+                }
+                update();
             }
-            update();
-        }
+        });
     }
 
     function cancel_preturn(event) {
-        event.preventDefault();
-        if (drag_element) {
-            wasm_client.abort_drag_piece();
-        } else {
-            wasm_client.cancel_preturn();
-        }
-        update();
+        with_error_handling(function() {
+            event.preventDefault();
+            if (drag_element) {
+                wasm_client().abort_drag_piece();
+            } else {
+                wasm_client().cancel_preturn();
+            }
+            update();
+        });
     }
 }
 

@@ -17,7 +17,7 @@ use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, BughouseGameStatus, BughouseGame};
 use crate::grid::Grid;
-use crate::event::{BughouseServerEvent, BughouseClientEvent};
+use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientErrorReport};
 use crate::pgn::{self, BughouseExportFormat};
 use crate::player::{Player, PlayerInGame, Team};
 use crate::rules::{Teaming, ChessRules, BughouseRules};
@@ -229,6 +229,9 @@ impl ServerState {
                     },
                     BughouseClientEvent::RequestExport{ format } => {
                         self.core.process_request_export(&mut clients, client_id, format);
+                    },
+                    BughouseClientEvent::ReportError(report) => {
+                        self.core.process_report_error(&clients, client_id, report);
                     },
                 }
             },
@@ -475,6 +478,23 @@ impl ServerStateCore {
             clients[client_id].send(BughouseServerEvent::GameExportReady{ content });
         } else {
             clients[client_id].send_error("Cannot export: no game in progress".to_owned());
+        }
+    }
+
+    fn process_report_error(
+        &self, clients: &ClientsGuard<'_>, client_id: ClientId, report: BughouseClientErrorReport)
+    {
+        let logging_id = &clients[client_id].logging_id;
+        match report {
+            BughouseClientErrorReport::RustPanic{ panic_info, backtrace } => {
+                println!("Client {logging_id} panicked:\n{panic_info}\nBacktrace: {backtrace}");
+            }
+            BughouseClientErrorReport::RustError{ message } => {
+                println!("Client {logging_id} experienced Rust error:\n{message}");
+            }
+            BughouseClientErrorReport::UnknownError{ message } => {
+                println!("Client {logging_id} experienced unknown error:\n{message}");
+            }
         }
     }
 

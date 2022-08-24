@@ -53,6 +53,13 @@ pub enum BughouseServerEvent {
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum BughouseClientErrorReport {
+    RustPanic{ panic_info: String, backtrace: String },
+    RustError{ message: String },
+    UnknownError{ message: String },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseClientEvent {
     Join {
         player_name: String,
@@ -72,4 +79,5 @@ pub enum BughouseClientEvent {
     RequestExport {
         format: BughouseExportFormat,
     },
+    ReportError(BughouseClientErrorReport),
 }
