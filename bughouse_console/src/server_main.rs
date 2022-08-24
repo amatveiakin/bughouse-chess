@@ -3,7 +3,7 @@
 //   Problem. Adding client via event is a potential race condition in case the
 //   first TCP message from the client arrives earlier.
 
-use std::net::TcpListener;
+use std::net::{TcpStream, TcpListener};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
@@ -22,6 +22,10 @@ pub struct ServerConfig {
     pub starting_time: String,
 }
 
+fn to_debug_string<T: std::fmt::Debug>(v: T) -> String {
+    format!("{v:?}")
+}
+
 fn parse_starting_time(time_str: &str) -> Duration {
     let time_re = Regex::new(r"([0-9]+):([0-9]{2})").unwrap();
     if let Some(cap) = time_re.captures(time_str) {
@@ -33,7 +37,51 @@ fn parse_starting_time(time_str: &str) -> Duration {
     }
 }
 
-// Improvement potential: Better error handling.
+fn handle_connection(stream: TcpStream, clients: &Arc<Mutex<Clients>>, tx: mpsc::Sender<IncomingEvent>)
+    -> Result<(), String>
+{
+    let peer_addr = stream.peer_addr().map_err(to_debug_string)?;
+    println!("Client connected: {}", peer_addr);
+    let mut socket_in = tungstenite::accept(stream).map_err(to_debug_string)?;
+    let mut socket_out = network::clone_websocket(&socket_in, protocol::Role::Server);
+    let (client_tx, client_rx) = mpsc::channel();
+    let client_id = clients.lock().unwrap().add_client(client_tx, peer_addr.to_string());
+    let clients_remover1 = Arc::clone(&clients);
+    let clients_remover2 = Arc::clone(&clients);
+    // Rust-upgrade (https://github.com/rust-lang/rust/issues/90470):
+    //   Use `JoinHandle.is_running` in order to join the read/write threads in a
+    //   non-blocking way.
+    thread::spawn(move || {
+        loop {
+            match network::read_obj(&mut socket_in) {
+                Ok(ev) => {
+                    tx.send(IncomingEvent::Network(client_id, ev)).unwrap();
+                },
+                Err(err) => {
+                    if let Some(logging_id) = clients_remover1.lock().unwrap().remove_client(client_id) {
+                        println!("Client {} disconnected due to read error: {:?}", logging_id, err);
+                    }
+                    return;
+                },
+            }
+        }
+    });
+    thread::spawn(move || {
+        for ev in client_rx {
+            match network::write_obj(&mut socket_out, &ev) {
+                Ok(()) => {},
+                Err(err) => {
+                    if let Some(logging_id) = clients_remover2.lock().unwrap().remove_client(client_id) {
+                        println!("Client {} disconnected due to write error: {:?}", logging_id, err);
+                    }
+                    return;
+                },
+            }
+        }
+    });
+    Ok(())
+}
+
 pub fn run(config: ServerConfig) {
     let teaming = match config.teaming.as_str() {
         "fixed" => Teaming::FixedTeams,
@@ -62,9 +110,9 @@ pub fn run(config: ServerConfig) {
         }
     });
     let clients = Arc::new(Mutex::new(Clients::new()));
-    let clients_adder = Arc::clone(&clients);
+    let clients_copy = Arc::clone(&clients);
     thread::spawn(move || {
-        let mut server_state = ServerState::new(clients, chess_rules, bughouse_rules);
+        let mut server_state = ServerState::new(clients_copy, chess_rules, bughouse_rules);
         for event in rx {
             server_state.apply_event(event);
         }
@@ -76,46 +124,12 @@ pub fn run(config: ServerConfig) {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let peer_addr = stream.peer_addr().unwrap();
-                println!("Client connected: {}", peer_addr);
-                let mut socket_in = tungstenite::accept(stream).unwrap();
-                let mut socket_out = network::clone_websocket(&socket_in, protocol::Role::Server);
-                let (client_tx, client_rx) = mpsc::channel();
-                let client_id = clients_adder.lock().unwrap().add_client(client_tx, peer_addr.to_string());
-                let tx_new = tx.clone();
-                let clients_remover1 = Arc::clone(&clients_adder);
-                let clients_remover2 = Arc::clone(&clients_adder);
-                // Rust-upgrade (https://github.com/rust-lang/rust/issues/90470):
-                //   Use `JoinHandle.is_running` in order to join the read/write threads in a
-                //   non-blocking way.
-                thread::spawn(move || {
-                    loop {
-                        match network::read_obj(&mut socket_in) {
-                            Ok(ev) => {
-                                tx_new.send(IncomingEvent::Network(client_id, ev)).unwrap();
-                            },
-                            Err(err) => {
-                                if let Some(logging_id) = clients_remover1.lock().unwrap().remove_client(client_id) {
-                                    println!("Client {} disconnected due to read error: {:?}", logging_id, err);
-                                }
-                                return;
-                            },
-                        }
+                match handle_connection(stream, &clients, tx.clone()) {
+                    Ok(()) => {},
+                    Err(err) => {
+                        println!("{}", err);
                     }
-                });
-                thread::spawn(move || {
-                    for ev in client_rx {
-                        match network::write_obj(&mut socket_out, &ev) {
-                            Ok(()) => {},
-                            Err(err) => {
-                                if let Some(logging_id) = clients_remover2.lock().unwrap().remove_client(client_id) {
-                                    println!("Client {} disconnected due to write error: {:?}", logging_id, err);
-                                }
-                                return;
-                            },
-                        }
-                    }
-                });
+                }
             }
             Err(err) => {
                 println!("Cannot establish connection: {}", err);
