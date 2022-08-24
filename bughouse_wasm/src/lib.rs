@@ -276,11 +276,11 @@ impl WebClient {
             },
             NotableEvent::GameStarted => {
                 if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
-                    let info_string = web_document().get_existing_element_by_id("info-string").unwrap();
+                    let info_string = web_document().get_existing_element_by_id("info-string")?;
                     info_string.set_text_content(None);
                     let my_id = alt_game.my_id();
                     self.rotate_boards = my_id.force == Force::Black;
-                    render_grids(self.rotate_boards);
+                    render_grids(self.rotate_boards)?;
                     Ok(JsValue::NULL)
                 } else {
                     Err(rust_error!("No game in progress"))
@@ -304,10 +304,9 @@ impl WebClient {
         }
     }
 
-    // TODO: Check exception passing and return `JsResult<()>`.
-    pub fn update_state(&self) {
+    pub fn update_state(&self) -> JsResult<()> {
         let document = web_document();
-        let info_string = document.get_existing_element_by_id("info-string").unwrap();
+        let info_string = document.get_existing_element_by_id("info-string")?;
         if let Some(contest) = self.state.contest() {
             if let Some(GameState{ ref alt_game, .. }) = contest.game_state {
                 // TODO: Better readiness status display.
@@ -317,7 +316,7 @@ impl WebClient {
                     let is_primary = board_idx == my_board_idx;
                     let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
                     let board_orientation = get_board_orientation(web_board_idx, self.rotate_boards);
-                    let svg = document.get_existing_element_by_id(&board_node_id(web_board_idx)).unwrap();
+                    let svg = document.get_existing_element_by_id(&board_node_id(web_board_idx))?;
                     let grid = board.grid();
                     for coord in Coord::all() {
                         let node_id = piece_id(web_board_idx, coord);
@@ -325,22 +324,25 @@ impl WebClient {
                         let piece = grid[coord];
                         if let Some(piece) = piece {
                             let display_coord = to_display_coord(coord, board_orientation);
-                            let node = node.unwrap_or_else(|| {
-                                let node = make_piece_node(&node_id).unwrap();
-                                svg.append_child(&node).unwrap();
-                                node
-                            });
+                            let node = match node {
+                                Some(v) => v,
+                                None => {
+                                    let v = make_piece_node(&node_id)?;
+                                    svg.append_child(&v)?;
+                                    v
+                                },
+                            };
                             let filename = piece_path(piece.kind, piece.force);
                             let (x, y) = square_position(display_coord);
-                            node.set_attribute("x", &x.to_string()).unwrap();
-                            node.set_attribute("y", &y.to_string()).unwrap();
-                            node.set_attribute("href", &filename).unwrap();
-                            node.set_attribute("data-bughouse-location", &coord.to_algebraic()).unwrap();
+                            node.set_attribute("x", &x.to_string())?;
+                            node.set_attribute("y", &y.to_string())?;
+                            node.set_attribute("href", &filename)?;
+                            node.set_attribute("data-bughouse-location", &coord.to_algebraic())?;
                             let draggable = is_primary && piece.force == my_force;
                             if draggable {
-                                node.set_attribute("class", "draggable").unwrap();
+                                node.set_attribute("class", "draggable")?;
                             } else {
-                                node.remove_attribute("class").unwrap();
+                                node.remove_attribute("class")?;
                             }
                         } else {
                             if let Some(node) = node {
@@ -357,7 +359,7 @@ impl WebClient {
                         };
                         let name_node = document.get_existing_element_by_id(
                             &player_name_node_id(web_board_idx, player_idx)
-                        ).unwrap();
+                        )?;
                         let player_name = &board.player(force).name;
                         let player_string = if game.status() == BughouseGameStatus::Active {
                             player_name.clone()
@@ -371,11 +373,11 @@ impl WebClient {
                             }
                         };
                         name_node.set_text_content(Some(&player_string));
-                        update_reserve(board.reserve(force), force, web_board_idx, player_idx).unwrap();
+                        update_reserve(board.reserve(force), force, web_board_idx, player_idx)?;
                     }
                 }
                 let primary_board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
-                update_turn_highlights(alt_game, primary_board_orientation).unwrap();
+                update_turn_highlights(alt_game, primary_board_orientation)?;
                 if alt_game.status() != BughouseGameStatus::Active {
                     info_string.set_text_content(Some(&format!("Game over: {:?}", alt_game.status())));
                 }
@@ -402,12 +404,13 @@ impl WebClient {
                 }
                 // TODO: Reset boards, clock, etc.
             }
-            update_scores(&contest.scores, contest.teaming, self.state.my_team()).unwrap();
+            update_scores(&contest.scores, contest.teaming, self.state.my_team())?;
         }
-        self.update_clock();
+        self.update_clock()?;
+        Ok(())
     }
 
-    pub fn update_clock(&self) {
+    pub fn update_clock(&self) -> JsResult<()> {
         let document = web_document();
         if let Some(GameState{ ref alt_game, time_pair, .. }) = self.state.game_state() {
             let now = Instant::now();
@@ -427,11 +430,12 @@ impl WebClient {
                     let id_suffix = format!("{}-{}", board_id(web_board_idx), player_id(player_idx));
                     // TODO: Dedup against `update_state`. Everything except the two lines below
                     //   is copy-pasted from there.
-                    let clock_node = document.get_existing_element_by_id(&format!("clock-{}", id_suffix)).unwrap();
-                    update_clock(board.clock(), force, game_now, &clock_node).unwrap();
+                    let clock_node = document.get_existing_element_by_id(&format!("clock-{}", id_suffix))?;
+                    update_clock(board.clock(), force, game_now, &clock_node)?;
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -526,7 +530,7 @@ pub fn init_page(
     unsafe {
         PIECE_PATH = Some(piece_path);
     }
-    render_grids(false);
+    render_grids(false).unwrap();
 }
 
 // TODO: Separate highlight layers based on z-order: put drag highlight above the rest.
@@ -592,7 +596,7 @@ fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_i
 {
     let is_me = (board_idx == WebBoard::Primary) && (player_idx == WebPlayer::Bottom);
     let document = web_document();
-    let reserve_node = document.get_existing_element_by_id(&reserve_node_id(board_idx, player_idx)).unwrap();
+    let reserve_node = document.get_existing_element_by_id(&reserve_node_id(board_idx, player_idx))?;
     // TODO: What would this do if a reserve piece is being dragged?
     remove_all_children(&reserve_node)?;
 
@@ -618,13 +622,13 @@ fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_i
             }
             let node = document.create_svg_element("image")?;
             node.set_attribute("href", &filename)?;
-            node.set_attribute("data-bughouse-location", &location).unwrap();
+            node.set_attribute("data-bughouse-location", &location)?;
             node.set_attribute("x", &x.to_string())?;
             node.set_attribute("y", &y.to_string())?;
             node.set_attribute("width", "1")?;
             node.set_attribute("height", "1")?;
             if is_me {
-                node.set_attribute("class", "draggable").unwrap();
+                node.set_attribute("class", "draggable")?;
             }
             reserve_node.append_child(&node)?;
         }
@@ -691,10 +695,11 @@ fn update_scores(scores: &Scores, teaming: Teaming, my_team: Option<Team>) -> Js
     Ok(())
 }
 
-fn render_grids(rotate_boards: bool) {
+fn render_grids(rotate_boards: bool) -> JsResult<()> {
     for board_idx in WebBoard::iter() {
-        render_grid(board_idx, rotate_boards).unwrap();
+        render_grid(board_idx, rotate_boards)?;
     }
+    Ok(())
 }
 
 fn render_grid(board_idx: WebBoard, rotate_boards: bool) -> JsResult<()> {
