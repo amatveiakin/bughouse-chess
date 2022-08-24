@@ -13,6 +13,7 @@ pub const PORT: u16 = 38617;
 
 #[derive(Debug)]
 pub enum CommunicationError {
+    ConnectionClosed,
     Socket(tungstenite::Error),
     Serde(serde_json::Error),
     BughouseProtocol(String),
@@ -33,10 +34,10 @@ where
     S: io::Read + io::Write,
 {
     let msg = socket.read_message().map_err(|err| CommunicationError::Socket(err))?;
-    if let Message::Text(msg) = msg {
-        serde_json::from_str(&msg).map_err(|err| CommunicationError::Serde(err))
-    } else {
-        Err(CommunicationError::BughouseProtocol(format!("Expected text, got {:?}", msg)))
+    match msg {
+        Message::Text(msg) => serde_json::from_str(&msg).map_err(|err| CommunicationError::Serde(err)),
+        Message::Close(_) => Err(CommunicationError::ConnectionClosed),
+        _ => Err(CommunicationError::BughouseProtocol(format!("Expected text, got {:?}", msg))),
     }
 }
 

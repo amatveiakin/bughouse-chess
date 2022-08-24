@@ -14,7 +14,7 @@ use tungstenite::protocol;
 use bughouse_chess::*;
 use bughouse_chess::server::*;
 
-use crate::network;
+use crate::network::{self, CommunicationError};
 
 
 pub struct ServerConfig {
@@ -59,7 +59,10 @@ fn handle_connection(stream: TcpStream, clients: &Arc<Mutex<Clients>>, tx: mpsc:
                 },
                 Err(err) => {
                     if let Some(logging_id) = clients_remover1.lock().unwrap().remove_client(client_id) {
-                        println!("Client {} disconnected due to read error: {:?}", logging_id, err);
+                        match err {
+                            CommunicationError::ConnectionClosed => println!("Client {} disconnected", logging_id),
+                            err => println!("Client {} disconnected due to read error: {:?}", logging_id, err),
+                        }
                     }
                     return;
                 },
