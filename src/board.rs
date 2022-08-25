@@ -102,7 +102,7 @@ fn get_en_passant_target(grid: &Grid, turn: Turn) -> Option<Coord> {
 //   - Does not generate castles since castling cannot be done while checked.
 //   - Pawnes are not promoted.
 //   - Drops are not generated (this is done separately in `is_bughouse_mate_to`).
-fn generate_moves_for_mate_test(grid: &mut Grid, from: Coord, en_passant_target: Option<Coord>)
+fn generate_moves_for_mate_test(grid: &Grid, from: Coord, en_passant_target: Option<Coord>)
     -> Vec<TurnMove>
 {
     // Improvement potential: Don't iterate over all squares.
