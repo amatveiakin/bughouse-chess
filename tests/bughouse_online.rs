@@ -1,4 +1,6 @@
 // Improvement potential. Test time-related things with mock clock.
+// In particular, add regression test for trying to make a turn after time ran out
+//   according to the client clock, but the server hasn't confirmed game over yet.
 
 mod common;
 

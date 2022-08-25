@@ -134,9 +134,15 @@ impl Clock {
         if let Some((prev_force, _)) = self.turn_state {
             assert_ne!(prev_force, new_force);
             let remaining = self.time_left(prev_force, now);
-            // TODO: Fix assertion failure in web client when reconnecting to game over.
-            assert!(remaining > Duration::ZERO);
             self.remaining_time[prev_force] = remaining;
+            match now.measurement {
+                TimeMeasurement::Exact => {
+                    // On the server or in offline game this should always hold true:
+                    // otherwise game should've already finished by flag.
+                    assert!(remaining > Duration::ZERO);
+                }
+                TimeMeasurement::Approximate => {}
+            }
         }
         self.turn_state = Some((new_force, now));
     }
