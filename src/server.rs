@@ -205,6 +205,14 @@ impl ServerState {
 
         match event {
             IncomingEvent::Network(client_id, event) => {
+                if !clients.map.contains_key(&client_id) {
+                    // TODO: Should there be an exception for `BughouseClientEvent::ReportError`?
+                    // TODO: Improve logging. Consider:
+                    //   - include logging_id inside client_id, or
+                    //   - keep disconnected clients in the map for some time.
+                    println!("Got an event from disconnected client:\n{event:?}");
+                    return;
+                }
                 match event {
                     BughouseClientEvent::Join{ player_name, team } => {
                         self.core.process_join(&mut clients, client_id, now, player_name, team);
