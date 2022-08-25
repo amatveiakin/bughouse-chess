@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 use enum_map::enum_map;
 use instant::Instant;
 use itertools::Itertools;
+use log::{info, warn};
 use rand::seq::SliceRandom;
 use strum::IntoEnumIterator;
 
@@ -210,7 +211,7 @@ impl ServerState {
                     // TODO: Improve logging. Consider:
                     //   - include logging_id inside client_id, or
                     //   - keep disconnected clients in the map for some time.
-                    println!("Got an event from disconnected client:\n{event:?}");
+                    warn!("Got an event from disconnected client:\n{event:?}");
                     return;
                 }
                 match event {
@@ -296,7 +297,7 @@ impl ServerStateCore {
                     } else if fixed_team.is_some() && self.players.iter().filter(|p| { p.fixed_team == fixed_team }).count() >= TOTAL_PLAYERS_PER_TEAM {
                         clients[client_id].send_error(format!("Cannot join: team {:?} is full", fixed_team));
                     } else {
-                        println!("Player {} joined team {:?}", player_name, fixed_team);
+                        info!("Player {} joined team {:?}", player_name, fixed_team);
                         clients[client_id].send(self.make_contest_start_event());
                         let player_id = self.players.add_player(Player {
                             name: player_name,
@@ -458,7 +459,7 @@ impl ServerStateCore {
 
     fn process_leave(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId) {
         if let Some(logging_id) = clients.remove_client(client_id) {
-            println!("Client {} disconnected", logging_id);
+            info!("Client {} left", logging_id);
         }
         // Note. Player will be removed automatically. This has to be the case, otherwise
         // clients disconnected due to a network error would've left abandoned players.
@@ -495,13 +496,13 @@ impl ServerStateCore {
         let logging_id = &clients[client_id].logging_id;
         match report {
             BughouseClientErrorReport::RustPanic{ panic_info, backtrace } => {
-                println!("Client {logging_id} panicked:\n{panic_info}\nBacktrace: {backtrace}");
+                warn!("Client {logging_id} panicked:\n{panic_info}\nBacktrace: {backtrace}");
             }
             BughouseClientErrorReport::RustError{ message } => {
-                println!("Client {logging_id} experienced Rust error:\n{message}");
+                warn!("Client {logging_id} experienced Rust error:\n{message}");
             }
             BughouseClientErrorReport::UnknownError{ message } => {
-                println!("Client {logging_id} experienced unknown error:\n{message}");
+                warn!("Client {logging_id} experienced unknown error:\n{message}");
             }
         }
     }

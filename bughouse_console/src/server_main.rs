@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
 
+use log::{info, warn};
 use regex::Regex;
 use tungstenite::protocol;
 
@@ -41,7 +42,7 @@ fn handle_connection(stream: TcpStream, clients: &Arc<Mutex<Clients>>, tx: mpsc:
     -> Result<(), String>
 {
     let peer_addr = stream.peer_addr().map_err(to_debug_string)?;
-    println!("Client connected: {}", peer_addr);
+    info!("Client connected: {}", peer_addr);
     let mut socket_in = tungstenite::accept(stream).map_err(to_debug_string)?;
     let mut socket_out = network::clone_websocket(&socket_in, protocol::Role::Server);
     let (client_tx, client_rx) = mpsc::channel();
@@ -60,8 +61,8 @@ fn handle_connection(stream: TcpStream, clients: &Arc<Mutex<Clients>>, tx: mpsc:
                 Err(err) => {
                     if let Some(logging_id) = clients_remover1.lock().unwrap().remove_client(client_id) {
                         match err {
-                            CommunicationError::ConnectionClosed => println!("Client {} disconnected", logging_id),
-                            err => println!("Client {} disconnected due to read error: {:?}", logging_id, err),
+                            CommunicationError::ConnectionClosed => info!("Client {} disconnected", logging_id),
+                            err => warn!("Client {} disconnected due to read error: {:?}", logging_id, err),
                         }
                     }
                     return;
@@ -75,7 +76,7 @@ fn handle_connection(stream: TcpStream, clients: &Arc<Mutex<Clients>>, tx: mpsc:
                 Ok(()) => {},
                 Err(err) => {
                     if let Some(logging_id) = clients_remover2.lock().unwrap().remove_client(client_id) {
-                        println!("Client {} disconnected due to write error: {:?}", logging_id, err);
+                        warn!("Client {} disconnected due to write error: {:?}", logging_id, err);
                     }
                     return;
                 },
@@ -123,19 +124,19 @@ pub fn run(config: ServerConfig) {
     });
 
     let listener = TcpListener::bind(("0.0.0.0", network::PORT)).unwrap();
-    println!("Listening to connection on {}...", listener.local_addr().unwrap());
+    info!("Listening to connection on {}...", listener.local_addr().unwrap());
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 match handle_connection(stream, &clients, tx.clone()) {
                     Ok(()) => {},
                     Err(err) => {
-                        println!("{}", err);
+                        warn!("{}", err);
                     }
                 }
             }
             Err(err) => {
-                println!("Cannot establish connection: {}", err);
+                warn!("Cannot establish connection: {}", err);
             }
         }
     }

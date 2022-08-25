@@ -32,6 +32,8 @@ use clap::{arg, Command};
 
 
 fn main() -> io::Result<()> {
+    env_logger::init();
+
     let matches = Command::new("Bughouse")
         .author(clap::crate_authors!())
         .version(clap::crate_version!())
