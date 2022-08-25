@@ -591,6 +591,10 @@ fn update_turn_highlights(alt_game: &AlteredGame, board_orientation: BoardOrient
     Ok(())
 }
 
+// Renders reserve.
+// Leaves space for missing piece kinds too. This makes reserve piece positions more or
+// less fixed, thus reducing the chance of grabbing the wrong piece after a last-moment
+// reserve update.
 fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_idx: WebPlayer)
     -> JsResult<()>
 {
@@ -600,20 +604,27 @@ fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_i
     // TODO: What would this do if a reserve piece is being dragged?
     remove_all_children(&reserve_node)?;
 
-    let num_piece: f64 = reserve.iter().map(|(_, &amount)| amount as f64).sum();
-    let num_kind = reserve.iter().filter(|(_, &amount)| amount > 0).count() as f64;
+    let reserve_iter = reserve.iter().filter(|(kind, _)| *kind != PieceKind::King);
+    let num_piece: u8 = reserve_iter.clone().map(|(_, &amount)| amount).sum();
+    if num_piece == 0 {
+        return Ok(());
+    }
+    let num_piece = num_piece as f64;
+    let num_kind = reserve_iter.clone().count() as f64;
+    let num_nonempty_kind = reserve_iter.clone().filter(|(_, &amount)| amount > 0).count() as f64;
     let max_width = NUM_COLS as f64;
     let kind_sep = 1.0;
     let total_kind_sep_width = kind_sep * (num_kind - 1.0);
     let piece_sep = f64::min(
         0.5,
-        (max_width - total_kind_sep_width) / (num_piece - num_kind)
+        (max_width - total_kind_sep_width) / (num_piece - num_nonempty_kind)
     );
-    let width = total_kind_sep_width + (num_piece - num_kind) * piece_sep;
+    assert!(piece_sep > 0.0, "{reserve:?}");
+    let width = total_kind_sep_width + (num_piece - num_nonempty_kind) * piece_sep;
 
     let mut x = (max_width - width - 1.0) / 2.0;  // center reserve
     let y = reserve_y_pos(player_idx);
-    for (piece_kind, &amount) in reserve.iter().filter(|(_, &amount)| amount > 0) {
+    for (piece_kind, &amount) in reserve_iter {
         let filename = piece_path(piece_kind, force);
         let location = format!("reserve-{}", piece_kind.to_full_algebraic());
         for iter in 0..amount {
