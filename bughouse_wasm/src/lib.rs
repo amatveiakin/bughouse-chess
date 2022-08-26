@@ -754,7 +754,7 @@ fn render_grid(board_idx: WebBoard, rotate_boards: bool) -> JsResult<()> {
                 caption.set_text_content(Some(&String::from(row.to_algebraic())));
                 caption.set_attribute("x", &(x + text_h_padding).to_string())?;
                 caption.set_attribute("y", &(y + text_v_padding).to_string())?;
-                caption.set_attribute("alignment-baseline", "hanging")?;
+                caption.set_attribute("dominant-baseline", "hanging")?;
                 caption.set_attribute("class", &square_text_color_class(row, col))?;
                 svg.append_child(&caption)?;
             }
