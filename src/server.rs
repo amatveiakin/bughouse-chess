@@ -558,6 +558,7 @@ impl ServerStateCore {
         let players_with_boards = players_with_boards.into_iter().map(|(p, board_idx)| {
             ((*p).clone(), board_idx)
         }).collect();
+        self.init_scores();
         self.game_state = Some(GameState {
             game,
             game_start: None,
@@ -568,6 +569,18 @@ impl ServerStateCore {
         });
         clients.broadcast(&self.make_game_start_event(now));
         self.send_lobby_updated(clients);  // update readiness flags
+    }
+
+    fn init_scores(&mut self) {
+        match self.bughouse_rules.teaming {
+            Teaming::FixedTeams => {},
+            Teaming::IndividualMode => {
+                assert!(self.scores.per_team.is_empty());
+                for p in self.players.iter() {
+                    self.scores.per_player.entry(p.name.clone()).or_insert(0);
+                }
+            }
+        }
     }
 
     fn make_contest_start_event(&self) -> BughouseServerEvent {
