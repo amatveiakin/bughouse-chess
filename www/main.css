@@ -28,22 +28,21 @@ svg {
 
 #page {
   display: grid;
-  /* TODO: Player name and clock alignment. Consider: separate <svg> block for reserves */
   grid-template-areas:
-    "   fill-a       fill-x  prim-board  fill-y    fill-k    fill-w      fill-p    "
-    "   fill-a       fill-x  prim-board  fill-y  scnd-board  fill-w      fill-p    "
-    "prim-name-top   fill-x  prim-board  fill-y  scnd-board  fill-w   scnd-name-top"
-    "prim-clock-top  fill-x  prim-board  fill-y  scnd-board  fill-w  scnd-clock-top"
-    "   fill-b       fill-x  prim-board  fill-y  scnd-board  fill-w      fill-q    "
-    "   fill-b       fill-x  prim-board  score   scnd-board  fill-w      fill-q    "
-    "   fill-b       fill-x  prim-board  fill-z  scnd-board  fill-w      fill-q    "
-    "   fill-b       fill-x  prim-board  fill-z  scnd-board  fill-w  scnd-clock-bot"
-    "   fill-b       fill-x  prim-board  fill-z  scnd-board  fill-w   scnd-name-bot"
-    "   fill-b       fill-x  prim-board  fill-z  scnd-board  fill-w      fill-r    "
-    "   fill-b       fill-x  prim-board  fill-z  info-panel  fill-w      fill-r    "
-    "prim-clock-bot  fill-x  prim-board  fill-z  info-panel  fill-w      fill-r    "
-    "prim-name-bot   fill-x  prim-board  fill-z    fill-m    fill-w      fill-r    "
-    "   fill-c       fill-x  prim-board  fill-z    fill-m    fill-w      fill-r    "
+    "   fill-a       fill-x  prim-rsrv-top  fill-y     fill-k      fill-w      fill-p    "
+    "   fill-a       fill-x  prim-rsrv-top  fill-y  scnd-rsrv-top  fill-w      fill-p    "
+    "prim-name-top   fill-x  prim-rsrv-top  fill-y  scnd-rsrv-top  fill-w   scnd-name-top"
+    "prim-clock-top  fill-x   prim-board    fill-y   scnd-board    fill-w  scnd-clock-top"
+    "   fill-b       fill-x   prim-board    fill-y   scnd-board    fill-w      fill-q    "
+    "   fill-b       fill-x   prim-board    score    scnd-board    fill-w      fill-q    "
+    "   fill-b       fill-x   prim-board    fill-z   scnd-board    fill-w      fill-q    "
+    "   fill-b       fill-x   prim-board    fill-z   scnd-board    fill-w  scnd-clock-bot"
+    "   fill-b       fill-x   prim-board    fill-z  scnd-rsrv-bot  fill-w   scnd-name-bot"
+    "   fill-b       fill-x   prim-board    fill-z  scnd-rsrv-bot  fill-w      fill-r    "
+    "   fill-b       fill-x   prim-board    fill-z   info-panel    fill-w      fill-r    "
+    "prim-clock-bot  fill-x   prim-board    fill-z   info-panel    fill-w      fill-r    "
+    "prim-name-bot   fill-x  prim-rsrv-bot  fill-z     fill-m      fill-w      fill-r    "
+    "   fill-c       fill-x  prim-rsrv-bot  fill-z     fill-m      fill-w      fill-r    "
   ;
   grid-template-columns:
     minmax(3em, 1fr)
@@ -55,16 +54,15 @@ svg {
     minmax(3em, 1fr)
   ;
   grid-template-rows:
-    calc((var(--sq-size-primary) - var(--sq-size-secondary)) * var(--reserve-height-in-squares))
-    calc(var(--sq-size-primary) / 2)
-    repeat(7, auto)
-    calc(var(--sq-size-primary) / 2)
-    repeat(3 , auto)
-    calc(var(--sq-size-primary) / 1)
+    repeat(10, auto)
+    1fr
+    repeat(3, auto)
   ;
 }
 
 #board-primary { grid-area: prim-board; }
+#reserve-primary-top { grid-area: prim-rsrv-top; }
+#reserve-primary-bottom { grid-area: prim-rsrv-bot; }
 #player-name-primary-top { grid-area: prim-name-top; }
 #player-name-primary-bottom { grid-area: prim-name-bot; }
 #clock-container-primary-top { grid-area: prim-clock-top; }
@@ -73,12 +71,13 @@ svg {
 #score { grid-area: score; }
 
 #board-secondary { grid-area: scnd-board; }
+#reserve-secondary-top { grid-area: scnd-rsrv-top; }
+#reserve-secondary-bottom { grid-area: scnd-rsrv-bot; }
 #player-name-secondary-top { grid-area: scnd-name-top; }
 #player-name-secondary-bottom { grid-area: scnd-name-bot; }
 #clock-container-secondary-top { grid-area: scnd-clock-top; }
 #clock-container-secondary-bottom { grid-area: scnd-clock-bot; }
 
-/* TODO: Stabilize info panel position */
 #info-panel { grid-area: info-panel; }
 
 .board-shadow {
@@ -142,19 +141,32 @@ svg {
   cursor: grabbing;
 }
 
-.reserve {
-  filter: url(#reserve-shadow);
-}
 #board-primary {
   width: calc(var(--sq-size-primary) * 8);
-  height: calc(var(--sq-size-primary) * 11);
+  height: calc(var(--sq-size-primary) * 8);
   user-select: none;
   touch-action: none;
 }
 #board-secondary {
   width: calc(var(--sq-size-secondary) * 8);
-  height: calc(var(--sq-size-secondary) * 11);
+  height: calc(var(--sq-size-secondary) * 8);
   user-select: none;
+}
+#reserve-primary-top,
+#reserve-primary-bottom {
+  width: calc(var(--sq-size-primary) * 8);
+  height: calc(var(--sq-size-primary) * 1.5);
+  user-select: none;
+  touch-action: none;
+}
+#reserve-secondary-top,
+#reserve-secondary-bottom {
+  width: calc(var(--sq-size-secondary) * 8);
+  height: calc(var(--sq-size-secondary) * 1.5);
+  user-select: none;
+}
+.reserve {
+  filter: url(#reserve-shadow);
 }
 
 #player-name-primary-top,
@@ -213,19 +225,19 @@ svg {
 #clock-container-primary-top,
 #clock-container-primary-bottom {
   text-align: right;
-  padding: calc(var(--sq-size-primary) * 0.2) 0;
+  padding: calc(var(--sq-size-primary) * 0.1) 0;
 }
 #clock-container-secondary-top,
 #clock-container-secondary-bottom {
   text-align: left;
-  padding: calc(var(--sq-size-primary) * 0.2) 0;
+  padding: calc(var(--sq-size-primary) * 0.1) 0;
 }
 
 #info-panel {
   width: max(var(--board-size-secondary), 6em);
 }
 #info-string-container {
-  height: 4em;
+  flex: 1;
   margin-bottom: 0.5em;
   position: relative;
 }

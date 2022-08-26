@@ -30,10 +30,11 @@ use bughouse_chess::client::*;
 
 type JsResult<T> = Result<T, JsValue>;
 
-const RESERVE_HEIGHT: f64 = 1.5;  // in squares
-const BOARD_TOP: f64 = RESERVE_HEIGHT;
-const BOARD_BOTTOM: f64 = BOARD_TOP + NUM_ROWS as f64;
-// TODO: Viewbox size assert.
+const RESERVE_HEIGHT: f64 = 1.5;  // total reserve area height, in squares
+const RESERVE_PADDING: f64 = 0.25;  // padding between board and reserve, in squares
+const BOARD_LEFT: f64 = 0.0;
+const BOARD_TOP: f64 = 0.0;
+// TODO: Viewbox size asserts.
 
 // Mutable singleton should be ok since the relevant code is single-threaded.
 // TODO: Consider wrapping into lazy_static or thread_local for better safety.
@@ -601,7 +602,8 @@ fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_i
     let is_me = (board_idx == WebBoard::Primary) && (player_idx == WebPlayer::Bottom);
     let document = web_document();
     let reserve_node = document.get_existing_element_by_id(&reserve_node_id(board_idx, player_idx))?;
-    // TODO: What would this do if a reserve piece is being dragged?
+    // Does not interfere with dragging a reserve piece, because dragged piece is re-parented
+    // to board SVG.
     remove_all_children(&reserve_node)?;
 
     let reserve_iter = reserve.iter().filter(|(kind, _)| *kind != PieceKind::King);
@@ -781,7 +783,10 @@ fn render_grid(board_idx: WebBoard, rotate_boards: bool) -> JsResult<()> {
         let reserve = document.create_svg_element("g")?;
         reserve.set_attribute("id", &reserve_node_id(board_idx, player_idx))?;
         reserve.set_attribute("class", "reserve")?;
-        svg.append_child(&reserve)?;
+        let reserve_container = document.get_existing_element_by_id(
+            &reserve_container_id(board_idx, player_idx)
+        )?;
+        reserve_container.append_child(&reserve)?;
     }
     Ok(())
 }
@@ -856,15 +861,17 @@ fn from_display_coord(coord: DisplayCoord, board_orientation: BoardOrientation) 
 // position of the top-left corner of a square
 fn square_position(coord: DisplayCoord) -> (f64, f64) {
     return (
-        f64::from(coord.x),
+        f64::from(coord.x) + BOARD_LEFT,
         f64::from(coord.y) + BOARD_TOP,
     );
 }
 
 fn position_to_square(x: f64, y: f64) -> Option<DisplayCoord> {
-    let x = x as i32;
+    let x = (x - BOARD_LEFT) as i32;
     let y = (y - BOARD_TOP) as i32;
     if 0 <= x && x < NUM_COLS as i32 && 0 <= y && y < NUM_ROWS as i32 {
+        // Improvement potential: clamp instead of asserting the values are in range.
+        // Who knows if all browsers guarantee click coords cannot be 0.00001px away?
         Some(DisplayCoord{ x: x.try_into().unwrap(), y: y.try_into().unwrap() })
     } else {
         None
@@ -897,15 +904,18 @@ fn player_name_node_id(board_idx: WebBoard, player_idx: WebPlayer) -> String {
     format!("player-name-{}-{}", board_id(board_idx), player_id(player_idx))
 }
 
-fn reserve_node_id(board_idx: WebBoard, player_idx: WebPlayer) -> String {
+fn reserve_container_id(board_idx: WebBoard, player_idx: WebPlayer) -> String {
     format!("reserve-{}-{}", board_id(board_idx), player_id(player_idx))
 }
 
+fn reserve_node_id(board_idx: WebBoard, player_idx: WebPlayer) -> String {
+    format!("reserve-group-{}-{}", board_id(board_idx), player_id(player_idx))
+}
+
 fn reserve_y_pos(player_idx: WebPlayer) -> f64 {
-    let reserve_padding = (RESERVE_HEIGHT - 1.0) / 2.0;
     match player_idx {
-        WebPlayer::Top => reserve_padding,
-        WebPlayer::Bottom => BOARD_BOTTOM + reserve_padding,
+        WebPlayer::Top => RESERVE_HEIGHT - 1.0 - RESERVE_PADDING,
+        WebPlayer::Bottom => RESERVE_PADDING,
     }
 }
 
