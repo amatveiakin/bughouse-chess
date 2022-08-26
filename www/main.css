@@ -29,20 +29,20 @@ svg {
 #page {
   display: grid;
   grid-template-areas:
-    "   fill-a       fill-x  prim-rsrv-top  fill-y     fill-k      fill-w      fill-p    "
-    "   fill-a       fill-x  prim-rsrv-top  fill-y  scnd-rsrv-top  fill-w      fill-p    "
-    "prim-name-top   fill-x  prim-rsrv-top  fill-y  scnd-rsrv-top  fill-w   scnd-name-top"
-    "prim-clock-top  fill-x   prim-board    fill-y   scnd-board    fill-w  scnd-clock-top"
-    "   fill-b       fill-x   prim-board    fill-y   scnd-board    fill-w      fill-q    "
-    "   fill-b       fill-x   prim-board    score    scnd-board    fill-w      fill-q    "
-    "   fill-b       fill-x   prim-board    fill-z   scnd-board    fill-w      fill-q    "
-    "   fill-b       fill-x   prim-board    fill-z   scnd-board    fill-w  scnd-clock-bot"
-    "   fill-b       fill-x   prim-board    fill-z  scnd-rsrv-bot  fill-w   scnd-name-bot"
-    "   fill-b       fill-x   prim-board    fill-z  scnd-rsrv-bot  fill-w      fill-r    "
-    "   fill-b       fill-x   prim-board    fill-z   info-panel    fill-w      fill-r    "
-    "prim-clock-bot  fill-x   prim-board    fill-z   info-panel    fill-w      fill-r    "
-    "prim-name-bot   fill-x  prim-rsrv-bot  fill-z     fill-m      fill-w      fill-r    "
-    "   fill-c       fill-x  prim-rsrv-bot  fill-z     fill-m      fill-w      fill-r    "
+    "   fill-a       fill-x  prim-rsrv-top   fill-y      fill-k      fill-w      fill-p    "
+    "   fill-a       fill-x  prim-rsrv-top   fill-y   scnd-rsrv-top  fill-w      fill-p    "
+    "prim-name-top   fill-x  prim-rsrv-top   fill-y   scnd-rsrv-top  fill-w   scnd-name-top"
+    "prim-clock-top  fill-x   prim-board     fill-y    scnd-board    fill-w  scnd-clock-top"
+    "   fill-b       fill-x   prim-board     fill-y    scnd-board    fill-w      fill-q    "
+    "   fill-b       fill-x   prim-board    scr-team   scnd-board    fill-w      fill-q    "
+    "   fill-b       fill-x   prim-board     fill-z    scnd-board    fill-w      fill-q    "
+    "   fill-b       fill-x   prim-board     fill-z    scnd-board    fill-w  scnd-clock-bot"
+    "   fill-b       fill-x   prim-board     fill-z   scnd-rsrv-bot  fill-w   scnd-name-bot"
+    "   fill-b       fill-x   prim-board     fill-z   scnd-rsrv-bot  fill-w      fill-r    "
+    "   fill-b       fill-x   prim-board     fill-z    info-panel    fill-w  scr-individual"
+    "prim-clock-bot  fill-x   prim-board     fill-z    info-panel    fill-w  scr-individual"
+    "prim-name-bot   fill-x  prim-rsrv-bot   fill-z      fill-m      fill-w  scr-individual"
+    "   fill-c       fill-x  prim-rsrv-bot   fill-z      fill-m      fill-w  scr-individual"
   ;
   grid-template-columns:
     minmax(3em, 1fr)
@@ -68,7 +68,8 @@ svg {
 #clock-container-primary-top { grid-area: prim-clock-top; }
 #clock-container-primary-bottom { grid-area: prim-clock-bot; }
 
-#score { grid-area: score; }
+#score-team { grid-area: scr-team; }
+#score-container-individual { grid-area: scr-individual; }
 
 #board-secondary { grid-area: scnd-board; }
 #reserve-secondary-top { grid-area: scnd-rsrv-top; }
@@ -177,14 +178,27 @@ svg {
 #player-name-secondary-bottom {
   text-align: left;
 }
-#score,
 .player-name {
   color: #a4b984;
   padding: calc(var(--sq-size-primary) * 0.1) 0;
 }
-#score {
+#score-team,
+#score-individual {
+  color: #7fb5a1;
+}
+#score-team {
   text-align: center;
   white-space: pre;
+}
+#score-container-individual {
+  display: flex;
+  flex-direction: row;
+}
+#score-individual {
+  font-size: 90%;
+  white-space: pre;
+  border-top: 0.2em solid #7fb5a1;
+  padding: 0.5em 0;
 }
 
 .clock {

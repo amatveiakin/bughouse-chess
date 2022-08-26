@@ -684,25 +684,27 @@ fn update_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_
 
 fn update_scores(scores: &Scores, teaming: Teaming, my_team: Option<Team>) -> JsResult<()> {
     let normalize = |score: u32| (score as f64) / 2.0;
-    let score_node = web_document().get_existing_element_by_id("score")?;
+    let team_node = web_document().get_existing_element_by_id("score-team")?;
+    let individual_node = web_document().get_existing_element_by_id("score-individual")?;
     match teaming {
         Teaming::FixedTeams => {
             assert!(scores.per_player.is_empty());
             let my_team = my_team.unwrap();
-            score_node.set_text_content(Some(&format!(
+            team_node.set_text_content(Some(&format!(
                 "{}\n⎯\n{}",
                 normalize(*scores.per_team.get(&my_team.opponent()).unwrap_or(&0)),
                 normalize(*scores.per_team.get(&my_team).unwrap_or(&0)),
             )));
+            individual_node.set_text_content(None);
         },
         Teaming::IndividualMode => {
             assert!(scores.per_team.is_empty());
-            // TODO: Proper score display
             let mut score_vec: Vec<_> = scores.per_player.iter().map(|(player, score)| {
-                format!("{}:\n{}", player, normalize(*score))
+                format!("{}: {}", player, normalize(*score))
             }).collect();
             score_vec.sort();
-            score_node.set_text_content(Some(&score_vec.join("\n")));
+            team_node.set_text_content(None);
+            individual_node.set_text_content(Some(&score_vec.join("\n")));
         }
     }
     Ok(())
