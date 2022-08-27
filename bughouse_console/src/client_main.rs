@@ -185,16 +185,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     for event in rx {
         match event {
             IncomingEvent::Network(event) => {
-                match client_state.process_server_event(event).unwrap() {
-                    NotableEvent::None => {},
-                    NotableEvent::GameStarted => {
-                        execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-                    },
-                    NotableEvent::OpponentTurnMade => {},
-                    NotableEvent::GameExportReady(..) => {
-                        // Improvemt potential: Implement.
-                    },
-                }
+                client_state.process_server_event(event).unwrap();
             },
             IncomingEvent::Terminal(event) => {
                 if let term_event::Event::Key(event) = event {
@@ -247,6 +238,18 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
             IncomingEvent::Tick => {
                 // Any event triggers repaint, so no additional action is required.
             },
+        }
+        for event in client_state.next_notable_event() {
+            match event {
+                NotableEvent::GameStarted => {
+                    execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
+                },
+                NotableEvent::MyTurnMade => {},
+                NotableEvent::OpponentTurnMade => {},
+                NotableEvent::GameExportReady(..) => {
+                    // Improvement potential: Implement.
+                },
+            }
         }
         render(&mut stdout, app_start_time, &client_state, &keyboard_input, &command_error)?;
     }

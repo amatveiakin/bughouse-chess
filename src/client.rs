@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::mpsc;
 
@@ -23,8 +24,8 @@ pub enum TurnCommandError {
 
 #[derive(Clone, Debug)]
 pub enum NotableEvent {
-    None,
     GameStarted,
+    MyTurnMade,
     OpponentTurnMade,
     GameExportReady(String),
 }
@@ -65,6 +66,7 @@ pub struct ClientState {
     my_team: Option<Team>,
     events_tx: mpsc::Sender<BughouseClientEvent>,
     contest: Option<Contest>,
+    notable_event_queue: VecDeque<NotableEvent>,
 }
 
 macro_rules! cannot_apply_event {
@@ -80,6 +82,7 @@ impl ClientState {
             my_team,
             events_tx,
             contest: None,
+            notable_event_queue: VecDeque::new(),
         }
     }
 
@@ -126,6 +129,7 @@ impl ClientState {
                 TurnCommandError::IllegalTurn(err)
             })?;
             self.events_tx.send(BughouseClientEvent::MakeTurn{ turn_input }).unwrap();
+            self.add_notable_event(NotableEvent::MyTurnMade);
             Ok(())
         } else {
             Err(TurnCommandError::IllegalTurn(TurnError::WrongTurnOrder))
@@ -140,15 +144,11 @@ impl ClientState {
         }
     }
 
-    // TODO: This is becoming a weird mixture of rendering `ContestState` AND processing `NotableEvent`s.
-    //   Consider whether `ClientState` should become a processor of turning events from server
-    //   into more digestable client events that client implementations work on (while never reading
-    //   the state directly.
-    pub fn process_server_event(&mut self, event: BughouseServerEvent) -> Result<NotableEvent, EventError> {
+    pub fn process_server_event(&mut self, event: BughouseServerEvent) -> Result<(), EventError> {
         use BughouseServerEvent::*;
         match event {
             Error{ message } => {
-                Err(EventError::ServerReturnedError(format!("Got error from server: {}", message)))
+                return Err(EventError::ServerReturnedError(format!("Got error from server: {}", message)))
             },
             ContestStarted{ teaming } => {
                 self.contest = Some(Contest {
@@ -158,7 +158,6 @@ impl ClientState {
                     is_ready: false,
                     game_state: None,
                 });
-                Ok(NotableEvent::None)
             },
             LobbyUpdated{ players } => {
                 let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply LobbyUpdated: no contest in progress"))?;
@@ -167,7 +166,6 @@ impl ClientState {
                 //   client reached the server.
                 contest.is_ready = players.iter().find(|p| p.name == self.my_name).unwrap().is_ready;
                 contest.players = players;
-                Ok(NotableEvent::None)
             },
             GameStarted{ chess_rules, bughouse_rules, starting_grid, players, time, turn_log, game_status, scores } => {
                 let player_map = BughouseGame::make_player_map(
@@ -191,21 +189,18 @@ impl ClientState {
                     time_pair,
                 });
                 for turn in turn_log {
-                    self.apply_remote_turn(turn)?;
+                    self.apply_remote_turn(turn, false)?;
                 }
                 self.update_game_status(game_status, time)?;
                 self.update_scores(scores)?;
-                Ok(NotableEvent::GameStarted)
+                self.add_notable_event(NotableEvent::GameStarted);
             },
             TurnsMade{ turns, game_status, scores } => {
-                let mut opponent_turn_made = false;
                 for turn in turns {
-                    let is_opponent_turn = self.apply_remote_turn(turn)?;
-                    opponent_turn_made |= is_opponent_turn;
+                    self.apply_remote_turn(turn, true)?;
                 }
                 self.verify_game_status(game_status)?;
                 self.update_scores(scores)?;
-                Ok(if opponent_turn_made { NotableEvent::OpponentTurnMade } else { NotableEvent::None })
             },
             GameOver{ time, game_status, scores: new_scores } => {
                 let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameOver: no contest in progress"))?;
@@ -213,16 +208,25 @@ impl ClientState {
                 assert!(game_state.alt_game.status() == BughouseGameStatus::Active);
                 game_state.alt_game.set_status(game_status, time);
                 contest.scores = new_scores;
-                Ok(NotableEvent::None)
             },
             GameExportReady{ content } => {
-                Ok(NotableEvent::GameExportReady(content))
+                self.add_notable_event(NotableEvent::GameExportReady(content));
             },
         }
+        Ok(())
     }
 
-    // Returns if the turn was mady by current player opponent.
-    fn apply_remote_turn(&mut self, turn_record: TurnRecord) -> Result<bool, EventError> {
+    pub fn next_notable_event(&mut self) -> Option<NotableEvent> {
+        self.notable_event_queue.pop_front()
+    }
+
+    fn add_notable_event(&mut self, event: NotableEvent) {
+        self.notable_event_queue.push_back(event);
+    }
+
+    fn apply_remote_turn(&mut self, turn_record: TurnRecord, generate_notable_events: bool)
+        -> Result<(), EventError>
+    {
         let TurnRecord{ player_id, turn_algebraic, time } = turn_record;
         let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot make turn: no contest in progress"))?;
         let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot make turn: no game in progress"))?;
@@ -240,7 +244,10 @@ impl ClientState {
         ).map_err(|err| {
             cannot_apply_event!("Impossible turn: {}, error: {:?}", turn_algebraic, err)
         })?;
-        Ok(player_id == alt_game.my_id().opponent())
+        if player_id == alt_game.my_id().opponent() && generate_notable_events {
+            self.add_notable_event(NotableEvent::OpponentTurnMade);
+        }
+        Ok(())
     }
 
     fn verify_game_status(&mut self, game_status: BughouseGameStatus) -> Result<(), EventError> {

@@ -145,15 +145,7 @@ function shutdown_wasm_client() {
 function on_server_event(event) {
     with_error_handling(function() {
         console.log('server: ', event);
-        const js_event = wasm_client().process_server_event(event);
-        const js_event_type = js_event?.constructor?.name;
-        if (js_event_type == 'JsEventOpponentTurnMade') {
-            play_turn_audio();
-        } else if (js_event_type == 'JsEventGameExportReady') {
-            download(js_event.content(), 'game.pgn');
-        } else if (js_event_type != null) {
-            throw 'Unexpected reaction to a server event: ' + js_event.toString();
-        }
+        wasm_client().process_server_event(event);
         update();
     });
 }
@@ -252,9 +244,7 @@ function execute_command(input) {
                     throw new InvalidCommand(`Command does not exist: /${args[0]}`)
             }
         } else {
-            if (wasm_client().make_turn_algebraic(input)) {
-                play_turn_audio();
-            }
+            wasm_client().make_turn_algebraic(input);
         }
         update();
     });
@@ -268,35 +258,56 @@ function on_tick() {
 
 function update() {
     with_error_handling(function() {
-        while (true) {
-            let event = wasm_client().next_outgoing_event();
-            if (event == null) {
-                break;
-            } else {
-                console.log('sending: ', event);
-                socket.send(event);
-            }
-        }
+        process_outgoing_events();
         wasm_client().update_state();
-        const drag_state = wasm_client().drag_state();
-        switch (drag_state) {
-            case 'no':
-                if (drag_element) {
-                    drag_element.remove();
-                    drag_element = null;
-                }
-                break;
-            case 'yes':
-                console.assert(drag_element != null);
-                break;
-            case 'defunct':
-                // Improvement potential: Better image (broken piece / add red cross).
-                drag_element.setAttribute('opacity', 0.5);
-                break;
-            default:
-                console.error(`Unknown drag_state: ${drag_state}`);
-        }
+        process_notable_events();
+        update_drag_state();
     });
+}
+
+function process_outgoing_events() {
+    let event;
+    while (event = wasm_client().next_outgoing_event()) {
+        console.log('sending: ', event);
+        socket.send(event);
+    }
+}
+
+function process_notable_events() {
+    let js_event;
+    while (js_event = wasm_client().next_notable_event()) {
+        const js_event_type = js_event?.constructor?.name;
+        if (js_event_type == 'JsEventMyNoop') {
+            // noop, but are events might be coming
+        } else if (js_event_type == 'JsEventMyTurnMade' || js_event_type == 'JsEventOpponentTurnMade') {
+            play_turn_audio();
+        } else if (js_event_type == 'JsEventGameExportReady') {
+            download(js_event.content(), 'game.pgn');
+        } else if (js_event_type != null) {
+            throw 'Unexpected notable event: ' + js_event.toString();
+        }
+    }
+}
+
+function update_drag_state() {
+    const drag_state = wasm_client().drag_state();
+    switch (drag_state) {
+        case 'no':
+            if (drag_element) {
+                drag_element.remove();
+                drag_element = null;
+            }
+            break;
+        case 'yes':
+            console.assert(drag_element != null);
+            break;
+        case 'defunct':
+            // Improvement potential: Better image (broken piece / add red cross).
+            drag_element.setAttribute('opacity', 0.5);
+            break;
+        default:
+            console.error(`Unknown drag_state: ${drag_state}`);
+    }
 }
 
 function on_socket_opened() {
@@ -400,9 +411,7 @@ function set_up_drag_and_drop() {
                 const coord = viewbox_mouse_position(event);
                 drag_element.remove();
                 drag_element = null;
-                if (wasm_client().drag_piece_drop(coord.x, coord.y, event.shiftKey)) {
-                    play_turn_audio();
-                }
+                wasm_client().drag_piece_drop(coord.x, coord.y, event.shiftKey);
                 update();
             }
         });

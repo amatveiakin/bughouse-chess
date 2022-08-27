@@ -114,6 +114,12 @@ pub fn make_unknown_error_event(message: String) -> String {
 }
 
 #[wasm_bindgen]
+pub struct JsEventMyNoop {}  // in contrast to `null`, indicates that event list is not over
+
+#[wasm_bindgen]
+pub struct JsEventMyTurnMade {}
+
+#[wasm_bindgen]
 pub struct JsEventOpponentTurnMade {}
 
 #[wasm_bindgen]
@@ -124,6 +130,7 @@ pub struct JsEventGameExportReady {
 impl JsEventGameExportReady {
     pub fn content(&self) -> String { self.content.clone() }
 }
+
 
 #[wasm_bindgen]
 pub struct WebClient {
@@ -174,15 +181,14 @@ impl WebClient {
         Ok(())
     }
 
-    // Returns whether a turn was made.
-    fn make_turn(&mut self, turn_input: TurnInput) -> JsResult<bool> {
+    fn make_turn(&mut self, turn_input: TurnInput) -> JsResult<()> {
         let turn_result = self.state.make_turn(turn_input);
         let info_string = web_document().get_existing_element_by_id("info-string")?;
         info_string.set_text_content(turn_result.as_ref().err().map(|err| format!("{:?}", err)).as_deref());
-        Ok(turn_result.is_ok())
+        Ok(())
     }
 
-    pub fn make_turn_algebraic(&mut self, turn_algebraic: String) -> JsResult<bool> {
+    pub fn make_turn_algebraic(&mut self, turn_algebraic: String) -> JsResult<()> {
         // if turn_algebraic == "panic" { panic!("Test panic!"); }
         // if turn_algebraic == "error" { return Err(rust_error!("Test Rust error")); }
         // if turn_algebraic == "bad" { return Err("Test unknown error".into()); }
@@ -207,9 +213,8 @@ impl WebClient {
     pub fn drag_piece(&mut self, dest_x: f64, dest_y: f64) -> JsResult<()> {
         set_square_highlight("drag-over-highlight", position_to_square(dest_x, dest_y))
     }
-    // Returns whether a turn was made.
     pub fn drag_piece_drop(&mut self, dest_x: f64, dest_y: f64, alternative_promotion: bool)
-        -> JsResult<bool>
+        -> JsResult<()>
     {
         set_square_highlight("drag-start-highlight", None)?;
         set_square_highlight("drag-over-highlight", None)?;
@@ -221,7 +226,7 @@ impl WebClient {
                 let promote_to = if alternative_promotion { Knight } else { Queen };
                 match alt_game.drag_piece_drop(dest_coord, promote_to) {
                     Ok(turn) => {
-                        return self.make_turn(turn);
+                        self.make_turn(turn)?;
                     },
                     Err(PieceDragError::DragNoLongerPossible) => {
                         // Ignore: this happen when dragged piece was captured by opponent.
@@ -237,7 +242,7 @@ impl WebClient {
                 alt_game.abort_drag_piece();
             }
         }
-        Ok(false)
+        Ok(())
     }
     pub fn abort_drag_piece(&mut self) -> JsResult<()> {
         set_square_highlight("drag-start-highlight", None)?;
@@ -266,34 +271,31 @@ impl WebClient {
         self.state.cancel_preturn();
     }
 
-    pub fn process_server_event(&mut self, event: &str) -> JsResult<JsValue> {
+    pub fn process_server_event(&mut self, event: &str) -> JsResult<()> {
         let server_event = serde_json::from_str(event).unwrap();
-        let notable_event = self.state.process_server_event(server_event).map_err(|err| {
+        self.state.process_server_event(server_event).map_err(|err| {
             rust_error!("{:?}", err)
-        })?;
-        match notable_event {
-            NotableEvent::None => {
-                Ok(JsValue::NULL)
-            },
-            NotableEvent::GameStarted => {
+        })
+    }
+
+    pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
+        match self.state.next_notable_event() {
+            Some(NotableEvent::GameStarted) => {
                 if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
                     let info_string = web_document().get_existing_element_by_id("info-string")?;
                     info_string.set_text_content(None);
                     let my_id = alt_game.my_id();
                     self.rotate_boards = my_id.force == Force::Black;
                     render_grids(self.rotate_boards)?;
-                    Ok(JsValue::NULL)
+                    Ok(JsEventMyNoop{}.into())
                 } else {
                     Err(rust_error!("No game in progress"))
                 }
-            }
-            NotableEvent::OpponentTurnMade => {
-                    Ok(JsEventOpponentTurnMade{}.into())
-            }
-            NotableEvent::GameExportReady(content) => {
-                // return Ok(Some(format!("game_export_ready:\n{}", content)));
-                Ok(JsEventGameExportReady{ content }.into())
-            }
+            },
+            Some(NotableEvent::MyTurnMade) => Ok(JsEventMyTurnMade{}.into()),
+            Some(NotableEvent::OpponentTurnMade) => Ok(JsEventOpponentTurnMade{}.into()),
+            Some(NotableEvent::GameExportReady(content)) => Ok(JsEventGameExportReady{ content }.into()),
+            None => Ok(JsValue::NULL),
         }
     }
 
