@@ -42,13 +42,6 @@ wasm.init_page(
 );
 set_up_drag_and_drop();
 
-const coords = [];
-for (const row of ['1', '2', '3', '4', '5', '6', '7', '8']) {
-    for (const col of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']) {
-        coords.push(`${col}${row}`);
-    }
-}
-
 let wasm_client_object = null;
 let wasm_client_panicked = false;
 let socket = null;
