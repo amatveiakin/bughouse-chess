@@ -5,7 +5,6 @@
 //   Better yet: subtler change by default and throbbing vignette on low time
 //   like in action games!
 // TODO: More sounds.
-// TODO: Don't render partner clock as active if black premoves first turn.
 
 extern crate console_error_panic_hook;
 extern crate enum_map;

@@ -370,7 +370,10 @@ impl BughouseGame {
         let turn_algebraic = board.turn_to_algebraic(turn)?;
         let capture_or = board.try_turn(turn, mode, now)?;
         let other_board = &mut self.boards[board_idx.other()];
-        other_board.start_clock(now);
+        match mode {
+            TurnMode::Normal => { other_board.start_clock(now) }
+            TurnMode::Preturn => {}
+        }
         if let Some(capture) = capture_or {
             other_board.receive_capture(&capture);
         }
