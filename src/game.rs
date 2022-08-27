@@ -8,10 +8,9 @@ use rand::prelude::*;
 use serde::{Serialize, Deserialize};
 use strum::EnumIter;
 
-use crate::NUM_ROWS;
-use crate::board::{Board, Turn, TurnInput, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
+use crate::board::{Board, Reserve, Turn, TurnInput, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
 use crate::clock::GameInstant;
-use crate::coord::{Row, Col, Coord};
+use crate::coord::{Row, Col, Coord, NUM_ROWS};
 use crate::force::Force;
 use crate::grid::Grid;
 use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard};
@@ -286,6 +285,9 @@ impl BughouseGame {
     pub fn board_mut(&mut self, idx: BughouseBoard) -> &mut Board { &mut self.boards[idx] }
     pub fn board(&self, idx: BughouseBoard) -> &Board { &self.boards[idx] }
     pub fn boards(&self) -> &EnumMap<BughouseBoard, Board> { &self.boards }
+    pub fn reserve(&self, player_id: BughousePlayerId) -> &Reserve {
+        self.boards[player_id.board_idx].reserve(player_id.force)
+    }
     pub fn players(&self) -> Vec<Rc<PlayerInGame>> {
         self.boards.values().flat_map(|(board)| board.players().values().cloned()).collect()
     }

@@ -246,6 +246,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                 },
                 NotableEvent::MyTurnMade => {},
                 NotableEvent::OpponentTurnMade => {},
+                NotableEvent::MyReserveRestocked => {},
                 NotableEvent::GameExportReady(..) => {
                     // Improvement potential: Implement.
                 },

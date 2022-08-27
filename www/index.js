@@ -5,6 +5,7 @@ import './main.css'
 import * as wasm from 'bughouse-chess';
 
 import favicon from '../assets/favicon.png';
+
 import white_pawn from '../assets/pieces/white-pawn.png';
 import white_knight from '../assets/pieces/white-knight.png';
 import white_bishop from '../assets/pieces/white-bishop.png';
@@ -17,7 +18,9 @@ import black_bishop from '../assets/pieces/black-bishop.png';
 import black_rook from '../assets/pieces/black-rook.png';
 import black_queen from '../assets/pieces/black-queen.png';
 import black_king from '../assets/pieces/black-king.png';
+
 import turn_sound from '../assets/sounds/turn.ogg';
+import reserve_restocked_sound from '../assets/sounds/reserve-restocked.ogg';
 
 
 class WasmClientDoesNotExist {}
@@ -27,13 +30,9 @@ class InvalidCommand { constructor(msg) { this.msg = msg; } }
 
 set_favicon();
 
-// The additional logic for turn sounds allows to play distinct sounds for every turn
-// in case of fast turns. This is mainly valuable for premoves.
 const turn_audio = new Audio(turn_sound);
-const turn_audio_min_interval_ms = 70;
-const turn_audio_max_queue_size = 3;
-let turn_audio_last_played = null;
-let turn_audio_queue_size = 0;
+const reserve_restocked_audio = new Audio(reserve_restocked_sound);
+const all_audios = [turn_audio, reserve_restocked_audio];
 
 wasm.set_panic_hook();
 wasm.init_page(
@@ -47,6 +46,17 @@ let wasm_client_panicked = false;
 let socket = null;
 let socket_incoming_listener = null;
 let on_tick_interval_id = null;
+
+// Parameters and data structures for the audio logic. Our goal is to make short and
+// important sounds (like turn sound) as clear as possible when several events occur
+// simultaneously. The main example is when you make a move and immediately get a
+// premove back.
+const audio_min_interval_ms = 70;
+const audio_max_queue_size = 5;
+let audio_last_played = null;
+let audio_queue = [];
+let audio_volume = 1.0;
+let audio_muted = false;
 
 let drag_element = null;
 
@@ -193,16 +203,16 @@ function execute_command(input) {
                     const expected_args = ['on:off:0:1:...:100'];
                     const [value] = get_args(args, expected_args);
                     switch (value) {
-                        case 'on': turn_audio.muted = false; break;
-                        case 'off': turn_audio.muted = true; break;
+                        case 'on': { audio_muted = false; break; }
+                        case 'off': { audio_muted = true; break; }
                         default: {
                             // Improvement potential: Stricter integer parse.
                             let volume = parseInt(value);
                             if (isNaN(volume) || volume < 0 || volume > 100) {
                                 throw usage_error(args, expected_args);
                             }
-                            turn_audio.muted = false;
-                            turn_audio.volume = volume / 100.0;
+                            audio_muted = false;
+                            audio_volume = volume / 100.0;
                             break;
                         }
                     }
@@ -272,8 +282,10 @@ function process_notable_events() {
         const js_event_type = js_event?.constructor?.name;
         if (js_event_type == 'JsEventMyNoop') {
             // noop, but are events might be coming
-        } else if (js_event_type == 'JsEventMyTurnMade' || js_event_type == 'JsEventOpponentTurnMade') {
-            play_turn_audio();
+        } else if (js_event_type == 'JsEventTurnMade') {
+            play_audio(turn_audio);
+        } else if (js_event_type == 'JsEventMyReserveRestocked') {
+            play_audio(reserve_restocked_audio);
         } else if (js_event_type == 'JsEventGameExportReady') {
             download(js_event.content(), 'game.pgn');
         } else if (js_event_type != null) {
@@ -423,30 +435,37 @@ function set_up_drag_and_drop() {
     }
 }
 
-function play_turn_audio() {
+function play_audio(audio) {
+    if (audio_queue.length < audio_max_queue_size) {
+        audio_queue.push(audio);
+    }
     const now = performance.now();
-    const turn_audio_next_avaiable = turn_audio_last_played + turn_audio_min_interval_ms;
-    if (turn_audio_queue_size > 0) {
-        turn_audio_queue_size = Math.min(turn_audio_queue_size + 1, turn_audio_max_queue_size);
-    } else if (now < turn_audio_next_avaiable) {
-        turn_audio_queue_size = 1;
-        setTimeout(play_turn_audio_delayed, turn_audio_next_avaiable - now);
+    const audio_next_avaiable = audio_last_played + audio_min_interval_ms;
+    if (audio_queue.length > 1) {
+        // play_audio_delayed already scheduled
+    } else if (now < audio_next_avaiable) {
+        setTimeout(play_audio_delayed, audio_next_avaiable - now);
     } else {
-        play_turn_audio_impl();
+        play_audio_impl();
     }
 }
 
-function play_turn_audio_delayed() {
-    play_turn_audio_impl();
-    turn_audio_queue_size -= 1;
-    if (turn_audio_queue_size > 0) {
-        setTimeout(play_turn_audio_delayed, turn_audio_min_interval_ms);
+function play_audio_delayed() {
+    play_audio_impl();
+    if (audio_queue) {
+        setTimeout(play_audio_delayed, audio_min_interval_ms);
     }
 }
 
-function play_turn_audio_impl() {
-    turn_audio.cloneNode().play();  // clone node to allow two overlapping sounds
-    turn_audio_last_played = performance.now();
+function play_audio_impl() {
+    let audio = audio_queue.shift();
+    if (!audio_muted) {
+        // Clone node to allow playing overlapping instances of the same sound.
+        let auto_clone = audio.cloneNode();
+        auto_clone.volume = audio_volume;
+        auto_clone.play();
+    }
+    audio_last_played = performance.now();
 }
 
 function download(text, filename) {

@@ -27,6 +27,7 @@ pub enum NotableEvent {
     GameStarted,
     MyTurnMade,
     OpponentTurnMade,
+    MyReserveRestocked,
     GameExportReady(String),
 }
 
@@ -239,13 +240,20 @@ impl ClientState {
             let game_start = GameInstant::game_start().approximate();
             *time_pair = Some(WallGameTimePair::new(Instant::now(), game_start));
         }
+        let old_reserve_size = my_reserve_size(alt_game);
         alt_game.apply_remote_turn_algebraic(
             player_id, &turn_algebraic, time
         ).map_err(|err| {
             cannot_apply_event!("Impossible turn: {}, error: {:?}", turn_algebraic, err)
         })?;
-        if player_id == alt_game.my_id().opponent() && generate_notable_events {
-            self.add_notable_event(NotableEvent::OpponentTurnMade);
+        let new_reserve_size = my_reserve_size(alt_game);
+        if generate_notable_events {
+            if player_id == alt_game.my_id().opponent() {
+                self.add_notable_event(NotableEvent::OpponentTurnMade);
+            }
+            if new_reserve_size > old_reserve_size {
+                self.add_notable_event(NotableEvent::MyReserveRestocked);
+            }
         }
         Ok(())
     }
@@ -283,4 +291,11 @@ impl ClientState {
         contest.scores = new_scores;
         Ok(())
     }
+}
+
+fn my_reserve_size(alt_game: &AlteredGame) -> u8 {
+    // For detecting if new reserve pieces have arrived.
+    // Look at `game_confirmed`, not `local_game`. The latter would give a false positive if
+    // a drop premove gets cancelled because the square is now occupied by an opponent's piece.
+    alt_game.game_confirmed().reserve(alt_game.my_id()).values().sum()
 }

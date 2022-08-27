@@ -117,10 +117,10 @@ pub fn make_unknown_error_event(message: String) -> String {
 pub struct JsEventMyNoop {}  // in contrast to `null`, indicates that event list is not over
 
 #[wasm_bindgen]
-pub struct JsEventMyTurnMade {}
+pub struct JsEventTurnMade {}
 
 #[wasm_bindgen]
-pub struct JsEventOpponentTurnMade {}
+pub struct JsEventMyReserveRestocked {}
 
 #[wasm_bindgen]
 pub struct JsEventGameExportReady {
@@ -292,8 +292,9 @@ impl WebClient {
                     Err(rust_error!("No game in progress"))
                 }
             },
-            Some(NotableEvent::MyTurnMade) => Ok(JsEventMyTurnMade{}.into()),
-            Some(NotableEvent::OpponentTurnMade) => Ok(JsEventOpponentTurnMade{}.into()),
+            Some(NotableEvent::MyTurnMade) => Ok(JsEventTurnMade{}.into()),
+            Some(NotableEvent::OpponentTurnMade) => Ok(JsEventTurnMade{}.into()),
+            Some(NotableEvent::MyReserveRestocked) => Ok(JsEventMyReserveRestocked{}.into()),
             Some(NotableEvent::GameExportReady(content)) => Ok(JsEventGameExportReady{ content }.into()),
             None => Ok(JsValue::NULL),
         }
