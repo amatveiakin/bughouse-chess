@@ -20,8 +20,20 @@ import black_king from '../assets/pieces/black-king.png';
 import turn_sound from '../assets/sounds/turn.ogg';
 
 
+class WasmClientDoesNotExist {}
+class WasmClientPanicked {}
+class InvalidCommand { constructor(msg) { this.msg = msg; } }
+
+
 set_favicon();
+
+// The additional logic for turn sounds allows to play distinct sounds for every turn
+// in case of fast turns. This is mainly valuable for premoves.
 const turn_audio = new Audio(turn_sound);
+const turn_audio_min_interval_ms = 70;
+const turn_audio_max_queue_size = 3;
+let turn_audio_last_played = null;
+let turn_audio_queue_size = 0;
 
 wasm.set_panic_hook();
 wasm.init_page(
@@ -29,10 +41,6 @@ wasm.init_page(
     black_pawn, black_knight, black_bishop, black_rook, black_queen, black_king
 );
 set_up_drag_and_drop();
-
-class WasmClientDoesNotExist {}
-class WasmClientPanicked {}
-class InvalidCommand { constructor(msg) { this.msg = msg; } }
 
 const coords = [];
 for (const row of ['1', '2', '3', '4', '5', '6', '7', '8']) {
@@ -138,7 +146,7 @@ function on_server_event(event) {
         const js_event = wasm_client().process_server_event(event);
         const js_event_type = js_event?.constructor?.name;
         if (js_event_type == 'JsEventOpponentTurnMade') {
-            turn_audio.play();
+            play_turn_audio();
         } else if (js_event_type == 'JsEventGameExportReady') {
             download(js_event.content(), 'game.pgn');
         } else if (js_event_type != null) {
@@ -243,7 +251,7 @@ function execute_command(input) {
             }
         } else {
             if (wasm_client().make_turn_algebraic(input)) {
-                turn_audio.play();
+                play_turn_audio();
             }
         }
         update();
@@ -391,7 +399,7 @@ function set_up_drag_and_drop() {
                 drag_element.remove();
                 drag_element = null;
                 if (wasm_client().drag_piece_drop(coord.x, coord.y, event.shiftKey)) {
-                    turn_audio.play();
+                    play_turn_audio();
                 }
                 update();
             }
@@ -409,6 +417,32 @@ function set_up_drag_and_drop() {
             update();
         });
     }
+}
+
+function play_turn_audio() {
+    const now = performance.now();
+    const turn_audio_next_avaiable = turn_audio_last_played + turn_audio_min_interval_ms;
+    if (turn_audio_queue_size > 0) {
+        turn_audio_queue_size = Math.min(turn_audio_queue_size + 1, turn_audio_max_queue_size);
+    } else if (now < turn_audio_next_avaiable) {
+        turn_audio_queue_size = 1;
+        setTimeout(play_turn_audio_delayed, turn_audio_next_avaiable - now);
+    } else {
+        play_turn_audio_impl();
+    }
+}
+
+function play_turn_audio_delayed() {
+    play_turn_audio_impl();
+    turn_audio_queue_size -= 1;
+    if (turn_audio_queue_size > 0) {
+        setTimeout(play_turn_audio_delayed, turn_audio_min_interval_ms);
+    }
+}
+
+function play_turn_audio_impl() {
+    turn_audio.cloneNode().play();  // clone node to allow two overlapping sounds
+    turn_audio_last_played = performance.now();
 }
 
 function download(text, filename) {
