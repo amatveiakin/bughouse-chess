@@ -105,10 +105,12 @@ function with_error_handling(f) {
                     reported;
                 shutdown_wasm_client();
             } else {
+                console.log('Unknown error: ', e);
                 const msg = `Unknown error: ${e}`;
                 info_string.innerText = msg;
                 if (socket) {
-                    socket.send(wasm.make_unknown_error_event(e));
+                    // Improvement potential. Include stack trace.
+                    socket.send(wasm.make_unknown_error_event(e.toString()));
                 }
                 throw msg;
             }
