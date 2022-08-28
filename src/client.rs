@@ -23,9 +23,17 @@ pub enum TurnCommandError {
     NoGameInProgress,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum SubjectiveGameResult {
+    Victory,
+    Defeat,
+    Draw,
+}
+
 #[derive(Clone, Debug)]
 pub enum NotableEvent {
     GameStarted,
+    GameOver(SubjectiveGameResult),
     MyTurnMade,
     OpponentTurnMade,
     MyReserveRestocked,
@@ -221,6 +229,9 @@ impl ClientState {
                 }
                 self.verify_game_status(game_status)?;
                 self.update_scores(scores)?;
+                if game_status != BughouseGameStatus::Active {
+                    self.add_game_over_notable_event()?;
+                }
             },
             GameOver{ time, game_status, scores: new_scores } => {
                 let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameOver: no contest in progress"))?;
@@ -228,6 +239,7 @@ impl ClientState {
                 assert!(game_state.alt_game.status() == BughouseGameStatus::Active);
                 game_state.alt_game.set_status(game_status, time);
                 contest.scores = new_scores;
+                self.add_game_over_notable_event()?;
             },
             GameExportReady{ content } => {
                 self.add_notable_event(NotableEvent::GameExportReady(content));
@@ -303,6 +315,27 @@ impl ClientState {
         } else {
             self.verify_game_status(game_status)
         }
+    }
+
+    fn add_game_over_notable_event(&mut self) -> Result<(), EventError> {
+        let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot create game over event: no contest in progress"))?;
+        let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot create game over event: no game in progress"))?;
+        let GameState{ ref mut alt_game, .. } = game_state;
+        let game_status = match alt_game.status() {
+            BughouseGameStatus::Active => {
+                return Err(cannot_apply_event!("Cannot create game over event: game not over"));
+            },
+            BughouseGameStatus::Victory(team, _) => {
+                if team == alt_game.my_id().team() {
+                    SubjectiveGameResult::Victory
+                } else {
+                    SubjectiveGameResult::Defeat
+                }
+            },
+            BughouseGameStatus::Draw(_) => SubjectiveGameResult::Draw,
+        };
+        self.add_notable_event(NotableEvent::GameOver(game_status));
+        Ok(())
     }
 
     fn update_scores(&mut self, new_scores: Scores) -> Result<(), EventError> {

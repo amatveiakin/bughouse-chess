@@ -115,6 +115,15 @@ pub fn make_unknown_error_event(message: String) -> String {
 pub struct JsEventMyNoop {}  // in contrast to `null`, indicates that event list is not over
 
 #[wasm_bindgen]
+pub struct JsEventVictory {}
+
+#[wasm_bindgen]
+pub struct JsEventDefeat {}
+
+#[wasm_bindgen]
+pub struct JsEventDraw {}
+
+#[wasm_bindgen]
 pub struct JsEventTurnMade {}
 
 #[wasm_bindgen]
@@ -293,6 +302,13 @@ impl WebClient {
                     Err(rust_error!("No game in progress"))
                 }
             },
+            Some(NotableEvent::GameOver(game_status)) => {
+                match game_status {
+                    SubjectiveGameResult::Victory => Ok(JsEventVictory{}.into()),
+                    SubjectiveGameResult::Defeat => Ok(JsEventDefeat{}.into()),
+                    SubjectiveGameResult::Draw => Ok(JsEventDraw{}.into()),
+                }
+            },
             Some(NotableEvent::MyTurnMade) => Ok(JsEventTurnMade{}.into()),
             Some(NotableEvent::OpponentTurnMade) => Ok(JsEventTurnMade{}.into()),
             Some(NotableEvent::MyReserveRestocked) => Ok(JsEventMyReserveRestocked{}.into()),
@@ -389,6 +405,7 @@ impl WebClient {
                 let primary_board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
                 update_turn_highlights(alt_game, primary_board_orientation)?;
                 if alt_game.status() != BughouseGameStatus::Active {
+                    // TODO: Print "victory / defeat" instead of team color.
                     info_string.set_text_content(Some(&format!("Game over: {:?}", alt_game.status())));
                 }
             } else {

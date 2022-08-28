@@ -22,6 +22,9 @@ import black_king from '../assets/pieces/black-king.png';
 import turn_sound from '../assets/sounds/turn.ogg';
 import reserve_restocked_sound from '../assets/sounds/reserve-restocked.ogg';
 import low_time_sound from '../assets/sounds/low-time.ogg';
+import victory_sound from '../assets/sounds/victory.ogg';
+import defeat_sound from '../assets/sounds/defeat.ogg';
+import draw_sound from '../assets/sounds/draw.ogg';
 
 
 class WasmClientDoesNotExist {}
@@ -33,6 +36,9 @@ set_favicon();
 
 // Improvement potential. Establish priority on sounds; play more important sounds first
 // in case of a clash.
+const victory_audio = new Audio(victory_sound);
+const defeat_audio = new Audio(defeat_sound);
+const draw_audio = new Audio(draw_sound);
 const turn_audio = new Audio(turn_sound);
 const reserve_restocked_audio = new Audio(reserve_restocked_sound);
 const low_time_audio = new Audio(low_time_sound);
@@ -288,6 +294,12 @@ function process_notable_events() {
         const js_event_type = js_event?.constructor?.name;
         if (js_event_type == 'JsEventMyNoop') {
             // noop, but are events might be coming
+        } else if (js_event_type == 'JsEventVictory') {
+            play_audio(victory_audio);
+        } else if (js_event_type == 'JsEventDefeat') {
+            play_audio(defeat_audio);
+        } else if (js_event_type == 'JsEventDraw') {
+            play_audio(draw_audio);
         } else if (js_event_type == 'JsEventTurnMade') {
             play_audio(turn_audio);
         } else if (js_event_type == 'JsEventMyReserveRestocked') {

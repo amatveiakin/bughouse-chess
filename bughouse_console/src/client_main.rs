@@ -245,6 +245,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                 NotableEvent::GameStarted => {
                     execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
                 },
+                NotableEvent::GameOver(..) => {},
                 NotableEvent::MyTurnMade => {},
                 NotableEvent::OpponentTurnMade => {},
                 NotableEvent::MyReserveRestocked => {},
