@@ -239,6 +239,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                 // Any event triggers repaint, so no additional action is required.
             },
         }
+        client_state.refresh();
         for event in client_state.next_notable_event() {
             match event {
                 NotableEvent::GameStarted => {
@@ -247,6 +248,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                 NotableEvent::MyTurnMade => {},
                 NotableEvent::OpponentTurnMade => {},
                 NotableEvent::MyReserveRestocked => {},
+                NotableEvent::LowTime => {},
                 NotableEvent::GameExportReady(..) => {
                     // Improvement potential: Implement.
                 },

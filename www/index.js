@@ -21,6 +21,7 @@ import black_king from '../assets/pieces/black-king.png';
 
 import turn_sound from '../assets/sounds/turn.ogg';
 import reserve_restocked_sound from '../assets/sounds/reserve-restocked.ogg';
+import low_time_sound from '../assets/sounds/low-time.ogg';
 
 
 class WasmClientDoesNotExist {}
@@ -30,9 +31,11 @@ class InvalidCommand { constructor(msg) { this.msg = msg; } }
 
 set_favicon();
 
+// Improvement potential. Establish priority on sounds; play more important sounds first
+// in case of a clash.
 const turn_audio = new Audio(turn_sound);
 const reserve_restocked_audio = new Audio(reserve_restocked_sound);
-const all_audios = [turn_audio, reserve_restocked_audio];
+const low_time_audio = new Audio(low_time_sound);
 
 wasm.set_panic_hook();
 wasm.init_page(
@@ -255,13 +258,16 @@ function execute_command(input) {
 
 function on_tick() {
     with_error_handling(function() {
+        wasm_client().refresh();
         wasm_client().update_clock();
+        process_notable_events();
     });
 }
 
 function update() {
     with_error_handling(function() {
         process_outgoing_events();
+        wasm_client().refresh();
         wasm_client().update_state();
         process_notable_events();
         update_drag_state();
@@ -286,6 +292,8 @@ function process_notable_events() {
             play_audio(turn_audio);
         } else if (js_event_type == 'JsEventMyReserveRestocked') {
             play_audio(reserve_restocked_audio);
+        } else if (js_event_type == 'JsEventLowTime') {
+            play_audio(low_time_audio);
         } else if (js_event_type == 'JsEventGameExportReady') {
             download(js_event.content(), 'game.pgn');
         } else if (js_event_type != null) {

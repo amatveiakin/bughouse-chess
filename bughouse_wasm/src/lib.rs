@@ -4,7 +4,6 @@
 //   Maybe even change background (add vignette) or something like that.
 //   Better yet: subtler change by default and throbbing vignette on low time
 //   like in action games!
-// TODO: More sounds.
 
 extern crate console_error_panic_hook;
 extern crate enum_map;
@@ -120,6 +119,9 @@ pub struct JsEventTurnMade {}
 
 #[wasm_bindgen]
 pub struct JsEventMyReserveRestocked {}
+
+#[wasm_bindgen]
+pub struct JsEventLowTime {}
 
 #[wasm_bindgen]
 pub struct JsEventGameExportReady {
@@ -294,6 +296,7 @@ impl WebClient {
             Some(NotableEvent::MyTurnMade) => Ok(JsEventTurnMade{}.into()),
             Some(NotableEvent::OpponentTurnMade) => Ok(JsEventTurnMade{}.into()),
             Some(NotableEvent::MyReserveRestocked) => Ok(JsEventMyReserveRestocked{}.into()),
+            Some(NotableEvent::LowTime) => Ok(JsEventLowTime{}.into()),
             Some(NotableEvent::GameExportReady(content)) => Ok(JsEventGameExportReady{ content }.into()),
             None => Ok(JsValue::NULL),
         }
@@ -305,6 +308,10 @@ impl WebClient {
             Err(mpsc::TryRecvError::Empty) => None,
             Err(mpsc::TryRecvError::Disconnected) => panic!("Event channel disconnected"),
         }
+    }
+
+    pub fn refresh(&mut self) {
+        self.state.refresh();
     }
 
     pub fn update_state(&self) -> JsResult<()> {

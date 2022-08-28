@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::mpsc;
+use std::time::Duration;
 
 use instant::Instant;
 
@@ -28,6 +29,7 @@ pub enum NotableEvent {
     MyTurnMade,
     OpponentTurnMade,
     MyReserveRestocked,
+    LowTime,
     GameExportReady(String),
 }
 
@@ -47,6 +49,8 @@ pub struct GameState {
     pub alt_game: AlteredGame,
     // Game start time: `None` before first move, non-`None` afterwards.
     pub time_pair: Option<WallGameTimePair>,
+    // Index of the next warning in `LOW_TIME_WARNING_THRESHOLDS`.
+    pub next_low_time_warning_idx: usize,
 }
 
 #[derive(Debug)]
@@ -69,6 +73,15 @@ pub struct ClientState {
     contest: Option<Contest>,
     notable_event_queue: VecDeque<NotableEvent>,
 }
+
+const LOW_TIME_WARNING_THRESHOLDS: &[Duration] = &[
+    Duration::from_secs(20),
+    Duration::from_secs(10),
+    Duration::from_secs(5),
+    Duration::from_secs(3),
+    Duration::from_secs(2),
+    Duration::from_secs(1),
+];
 
 macro_rules! cannot_apply_event {
     ($($arg:tt)*) => {
@@ -117,6 +130,10 @@ impl ClientState {
     }
     pub fn request_export(&mut self, format: BughouseExportFormat) {
         self.events_tx.send(BughouseClientEvent::RequestExport{ format }).unwrap();
+    }
+
+    pub fn refresh(&mut self) {
+        self.update_low_time_warnings(true);
     }
 
     pub fn make_turn(&mut self, turn_input: TurnInput) -> Result<(), TurnCommandError> {
@@ -188,6 +205,7 @@ impl ClientState {
                     starting_grid,
                     alt_game,
                     time_pair,
+                    next_low_time_warning_idx: 0,
                 });
                 for turn in turn_log {
                     self.apply_remote_turn(turn, false)?;
@@ -195,6 +213,7 @@ impl ClientState {
                 self.update_game_status(game_status, time)?;
                 self.update_scores(scores)?;
                 self.add_notable_event(NotableEvent::GameStarted);
+                self.update_low_time_warnings(false);
             },
             TurnsMade{ turns, game_status, scores } => {
                 for turn in turns {
@@ -291,6 +310,33 @@ impl ClientState {
         contest.scores = new_scores;
         Ok(())
     }
+
+    fn update_low_time_warnings(&mut self, generate_notable_events: bool) {
+        if let Some(game_state) = self.game_state_mut() {
+            let GameState{ ref alt_game, time_pair, ref mut next_low_time_warning_idx, .. } = game_state;
+            if let Some(time_pair) = time_pair {
+                // Optimization potential. Avoid constructing `alt_game.local_game()`, which
+                // involves copying the entire board, just for the sake of clock readings.
+                // Note. Using `alt_game.game_confirmed()` would be a bad solution, since it
+                // could lead to sound and clock visuals being out of sync. Potentially hugely
+                // out of sync if local player made a move at 0:20.01 and the opponent replied
+                // one minute later.
+                let game_now = GameInstant::from_pair_game_active(*time_pair, Instant::now());
+                let time_left = my_time_left(alt_game, game_now);
+                let idx = next_low_time_warning_idx;
+                let mut num_events = 0;
+                while *idx < LOW_TIME_WARNING_THRESHOLDS.len() && time_left <= LOW_TIME_WARNING_THRESHOLDS[*idx] {
+                    *idx += 1;
+                    num_events += 1;
+                }
+                if generate_notable_events {
+                    for _ in 0..num_events {
+                        self.add_notable_event(NotableEvent::LowTime);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn my_reserve_size(alt_game: &AlteredGame) -> u8 {
@@ -298,4 +344,9 @@ fn my_reserve_size(alt_game: &AlteredGame) -> u8 {
     // Look at `game_confirmed`, not `local_game`. The latter would give a false positive if
     // a drop premove gets cancelled because the square is now occupied by an opponent's piece.
     alt_game.game_confirmed().reserve(alt_game.my_id()).values().sum()
+}
+
+fn my_time_left(alt_game: &AlteredGame, now: GameInstant) -> Duration {
+    let my_id = alt_game.my_id();
+    alt_game.local_game().board(my_id.board_idx).clock().time_left(my_id.force, now)
 }

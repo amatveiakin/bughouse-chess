@@ -97,6 +97,7 @@ impl Client {
                 return (something_changed, Err(err));
             }
         }
+        self.state.refresh();
         (something_changed, Ok(()))
     }
     fn make_turn(&mut self, turn: impl AutoTurnInput) -> Result<(), client::TurnCommandError> {
