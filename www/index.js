@@ -415,6 +415,9 @@ function set_up_drag_and_drop() {
                 const source = drag_element.getAttribute('data-bughouse-location');
                 wasm_client().start_drag_piece(source);
                 update();
+
+                // Properly position reserve piece after re-parenting.
+                drag(event);
             }
         });
     }
