@@ -15,23 +15,30 @@ use bughouse_chess::client::TurnCommandError::IllegalTurn;
 use common::*;
 
 
+fn default_chess_rules() -> ChessRules {
+    ChessRules {
+        starting_position: StartingPosition::Classic,
+        time_control: TimeControl{ starting_time: Duration::from_secs(300) },
+    }
+}
+
+fn default_bughouse_rules() -> BughouseRules {
+    BughouseRules {
+        teaming: Teaming::FixedTeams,
+        min_pawn_drop_row: SubjectiveRow::from_one_based(2),
+        max_pawn_drop_row: SubjectiveRow::from_one_based(6),
+        drop_aggression: DropAggression::NoChessMate,
+    }
+}
+
+
 struct Server {
     clients: Arc<Mutex<server::Clients>>,
     state: server::ServerState,
 }
 
 impl Server {
-    fn new() -> Self {
-        let chess_rules = ChessRules {
-            starting_position: StartingPosition::Classic,
-            time_control: TimeControl{ starting_time: Duration::from_secs(300) },
-        };
-        let bughouse_rules = BughouseRules {
-            teaming: Teaming::FixedTeams,
-            min_pawn_drop_row: SubjectiveRow::from_one_based(2),
-            max_pawn_drop_row: SubjectiveRow::from_one_based(6),
-            drop_aggression: DropAggression::NoChessMate,
-        };
+    fn new(chess_rules: ChessRules, bughouse_rules: BughouseRules) -> Self {
         let clients = Arc::new(Mutex::new(server::Clients::new()));
         let clients_copy = Arc::clone(&clients);
         let state = server::ServerState::new(clients_copy, chess_rules, bughouse_rules);
@@ -59,11 +66,11 @@ struct Client {
 }
 
 impl Client {
-    pub fn new(my_name: String, my_team: Team, server: &mut Server) -> Self {
+    pub fn new(my_name: String, my_team: Option<Team>, server: &mut Server) -> Self {
         let (incoming_tx, incoming_rx) = mpsc::channel();
         let (outgoing_tx, outgoing_rx) = mpsc::channel();
         let id = server.add_client(incoming_tx);
-        let state = client::ClientState::new(my_name, Some(my_team), outgoing_tx);
+        let state = client::ClientState::new(my_name, my_team, outgoing_tx);
         Client{ id, incoming_rx, outgoing_rx, state }
     }
 
@@ -118,13 +125,16 @@ struct World {
 
 impl World {
     fn new() -> Self {
+        Self::new_with_rules(default_chess_rules(), default_bughouse_rules())
+    }
+    fn new_with_rules(chess_rules: ChessRules, bughouse_rules: BughouseRules) -> Self {
         World {
-            server: Server::new(),
+            server: Server::new(chess_rules, bughouse_rules),
             clients: vec![],
         }
     }
 
-    fn add_client(&mut self, name: &str, team: Team) -> TestClientId {
+    fn add_client(&mut self, name: &str, team: Option<Team>) -> TestClientId {
         let idx = TestClientId(self.clients.len());
         let mut client = Client::new(name.to_owned(), team, &mut self.server);
         client.state.join();
@@ -139,10 +149,10 @@ impl World {
             ("p4".to_owned(), BughouseBoard::B),  // white
         ]);
         let mut clients = [
-            self.add_client("p1", Team::Red),
-            self.add_client("p2", Team::Red),
-            self.add_client("p3", Team::Blue),
-            self.add_client("p4", Team::Blue),
+            self.add_client("p1", Some(Team::Red)),
+            self.add_client("p2", Some(Team::Red)),
+            self.add_client("p3", Some(Team::Blue)),
+            self.add_client("p4", Some(Team::Blue)),
         ];
         self.process_all_events();
         for cl in clients.iter_mut() {
@@ -226,10 +236,10 @@ fn play_online_misc() {
         ("p4".to_owned(), BughouseBoard::B),
     ]);
 
-    let cl1 = world.add_client("p1", Team::Red);
-    let cl2 = world.add_client("p2", Team::Red);
-    let cl3 = world.add_client("p3", Team::Blue);
-    let cl4 = world.add_client("p4", Team::Blue);
+    let cl1 = world.add_client("p1", Some(Team::Red));
+    let cl2 = world.add_client("p2", Some(Team::Red));
+    let cl3 = world.add_client("p3", Some(Team::Blue));
+    let cl4 = world.add_client("p4", Some(Team::Blue));
     world.process_all_events();
 
     world[cl1].state.set_ready(true);
@@ -388,9 +398,9 @@ fn preturn_auto_cancellation_on_checkmate() {
 fn reconnect_lobby() {
     let mut world = World::new();
 
-    let cl1 = world.add_client("p1", Team::Red);
-    let cl2 = world.add_client("p2", Team::Red);
-    let cl3 = world.add_client("p3", Team::Blue);
+    let cl1 = world.add_client("p1", Some(Team::Red));
+    let cl2 = world.add_client("p2", Some(Team::Red));
+    let cl3 = world.add_client("p3", Some(Team::Blue));
     world.process_all_events();
     world[cl1].state.set_ready(true);
     world[cl2].state.set_ready(true);
@@ -403,7 +413,7 @@ fn reconnect_lobby() {
     world.process_all_events();
     assert_eq!(world[cl1].state.contest().unwrap().players.len(), 1);
 
-    let cl4 = world.add_client("p4", Team::Blue);
+    let cl4 = world.add_client("p4", Some(Team::Blue));
     world.process_all_events();
     world[cl4].state.set_ready(true);
     world.process_all_events();
@@ -412,14 +422,14 @@ fn reconnect_lobby() {
     assert_eq!(world[cl1].state.contest().unwrap().players.len(), 2);
 
     // Cannot reconnect as an active player.
-    let cl1_new = world.add_client("p1", Team::Blue);
+    let cl1_new = world.add_client("p1", Some(Team::Blue));
     assert!(matches!(world.process_events_for(cl1_new), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // Can reconnect with the same name - that's fine.
-    let cl2_new = world.add_client("p2", Team::Red);
+    let cl2_new = world.add_client("p2", Some(Team::Red));
     // Can use free spot to connect with a different name - that's fine too.
-    let cl5 = world.add_client("p5", Team::Blue);
+    let cl5 = world.add_client("p5", Some(Team::Blue));
     world.process_all_events();
     assert!(world[cl1].state.game_state().is_none());
 
@@ -446,22 +456,22 @@ fn reconnect_game_active() {
     assert!(world[cl1].state.game_state().is_some());
 
     // Cannot connect as a different player even though somebody has left.
-    let cl5 = world.add_client("p5", Team::Blue);
+    let cl5 = world.add_client("p5", Some(Team::Blue));
     assert!(matches!(world.process_events_for(cl5), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // Cannot reconnect as an active player.
-    let cl2_new = world.add_client("p2", Team::Blue);
+    let cl2_new = world.add_client("p2", Some(Team::Blue));
     assert!(matches!(world.process_events_for(cl2_new), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // Cannot reconnect as a different team.
-    let cl3_new = world.add_client("p3", Team::Red);
+    let cl3_new = world.add_client("p3", Some(Team::Red));
     assert!(matches!(world.process_events_for(cl3_new), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // Reconnection successful.
-    let cl3_new = world.add_client("p3", Team::Blue);
+    let cl3_new = world.add_client("p3", Some(Team::Blue));
     world.process_events_for(cl3_new).unwrap();
     world.process_all_events();
 
@@ -487,7 +497,7 @@ fn reconnect_game_over_checkmate() {
     world.process_all_events();
 
     world.replay_white_checkmates_black(cl1, cl3);
-    let cl4_new = world.add_client("p4", Team::Blue);
+    let cl4_new = world.add_client("p4", Some(Team::Blue));
     world.process_all_events();
     assert!(world[cl4_new].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
     assert_eq!(
@@ -508,7 +518,7 @@ fn reconnect_game_over_resignation() {
 
     world[cl1].state.resign();
     world.process_all_events();
-    let cl4_new = world.add_client("p4", Team::Blue);
+    let cl4_new = world.add_client("p4", Some(Team::Blue));
     world.process_all_events();
     assert!(world[cl4_new].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
     assert_eq!(
@@ -545,4 +555,42 @@ fn game_reset() {
     world[cl4].state.reset();
     world.process_all_events();
     assert_eq!(world[cl2].state.contest().unwrap().scores.per_team.get(&Team::Red), None);
+}
+
+// TODO: Support five or more player in IndividualMode and enable.
+#[ignore = "Game with more than four players are not supported yet"]
+#[test]
+fn five_players() {
+    let mut world = World::new_with_rules(
+        default_chess_rules(),
+        BughouseRules {
+            teaming: Teaming::IndividualMode,
+            .. default_bughouse_rules()
+        }
+    );
+
+    world.server.state.TEST_override_board_assignment(vec! [
+        ("p1".to_owned(), BughouseBoard::A),  // Team::Red, white
+        ("p2".to_owned(), BughouseBoard::B),  // Team::Red, black
+        ("p3".to_owned(), BughouseBoard::A),  // Team::Blue, black
+        ("p4".to_owned(), BughouseBoard::B),  // Team::Blue, white
+    ]);
+    let mut clients = [
+        world.add_client("p1", None),
+        world.add_client("p2", None),
+        world.add_client("p3", None),
+        world.add_client("p4", None),
+        world.add_client("p5", None),
+    ];
+    world.process_all_events();
+    for cl in clients.iter_mut() {
+        world[*cl].state.set_ready(true);
+    }
+    world.process_all_events();
+    let (cl1, _cl2, _cl3, _cl4, cl5) = clients.into_iter().collect_tuple().unwrap();
+
+    // The player who does not participate should still be able to see the game.
+    world[cl1].make_turn("e4").unwrap();
+    world.process_all_events();
+    assert!(world[cl5].local_game().board(BughouseBoard::A).grid()[Coord::E4].is(piece!(White Pawn)));
 }
