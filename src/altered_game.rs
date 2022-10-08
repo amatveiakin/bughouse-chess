@@ -41,8 +41,6 @@ pub struct AlteredGame {
     my_id: BughousePlayerId,
     // State as it has been confirmed by the server.
     game_confirmed: BughouseGame,
-    // Latest turn made by the opponent on this board, used for highlighting.
-    latest_opponent_turn: Option<Turn>,
     // Local turn:
     //   - if TurnMode::Normal: a turn not confirmed by the server yet, but displayed on
     //       the client; always a valid turn for the `game_confirmed`;
@@ -57,7 +55,6 @@ impl AlteredGame {
         AlteredGame {
             my_id,
             game_confirmed,
-            latest_opponent_turn: None,
             local_turn: None,
             piece_drag: None,
         }
@@ -88,9 +85,6 @@ impl AlteredGame {
         let turn = self.game_confirmed.try_turn_by_player(
             player_id, &turn_input, TurnMode::Normal, time
         )?;
-        if player_id == self.my_id.opponent() {
-            self.latest_opponent_turn = Some(turn);
-        }
         if self.game_confirmed.status() != BughouseGameStatus::Active {
             self.reset_local_changes();
         }
@@ -108,16 +102,6 @@ impl AlteredGame {
 
     pub fn my_id(&self) -> BughousePlayerId { self.my_id }
     pub fn game_confirmed(&self) -> &BughouseGame { &self.game_confirmed }
-
-    pub fn opponent_turn_highlight(&self) -> Option<Turn> {
-        let show_highlight =
-            self.game_confirmed.player_is_active(self.my_id) &&
-            self.local_turn.is_none();
-        if show_highlight { self.latest_opponent_turn } else { None }
-    }
-    pub fn preturn_highlight(&self) -> Option<Turn> {
-        if let Some((turn, TurnMode::Preturn, _)) = self.local_turn { Some(turn) } else { None }
-    }
 
     pub fn local_game(&self) -> BughouseGame {
         let mut game = self.game_confirmed.clone();

@@ -704,7 +704,7 @@ fn apply_turn(
     if game.status() != BughouseGameStatus::Active {
         update_score_on_game_over(game, scores);
     }
-    Ok(game.last_turn_record().unwrap().clone())
+    Ok(game.last_turn_record().unwrap().trim_for_sending())
 }
 
 fn update_score_on_game_over(game: &BughouseGame, scores: &mut Scores) {

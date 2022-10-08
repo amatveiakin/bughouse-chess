@@ -8,7 +8,8 @@ use rand::prelude::*;
 use serde::{Serialize, Deserialize};
 use strum::EnumIter;
 
-use crate::board::{Board, Reserve, Turn, TurnInput, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
+use crate::TurnFacts;
+use crate::board::{Board, Reserve, Turn, TurnInput, TurnExpanded, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
 use crate::clock::GameInstant;
 use crate::coord::{Row, Col, Coord, NUM_ROWS};
 use crate::force::Force;
@@ -18,11 +19,33 @@ use crate::player::{PlayerInGame, Team};
 use crate::rules::{StartingPosition, ChessRules, BughouseRules};
 
 
+// Stripped version of `TurnRecordExpanded`. For sending turns across network.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TurnRecord {
     pub player_id: BughousePlayerId,
     pub turn_algebraic: String,
     pub time: GameInstant,
+}
+
+#[derive(Clone, Debug)]
+pub struct TurnRecordExpanded {
+    pub mode: TurnMode,
+    pub player_id: BughousePlayerId,
+    pub turn_expanded: TurnExpanded,
+    pub time: GameInstant,
+}
+
+impl TurnRecordExpanded {
+    pub fn trim_for_sending(&self) -> TurnRecord {
+        // This is used only to send confirmed turns from server to clients, so preturns
+        // should never occur here.
+        assert_eq!(self.mode, TurnMode::Normal);
+        TurnRecord {
+            player_id: self.player_id,
+            turn_algebraic: self.turn_expanded.algebraic.clone(),
+            time: self.time,
+        }
+    }
 }
 
 fn new_white(kind: PieceKind) -> PieceOnBoard {
@@ -221,7 +244,7 @@ impl BughouseGameView {
 #[derive(Clone, Debug)]
 pub struct BughouseGame {
     boards: EnumMap<BughouseBoard, Board>,
-    turn_log: Vec<TurnRecord>,
+    turn_log: Vec<TurnRecordExpanded>,
     status: BughouseGameStatus,
 }
 
@@ -291,8 +314,8 @@ impl BughouseGame {
     pub fn players(&self) -> Vec<Rc<PlayerInGame>> {
         self.boards.values().flat_map(|(board)| board.players().values().cloned()).collect()
     }
-    pub fn turn_log(&self) -> &Vec<TurnRecord> { &self.turn_log }
-    pub fn last_turn_record(&self) -> Option<&TurnRecord> { self.turn_log.last() }
+    pub fn turn_log(&self) -> &Vec<TurnRecordExpanded> { &self.turn_log }
+    pub fn last_turn_record(&self) -> Option<&TurnRecordExpanded> { self.turn_log.last() }
     pub fn status(&self) -> BughouseGameStatus { self.status }
 
     pub fn find_player(&self, player_name: &str) -> Option<BughousePlayerId> {
@@ -365,19 +388,20 @@ impl BughouseGame {
             return Err(TurnError::GameOver);
         }
         let board = &mut self.boards[board_idx];
-        let player_id = BughousePlayerId{ board_idx, force: board.active_force() };
+        let player_id = BughousePlayerId{ board_idx, force: board.turn_owner(mode) };
         let turn = board.parse_turn_input(turn_input, mode)?;
         let turn_algebraic = board.turn_to_algebraic(turn)?;
-        let capture_or = board.try_turn(turn, mode, now)?;
+        let turn_facts = board.try_turn(turn, mode, now)?;
         let other_board = &mut self.boards[board_idx.other()];
         match mode {
             TurnMode::Normal => { other_board.start_clock(now) }
             TurnMode::Preturn => {}
         }
-        if let Some(capture) = capture_or {
+        if let Some(capture) = turn_facts.capture {
             other_board.receive_capture(&capture);
         }
-        self.turn_log.push(TurnRecord{ player_id, turn_algebraic, time: now });
+        let turn_expanded = make_turn_expanded(turn, turn_algebraic.clone(), turn_facts);
+        self.turn_log.push(TurnRecordExpanded{ mode, player_id, turn_expanded, time: now });
         assert!(self.status == BughouseGameStatus::Active);
         self.set_status(self.game_status_for_board(board_idx), now);
         Ok(turn)
@@ -401,5 +425,32 @@ impl BughouseGame {
                 BughouseGameStatus::Victory(get_bughouse_team(board_idx, force), reason),
             ChessGameStatus::Draw(reason) => BughouseGameStatus::Draw(reason),
         }
+    }
+}
+
+fn make_turn_expanded(turn: Turn, algebraic: String, facts: TurnFacts) -> TurnExpanded {
+    let mut relocation = None;
+    let mut relocation_extra = None;
+    let mut drop = None;
+    match turn {
+        Turn::Move(mv) => {
+            relocation = Some((mv.from, mv.to));
+        },
+        Turn::Drop(dr) => {
+            drop = Some(dr.to);
+        },
+        Turn::Castle(_) => {
+            let castling_relocations = facts.castling_relocations.unwrap();
+            relocation = Some(castling_relocations.king);
+            relocation_extra = Some(castling_relocations.rook);
+        },
+    }
+    TurnExpanded {
+        turn,
+        algebraic,
+        relocation,
+        relocation_extra,
+        drop,
+        capture: facts.capture,
     }
 }

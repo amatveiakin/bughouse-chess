@@ -333,16 +333,30 @@ enum Reachability {
     Impossible,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct CastlingRelocations {
+    pub king: (Coord, Coord),
+    pub rook: (Coord, Coord),
+}
+
 #[derive(Clone, Debug)]
 struct TurnOutcome {
     new_grid: Grid,
+    castling_relocations: Option<CastlingRelocations>,
     capture: Option<Capture>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TurnFacts {
+    pub castling_relocations: Option<CastlingRelocations>,
+    pub capture: Option<Capture>,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Capture {
-    piece_kind: PieceKind,
-    force: Force,
+    pub from: Coord,
+    pub piece_kind: PieceKind,
+    pub force: Force,
 }
 
 // Note. Generally speaking, it's impossible to detect castling based on king movement in Chess960.
@@ -396,6 +410,17 @@ pub enum TurnInput {
     // Note. Only by storing the text as is we can preserve some useful pieces of metainformation
     //   for preturns, e.g. to make sure that "xd5" fails if it's not capturing.
     Algebraic(String),
+}
+
+// Turn annotated with additional information for highlights and log beautification.
+#[derive(Clone, Debug)]
+pub struct TurnExpanded {
+    pub turn: Turn,
+    pub algebraic: String,
+    pub relocation: Option<(Coord, Coord)>,
+    pub relocation_extra: Option<(Coord, Coord)>,
+    pub drop: Option<Coord>,
+    pub capture: Option<Capture>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -563,8 +588,8 @@ impl Board {
     pub fn clock_mut(&mut self) -> &mut Clock { &mut self.clock }
     pub fn active_force(&self) -> Force { self.active_force }
 
-    fn is_bughouse(&self) -> bool { self.bughouse_rules.is_some() }
-    fn turn_owner(&self, mode: TurnMode) -> Force {
+    pub fn is_bughouse(&self) -> bool { self.bughouse_rules.is_some() }
+    pub fn turn_owner(&self, mode: TurnMode) -> Force {
         match mode {
             TurnMode::Normal => self.active_force,
             TurnMode::Preturn => self.active_force.opponent(),
@@ -587,15 +612,15 @@ impl Board {
 
     // Does not test flag. Will not update game status if a player has zero time left.
     pub fn try_turn(&mut self, turn: Turn, mode: TurnMode, now: GameInstant)
-        -> Result<Option<Capture>, TurnError>
+        -> Result<TurnFacts, TurnError>
     {
         // Turn application is split into two phases:
         //   - First, check turn validity and determine the outcome (does not change
         //     game state, can fail if the turn is invalid).
         //   - Second, apply the outcome (changes game state, cannot fail).
-        let TurnOutcome{ new_grid, capture } = self.turn_outcome(turn, mode)?;
+        let TurnOutcome{ new_grid, castling_relocations, capture } = self.turn_outcome(turn, mode)?;
         self.apply_turn(turn, mode, new_grid, capture, now);
-        Ok(capture)
+        Ok(TurnFacts{ castling_relocations, capture })
     }
 
     pub fn parse_turn_input(&self, turn_input: &TurnInput, mode: TurnMode) -> Result<Turn, TurnError> {
@@ -729,6 +754,7 @@ impl Board {
         let force = self.turn_owner(mode);
         let mut new_grid = self.grid.clone();
         let mut capture = None;
+        let mut castling_relocations = None;
         match turn {
             Turn::Move(mv) => {
                 let piece = new_grid[mv.from].ok_or(TurnError::PieceMissing)?;
@@ -756,6 +782,7 @@ impl Board {
                 if let Some(capture_pos) = capture_pos_or {
                     let captured_piece = new_grid[capture_pos].unwrap();
                     capture = Some(Capture {
+                        from: capture_pos,
                         piece_kind: match captured_piece.origin {
                             PieceOrigin::Promoted => PieceKind::Pawn,
                             _ => captured_piece.kind,
@@ -875,9 +902,13 @@ impl Board {
 
                 new_grid[king_to] = king;
                 new_grid[rook_to] = rook;
+                castling_relocations = Some(CastlingRelocations {
+                    king: (king_from, king_to),
+                    rook: (rook_from, rook_to),
+                });
             },
         }
-        Ok(TurnOutcome{ new_grid, capture })
+        Ok(TurnOutcome{ new_grid, castling_relocations, capture })
     }
 
     pub fn receive_capture(&mut self, capture: &Capture) {

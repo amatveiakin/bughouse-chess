@@ -7,7 +7,7 @@ use crate::board::Board;
 use crate::clock::TimeControl;
 use crate::fen;
 use crate::force::Force;
-use crate::game::{TurnRecord, BughousePlayerId, BughouseBoard, BughouseGameStatus, BughouseGame};
+use crate::game::{TurnRecordExpanded, BughousePlayerId, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::grid::Grid;
 use crate::player::{Team, PlayerInGame};
 
@@ -136,7 +136,8 @@ pub fn export_to_bpgn(_format: BughouseExportFormat, starting_grid: &Grid, game:
     let mut doc = TextDocument::new();
     let mut full_turn_idx = enum_map!{ _ => 1 };
     for turn_record in game.turn_log() {
-        let TurnRecord{ player_id, turn_algebraic, .. } = turn_record;
+        let TurnRecordExpanded{ player_id, turn_expanded, .. } = turn_record;
+        let turn_algebraic = &turn_expanded.algebraic;
         let turn_notation = format!(
             "{}{}. {}",
             full_turn_idx[player_id.board_idx],

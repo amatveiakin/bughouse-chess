@@ -213,7 +213,7 @@ impl WebClient {
                 let coord = Coord::from_algebraic(source);
                 let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
                 let display_coord = to_display_coord(coord, board_orientation);
-                set_square_highlight("drag-start-highlight", Some(display_coord))?;
+                set_square_highlight("drag-start-highlight", WebBoard::Primary, Some(display_coord))?;
                 PieceDragStart::Board(coord)
             };
             alt_game.start_drag_piece(source).map_err(|err| rust_error!("Drag&drop error: {:?}", err))?;
@@ -221,13 +221,13 @@ impl WebClient {
         Ok(())
     }
     pub fn drag_piece(&mut self, dest_x: f64, dest_y: f64) -> JsResult<()> {
-        set_square_highlight("drag-over-highlight", position_to_square(dest_x, dest_y))
+        set_square_highlight("drag-over-highlight", WebBoard::Primary, position_to_square(dest_x, dest_y))
     }
     pub fn drag_piece_drop(&mut self, dest_x: f64, dest_y: f64, alternative_promotion: bool)
         -> JsResult<()>
     {
-        set_square_highlight("drag-start-highlight", None)?;
-        set_square_highlight("drag-over-highlight", None)?;
+        reset_square_highlight("drag-start-highlight")?;
+        reset_square_highlight("drag-over-highlight")?;
         if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
             if let Some(dest_display) = position_to_square(dest_x, dest_y) {
                 use PieceKind::*;
@@ -255,8 +255,8 @@ impl WebClient {
         Ok(())
     }
     pub fn abort_drag_piece(&mut self) -> JsResult<()> {
-        set_square_highlight("drag-start-highlight", None)?;
-        set_square_highlight("drag-over-highlight", None)?;
+        reset_square_highlight("drag-start-highlight")?;
+        reset_square_highlight("drag-over-highlight")?;
         if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
             alt_game.abort_drag_piece();
         }
@@ -337,7 +337,8 @@ impl WebClient {
             if let Some(GameState{ ref alt_game, .. }) = contest.game_state {
                 // TODO: Better readiness status display.
                 let game = alt_game.local_game();
-                let BughousePlayerId{ board_idx: my_board_idx, force: my_force } = alt_game.my_id();
+                let my_id = alt_game.my_id();
+                let BughousePlayerId{ board_idx: my_board_idx, force: my_force } = my_id;
                 for (board_idx, board) in game.boards() {
                     let is_primary = board_idx == my_board_idx;
                     let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
@@ -401,9 +402,22 @@ impl WebClient {
                         name_node.set_text_content(Some(&player_string));
                         update_reserve(board.reserve(force), force, web_board_idx, player_idx)?;
                     }
+                    let latest_turn = game.turn_log().iter().rev()
+                        .find(|record| record.player_id.board_idx == board_idx);
+                    {
+                        let latest_turn_highlight = latest_turn
+                            .filter(|record| record.player_id != my_id)
+                            .map(|record| &record.turn_expanded);
+                        let hightlight_id = format!("latest-{}", board_id(web_board_idx));
+                        self.set_turn_highlights(&hightlight_id, latest_turn_highlight, web_board_idx)?;
+                    }
+                    if web_board_idx == WebBoard::Primary {
+                        let pre_turn_highlight = latest_turn
+                            .filter(|record| record.mode == TurnMode::Preturn)
+                            .map(|record| &record.turn_expanded);
+                        self.set_turn_highlights("pre", pre_turn_highlight, web_board_idx)?;
+                    }
                 }
-                let primary_board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
-                update_turn_highlights(alt_game, primary_board_orientation)?;
                 if alt_game.status() != BughouseGameStatus::Active {
                     // TODO: Print "victory / defeat" instead of team color.
                     info_string.set_text_content(Some(&format!("Game over: {:?}", alt_game.status())));
@@ -460,6 +474,26 @@ impl WebClient {
                     let clock_node = document.get_existing_element_by_id(&format!("clock-{}", id_suffix))?;
                     update_clock(board.clock(), force, game_now, &clock_node)?;
                 }
+            }
+        }
+        Ok(())
+    }
+
+    fn set_turn_highlights(&self, id_prefix: &str, turn: Option<&TurnExpanded>, board_idx: WebBoard)
+        -> JsResult<()>
+    {
+        // Optimization potential: do not reset highlights that stay in place.
+        reset_square_highlight(&format!("{}-turn-from", id_prefix))?;
+        reset_square_highlight(&format!("{}-turn-to", id_prefix))?;
+        reset_square_highlight(&format!("{}-turn-from-extra", id_prefix))?;
+        reset_square_highlight(&format!("{}-turn-to-extra", id_prefix))?;
+        reset_square_highlight(&format!("{}-drop-to", id_prefix))?;
+        reset_square_highlight(&format!("{}-capture", id_prefix))?;
+        let board_orientation = get_board_orientation(board_idx, self.rotate_boards);
+        if let Some(turn) = turn {
+            for (id_suffix, coord) in turn_highlights(turn) {
+                let id = format!("{}-{}", id_prefix, id_suffix);
+                set_square_highlight(&id, board_idx, Some(to_display_coord(coord, board_orientation)))?;
             }
         }
         Ok(())
@@ -560,12 +594,13 @@ pub fn init_page(
     render_grids(false).unwrap();
 }
 
+// Note. Each `id` should unambiguously correspond to a fixed board.
 // TODO: Separate highlight layers based on z-order: put drag highlight above the rest.
-fn set_square_highlight(id: &str, coord: Option<DisplayCoord>) -> JsResult<()> {
+fn set_square_highlight(id: &str, board_idx: WebBoard, coord: Option<DisplayCoord>) -> JsResult<()> {
     let document = web_document();
-    let highlight_layer = document.get_existing_element_by_id("square-highlight-layer")?;
-    let node = document.get_element_by_id(id);
     if let Some(coord) = coord {
+        let node = document.get_element_by_id(id);
+        let highlight_layer = document.get_existing_element_by_id(&square_highlight_layer(board_idx))?;
         let node = node.ok_or(JsValue::UNDEFINED).or_else(|_| -> JsResult<web_sys::Element> {
             let node = document.create_svg_element("rect")?;
             node.set_attribute("id", id)?;
@@ -578,25 +613,16 @@ fn set_square_highlight(id: &str, coord: Option<DisplayCoord>) -> JsResult<()> {
         node.set_attribute("x", &x.to_string())?;
         node.set_attribute("y", &y.to_string())?;
     } else {
-        if let Some(node) = node {
-            node.remove();
-        }
+        reset_square_highlight(id)?;
     }
     Ok(())
 }
 
-fn set_turn_highlights(turn: Option<Turn>, id_prefix: &str, force: Force, board_orientation: BoardOrientation)
-    -> JsResult<()>
-{
-    if let Some(turn) = turn {
-        for (id_suffix, coord) in turn_highlights(turn, force) {
-            let id = format!("{}-{}", id_prefix, id_suffix);
-            set_square_highlight(&id, Some(to_display_coord(coord, board_orientation)))?;
-        }
-    } else {
-        set_square_highlight(&format!("{}-turn-from", id_prefix), None)?;
-        set_square_highlight(&format!("{}-turn-to", id_prefix), None)?;
-        set_square_highlight(&format!("{}-turn-to-extra", id_prefix), None)?;
+fn reset_square_highlight(id: &str) -> JsResult<()> {
+    let document = web_document();
+    let node = document.get_element_by_id(id);
+    if let Some(node) = node {
+        node.remove();
     }
     Ok(())
 }
@@ -607,15 +633,6 @@ fn player_with_readiness_status(p: &Player) -> String {
         if p.is_ready { "☑" } else { "☐" },
         p.name
     )
-}
-
-fn update_turn_highlights(alt_game: &AlteredGame, board_orientation: BoardOrientation) -> JsResult<()> {
-    let my_force = alt_game.my_id().force;
-    let opponent_turn = alt_game.opponent_turn_highlight();
-    let preturn = alt_game.preturn_highlight();
-    set_turn_highlights(opponent_turn, "opponent", my_force.opponent(), board_orientation)?;
-    set_turn_highlights(preturn, "pre", my_force, board_orientation)?;
-    Ok(())
 }
 
 // Renders reserve.
@@ -800,7 +817,7 @@ fn render_grid(board_idx: WebBoard, rotate_boards: bool) -> JsResult<()> {
 
     // Layer for square highlight that should be displayed below pieces.
     let highlight_layer = document.create_svg_element("g")?;
-    highlight_layer.set_attribute("id", "square-highlight-layer")?;
+    highlight_layer.set_attribute("id", &square_highlight_layer(board_idx))?;
     svg.append_child(&highlight_layer)?;
 
     let border = make_board_rect(&document)?;
@@ -834,30 +851,26 @@ fn get_board_orientation(board_idx: WebBoard, rotate_180: bool) -> BoardOrientat
     }
 }
 
-fn turn_highlights(turn: Turn, force: Force) -> Vec<(&'static str, Coord)> {
-    match turn {
-        Turn::Move(mv) => vec![
-            ("turn-from", mv.from),
-            ("turn-to", mv.to),
-        ],
-        Turn::Drop(drop) => vec![
-            ("turn-to", drop.to),
-        ],
-        Turn::Castle(dir) => {
-            // Improvement potential: A more robust way to get piece positions after castling.
-            let row = SubjectiveRow::from_one_based(1).to_row(force);
-            match dir {
-                CastleDirection::ASide => vec![
-                    ("turn-to", Coord::new(row, Col::C)),
-                    ("turn-to-extra", Coord::new(row, Col::D)),
-                ],
-                CastleDirection::HSide => vec![
-                    ("turn-to", Coord::new(row, Col::G)),
-                    ("turn-to-extra", Coord::new(row, Col::F)),
-                ],
-            }
-        },
+fn turn_highlights(turn_expanded: &TurnExpanded) -> Vec<(&'static str, Coord)> {
+    let mut highlights = vec![];
+    if let Some(relocation) = turn_expanded.relocation {
+        let (from, to) = relocation;
+        highlights.push(("turn-from", from));
+        highlights.push(("turn-to", to));
     }
+    if let Some(relocation_extra) = turn_expanded.relocation_extra {
+        let (from, to) = relocation_extra;
+        highlights.push(("turn-from-extra", from));
+        highlights.push(("turn-to-extra", to));
+    }
+    if let Some(drop) = turn_expanded.drop {
+        highlights.push(("drop-to", drop));
+    }
+    if let Some(capture) = turn_expanded.capture {
+        highlights.retain(|(_, coord)| *coord != capture.from);
+        highlights.push(("capture", capture.from));
+    }
+    highlights
 }
 
 fn to_display_coord(coord: Coord, board_orientation: BoardOrientation) -> DisplayCoord {
@@ -938,6 +951,10 @@ fn reserve_container_id(board_idx: WebBoard, player_idx: WebPlayer) -> String {
 
 fn reserve_node_id(board_idx: WebBoard, player_idx: WebPlayer) -> String {
     format!("reserve-group-{}-{}", board_id(board_idx), player_id(player_idx))
+}
+
+fn square_highlight_layer(board_idx: WebBoard) -> String {
+    format!("square-highlight-layer-{}", board_id(board_idx))
 }
 
 fn reserve_y_pos(player_idx: WebPlayer) -> f64 {

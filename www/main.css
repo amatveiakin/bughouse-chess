@@ -108,23 +108,38 @@ svg {
   font: normal 0.25px sans-serif;
 }
 
-#opponent-turn-from {
+#latest-primary-turn-from,
+#latest-primary-turn-from-extra,
+#latest-secondary-turn-from,
+#latest-secondary-turn-from-extra {
   fill: #acbd38;
   opacity: 0.5;
 }
-#opponent-turn-to,
-#opponent-turn-to-extra {
+#latest-primary-drop-to,
+#latest-primary-turn-to,
+#latest-primary-turn-to-extra,
+#latest-secondary-drop-to,
+#latest-secondary-turn-to,
+#latest-secondary-turn-to-extra {
   fill: #a7c000;
   opacity: 0.5;
 }
 
-#pre-turn-from {
+#pre-turn-from,
+#pre-turn-from-extra {
   fill: #7238bd;
   opacity: 0.5;
 }
+#pre-drop-to,
 #pre-turn-to,
 #pre-turn-to-extra {
   fill: #5800c0;
+  opacity: 0.5;
+}
+
+#latest-primary-capture,
+#latest-secondary-capture {
+  fill: #4dcc7d;
   opacity: 0.5;
 }
 
