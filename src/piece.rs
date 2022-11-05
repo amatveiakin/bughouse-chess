@@ -46,7 +46,7 @@ pub struct PieceForRepetitionDraw {
 
 impl PieceKind {
     // Should not be used to construct moves in algebraic notation, because it returns a
-    // non-empty name for a pawn (use `piece_to_algebraic_for_move` instead).
+    // non-empty name for a pawn (use `to_algebraic_for_move` instead).
     pub fn to_full_algebraic(self) -> char {
         match self {
             PieceKind::Pawn => 'P',

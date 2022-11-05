@@ -15,6 +15,9 @@ pub const NUM_COLS: u8 = 8;
 
 // Const equivalent of `a.checked_sub(b).unwrap()`.
 // See https://github.com/rust-lang/rust/issues/66753 for why `Option::unwrap` can't be const.
+//
+// Improvement potential. Construct Row/Col constants directly, make `from_algebraic` return
+//   `Option`s instead of panicing.
 const fn checked_sub_or_panic(a: u8, b: u8) -> u8 {
     match a.checked_sub(b) {
         Some(v) => v,
