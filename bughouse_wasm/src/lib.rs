@@ -570,7 +570,7 @@ pub fn init_page(
     black_rook: String,
     black_queen: String,
     black_king: String,
-) {
+) -> JsResult<()> {
     use Force::*;
     use PieceKind::*;
     let mut piece_path = enum_map!{
@@ -591,7 +591,9 @@ pub fn init_page(
     unsafe {
         PIECE_PATH = Some(piece_path);
     }
-    render_grids(false).unwrap();
+    render_grids(false)?;
+    render_starting()?;
+    Ok(())
 }
 
 // Note. Each `id` should unambiguously correspond to a fixed board.
@@ -639,37 +641,36 @@ fn player_with_readiness_status(p: &Player) -> String {
 // Leaves space for missing piece kinds too. This makes reserve piece positions more or
 // less fixed, thus reducing the chance of grabbing the wrong piece after a last-moment
 // reserve update.
-fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_idx: WebPlayer)
-    -> JsResult<()>
+fn render_reserve(
+    force: Force, board_idx: WebBoard, player_idx: WebPlayer, draggable: bool,
+    piece_kind_sep: f64, reserve_iter: impl Iterator<Item = (PieceKind, u8)> + Clone
+) -> JsResult<()>
 {
-    let is_me = (board_idx == WebBoard::Primary) && (player_idx == WebPlayer::Bottom);
     let document = web_document();
     let reserve_node = document.get_existing_element_by_id(&reserve_node_id(board_idx, player_idx))?;
     // Does not interfere with dragging a reserve piece, because dragged piece is re-parented
     // to board SVG.
     remove_all_children(&reserve_node)?;
 
-    let reserve_iter = reserve.iter().filter(|(kind, _)| *kind != PieceKind::King);
-    let num_piece: u8 = reserve_iter.clone().map(|(_, &amount)| amount).sum();
+    let num_piece: u8 = reserve_iter.clone().map(|(_, amount)| amount).sum();
     if num_piece == 0 {
         return Ok(());
     }
     let num_piece = num_piece as f64;
     let num_kind = reserve_iter.clone().count() as f64;
-    let num_nonempty_kind = reserve_iter.clone().filter(|(_, &amount)| amount > 0).count() as f64;
+    let num_nonempty_kind = reserve_iter.clone().filter(|&(_, amount)| amount > 0).count() as f64;
     let max_width = NUM_COLS as f64;
-    let kind_sep = 1.0;
-    let total_kind_sep_width = kind_sep * (num_kind - 1.0);
+    let total_kind_sep_width = piece_kind_sep * (num_kind - 1.0);
     let piece_sep = f64::min(
         0.5,
         (max_width - total_kind_sep_width) / (num_piece - num_nonempty_kind)
     );
-    assert!(piece_sep > 0.0, "{reserve:?}");
+    assert!(piece_sep > 0.0, "{:?}", reserve_iter.collect_vec());
     let width = total_kind_sep_width + (num_piece - num_nonempty_kind) * piece_sep;
 
     let mut x = (max_width - width - 1.0) / 2.0;  // center reserve
     let y = reserve_y_pos(player_idx);
-    for (piece_kind, &amount) in reserve_iter {
+    for (piece_kind, amount) in reserve_iter {
         let filename = piece_path(piece_kind, force);
         let location = format!("reserve-{}", piece_kind.to_full_algebraic());
         for iter in 0..amount {
@@ -683,13 +684,47 @@ fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_i
             node.set_attribute("y", &y.to_string())?;
             node.set_attribute("width", "1")?;
             node.set_attribute("height", "1")?;
-            if is_me {
+            if draggable {
                 node.set_attribute("class", "draggable")?;
             }
             reserve_node.append_child(&node)?;
         }
-        x += kind_sep;
+        x += piece_kind_sep;
     }
+    Ok(())
+}
+
+fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_idx: WebPlayer)
+    -> JsResult<()>
+{
+    let is_me = (board_idx == WebBoard::Primary) && (player_idx == WebPlayer::Bottom);
+    let piece_kind_sep = 1.0;
+    let reserve_iter = reserve.iter()
+        .filter(|(kind, _)| *kind != PieceKind::King)
+        .map(|(piece_kind, &amount)| (piece_kind, amount));
+    render_reserve(force, board_idx, player_idx, is_me, piece_kind_sep, reserve_iter)
+}
+
+fn render_starting() -> JsResult<()> {
+    use PieceKind::*;
+    use Force::*;
+    use WebBoard::*;
+    use WebPlayer::*;
+    let reserve = [
+        (Pawn, 8),
+        (Knight, 2),
+        (Bishop, 2),
+        (Rook, 2),
+        (Queen, 1),
+        (King, 1),
+    ];
+    let draggable = false;
+    let piece_kind_sep = 0.75;
+    let reserve_iter = reserve.iter().copied();
+    render_reserve(White, Primary, Bottom, draggable, piece_kind_sep, reserve_iter.clone())?;
+    render_reserve(Black, Primary, Top, draggable, piece_kind_sep, reserve_iter.clone())?;
+    render_reserve(Black, Secondary, Bottom, draggable, piece_kind_sep, reserve_iter.clone())?;
+    render_reserve(White, Secondary, Top, draggable, piece_kind_sep, reserve_iter.clone())?;
     Ok(())
 }
 
