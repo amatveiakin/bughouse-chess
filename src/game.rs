@@ -211,6 +211,22 @@ pub struct BughousePlayerId {
     pub board_idx: BughouseBoard,
     pub force: Force,
 }
+
+// Describes the player with whose eyes the game is viewed. This is not really an ID in that
+// it's not unique: many observers can view the game through the same lens.
+// Improvement potential. Rename BughouseObserserId and BughouseParticipantId to reflect that.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct BughouseObserserId {
+    pub board_idx: BughouseBoard,
+    pub force: Force,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum BughouseParticipantId {
+    Player(BughousePlayerId),
+    Observer(BughouseObserserId)
+}
+
 impl BughousePlayerId {
     pub fn team(self) -> Team {
         get_bughouse_team(self.board_idx, self.force)
@@ -223,6 +239,25 @@ impl BughousePlayerId {
     }
 }
 
+impl BughouseParticipantId {
+    // To be used for rendering purposes only. If actions are to be taken on a board, use
+    // `let BughouseParticipantId::Player(...) = ...` to check that this is an actual player.
+    pub fn display_board_idx(self) -> BughouseBoard {
+        match self {
+            Self::Player(id) => id.board_idx,
+            Self::Observer(id) => id.board_idx,
+        }
+    }
+    // To be used for rendering purposes only. If actions are to be taken on behalf of a force, use
+    // `let BughouseParticipantId::Player(...) = ...` to check that this is an actual player.
+    pub fn display_force(self) -> Force {
+        match self {
+            Self::Player(id) => id.force,
+            Self::Observer(id) => id.force,
+        }
+    }
+}
+
 // TODO: Unify board flipping for tui and web clients
 #[derive(Clone, Copy, Debug)]
 pub struct BughouseGameView {
@@ -231,12 +266,12 @@ pub struct BughouseGameView {
 }
 
 impl BughouseGameView {
-    pub fn for_player(player_id: BughousePlayerId) -> Self {
+    pub fn for_participant(participant_id: BughouseParticipantId) -> Self {
         use BughouseBoard::*;
         use Force::*;
         BughouseGameView {
-            flip_boards: match player_id.board_idx { A => false, B => true },
-            flip_forces: match player_id.force { White => false, Black => true },
+            flip_boards: match participant_id.display_board_idx() { A => false, B => true },
+            flip_forces: match participant_id.display_force() { White => false, Black => true },
         }
     }
 }

@@ -75,14 +75,20 @@ impl Client {
     }
 
     fn alt_game(&self) -> &AlteredGame { &self.state.game_state().unwrap().alt_game }
-    fn my_id(&self) -> BughousePlayerId { self.alt_game().my_id() }
+    fn my_id(&self) -> BughouseParticipantId { self.alt_game().my_id() }
+    fn my_player_id(&self) -> BughousePlayerId {
+        let BughouseParticipantId::Player(id) = self.my_id() else {
+            panic!("Not a player");
+        };
+        id
+    }
     fn local_game(&self) -> BughouseGame { self.alt_game().local_game() }
-    fn my_force(&self) -> Force { self.my_id().force }
+    fn my_force(&self) -> Force { self.my_player_id().force }
     fn my_board(&self) -> Board {
-        self.local_game().board(self.my_id().board_idx).clone()
+        self.local_game().board(self.my_player_id().board_idx).clone()
     }
     fn other_board(&self) -> Board {
-        self.local_game().board(self.my_id().board_idx.other()).clone()
+        self.local_game().board(self.my_player_id().board_idx.other()).clone()
     }
 
     fn process_outgoing_events(&mut self, server: &mut Server) -> bool {

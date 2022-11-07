@@ -8,7 +8,7 @@ use instant::Instant;
 use crate::altered_game::AlteredGame;
 use crate::board::{TurnError, TurnInput};
 use crate::clock::{GameInstant, WallGameTimePair};
-use crate::game::{TurnRecord, BughouseGameStatus, BughouseGame};
+use crate::game::{TurnRecord, BughouseParticipantId, BughouseGameStatus, BughouseGame};
 use crate::grid::Grid;
 use crate::event::{BughouseServerEvent, BughouseClientEvent};
 use crate::pgn::BughouseExportFormat;
@@ -207,7 +207,7 @@ impl ClientState {
                     chess_rules, bughouse_rules, starting_grid.clone(), player_map
                 );
                 let my_id = game.find_player(&self.my_name).unwrap();
-                let alt_game = AlteredGame::new(my_id, game);
+                let alt_game = AlteredGame::new(BughouseParticipantId::Player(my_id), game);
                 let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameStarted: no contest in progress"))?;
                 contest.game_state = Some(GameState {
                     starting_grid,
@@ -279,8 +279,10 @@ impl ClientState {
         })?;
         let new_reserve_size = my_reserve_size(alt_game);
         if generate_notable_events {
-            if player_id == alt_game.my_id().opponent() {
-                self.add_notable_event(NotableEvent::OpponentTurnMade);
+            if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
+                if player_id == my_player_id.opponent() {
+                    self.add_notable_event(NotableEvent::OpponentTurnMade);
+                }
             }
             if new_reserve_size > old_reserve_size {
                 self.add_notable_event(NotableEvent::MyReserveRestocked);
@@ -321,20 +323,22 @@ impl ClientState {
         let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot create game over event: no contest in progress"))?;
         let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot create game over event: no game in progress"))?;
         let GameState{ ref mut alt_game, .. } = game_state;
-        let game_status = match alt_game.status() {
-            BughouseGameStatus::Active => {
-                return Err(cannot_apply_event!("Cannot create game over event: game not over"));
-            },
-            BughouseGameStatus::Victory(team, _) => {
-                if team == alt_game.my_id().team() {
-                    SubjectiveGameResult::Victory
-                } else {
-                    SubjectiveGameResult::Defeat
-                }
-            },
-            BughouseGameStatus::Draw(_) => SubjectiveGameResult::Draw,
-        };
-        self.add_notable_event(NotableEvent::GameOver(game_status));
+        if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
+            let game_status = match alt_game.status() {
+                BughouseGameStatus::Active => {
+                    return Err(cannot_apply_event!("Cannot create game over event: game not over"));
+                },
+                BughouseGameStatus::Victory(team, _) => {
+                    if team == my_player_id.team() {
+                        SubjectiveGameResult::Victory
+                    } else {
+                        SubjectiveGameResult::Defeat
+                    }
+                },
+                BughouseGameStatus::Draw(_) => SubjectiveGameResult::Draw,
+            };
+            self.add_notable_event(NotableEvent::GameOver(game_status));
+        }
         Ok(())
     }
 
@@ -349,38 +353,48 @@ impl ClientState {
             return;
         };
         let GameState{ ref alt_game, time_pair, ref mut next_low_time_warning_idx, .. } = game_state;
-        if let Some(time_pair) = time_pair {
-            // Optimization potential. Avoid constructing `alt_game.local_game()`, which
-            // involves copying the entire board, just for the sake of clock readings.
-            // Note. Using `alt_game.game_confirmed()` would be a bad solution, since it
-            // could lead to sound and clock visuals being out of sync. Potentially hugely
-            // out of sync if local player made a move at 0:20.01 and the opponent replied
-            // one minute later.
-            let game_now = GameInstant::from_pair_game_active(*time_pair, Instant::now());
-            let time_left = my_time_left(alt_game, game_now);
-            let idx = next_low_time_warning_idx;
-            let mut num_events = 0;
-            while *idx < LOW_TIME_WARNING_THRESHOLDS.len() && time_left <= LOW_TIME_WARNING_THRESHOLDS[*idx] {
-                *idx += 1;
-                num_events += 1;
-            }
-            if generate_notable_events {
-                for _ in 0..num_events {
-                    self.add_notable_event(NotableEvent::LowTime);
-                }
+        let Some(time_pair) = time_pair else {
+            return;
+        };
+        // Optimization potential. Avoid constructing `alt_game.local_game()`, which
+        // involves copying the entire board, just for the sake of clock readings.
+        // Note. Using `alt_game.game_confirmed()` would be a bad solution, since it
+        // could lead to sound and clock visuals being out of sync. Potentially hugely
+        // out of sync if local player made a move at 0:20.01 and the opponent replied
+        // one minute later.
+        let game_now = GameInstant::from_pair_game_active(*time_pair, Instant::now());
+        let Some(time_left) = my_time_left(alt_game, game_now) else {
+            return;
+        };
+        let idx = next_low_time_warning_idx;
+        let mut num_events = 0;
+        while *idx < LOW_TIME_WARNING_THRESHOLDS.len() && time_left <= LOW_TIME_WARNING_THRESHOLDS[*idx] {
+            *idx += 1;
+            num_events += 1;
+        }
+        if generate_notable_events {
+            for _ in 0..num_events {
+                self.add_notable_event(NotableEvent::LowTime);
             }
         }
     }
 }
 
-fn my_reserve_size(alt_game: &AlteredGame) -> u8 {
+fn my_reserve_size(alt_game: &AlteredGame) -> Option<u8> {
     // For detecting if new reserve pieces have arrived.
     // Look at `game_confirmed`, not `local_game`. The latter would give a false positive if
     // a drop premove gets cancelled because the square is now occupied by an opponent's piece.
-    alt_game.game_confirmed().reserve(alt_game.my_id()).values().sum()
+    if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
+        Some(alt_game.game_confirmed().reserve(my_player_id).values().sum())
+    } else {
+        None
+    }
 }
 
-fn my_time_left(alt_game: &AlteredGame, now: GameInstant) -> Duration {
-    let my_id = alt_game.my_id();
-    alt_game.local_game().board(my_id.board_idx).clock().time_left(my_id.force, now)
+fn my_time_left(alt_game: &AlteredGame, now: GameInstant) -> Option<Duration> {
+    if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
+        Some(alt_game.local_game().board(my_player_id.board_idx).clock().time_left(my_player_id.force, now))
+    } else {
+        None
+    }
 }

@@ -299,7 +299,7 @@ impl WebClient {
                 let info_string = web_document().get_existing_element_by_id("info-string")?;
                 info_string.set_text_content(None);
                 let my_id = alt_game.my_id();
-                self.rotate_boards = my_id.force == Force::Black;
+                self.rotate_boards = my_id.display_force() == Force::Black;
                 render_grids(self.rotate_boards)?;
                 Ok(JsEventMyNoop{}.into())
             },
@@ -346,9 +346,10 @@ impl WebClient {
         // TODO: Better readiness status display.
         let game = alt_game.local_game();
         let my_id = alt_game.my_id();
-        let BughousePlayerId{ board_idx: my_board_idx, force: my_force } = my_id;
+        let my_display_board_idx = my_id.display_board_idx();
+        let my_display_force = my_id.display_force();
         for (board_idx, board) in game.boards() {
-            let is_primary = board_idx == my_board_idx;
+            let is_primary = board_idx == my_display_board_idx;
             let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
             let board_orientation = get_board_orientation(web_board_idx, self.rotate_boards);
             let svg = document.get_existing_element_by_id(&board_node_id(web_board_idx))?;
@@ -373,7 +374,10 @@ impl WebClient {
                     node.set_attribute("y", &y.to_string())?;
                     node.set_attribute("href", &filename)?;
                     node.set_attribute("data-bughouse-location", &coord.to_algebraic())?;
-                    let draggable = is_primary && piece.force == my_force;
+                    let mut draggable = false;
+                    if let BughouseParticipantId::Player(my_player_id) = my_id {
+                        draggable = is_primary && piece.force == my_player_id.force;
+                    }
                     if draggable {
                         node.set_attribute("class", "draggable")?;
                     } else {
@@ -389,8 +393,8 @@ impl WebClient {
                 use WebPlayer::*;
                 use WebBoard::*;
                 let force = match (player_idx, web_board_idx) {
-                    (Bottom, Primary) | (Top, Secondary) => my_force,
-                    (Top, Primary) | (Bottom, Secondary) => my_force.opponent(),
+                    (Bottom, Primary) | (Top, Secondary) => my_display_force,
+                    (Top, Primary) | (Bottom, Secondary) => my_display_force.opponent(),
                 };
                 let name_node = document.get_existing_element_by_id(
                     &player_name_node_id(web_board_idx, player_idx)
@@ -414,7 +418,7 @@ impl WebClient {
                 .find(|record| record.player_id.board_idx == board_idx);
             {
                 let latest_turn_highlight = latest_turn
-                    .filter(|record| record.player_id != my_id)
+                    .filter(|record| BughouseParticipantId::Player(record.player_id) != my_id)
                     .map(|record| &record.turn_expanded);
                 let hightlight_id = format!("latest-{}", board_id(web_board_idx));
                 self.set_turn_highlights(&hightlight_id, latest_turn_highlight, web_board_idx)?;
@@ -441,16 +445,18 @@ impl WebClient {
         let now = Instant::now();
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         let game = alt_game.local_game();
-        let BughousePlayerId{ board_idx: my_board_idx, force: my_force } = alt_game.my_id();
+        let my_id = alt_game.my_id();
+        let my_display_board_idx = my_id.display_board_idx();
+        let my_display_force = my_id.display_force();
         for (board_idx, board) in game.boards() {
-            let is_primary = board_idx == my_board_idx;
+            let is_primary = board_idx == my_display_board_idx;
             let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
             for player_idx in WebPlayer::iter() {
                 use WebPlayer::*;
                 use WebBoard::*;
                 let force = match (player_idx, web_board_idx) {
-                    (Bottom, Primary) | (Top, Secondary) => my_force,
-                    (Top, Primary) | (Bottom, Secondary) => my_force.opponent(),
+                    (Bottom, Primary) | (Top, Secondary) => my_display_force,
+                    (Top, Primary) | (Bottom, Secondary) => my_display_force.opponent(),
                 };
                 let id_suffix = format!("{}-{}", board_id(web_board_idx), player_id(player_idx));
                 // TODO: Dedup against `update_state`. Everything except the two lines below

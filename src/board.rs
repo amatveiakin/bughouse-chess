@@ -468,6 +468,7 @@ pub enum ChessGameStatus {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TurnError {
+    NotPlayer,
     InvalidNotation,
     AmbiguousNotation,
     CaptureNotationRequiresCapture,
