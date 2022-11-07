@@ -286,50 +286,50 @@ impl ServerStateCore {
         if self.game_state.is_none() {
             if clients[client_id].player_id.is_some() {
                 clients[client_id].send_error("Cannot join: already joined".to_owned());
+                return;
+            }
+            if self.players.find_by_name(&player_name).is_some() {
+                clients[client_id].send_error(format!("Cannot join: player \"{}\" already exists", player_name));
+                return;
+            }
+            if fixed_team.is_none() && self.bughouse_rules.teaming == Teaming::FixedTeams {
+                clients[client_id].send_error(format!("Cannot join: team is required in fixed teams mode"));
+            } else if fixed_team.is_some() && self.bughouse_rules.teaming == Teaming::IndividualMode {
+                clients[client_id].send_error(format!("Cannot join: team is not allowed in individual mode"));
+            } else if fixed_team.is_some() && self.players.iter().filter(|p| { p.fixed_team == fixed_team }).count() >= TOTAL_PLAYERS_PER_TEAM {
+                clients[client_id].send_error(format!("Cannot join: team {:?} is full", fixed_team));
             } else {
-                if let Some(_) = self.players.find_by_name(&player_name) {
-                    clients[client_id].send_error(format!("Cannot join: player \"{}\" already exists", player_name));
-                } else {
-                    if fixed_team.is_none() && self.bughouse_rules.teaming == Teaming::FixedTeams {
-                        clients[client_id].send_error(format!("Cannot join: team is required in fixed teams mode"));
-                    } else if fixed_team.is_some() && self.bughouse_rules.teaming == Teaming::IndividualMode {
-                        clients[client_id].send_error(format!("Cannot join: team is not allowed in individual mode"));
-                    } else if fixed_team.is_some() && self.players.iter().filter(|p| { p.fixed_team == fixed_team }).count() >= TOTAL_PLAYERS_PER_TEAM {
-                        clients[client_id].send_error(format!("Cannot join: team {:?} is full", fixed_team));
-                    } else {
-                        info!("Player {} joined team {:?}", player_name, fixed_team);
-                        clients[client_id].send(self.make_contest_start_event());
-                        let player_id = self.players.add_player(Player {
-                            name: player_name,
-                            fixed_team,
-                            is_online: true,
-                            is_ready: false,
-                        });
-                        clients[client_id].player_id = Some(player_id);
-                        self.send_lobby_updated(clients);
-                    }
-                }
+                info!("Player {} joined team {:?}", player_name, fixed_team);
+                clients[client_id].send(self.make_contest_start_event());
+                let player_id = self.players.add_player(Player {
+                    name: player_name,
+                    fixed_team,
+                    is_online: true,
+                    is_ready: false,
+                });
+                clients[client_id].player_id = Some(player_id);
+                self.send_lobby_updated(clients);
             }
         } else {
-            if let Some(existing_player_id) = self.players.find_by_name(&player_name) {
-                let current_fixed_team = self.players[existing_player_id].fixed_team;
-                if clients.map.values().any(|c| c.player_id == Some(existing_player_id)) {
-                    clients[client_id].send_error(format!(
-                        r#"Cannot join: client for player "{}" already connected"#, player_name));
-                } else if current_fixed_team != fixed_team {
-                    clients[client_id].send_error(format!(
-                        r#"Cannot join: player "{}" is in team "{:?}", but connecting as team "{:?}""#,
-                        player_name, current_fixed_team, fixed_team
-                    ));
-                } else {
-                    clients[client_id].player_id = Some(existing_player_id);
-                    clients[client_id].send(self.make_contest_start_event());
-                    clients[client_id].send(self.make_game_start_event(now));
-                }
-            } else {
+            let Some(existing_player_id) = self.players.find_by_name(&player_name) else {
                 // Improvement potential. Allow joining mid-game in individual mode.
                 //   Q. How to balance score in this case? Should we switch to negative numbers?
                 clients[client_id].send_error("Cannot join: game has already started".to_owned());
+                return;
+            };
+            let current_fixed_team = self.players[existing_player_id].fixed_team;
+            if clients.map.values().any(|c| c.player_id == Some(existing_player_id)) {
+                clients[client_id].send_error(format!(
+                    r#"Cannot join: client for player "{}" already connected"#, player_name));
+            } else if current_fixed_team != fixed_team {
+                clients[client_id].send_error(format!(
+                    r#"Cannot join: player "{}" is in team "{:?}", but connecting as team "{:?}""#,
+                    player_name, current_fixed_team, fixed_team
+                ));
+            } else {
+                clients[client_id].player_id = Some(existing_player_id);
+                clients[client_id].send(self.make_contest_start_event());
+                clients[client_id].send(self.make_game_start_event(now));
             }
         }
     }
@@ -337,124 +337,124 @@ impl ServerStateCore {
     fn process_make_turn(
         &mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant, turn_input: TurnInput
     ) {
-        if let Some(GameState{ ref mut game_start, ref mut game, ref mut preturns, ref mut turn_log, .. }) = self.game_state {
-            let scores = &mut self.scores;
-            if let Some(player_id) = clients[client_id].player_id {
-                let player_bughouse_id = game.find_player(&self.players[player_id].name).unwrap();
-                let mode = game.turn_mode_for_player(player_bughouse_id);
-                match mode {
-                    Ok(TurnMode::Normal) => {
-                        let mut turns = vec![];
-                        let game_now = GameInstant::from_now_game_maybe_active(*game_start, now);
-                        match apply_turn(
-                            game_now, player_bughouse_id, turn_input, game, scores
-                        ) {
-                            Ok(turn_event) => {
-                                if game_start.is_none() {
-                                    *game_start = Some(now);
-                                }
-                                turns.push(turn_event);
-                                let opponent_bughouse_id = player_bughouse_id.opponent();
-                                if let Some(preturn) = preturns.remove(&opponent_bughouse_id) {
-                                    if let Ok(preturn_event) = apply_turn(
-                                        game_now, opponent_bughouse_id, preturn, game, scores
-                                    ) {
-                                        turns.push(preturn_event);
-                                    }
-                                    // Improvement potential: Report preturn error as well.
-                                }
-                            },
-                            Err(error) => {
-                                clients[client_id].send_error(format!("Impossible turn: {:?}", error));
-                            },
+        let Some(GameState{ ref mut game_start, ref mut game, ref mut preturns, ref mut turn_log, .. }) = self.game_state else {
+            clients[client_id].send_error("Cannot make turn: no game in progress".to_owned());
+            return;
+        };
+        let scores = &mut self.scores;
+        let Some(player_id) = clients[client_id].player_id else {
+            clients[client_id].send_error("Cannot make turn: not joined".to_owned());
+            return;
+        };
+        let player_bughouse_id = game.find_player(&self.players[player_id].name).unwrap();
+        let mode = game.turn_mode_for_player(player_bughouse_id);
+        match mode {
+            Ok(TurnMode::Normal) => {
+                let mut turns = vec![];
+                let game_now = GameInstant::from_now_game_maybe_active(*game_start, now);
+                match apply_turn(
+                    game_now, player_bughouse_id, turn_input, game, scores
+                ) {
+                    Ok(turn_event) => {
+                        if game_start.is_none() {
+                            *game_start = Some(now);
                         }
-                        turn_log.extend_from_slice(&turns);
-                        clients.broadcast(&BughouseServerEvent::TurnsMade {
-                            turns,
-                            game_status: game.status(),
-                            scores: scores.clone(),
-                        });
-                    },
-                    Ok(TurnMode::Preturn) => {
-                        match preturns.entry(player_bughouse_id) {
-                            hash_map::Entry::Occupied(_) => {
-                                clients[client_id].send_error("Only one premove is supported".to_owned());
-                            },
-                            hash_map::Entry::Vacant(entry) => {
-                                entry.insert(turn_input);
-                            },
+                        turns.push(turn_event);
+                        let opponent_bughouse_id = player_bughouse_id.opponent();
+                        if let Some(preturn) = preturns.remove(&opponent_bughouse_id) {
+                            if let Ok(preturn_event) = apply_turn(
+                                game_now, opponent_bughouse_id, preturn, game, scores
+                            ) {
+                                turns.push(preturn_event);
+                            }
+                            // Improvement potential: Report preturn error as well.
                         }
                     },
                     Err(error) => {
                         clients[client_id].send_error(format!("Impossible turn: {:?}", error));
                     },
                 }
-            } else {
-                clients[client_id].send_error("Cannot make turn: not joined".to_owned());
-            }
-        } else {
-            clients[client_id].send_error("Cannot make turn: no game in progress".to_owned());
+                turn_log.extend_from_slice(&turns);
+                clients.broadcast(&BughouseServerEvent::TurnsMade {
+                    turns,
+                    game_status: game.status(),
+                    scores: scores.clone(),
+                });
+            },
+            Ok(TurnMode::Preturn) => {
+                match preturns.entry(player_bughouse_id) {
+                    hash_map::Entry::Occupied(_) => {
+                        clients[client_id].send_error("Only one premove is supported".to_owned());
+                    },
+                    hash_map::Entry::Vacant(entry) => {
+                        entry.insert(turn_input);
+                    },
+                }
+            },
+            Err(error) => {
+                clients[client_id].send_error(format!("Impossible turn: {:?}", error));
+            },
         }
     }
 
     fn process_cancel_preturn(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId) {
-        if let Some(GameState{ ref game, ref mut preturns, .. }) = self.game_state {
-            if let Some(player_id) = clients[client_id].player_id {
-                let player_bughouse_id = game.find_player(&self.players[player_id].name).unwrap();
-                preturns.remove(&player_bughouse_id);
-            } else {
-                clients[client_id].send_error("Cannot cancel pre-turn: not joined".to_owned());
-            }
-        } else {
+        let Some(GameState{ ref game, ref mut preturns, .. }) = self.game_state else {
             clients[client_id].send_error("Cannot cancel pre-turn: no game in progress".to_owned());
-        }
+            return;
+        };
+        let Some(player_id) = clients[client_id].player_id else {
+            clients[client_id].send_error("Cannot cancel pre-turn: not joined".to_owned());
+            return;
+        };
+        let player_bughouse_id = game.find_player(&self.players[player_id].name).unwrap();
+        preturns.remove(&player_bughouse_id);
     }
 
     fn process_resign(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant) {
-        if let Some(GameState{ ref mut game, game_start, .. }) = self.game_state {
-            let scores = &mut self.scores;
-            if game.status() != BughouseGameStatus::Active {
-                clients[client_id].send_error("Cannot resign: game already over".to_owned());
-                return;
-            }
-            if let Some(player_id) = clients[client_id].player_id {
-                let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
-                if let Some(bughouse_player_id) = game.find_player(&self.players[player_id].name) {
-                    let status = BughouseGameStatus::Victory(
-                        bughouse_player_id.team().opponent(),
-                        VictoryReason::Resignation
-                    );
-                    game.set_status(status, game_now);
-                    update_score_on_game_over(game, scores);
-                    clients.broadcast(&BughouseServerEvent::GameOver {
-                        time: game_now,
-                        game_status: status,
-                        scores: scores.clone(),
-                    });
-                } else {
-                    clients[client_id].send_error("Cannot resign: player does not participate".to_owned());
-                }
-            } else {
-                clients[client_id].send_error("Cannot resign: not joined".to_owned());
-            }
-        } else {
+        let Some(GameState{ ref mut game, game_start, .. }) = self.game_state else {
             clients[client_id].send_error("Cannot resign: no game in progress".to_owned());
+            return;
+        };
+        let scores = &mut self.scores;
+        if game.status() != BughouseGameStatus::Active {
+            clients[client_id].send_error("Cannot resign: game already over".to_owned());
+            return;
         }
+        let Some(player_id) = clients[client_id].player_id else {
+            clients[client_id].send_error("Cannot resign: not joined".to_owned());
+            return;
+        };
+        let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
+        let Some(bughouse_player_id) = game.find_player(&self.players[player_id].name) else {
+            clients[client_id].send_error("Cannot resign: player does not participate".to_owned());
+            return;
+        };
+        let status = BughouseGameStatus::Victory(
+            bughouse_player_id.team().opponent(),
+            VictoryReason::Resignation
+        );
+        game.set_status(status, game_now);
+        update_score_on_game_over(game, scores);
+        clients.broadcast(&BughouseServerEvent::GameOver {
+            time: game_now,
+            game_status: status,
+            scores: scores.clone(),
+        });
     }
 
     fn process_set_ready(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, is_ready: bool) {
-        if let Some(player_id) = clients[client_id].player_id {
-            if let Some(GameState{ ref game, .. }) = self.game_state {
-                if game.status() == BughouseGameStatus::Active {
-                    clients[client_id].send_error("Cannot update readiness: game still in progress".to_owned());
-                    return;
-                }
-            }
-            self.players[player_id].is_ready = is_ready;
-            self.send_lobby_updated(clients);
-        } else {
+        let Some(player_id) = clients[client_id].player_id else {
             clients[client_id].send_error("Cannot update readiness: not joined".to_owned());
+            return;
+        };
+        if let Some(GameState{ ref game, .. }) = self.game_state {
+            if game.status() == BughouseGameStatus::Active {
+                clients[client_id].send_error("Cannot update readiness: game still in progress".to_owned());
+                return;
+            }
         }
+        self.players[player_id].is_ready = is_ready;
+        self.send_lobby_updated(clients);
     }
 
     fn process_leave(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId) {
@@ -477,17 +477,17 @@ impl ServerStateCore {
     fn process_request_export(
         &self, clients: &mut ClientsGuard<'_>, client_id: ClientId, format: BughouseExportFormat)
     {
-        if let Some(GameState{ ref starting_grid, ref game, .. }) = self.game_state {
-            // Improvement potential: Replace map lambda with something more elegant.
-            let all_games = self.match_history.iter().map(|(grid, game)| (grid, game))
-                .chain(iter::once((starting_grid, game)));
-            let content = all_games.enumerate().map(|(round, (grid, game))| {
-                pgn::export_to_bpgn(format, grid, game, round + 1)
-            }).join("\n");
-            clients[client_id].send(BughouseServerEvent::GameExportReady{ content });
-        } else {
+        let Some(GameState{ ref starting_grid, ref game, .. }) = self.game_state else {
             clients[client_id].send_error("Cannot export: no game in progress".to_owned());
-        }
+            return;
+        };
+        // Improvement potential: Replace map lambda with something more elegant.
+        let all_games = self.match_history.iter().map(|(grid, game)| (grid, game))
+            .chain(iter::once((starting_grid, game)));
+        let content = all_games.enumerate().map(|(round, (grid, game))| {
+            pgn::export_to_bpgn(format, grid, game, round + 1)
+        }).join("\n");
+        clients[client_id].send(BughouseServerEvent::GameExportReady{ content });
     }
 
     fn process_report_error(
@@ -590,20 +590,19 @@ impl ServerStateCore {
     }
 
     fn make_game_start_event(&self, now: Instant) -> BughouseServerEvent {
-        if let Some(game_state) = &self.game_state {
-            let time = GameInstant::from_now_game_maybe_active(game_state.game_start, now);
-            BughouseServerEvent::GameStarted {
-                chess_rules: self.chess_rules.clone(),
-                bughouse_rules: self.bughouse_rules.clone(),
-                starting_grid: game_state.starting_grid.clone(),
-                players: game_state.players_with_boards.clone(),
-                time,
-                turn_log: game_state.turn_log.clone(),
-                game_status: game_state.game.status(),
-                scores: self.scores.clone(),
-            }
-        } else {
+        let Some(game_state) = &self.game_state else {
             panic!("Expected ContestState::Game");
+        };
+        let time = GameInstant::from_now_game_maybe_active(game_state.game_start, now);
+        BughouseServerEvent::GameStarted {
+            chess_rules: self.chess_rules.clone(),
+            bughouse_rules: self.bughouse_rules.clone(),
+            starting_grid: game_state.starting_grid.clone(),
+            players: game_state.players_with_boards.clone(),
+            time,
+            turn_log: game_state.turn_log.clone(),
+            game_status: game_state.game.status(),
+            scores: self.scores.clone(),
         }
     }
 

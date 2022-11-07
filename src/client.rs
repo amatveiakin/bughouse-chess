@@ -345,27 +345,28 @@ impl ClientState {
     }
 
     fn update_low_time_warnings(&mut self, generate_notable_events: bool) {
-        if let Some(game_state) = self.game_state_mut() {
-            let GameState{ ref alt_game, time_pair, ref mut next_low_time_warning_idx, .. } = game_state;
-            if let Some(time_pair) = time_pair {
-                // Optimization potential. Avoid constructing `alt_game.local_game()`, which
-                // involves copying the entire board, just for the sake of clock readings.
-                // Note. Using `alt_game.game_confirmed()` would be a bad solution, since it
-                // could lead to sound and clock visuals being out of sync. Potentially hugely
-                // out of sync if local player made a move at 0:20.01 and the opponent replied
-                // one minute later.
-                let game_now = GameInstant::from_pair_game_active(*time_pair, Instant::now());
-                let time_left = my_time_left(alt_game, game_now);
-                let idx = next_low_time_warning_idx;
-                let mut num_events = 0;
-                while *idx < LOW_TIME_WARNING_THRESHOLDS.len() && time_left <= LOW_TIME_WARNING_THRESHOLDS[*idx] {
-                    *idx += 1;
-                    num_events += 1;
-                }
-                if generate_notable_events {
-                    for _ in 0..num_events {
-                        self.add_notable_event(NotableEvent::LowTime);
-                    }
+        let Some(game_state) = self.game_state_mut() else {
+            return;
+        };
+        let GameState{ ref alt_game, time_pair, ref mut next_low_time_warning_idx, .. } = game_state;
+        if let Some(time_pair) = time_pair {
+            // Optimization potential. Avoid constructing `alt_game.local_game()`, which
+            // involves copying the entire board, just for the sake of clock readings.
+            // Note. Using `alt_game.game_confirmed()` would be a bad solution, since it
+            // could lead to sound and clock visuals being out of sync. Potentially hugely
+            // out of sync if local player made a move at 0:20.01 and the opponent replied
+            // one minute later.
+            let game_now = GameInstant::from_pair_game_active(*time_pair, Instant::now());
+            let time_left = my_time_left(alt_game, game_now);
+            let idx = next_low_time_warning_idx;
+            let mut num_events = 0;
+            while *idx < LOW_TIME_WARNING_THRESHOLDS.len() && time_left <= LOW_TIME_WARNING_THRESHOLDS[*idx] {
+                *idx += 1;
+                num_events += 1;
+            }
+            if generate_notable_events {
+                for _ in 0..num_events {
+                    self.add_notable_event(NotableEvent::LowTime);
                 }
             }
         }

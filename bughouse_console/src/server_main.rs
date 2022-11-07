@@ -29,13 +29,12 @@ fn to_debug_string<T: std::fmt::Debug>(v: T) -> String {
 
 fn parse_starting_time(time_str: &str) -> Duration {
     let time_re = Regex::new(r"([0-9]+):([0-9]{2})").unwrap();
-    if let Some(cap) = time_re.captures(time_str) {
-        let minutes = cap.get(1).unwrap().as_str().parse::<u64>().unwrap();
-        let seconds = cap.get(2).unwrap().as_str().parse::<u64>().unwrap();
-        Duration::from_secs(minutes * 60 + seconds)
-    } else {
-        panic!("Invalid starting time format: '{}', expected 'm:ss'", time_str);
-    }
+    let cap = time_re.captures(time_str).unwrap_or_else(
+        || panic!("Invalid starting time format: '{}', expected 'm:ss'", time_str)
+    );
+    let minutes = cap.get(1).unwrap().as_str().parse::<u64>().unwrap();
+    let seconds = cap.get(2).unwrap().as_str().parse::<u64>().unwrap();
+    Duration::from_secs(minutes * 60 + seconds)
 }
 
 fn handle_connection(stream: TcpStream, clients: &Arc<Mutex<Clients>>, tx: mpsc::Sender<IncomingEvent>)

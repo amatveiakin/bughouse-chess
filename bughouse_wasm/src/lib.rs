@@ -206,18 +206,19 @@ impl WebClient {
     }
 
     pub fn start_drag_piece(&mut self, source: &str) -> JsResult<()> {
-        if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
-            let source = if let Some(piece) = source.strip_prefix("reserve-") {
-                PieceDragStart::Reserve(PieceKind::from_algebraic(piece).unwrap())
-            } else {
-                let coord = Coord::from_algebraic(source);
-                let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
-                let display_coord = to_display_coord(coord, board_orientation);
-                set_square_highlight("drag-start-highlight", WebBoard::Primary, Some(display_coord))?;
-                PieceDragStart::Board(coord)
-            };
-            alt_game.start_drag_piece(source).map_err(|err| rust_error!("Drag&drop error: {:?}", err))?;
-        }
+        let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() else {
+            return Ok(());
+        };
+        let source = if let Some(piece) = source.strip_prefix("reserve-") {
+            PieceDragStart::Reserve(PieceKind::from_algebraic(piece).unwrap())
+        } else {
+            let coord = Coord::from_algebraic(source);
+            let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
+            let display_coord = to_display_coord(coord, board_orientation);
+            set_square_highlight("drag-start-highlight", WebBoard::Primary, Some(display_coord))?;
+            PieceDragStart::Board(coord)
+        };
+        alt_game.start_drag_piece(source).map_err(|err| rust_error!("Drag&drop error: {:?}", err))?;
         Ok(())
     }
     pub fn drag_piece(&mut self, dest_x: f64, dest_y: f64) -> JsResult<()> {
@@ -228,29 +229,30 @@ impl WebClient {
     {
         reset_square_highlight("drag-start-highlight")?;
         reset_square_highlight("drag-over-highlight")?;
-        if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
-            if let Some(dest_display) = position_to_square(dest_x, dest_y) {
-                use PieceKind::*;
-                let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
-                let dest_coord = from_display_coord(dest_display, board_orientation);
-                let promote_to = if alternative_promotion { Knight } else { Queen };
-                match alt_game.drag_piece_drop(dest_coord, promote_to) {
-                    Ok(turn) => {
-                        self.make_turn(turn)?;
-                    },
-                    Err(PieceDragError::DragNoLongerPossible) => {
-                        // Ignore: this happen when dragged piece was captured by opponent.
-                    },
-                    Err(PieceDragError::Cancelled) => {
-                        // Ignore: user cancelled the move by putting the piece back in place.
-                    },
-                    Err(err) => {
-                        return Err(rust_error!("Drag&drop error: {:?}", err));
-                    },
-                };
-            } else {
-                alt_game.abort_drag_piece();
-            }
+        let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() else {
+            return Ok(());
+        };
+        if let Some(dest_display) = position_to_square(dest_x, dest_y) {
+            use PieceKind::*;
+            let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
+            let dest_coord = from_display_coord(dest_display, board_orientation);
+            let promote_to = if alternative_promotion { Knight } else { Queen };
+            match alt_game.drag_piece_drop(dest_coord, promote_to) {
+                Ok(turn) => {
+                    self.make_turn(turn)?;
+                },
+                Err(PieceDragError::DragNoLongerPossible) => {
+                    // Ignore: this happen when dragged piece was captured by opponent.
+                },
+                Err(PieceDragError::Cancelled) => {
+                    // Ignore: user cancelled the move by putting the piece back in place.
+                },
+                Err(err) => {
+                    return Err(rust_error!("Drag&drop error: {:?}", err));
+                },
+            };
+        } else {
+            alt_game.abort_drag_piece();
         }
         Ok(())
     }
@@ -291,16 +293,15 @@ impl WebClient {
     pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
         match self.state.next_notable_event() {
             Some(NotableEvent::GameStarted) => {
-                if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
-                    let info_string = web_document().get_existing_element_by_id("info-string")?;
-                    info_string.set_text_content(None);
-                    let my_id = alt_game.my_id();
-                    self.rotate_boards = my_id.force == Force::Black;
-                    render_grids(self.rotate_boards)?;
-                    Ok(JsEventMyNoop{}.into())
-                } else {
-                    Err(rust_error!("No game in progress"))
-                }
+                let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() else {
+                    return Err(rust_error!("No game in progress"));
+                };
+                let info_string = web_document().get_existing_element_by_id("info-string")?;
+                info_string.set_text_content(None);
+                let my_id = alt_game.my_id();
+                self.rotate_boards = my_id.force == Force::Black;
+                render_grids(self.rotate_boards)?;
+                Ok(JsEventMyNoop{}.into())
             },
             Some(NotableEvent::GameOver(game_status)) => {
                 match game_status {
@@ -333,147 +334,129 @@ impl WebClient {
     pub fn update_state(&self) -> JsResult<()> {
         let document = web_document();
         let info_string = document.get_existing_element_by_id("info-string")?;
-        if let Some(contest) = self.state.contest() {
-            if let Some(GameState{ ref alt_game, .. }) = contest.game_state {
-                // TODO: Better readiness status display.
-                let game = alt_game.local_game();
-                let my_id = alt_game.my_id();
-                let BughousePlayerId{ board_idx: my_board_idx, force: my_force } = my_id;
-                for (board_idx, board) in game.boards() {
-                    let is_primary = board_idx == my_board_idx;
-                    let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
-                    let board_orientation = get_board_orientation(web_board_idx, self.rotate_boards);
-                    let svg = document.get_existing_element_by_id(&board_node_id(web_board_idx))?;
-                    let grid = board.grid();
-                    for coord in Coord::all() {
-                        let node_id = piece_id(web_board_idx, coord);
-                        let node = document.get_element_by_id(&node_id);
-                        let piece = grid[coord];
-                        if let Some(piece) = piece {
-                            let display_coord = to_display_coord(coord, board_orientation);
-                            let node = match node {
-                                Some(v) => v,
-                                None => {
-                                    let v = make_piece_node(&node_id)?;
-                                    svg.append_child(&v)?;
-                                    v
-                                },
-                            };
-                            let filename = piece_path(piece.kind, piece.force);
-                            let (x, y) = square_position(display_coord);
-                            node.set_attribute("x", &x.to_string())?;
-                            node.set_attribute("y", &y.to_string())?;
-                            node.set_attribute("href", &filename)?;
-                            node.set_attribute("data-bughouse-location", &coord.to_algebraic())?;
-                            let draggable = is_primary && piece.force == my_force;
-                            if draggable {
-                                node.set_attribute("class", "draggable")?;
-                            } else {
-                                node.remove_attribute("class")?;
-                            }
-                        } else {
-                            if let Some(node) = node {
-                                node.remove();
-                            }
-                        }
-                    }
-                    for player_idx in WebPlayer::iter() {
-                        use WebPlayer::*;
-                        use WebBoard::*;
-                        let force = match (player_idx, web_board_idx) {
-                            (Bottom, Primary) | (Top, Secondary) => my_force,
-                            (Top, Primary) | (Bottom, Secondary) => my_force.opponent(),
-                        };
-                        let name_node = document.get_existing_element_by_id(
-                            &player_name_node_id(web_board_idx, player_idx)
-                        )?;
-                        let player_name = &board.player(force).name;
-                        let player_string = if game.status() == BughouseGameStatus::Active {
-                            player_name.clone()
-                        } else {
-                            // TODO: Fix this on server side instead: send the full list of players even
-                            //   if somebody went offline.
-                            if let Some(player) = contest.players.iter().find(|p| p.name == *player_name) {
-                                player_with_readiness_status(&player)
-                            } else {
-                                player_name.clone()
-                            }
-                        };
-                        name_node.set_text_content(Some(&player_string));
-                        update_reserve(board.reserve(force), force, web_board_idx, player_idx)?;
-                    }
-                    let latest_turn = game.turn_log().iter().rev()
-                        .find(|record| record.player_id.board_idx == board_idx);
-                    {
-                        let latest_turn_highlight = latest_turn
-                            .filter(|record| record.player_id != my_id)
-                            .map(|record| &record.turn_expanded);
-                        let hightlight_id = format!("latest-{}", board_id(web_board_idx));
-                        self.set_turn_highlights(&hightlight_id, latest_turn_highlight, web_board_idx)?;
-                    }
-                    if web_board_idx == WebBoard::Primary {
-                        let pre_turn_highlight = latest_turn
-                            .filter(|record| record.mode == TurnMode::Preturn)
-                            .map(|record| &record.turn_expanded);
-                        self.set_turn_highlights("pre", pre_turn_highlight, web_board_idx)?;
-                    }
-                }
-                if alt_game.status() != BughouseGameStatus::Active {
-                    // TODO: Print "victory / defeat" instead of team color.
-                    info_string.set_text_content(Some(&format!("Game over: {:?}", alt_game.status())));
-                }
-            } else {
-                // TODO: Show teams for the news game in individual mode.
-                match contest.teaming {
-                    Teaming::FixedTeams => {
-                        let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
-                        for p in &contest.players {
-                            teams[p.fixed_team.unwrap()].push(player_with_readiness_status(p));
-                        }
-                        info_string.set_text_content(Some(&format!(
-                            "red:\n{}\nblue:\n{}",
-                            teams[Team::Red].join("\n"),
-                            teams[Team::Blue].join("\n"),
-                        )));
-                    },
-                    Teaming::IndividualMode => {
-                        info_string.set_text_content(Some(&contest.players.iter().map(|p| {
-                            assert!(p.fixed_team.is_none());
-                            player_with_readiness_status(p)
-                        }).join("\n")))
-                    },
-                }
-                // TODO: Reset boards, clock, etc.
-            }
-            update_scores(&contest.scores, contest.teaming, self.state.my_team())?;
-        }
         self.update_clock()?;
+        let Some(contest) = self.state.contest() else {
+            return Ok(());
+        };
+        update_scores(&contest.scores, contest.teaming, self.state.my_team())?;
+        let Some(GameState{ ref alt_game, .. }) = contest.game_state else {
+            update_lobby(&contest)?;
+            return Ok(());
+        };
+        // TODO: Better readiness status display.
+        let game = alt_game.local_game();
+        let my_id = alt_game.my_id();
+        let BughousePlayerId{ board_idx: my_board_idx, force: my_force } = my_id;
+        for (board_idx, board) in game.boards() {
+            let is_primary = board_idx == my_board_idx;
+            let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
+            let board_orientation = get_board_orientation(web_board_idx, self.rotate_boards);
+            let svg = document.get_existing_element_by_id(&board_node_id(web_board_idx))?;
+            let grid = board.grid();
+            for coord in Coord::all() {
+                let node_id = piece_id(web_board_idx, coord);
+                let node = document.get_element_by_id(&node_id);
+                let piece = grid[coord];
+                if let Some(piece) = piece {
+                    let display_coord = to_display_coord(coord, board_orientation);
+                    let node = match node {
+                        Some(v) => v,
+                        None => {
+                            let v = make_piece_node(&node_id)?;
+                            svg.append_child(&v)?;
+                            v
+                        },
+                    };
+                    let filename = piece_path(piece.kind, piece.force);
+                    let (x, y) = square_position(display_coord);
+                    node.set_attribute("x", &x.to_string())?;
+                    node.set_attribute("y", &y.to_string())?;
+                    node.set_attribute("href", &filename)?;
+                    node.set_attribute("data-bughouse-location", &coord.to_algebraic())?;
+                    let draggable = is_primary && piece.force == my_force;
+                    if draggable {
+                        node.set_attribute("class", "draggable")?;
+                    } else {
+                        node.remove_attribute("class")?;
+                    }
+                } else {
+                    if let Some(node) = node {
+                        node.remove();
+                    }
+                }
+            }
+            for player_idx in WebPlayer::iter() {
+                use WebPlayer::*;
+                use WebBoard::*;
+                let force = match (player_idx, web_board_idx) {
+                    (Bottom, Primary) | (Top, Secondary) => my_force,
+                    (Top, Primary) | (Bottom, Secondary) => my_force.opponent(),
+                };
+                let name_node = document.get_existing_element_by_id(
+                    &player_name_node_id(web_board_idx, player_idx)
+                )?;
+                let player_name = &board.player(force).name;
+                let player_string = if game.status() == BughouseGameStatus::Active {
+                    player_name.clone()
+                } else {
+                    // TODO: Fix this on server side instead: send the full list of players even
+                    //   if somebody went offline.
+                    if let Some(player) = contest.players.iter().find(|p| p.name == *player_name) {
+                        player_with_readiness_status(&player)
+                    } else {
+                        player_name.clone()
+                    }
+                };
+                name_node.set_text_content(Some(&player_string));
+                update_reserve(board.reserve(force), force, web_board_idx, player_idx)?;
+            }
+            let latest_turn = game.turn_log().iter().rev()
+                .find(|record| record.player_id.board_idx == board_idx);
+            {
+                let latest_turn_highlight = latest_turn
+                    .filter(|record| record.player_id != my_id)
+                    .map(|record| &record.turn_expanded);
+                let hightlight_id = format!("latest-{}", board_id(web_board_idx));
+                self.set_turn_highlights(&hightlight_id, latest_turn_highlight, web_board_idx)?;
+            }
+            if web_board_idx == WebBoard::Primary {
+                let pre_turn_highlight = latest_turn
+                    .filter(|record| record.mode == TurnMode::Preturn)
+                    .map(|record| &record.turn_expanded);
+                self.set_turn_highlights("pre", pre_turn_highlight, web_board_idx)?;
+            }
+        }
+        if alt_game.status() != BughouseGameStatus::Active {
+            // TODO: Print "victory / defeat" instead of team color.
+            info_string.set_text_content(Some(&format!("Game over: {:?}", alt_game.status())));
+        }
         Ok(())
     }
 
     pub fn update_clock(&self) -> JsResult<()> {
         let document = web_document();
-        if let Some(GameState{ ref alt_game, time_pair, .. }) = self.state.game_state() {
-            let now = Instant::now();
-            let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
-            let game = alt_game.local_game();
-            let BughousePlayerId{ board_idx: my_board_idx, force: my_force } = alt_game.my_id();
-            for (board_idx, board) in game.boards() {
-                let is_primary = board_idx == my_board_idx;
-                let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
-                for player_idx in WebPlayer::iter() {
-                    use WebPlayer::*;
-                    use WebBoard::*;
-                    let force = match (player_idx, web_board_idx) {
-                        (Bottom, Primary) | (Top, Secondary) => my_force,
-                        (Top, Primary) | (Bottom, Secondary) => my_force.opponent(),
-                    };
-                    let id_suffix = format!("{}-{}", board_id(web_board_idx), player_id(player_idx));
-                    // TODO: Dedup against `update_state`. Everything except the two lines below
-                    //   is copy-pasted from there.
-                    let clock_node = document.get_existing_element_by_id(&format!("clock-{}", id_suffix))?;
-                    update_clock(board.clock(), force, game_now, &clock_node)?;
-                }
+        let Some(GameState{ ref alt_game, time_pair, .. }) = self.state.game_state() else {
+            return Ok(());
+        };
+        let now = Instant::now();
+        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
+        let game = alt_game.local_game();
+        let BughousePlayerId{ board_idx: my_board_idx, force: my_force } = alt_game.my_id();
+        for (board_idx, board) in game.boards() {
+            let is_primary = board_idx == my_board_idx;
+            let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
+            for player_idx in WebPlayer::iter() {
+                use WebPlayer::*;
+                use WebBoard::*;
+                let force = match (player_idx, web_board_idx) {
+                    (Bottom, Primary) | (Top, Secondary) => my_force,
+                    (Top, Primary) | (Bottom, Secondary) => my_force.opponent(),
+                };
+                let id_suffix = format!("{}-{}", board_id(web_board_idx), player_id(player_idx));
+                // TODO: Dedup against `update_state`. Everything except the two lines below
+                //   is copy-pasted from there.
+                let clock_node = document.get_existing_element_by_id(&format!("clock-{}", id_suffix))?;
+                update_clock(board.clock(), force, game_now, &clock_node)?;
             }
         }
         Ok(())
@@ -593,6 +576,32 @@ pub fn init_page(
     }
     render_grids(false)?;
     render_starting()?;
+    Ok(())
+}
+
+fn update_lobby(contest: &Contest) -> JsResult<()> {
+    let info_string = web_document().get_existing_element_by_id("info-string")?;
+    // TODO: Show teams for the news game in individual mode.
+    match contest.teaming {
+        Teaming::FixedTeams => {
+            let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
+            for p in &contest.players {
+                teams[p.fixed_team.unwrap()].push(player_with_readiness_status(p));
+            }
+            info_string.set_text_content(Some(&format!(
+                "red:\n{}\nblue:\n{}",
+                teams[Team::Red].join("\n"),
+                teams[Team::Blue].join("\n"),
+            )));
+        },
+        Teaming::IndividualMode => {
+            info_string.set_text_content(Some(&contest.players.iter().map(|p| {
+                assert!(p.fixed_team.is_none());
+                player_with_readiness_status(p)
+            }).join("\n")))
+        },
+    }
+    // TODO: Reset boards, clock, etc.
     Ok(())
 }
 
