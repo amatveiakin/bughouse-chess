@@ -28,6 +28,7 @@ bughouse_chess = { path = ".." }
 version = "0.3.57"
 features = [
   'Document',
+  'DomTokenList',
   'Element',
   'HtmlElement',
   'Node',

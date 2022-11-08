@@ -15,6 +15,15 @@ use bughouse_chess::client::TurnCommandError::IllegalTurn;
 use common::*;
 
 
+macro_rules! seating {
+    ($force:ident $board_idx:ident) => {
+        bughouse_chess::BughousePlayerId {
+            board_idx: bughouse_chess::BughouseBoard::$board_idx,
+            force: bughouse_chess::Force::$force,
+        }
+    };
+}
+
 fn default_chess_rules() -> ChessRules {
     ChessRules {
         starting_position: StartingPosition::Classic,
@@ -149,10 +158,10 @@ impl World {
     }
     fn default_clients(&mut self) -> (TestClientId, TestClientId, TestClientId, TestClientId) {
         self.server.state.TEST_override_board_assignment(vec! [
-            ("p1".to_owned(), BughouseBoard::A),  // white
-            ("p2".to_owned(), BughouseBoard::B),  // black
-            ("p3".to_owned(), BughouseBoard::A),  // black
-            ("p4".to_owned(), BughouseBoard::B),  // white
+            ("p1".to_owned(), seating!(White A)),
+            ("p2".to_owned(), seating!(Black B)),
+            ("p3".to_owned(), seating!(Black A)),
+            ("p4".to_owned(), seating!(White B)),
         ]);
         let mut clients = [
             self.add_client("p1", Some(Team::Red)),
@@ -236,10 +245,10 @@ impl ops::IndexMut<TestClientId> for World {
 fn play_online_misc() {
     let mut world = World::new();
     world.server.state.TEST_override_board_assignment(vec! [
-        ("p1".to_owned(), BughouseBoard::A),
-        ("p2".to_owned(), BughouseBoard::B),
-        ("p3".to_owned(), BughouseBoard::A),
-        ("p4".to_owned(), BughouseBoard::B),
+        ("p1".to_owned(), seating!(White A)),
+        ("p2".to_owned(), seating!(Black B)),
+        ("p3".to_owned(), seating!(Black A)),
+        ("p4".to_owned(), seating!(White B)),
     ]);
 
     let cl1 = world.add_client("p1", Some(Team::Red));
@@ -563,8 +572,6 @@ fn game_reset() {
     assert_eq!(world[cl2].state.contest().unwrap().scores.per_team.get(&Team::Red), None);
 }
 
-// TODO: Support five or more player in IndividualMode and enable.
-#[ignore = "Game with more than four players are not supported yet"]
 #[test]
 fn five_players() {
     let mut world = World::new_with_rules(
@@ -576,10 +583,10 @@ fn five_players() {
     );
 
     world.server.state.TEST_override_board_assignment(vec! [
-        ("p1".to_owned(), BughouseBoard::A),  // Team::Red, white
-        ("p2".to_owned(), BughouseBoard::B),  // Team::Red, black
-        ("p3".to_owned(), BughouseBoard::A),  // Team::Blue, black
-        ("p4".to_owned(), BughouseBoard::B),  // Team::Blue, white
+        ("p1".to_owned(), seating!(White A)),
+        ("p2".to_owned(), seating!(Black B)),
+        ("p3".to_owned(), seating!(Black A)),
+        ("p4".to_owned(), seating!(White B)),
     ]);
     let mut clients = [
         world.add_client("p1", None),

@@ -155,7 +155,7 @@ struct ServerStateCore {
     scores: Scores,
     match_history: Vec<(Grid, BughouseGame)>,  // starting position, final state
     game_state: Option<GameState>,  // active game or latest game
-    board_assignment_override: Option<Vec<(String, BughouseBoard)>>,  // for tests
+    board_assignment_override: Option<Vec<(String, BughousePlayerId)>>,  // for tests
 }
 
 // Split state into two parts in order to allow things like:
@@ -253,7 +253,7 @@ impl ServerState {
     }
 
     #[allow(non_snake_case)]
-    pub fn TEST_override_board_assignment(&mut self, assignment: Vec<(String, BughouseBoard)>) {
+    pub fn TEST_override_board_assignment(&mut self, assignment: Vec<(String, BughousePlayerId)>) {
         assert_eq!(assignment.len(), TOTAL_PLAYERS);
         self.core.board_assignment_override = Some(assignment);
     }
@@ -621,17 +621,17 @@ impl ServerStateCore {
         -> Vec<(Rc<PlayerInGame>, BughouseBoard)>
     {
         if let Some(assignment) = &self.board_assignment_override {
-            let players_by_name: HashMap<_, _> = self.players.iter().map(|p| {
-                (
-                    p.name.clone(),
-                    Rc::new(PlayerInGame {
-                        name: p.name.clone(),
-                        team: p.fixed_team.unwrap(),
-                    })
-                )
-            }).collect();
-            return assignment.iter().map(|(name, board_idx)| {
-                (Rc::clone(&players_by_name[name]), *board_idx)
+            return assignment.iter().map(|(name, player_id)| {
+                if let Some(player) = self.players.iter().find(|p| &p.name == name) {
+                    if let Some(team) = player.fixed_team {
+                        assert_eq!(team, player_id.team());
+                    }
+                }
+                let player_in_game = Rc::new(PlayerInGame {
+                    name: name.clone(),
+                    team: player_id.team(),
+                });
+                (player_in_game, player_id.board_idx)
             }).collect()
         }
 

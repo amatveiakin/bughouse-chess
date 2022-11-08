@@ -8,7 +8,8 @@ use instant::Instant;
 use crate::altered_game::AlteredGame;
 use crate::board::{TurnError, TurnInput};
 use crate::clock::{GameInstant, WallGameTimePair};
-use crate::game::{TurnRecord, BughouseParticipantId, BughouseGameStatus, BughouseGame};
+use crate::force::Force;
+use crate::game::{TurnRecord, BughouseParticipantId, BughouseObserserId, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::grid::Grid;
 use crate::event::{BughouseServerEvent, BughouseClientEvent};
 use crate::pgn::BughouseExportFormat;
@@ -206,8 +207,14 @@ impl ClientState {
                 let game = BughouseGame::new_with_grid(
                     chess_rules, bughouse_rules, starting_grid.clone(), player_map
                 );
-                let my_id = game.find_player(&self.my_name).unwrap();
-                let alt_game = AlteredGame::new(BughouseParticipantId::Player(my_id), game);
+                let my_id = match game.find_player(&self.my_name) {
+                    Some(id) => BughouseParticipantId::Player(id),
+                    None => BughouseParticipantId::Observer(BughouseObserserId {
+                        board_idx: BughouseBoard::A,
+                        force: Force::White,
+                    }),
+                };
+                let alt_game = AlteredGame::new(my_id, game);
                 let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameStarted: no contest in progress"))?;
                 contest.game_state = Some(GameState {
                     starting_grid,

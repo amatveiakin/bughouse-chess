@@ -299,8 +299,10 @@ impl WebClient {
                 let info_string = web_document().get_existing_element_by_id("info-string")?;
                 info_string.set_text_content(None);
                 let my_id = alt_game.my_id();
+                let is_observer = matches!(my_id, BughouseParticipantId::Observer(_));
                 self.rotate_boards = my_id.display_force() == Force::Black;
                 render_grids(self.rotate_boards)?;
+                setup_participation_mode(is_observer)?;
                 Ok(JsEventMyNoop{}.into())
             },
             Some(NotableEvent::GameOver(game_status)) => {
@@ -516,6 +518,10 @@ struct DisplayCoord {
 struct WebDocument(web_sys::Document);
 
 impl WebDocument {
+    fn body(&self) -> JsResult<web_sys::HtmlElement> {
+        self.0.body().ok_or_else(|| rust_error!("Cannot find document body"))
+    }
+
     fn get_element_by_id(&self, element_id: &str) -> Option<web_sys::Element> {
         self.0.get_element_by_id(element_id)
     }
@@ -806,6 +812,16 @@ fn update_scores(scores: &Scores, teaming: Teaming, my_team: Option<Team>) -> Js
 fn render_grids(rotate_boards: bool) -> JsResult<()> {
     for board_idx in WebBoard::iter() {
         render_grid(board_idx, rotate_boards)?;
+    }
+    Ok(())
+}
+
+fn setup_participation_mode(observer: bool) -> JsResult<()> {
+    let body = web_document().body()?;
+    if observer {
+        body.class_list().add_1("observer")?
+    } else {
+        body.class_list().remove_1("observer")?
     }
     Ok(())
 }
