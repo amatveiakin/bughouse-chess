@@ -70,7 +70,7 @@ let audio_muted = false;
 let drag_element = null;
 
 const info_string = document.getElementById('info-string');
-info_string.innerText = 'Type "/join name team" to start'
+info_string.innerText = 'Type "/join name" to start'
 
 const command_input = document.getElementById('command');
 command_input.addEventListener('change', on_command);
