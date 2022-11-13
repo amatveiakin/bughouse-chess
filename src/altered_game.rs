@@ -111,26 +111,30 @@ impl AlteredGame {
 
     pub fn local_game(&self) -> BughouseGame {
         let mut game = self.game_confirmed.clone();
-        if let BughouseParticipantId::Player(my_player_id) = self.my_id {
-            if let Some((turn, mode, turn_time)) = self.local_turn {
-                let turn_input = TurnInput::Explicit(turn);
-                // Note. Not calling `test_flag`, because only server records flag defeat.
-                game.try_turn_by_player(my_player_id, &turn_input, mode, turn_time).unwrap();
-            }
-            if let Some(ref drag) = self.piece_drag {
-                let board = game.board_mut(my_player_id.board_idx);
-                match drag.source {
-                    PieceDragSource::Defunct => {},
-                    PieceDragSource::Board(coord) => {
-                        let piece = board.grid_mut()[coord].take().unwrap();
-                        assert_eq!(piece.force, my_player_id.force);
-                        assert_eq!(piece.kind, drag.piece_kind);
-                    },
-                    PieceDragSource::Reserve => {
-                        let reserve = board.reserve_mut(my_player_id.force);
-                        assert!(reserve[drag.piece_kind] > 0);
-                        reserve[drag.piece_kind] -= 1;
-                    }
+        if let Some((turn, mode, turn_time)) = self.local_turn {
+            let BughouseParticipantId::Player(my_player_id) = self.my_id else {
+                panic!("Only an active player can make moves");
+            };
+            let turn_input = TurnInput::Explicit(turn);
+            // Note. Not calling `test_flag`, because only server records flag defeat.
+            game.try_turn_by_player(my_player_id, &turn_input, mode, turn_time).unwrap();
+        }
+        if let Some(ref drag) = self.piece_drag {
+            let BughouseParticipantId::Player(my_player_id) = self.my_id else {
+                panic!("Only an active player can drag pieces");
+            };
+            let board = game.board_mut(my_player_id.board_idx);
+            match drag.source {
+                PieceDragSource::Defunct => {},
+                PieceDragSource::Board(coord) => {
+                    let piece = board.grid_mut()[coord].take().unwrap();
+                    assert_eq!(piece.force, my_player_id.force);
+                    assert_eq!(piece.kind, drag.piece_kind);
+                },
+                PieceDragSource::Reserve => {
+                    let reserve = board.reserve_mut(my_player_id.force);
+                    assert!(reserve[drag.piece_kind] > 0);
+                    reserve[drag.piece_kind] -= 1;
                 }
             }
         }
