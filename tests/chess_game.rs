@@ -1,29 +1,16 @@
 mod common;
 
-use std::rc::Rc;
 use std::time::Duration;
 
-use enum_map::{EnumMap, enum_map};
 use lazy_static::lazy_static;
 use regex::Regex;
 
-use bughouse_chess::{
-    StartingPosition, TimeControl, ChessRules, ChessGame, ChessGameStatus, VictoryReason,
-    Coord, TurnInput, TurnMode, TurnError, PlayerInGame, Team, Force, GameInstant,
-    fen::shredder_fen_to_starting_position,
-};
+use bughouse_chess::*;
 use common::*;
 
 
-fn players() -> EnumMap<Force, Rc<PlayerInGame>> {
-    enum_map! {
-        Force::White => Rc::new(PlayerInGame{ name: "Alice".to_owned(), team: Team::Red }),
-        Force::Black => Rc::new(PlayerInGame{ name: "Bob".to_owned(), team: Team::Blue }),
-    }
-}
-
 fn chess_classic() -> ChessGame {
-    ChessGame::new(ChessRules::classic_blitz(), players())
+    ChessGame::new(ChessRules::classic_blitz(), sample_chess_players())
 }
 
 fn chess960_from_short_fen(pieces: &str) -> ChessGame {
@@ -34,8 +21,8 @@ fn chess960_from_short_fen(pieces: &str) -> ChessGame {
     let white_pieces = pieces.to_ascii_uppercase();
     let black_pieces = pieces.to_ascii_lowercase();
     let fen = format!("{black_pieces}/pppppppp/8/8/8/8/PPPPPPPP/{white_pieces} w KQkq - 0 1");
-    let grid = shredder_fen_to_starting_position(&fen).unwrap();
-    ChessGame::new_with_grid(rules, grid, players())
+    let grid = fen::shredder_fen_to_starting_position(&fen).unwrap();
+    ChessGame::new_with_grid(rules, grid, sample_chess_players())
 }
 
 // Improvement potential: Allow whitespace after turn number.

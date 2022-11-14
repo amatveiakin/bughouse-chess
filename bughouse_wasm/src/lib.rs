@@ -227,8 +227,6 @@ impl WebClient {
     pub fn drag_piece_drop(&mut self, dest_x: f64, dest_y: f64, alternative_promotion: bool)
         -> JsResult<()>
     {
-        reset_square_highlight("drag-start-highlight")?;
-        reset_square_highlight("drag-over-highlight")?;
         let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() else {
             return Ok(());
         };
@@ -257,11 +255,17 @@ impl WebClient {
         Ok(())
     }
     pub fn abort_drag_piece(&mut self) -> JsResult<()> {
-        reset_square_highlight("drag-start-highlight")?;
-        reset_square_highlight("drag-over-highlight")?;
         if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
             alt_game.abort_drag_piece();
         }
+        Ok(())
+    }
+    // Remove drag highlights. Should be called after drag_piece_drop/abort_drag_piece but
+    // also in any case where a drag could become obsolete (e.g. dragged piece was captured
+    // or it's position was reverted after the game finished).
+    pub fn reset_drag_highlights(&self) -> JsResult<()> {
+        reset_square_highlight("drag-start-highlight")?;
+        reset_square_highlight("drag-over-highlight")?;
         Ok(())
     }
     pub fn drag_state(&self) -> String {

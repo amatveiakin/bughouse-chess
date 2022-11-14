@@ -322,6 +322,7 @@ function update_drag_state() {
                 drag_element.remove();
                 drag_element = null;
             }
+            wasm_client().reset_drag_highlights();
             break;
         case 'yes':
             console.assert(drag_element != null);
@@ -329,6 +330,7 @@ function update_drag_state() {
         case 'defunct':
             // Improvement potential: Better image (broken piece / add red cross).
             drag_element.setAttribute('opacity', 0.5);
+            wasm_client().reset_drag_highlights();
             break;
         default:
             console.error(`Unknown drag_state: ${drag_state}`);

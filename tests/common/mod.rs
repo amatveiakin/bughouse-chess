@@ -1,3 +1,7 @@
+use std::rc::Rc;
+
+use enum_map::{EnumMap, enum_map};
+
 use bughouse_chess::*;
 
 
@@ -55,4 +59,26 @@ macro_rules! drag_move {
             promote_to: None,
         }))
     };
+}
+
+#[allow(dead_code)]  // Rust-upgrade (https://github.com/rust-lang/rust/issues/46379): remove
+pub fn sample_chess_players() -> EnumMap<Force, Rc<PlayerInGame>> {
+    enum_map! {
+        Force::White => Rc::new(PlayerInGame{ name: "Alice".to_owned(), team: Team::Red }),
+        Force::Black => Rc::new(PlayerInGame{ name: "Bob".to_owned(), team: Team::Blue }),
+    }
+}
+
+#[allow(dead_code)]  // Rust-upgrade (https://github.com/rust-lang/rust/issues/46379): remove
+pub fn sample_bughouse_players() -> EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>> {
+    enum_map! {
+        BughouseBoard::A => enum_map! {
+            Force::White => Rc::new(PlayerInGame{ name: "Alice".to_owned(), team: Team::Red }),
+            Force::Black => Rc::new(PlayerInGame{ name: "Bob".to_owned(), team: Team::Blue }),
+        },
+        BughouseBoard::B => enum_map! {
+            Force::White => Rc::new(PlayerInGame{ name: "Charlie".to_owned(), team: Team::Blue }),
+            Force::Black => Rc::new(PlayerInGame{ name: "Dave".to_owned(), team: Team::Red }),
+        }
+    }
 }

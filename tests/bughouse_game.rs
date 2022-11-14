@@ -1,26 +1,14 @@
-use std::rc::Rc;
+mod common;
 
-use enum_map::{EnumMap, enum_map};
 use lazy_static::lazy_static;
 use regex::Regex;
 
-use bughouse_chess::{
-    ChessRules, BughouseRules, BughouseBoard, BughouseGame, BughouseGameStatus, DrawReason,
-    GameInstant, TurnInput, TurnMode, TurnError, PlayerInGame, Team, Force
-};
+use bughouse_chess::*;
+use common::*;
 
 
-fn players() -> EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>> {
-    enum_map! {
-        BughouseBoard::A => enum_map! {
-            Force::White => Rc::new(PlayerInGame{ name: "Alice".to_owned(), team: Team::Red }),
-            Force::Black => Rc::new(PlayerInGame{ name: "Bob".to_owned(), team: Team::Blue }),
-        },
-        BughouseBoard::B => enum_map! {
-            Force::White => Rc::new(PlayerInGame{ name: "Charlie".to_owned(), team: Team::Blue }),
-            Force::Black => Rc::new(PlayerInGame{ name: "Dave".to_owned(), team: Team::Red }),
-        }
-    }
+fn bughouse_chess_com() -> BughouseGame {
+    BughouseGame::new(ChessRules::classic_blitz(), BughouseRules::chess_com(), sample_bughouse_players())
 }
 
 fn make_turn(game: &mut BughouseGame, board_idx: BughouseBoard, turn_notation: &str)
@@ -69,7 +57,7 @@ fn replay_log_symmetric(game: &mut BughouseGame, log: &str) -> Result<(), TurnEr
 
 #[test]
 fn no_castling_with_dropped_rook() {
-    let mut game = BughouseGame::new(ChessRules::classic_blitz(), BughouseRules::chess_com(), players());
+    let mut game = bughouse_chess_com();
     replay_log(&mut game, "
         0A.g4  0a.h5
         0A.xh5  0a.Rxh5
@@ -97,7 +85,7 @@ fn no_castling_with_dropped_rook() {
 // situation different.
 #[test]
 fn threefold_repetition_draw_prevented_by_drops() {
-    let mut game = BughouseGame::new(ChessRules::classic_blitz(), BughouseRules::chess_com(), players());
+    let mut game = bughouse_chess_com();
     replay_log_symmetric(&mut game, "
         e4 b6
         Qf3 Ba6
@@ -117,7 +105,7 @@ fn threefold_repetition_draw_prevented_by_drops() {
 
 #[test]
 fn threefold_repetition_draw_ignores_reserve() {
-    let mut game = BughouseGame::new(ChessRules::classic_blitz(), BughouseRules::chess_com(), players());
+    let mut game = bughouse_chess_com();
     replay_log(&mut game, "
         1A.Nc3  1a.Nf6
         2A.Nb1  2a.Ng8

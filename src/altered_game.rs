@@ -264,5 +264,6 @@ impl AlteredGame {
     }
     pub fn reset_local_changes(&mut self) {
         self.local_turn = None;
+        self.piece_drag = None;
     }
 }
