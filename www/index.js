@@ -32,6 +32,15 @@ class WasmClientPanicked {}
 class InvalidCommand { constructor(msg) { this.msg = msg; } }
 
 
+function log_time() {
+    if (typeof log_time.start == 'undefined') {
+        log_time.start = performance.now();
+    }
+    const t = performance.now() - log_time.start;
+    return `[t=${t.toFixed(1)}]`;
+}
+log_time();  // start the counter
+
 set_favicon();
 
 // Improvement potential. Establish priority on sounds; play more important sounds first
@@ -117,7 +126,7 @@ function with_error_handling(f) {
                     reported;
                 shutdown_wasm_client();
             } else {
-                console.log('Unknown error: ', e);
+                console.log(log_time(), 'Unknown error: ', e);
                 const msg = `Unknown error: ${e}`;
                 info_string.innerText = msg;
                 if (socket) {
@@ -156,7 +165,7 @@ function shutdown_wasm_client() {
 
 function on_server_event(event) {
     with_error_handling(function() {
-        console.log('server: ', event);
+        console.log(log_time(), 'server: ', event);
         wasm_client().process_server_event(event);
         update();
     });
@@ -283,7 +292,7 @@ function update() {
 function process_outgoing_events() {
     let event;
     while (event = wasm_client().next_outgoing_event()) {
-        console.log('sending: ', event);
+        console.log(log_time(), 'sending: ', event);
         socket.send(event);
     }
 }
