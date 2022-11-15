@@ -17,8 +17,8 @@ derive-new = "0.5.9"
 enum-map = "2.1.0"
 instant = { version = "0.1.12", features = ["wasm-bindgen"] }
 itertools = "0.10.3"
-lazy_static = "1.4.0"
 log = "0.4.17"
+once_cell = "1.16.0"
 rand = "0.8.5"
 # TODO: Further reduce WASM size by stripping away all regex-related code,
 #   see https://github.com/rust-lang/regex/issues/913

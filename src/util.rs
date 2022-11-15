@@ -1,6 +1,15 @@
 use itertools::Itertools;
 
 
+// Slightly adjusted macro from https://docs.rs/once_cell/latest/once_cell/#lazily-compiled-regex:
+#[macro_export]
+macro_rules! once_cell_regex {
+    ($re:expr $(,)?) => {{
+        static RE: once_cell::sync::OnceCell<regex::Regex> = once_cell::sync::OnceCell::new();
+        RE.get_or_init(|| regex::Regex::new($re).unwrap())
+    }};
+}
+
 pub fn sort_two<T: Ord>(v: (T, T)) -> (T, T) {
     let (a, b) = v;
     if a < b { (a, b) } else { (b, a) }

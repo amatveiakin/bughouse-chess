@@ -7,11 +7,10 @@ use std::rc::Rc;
 
 use enum_map::{EnumMap, enum_map};
 use itertools::Itertools;
-use lazy_static::lazy_static;
-use regex::Regex;
 use serde::{Serialize, Deserialize};
 use strum::IntoEnumIterator;
 
+use crate::once_cell_regex;
 use crate::coord::{SubjectiveRow, Row, Col, Coord};
 use crate::clock::{GameInstant, Clock};
 use crate::force::Force;
@@ -957,17 +956,15 @@ impl Board {
         let force = self.turn_owner(mode);
         let notation = notation.trim();
         const PIECE_RE: &str = r"[PNBRQK]";
-        lazy_static! {
-            static ref MOVE_RE: Regex = Regex::new(
-                &format!(r"^({piece})?([a-h])?([1-8])?([x×:])?([a-h][1-8])(?:[=/]?({piece})?)([+†#‡]?)$", piece=PIECE_RE)
-            ).unwrap();
-            static ref DROP_RE: Regex = Regex::new(
-                &format!(r"^({piece})@([a-h][1-8])$", piece=PIECE_RE)
-            ).unwrap();
-            static ref A_CASTLING_RE: Regex = Regex::new("^(0-0-0|O-O-O)$").unwrap();
-            static ref H_CASTLING_RE: Regex = Regex::new("^(0-0|O-O)$").unwrap();
-        }
-        if let Some(cap) = MOVE_RE.captures(notation) {
+        let move_re = once_cell_regex!(
+            &format!(r"^({piece})?([a-h])?([1-8])?([x×:])?([a-h][1-8])(?:[=/]?({piece})?)([+†#‡]?)$", piece=PIECE_RE)
+        );
+        let drop_re = once_cell_regex!(
+            &format!(r"^({piece})@([a-h][1-8])$", piece=PIECE_RE)
+        );
+        let a_castling_re = once_cell_regex!("^(0-0-0|O-O-O)$");
+        let h_castling_re = once_cell_regex!("^(0-0|O-O)$");
+        if let Some(cap) = move_re.captures(notation) {
             let piece_kind = cap.get(1).map_or(PieceKind::Pawn, |m| PieceKind::from_algebraic(m.as_str()).unwrap());
             let from_col = cap.get(2).map(|m| Col::from_algebraic(as_single_char(m.as_str()).unwrap()));
             let from_row = cap.get(3).map(|m| Row::from_algebraic(as_single_char(m.as_str()).unwrap()));
@@ -1034,13 +1031,13 @@ impl Board {
             } else {
                 return Err(TurnError::ImpossibleTrajectory);
             }
-        } else if let Some(cap) = DROP_RE.captures(notation) {
+        } else if let Some(cap) = drop_re.captures(notation) {
             let piece_kind = PieceKind::from_algebraic(cap.get(1).unwrap().as_str()).unwrap();
             let to = Coord::from_algebraic(cap.get(2).unwrap().as_str());
             return Ok(Turn::Drop(TurnDrop{ piece_kind, to }));
-        } else if A_CASTLING_RE.is_match(notation) {
+        } else if a_castling_re.is_match(notation) {
             return Ok(Turn::Castle(CastleDirection::ASide));
-        } else if H_CASTLING_RE.is_match(notation) {
+        } else if h_castling_re.is_match(notation) {
             return Ok(Turn::Castle(CastleDirection::HSide));
         }
         Err(TurnError::InvalidNotation)

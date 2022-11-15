@@ -35,7 +35,7 @@ const BOARD_TOP: f64 = 0.0;
 // TODO: Viewbox size asserts.
 
 // Mutable singleton should be ok since the relevant code is single-threaded.
-// TODO: Consider wrapping into lazy_static or thread_local for better safety.
+// TODO: Consider wrapping into once_cell or thread_local for better safety.
 static mut PIECE_PATH: Option<EnumMap<Force, EnumMap<PieceKind, String>>> = None;
 static mut LAST_PANIC: String = String::new();
 
