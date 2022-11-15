@@ -38,7 +38,12 @@ features = [
 [dev-dependencies]
 wasm-bindgen-test = "0.3.13"
 
-# Improvement potential: Optimize WASM version for size. Note: simply uncommenting this gives:
-#   warning: profiles for the non root package will be ignored, specify profiles at the workspace root
+# Improvement potential: Optimize WASM version for size. This is blocked on the following:
+#   - profiles can only be specified in the Cargo workspace root (not here);
+#   - we don't want this to affect server build;
+#   - wasm-pack cannot use custom cargo profiles: https://github.com/rustwasm/wasm-pack/issues/1111
 # [profile.release]
 # opt-level = "s"  # optimize for small code size
+
+[package.metadata.wasm-pack.profile.profiling]
+wasm-opt = ['-O4', '-g']  # add '-g'; workaround for https://github.com/rustwasm/wasm-pack/issues/797
