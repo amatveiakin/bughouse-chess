@@ -62,7 +62,7 @@ let on_tick_interval_id = null;
 // premove back.
 const audio_min_interval_ms = 70;
 const audio_max_queue_size = 5;
-let audio_last_played = null;
+let audio_last_played = 0;
 let audio_queue = [];
 let audio_volume = 1.0;
 let audio_muted = false;
@@ -461,9 +461,10 @@ function set_up_drag_and_drop() {
 }
 
 function play_audio(audio) {
-    if (audio_queue.length < audio_max_queue_size) {
-        audio_queue.push(audio);
+    if (audio_queue.length >= audio_max_queue_size) {
+        return;
     }
+    audio_queue.push(audio);
     const now = performance.now();
     const audio_next_avaiable = audio_last_played + audio_min_interval_ms;
     if (audio_queue.length > 1) {
@@ -477,12 +478,13 @@ function play_audio(audio) {
 
 function play_audio_delayed() {
     play_audio_impl();
-    if (audio_queue) {
+    if (audio_queue.length > 0) {
         setTimeout(play_audio_delayed, audio_min_interval_ms);
     }
 }
 
 function play_audio_impl() {
+    console.assert(audio_queue.length > 0);
     let audio = audio_queue.shift();
     if (!audio_muted) {
         // Clone node to allow playing overlapping instances of the same sound.
