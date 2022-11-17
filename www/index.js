@@ -31,6 +31,18 @@ class WasmClientDoesNotExist {}
 class WasmClientPanicked {}
 class InvalidCommand { constructor(msg) { this.msg = msg; } }
 
+class Timer {
+    constructor() { this.t0 = performance.now(); }
+    finish() {
+        const t1 = performance.now();
+        const d = t1 - this.t0;
+        this.t0 = t1;
+        return d;
+    }
+    meter(m) {
+        m.record(this.finish());
+    }
+}
 
 function log_time() {
     if (typeof log_time.start == 'undefined') {
@@ -77,6 +89,13 @@ let audio_volume = 1.0;
 let audio_muted = false;
 
 let drag_element = null;
+
+let process_outgoing_events_meter = null;
+let process_notable_events_meter = null;
+let refresh_meter = null;
+let update_state_meter = null;
+let update_clock_meter = null;
+let update_drag_state_meter = null;
 
 const info_string = document.getElementById('info-string');
 info_string.innerText = 'Type "/join name" to start'
@@ -161,6 +180,21 @@ function shutdown_wasm_client() {
         clearInterval(on_tick_interval_id);
         on_tick_interval_id = null;
     }
+    process_outgoing_events_meter = null;
+    process_notable_events_meter = null;
+    refresh_meter = null;
+    update_state_meter = null;
+    update_clock_meter = null;
+    update_drag_state_meter = null;
+}
+
+function initialize_meters() {
+    process_outgoing_events_meter = wasm_client().meter("process_outgoing_events");
+    process_notable_events_meter = wasm_client().meter("process_notable_events");
+    refresh_meter = wasm_client().meter("refresh");
+    update_state_meter = wasm_client().meter("update_state");
+    update_clock_meter = wasm_client().meter("update_clock");
+    update_drag_state_meter = wasm_client().meter("update_drag_state");
 }
 
 function on_server_event(event) {
@@ -261,6 +295,10 @@ function execute_command(input) {
                     get_args(args, []);
                     wasm_client().request_export();
                     break;
+                case 'perf':
+                    get_args(args, []);
+                    info_string.innerText = wasm_client().meter_stats();
+                    break;
                 default:
                     throw new InvalidCommand(`Command does not exist: /${args[0]}`)
             }
@@ -273,19 +311,29 @@ function execute_command(input) {
 
 function on_tick() {
     with_error_handling(function() {
+        const timer = new Timer();
         wasm_client().refresh();
+        timer.meter(refresh_meter);
         wasm_client().update_clock();
+        timer.meter(update_clock_meter);
         process_notable_events();
+        timer.meter(process_notable_events_meter);
     });
 }
 
 function update() {
     with_error_handling(function() {
+        const timer = new Timer();
         process_outgoing_events();
+        timer.meter(process_outgoing_events_meter);
         wasm_client().refresh();
+        timer.meter(refresh_meter);
         wasm_client().update_state();
+        timer.meter(update_state_meter);
         process_notable_events();
+        timer.meter(process_notable_events_meter);
         update_drag_state();
+        timer.meter(update_drag_state_meter);
     });
 }
 
@@ -358,7 +406,10 @@ function request_join(address, my_name, my_team) {
     with_error_handling(function() {
         shutdown_wasm_client();
         socket = new WebSocket(`ws://${address}:38617`);  // TODO: get the port from Rust
-        wasm_client_object = wasm.WebClient.new_client(my_name, my_team);
+        const user_agent = window.navigator.userAgent;
+        const time_zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        wasm_client_object = wasm.WebClient.new_client(my_name, my_team, user_agent, time_zone);
+        initialize_meters();
         info_string.innerText = 'Joining...';
         socket_incoming_listener = socket.addEventListener('message', function(event) {
             on_server_event(event.data);

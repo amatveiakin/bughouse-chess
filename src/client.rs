@@ -6,12 +6,13 @@ use std::time::Duration;
 use instant::Instant;
 
 use crate::altered_game::AlteredGame;
-use crate::board::{TurnError, TurnInput};
+use crate::board::{TurnError, TurnMode, TurnInput};
 use crate::clock::{GameInstant, WallGameTimePair};
 use crate::force::Force;
 use crate::game::{TurnRecord, BughouseParticipantId, BughouseObserserId, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::grid::Grid;
-use crate::event::{BughouseServerEvent, BughouseClientEvent};
+use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerformance};
+use crate::meter::{Meter, MeterBox};
 use crate::pgn::BughouseExportFormat;
 use crate::player::{Player, Team};
 use crate::rules::Teaming;
@@ -21,7 +22,7 @@ use crate::scores::Scores;
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum TurnCommandError {
     IllegalTurn(TurnError),
-    NoGameInProgress,
+    NoGameInProgress,  // TODO: Consider collapsing this into TurnError
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -59,7 +60,9 @@ pub struct GameState {
     // Game start time: `None` before first move, non-`None` afterwards.
     pub time_pair: Option<WallGameTimePair>,
     // Index of the next warning in `LOW_TIME_WARNING_THRESHOLDS`.
-    pub next_low_time_warning_idx: usize,
+    next_low_time_warning_idx: usize,
+    // Used to track how long it took the server to confirm a turn.
+    awaiting_turn_confirmation_since: Option<Instant>,
 }
 
 #[derive(Debug)]
@@ -78,9 +81,13 @@ pub struct Contest {
 pub struct ClientState {
     my_name: String,
     my_team: Option<Team>,
+    user_agent: String,
+    time_zone: String,
     events_tx: mpsc::Sender<BughouseClientEvent>,
     contest: Option<Contest>,
     notable_event_queue: VecDeque<NotableEvent>,
+    meter_box: MeterBox,
+    turn_confirmed_meter: Meter,
 }
 
 const LOW_TIME_WARNING_THRESHOLDS: &[Duration] = &[
@@ -99,13 +106,22 @@ macro_rules! cannot_apply_event {
 }
 
 impl ClientState {
-    pub fn new(my_name: String, my_team: Option<Team>, events_tx: mpsc::Sender<BughouseClientEvent>) -> Self {
+    pub fn new(
+        my_name: String, my_team: Option<Team>, user_agent: String, time_zone: String,
+        events_tx: mpsc::Sender<BughouseClientEvent>
+    ) -> Self {
+        let mut meter_box = MeterBox::new();
+        let turn_confirmed_meter = meter_box.meter("turn_confirmation".to_owned());
         ClientState {
             my_name,
             my_team,
+            user_agent,
+            time_zone,
             events_tx,
             contest: None,
             notable_event_queue: VecDeque::new(),
+            meter_box,
+            turn_confirmed_meter,
         }
     }
 
@@ -115,6 +131,9 @@ impl ClientState {
     pub fn contest(&self) -> Option<&Contest> { self.contest.as_ref() }
     pub fn game_state(&self) -> Option<&GameState> { self.contest.as_ref().and_then(|c| c.game_state.as_ref()) }
     pub fn game_state_mut(&mut self) -> Option<&mut GameState> { self.contest.as_mut().and_then(|c| c.game_state.as_mut()) }
+
+    pub fn meter(&mut self, name: String) -> Meter { self.meter_box.meter(name) }
+    pub fn meter_stats(&self) -> String { self.meter_box.statistics() }
 
     pub fn join(&mut self) {
         self.events_tx.send(BughouseClientEvent::Join {
@@ -137,6 +156,13 @@ impl ClientState {
     pub fn reset(&mut self) {
         self.events_tx.send(BughouseClientEvent::Reset).unwrap();
     }
+    pub fn report_performance(&mut self) {
+        self.events_tx.send(BughouseClientEvent::ReportPerformace(BughouseClientPerformance {
+            user_agent: self.user_agent.clone(),
+            time_zone: self.time_zone.clone(),
+            statistics: self.meter_stats(),
+        })).unwrap();
+    }
     pub fn request_export(&mut self, format: BughouseExportFormat) {
         self.events_tx.send(BughouseClientEvent::RequestExport{ format }).unwrap();
     }
@@ -147,14 +173,18 @@ impl ClientState {
 
     pub fn make_turn(&mut self, turn_input: TurnInput) -> Result<(), TurnCommandError> {
         let game_state = self.game_state_mut().ok_or(TurnCommandError::NoGameInProgress)?;
-        let GameState{ ref mut alt_game, time_pair, .. } = game_state;
-        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, Instant::now());
+        let GameState{ ref mut alt_game, time_pair, ref mut awaiting_turn_confirmation_since, .. } = game_state;
+        let now = Instant::now();
+        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         if alt_game.status() != BughouseGameStatus::Active {
             Err(TurnCommandError::IllegalTurn(TurnError::GameOver))
         } else if alt_game.can_make_local_turn() {
-            alt_game.try_local_turn(&turn_input, game_now).map_err(|err| {
+            let mode = alt_game.try_local_turn(&turn_input, game_now).map_err(|err| {
                 TurnCommandError::IllegalTurn(err)
             })?;
+            if mode == TurnMode::Normal {
+                *awaiting_turn_confirmation_since = Some(now);
+            }
             self.events_tx.send(BughouseClientEvent::MakeTurn{ turn_input }).unwrap();
             self.add_notable_event(NotableEvent::MyTurnMade);
             Ok(())
@@ -221,6 +251,7 @@ impl ClientState {
                     alt_game,
                     time_pair,
                     next_low_time_warning_idx: 0,
+                    awaiting_turn_confirmation_since: None,
                 });
                 for turn in turn_log {
                     self.apply_remote_turn(turn, false)?;
@@ -237,7 +268,7 @@ impl ClientState {
                 self.verify_game_status(game_status)?;
                 self.update_scores(scores)?;
                 if game_status != BughouseGameStatus::Active {
-                    self.add_game_over_notable_event()?;
+                    self.game_over_postprocess()?;
                 }
             },
             GameOver{ time, game_status, scores: new_scores } => {
@@ -246,7 +277,7 @@ impl ClientState {
                 assert!(game_state.alt_game.status() == BughouseGameStatus::Active);
                 game_state.alt_game.set_status(game_status, time);
                 contest.scores = new_scores;
-                self.add_game_over_notable_event()?;
+                self.game_over_postprocess()?;
             },
             GameExportReady{ content } => {
                 self.add_notable_event(NotableEvent::GameExportReady(content));
@@ -269,14 +300,25 @@ impl ClientState {
         let TurnRecord{ player_id, turn_algebraic, time } = turn_record;
         let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot make turn: no contest in progress"))?;
         let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot make turn: no game in progress"))?;
-        let GameState{ ref mut alt_game, ref mut time_pair, .. } = game_state;
+        let GameState{ ref mut alt_game, ref mut time_pair, ref mut awaiting_turn_confirmation_since, .. } = game_state;
         if alt_game.status() != BughouseGameStatus::Active {
             return Err(cannot_apply_event!("Cannot make turn {}: game over", turn_algebraic));
+        }
+        let now = Instant::now();
+        if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
+            if player_id == my_player_id {
+                // It's normal that the client is not awaiting confirmation, because preturns are not confirmed.
+                if let Some(t0) = awaiting_turn_confirmation_since {
+                    let d = now.duration_since(*t0);
+                    self.turn_confirmed_meter.record_duration(d);
+                    *awaiting_turn_confirmation_since = None;
+                }
+            }
         }
         if time_pair.is_none() {
             // Improvement potential. Sync client/server times better; consider NTP.
             let game_start = GameInstant::game_start().approximate();
-            *time_pair = Some(WallGameTimePair::new(Instant::now(), game_start));
+            *time_pair = Some(WallGameTimePair::new(now, game_start));
         }
         let old_reserve_size = my_reserve_size(alt_game);
         alt_game.apply_remote_turn_algebraic(
@@ -326,14 +368,14 @@ impl ClientState {
         }
     }
 
-    fn add_game_over_notable_event(&mut self) -> Result<(), EventError> {
-        let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot create game over event: no contest in progress"))?;
-        let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot create game over event: no game in progress"))?;
+    fn game_over_postprocess(&mut self) -> Result<(), EventError> {
+        let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot process game over: no contest in progress"))?;
+        let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot process game over: no game in progress"))?;
         let GameState{ ref mut alt_game, .. } = game_state;
         if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
             let game_status = match alt_game.status() {
                 BughouseGameStatus::Active => {
-                    return Err(cannot_apply_event!("Cannot create game over event: game not over"));
+                    return Err(cannot_apply_event!("Cannot process game over: game not over"));
                 },
                 BughouseGameStatus::Victory(team, _) => {
                     if team == my_player_id.team() {
@@ -345,6 +387,9 @@ impl ClientState {
                 BughouseGameStatus::Draw(_) => SubjectiveGameResult::Draw,
             };
             self.add_notable_event(NotableEvent::GameOver(game_status));
+            // Note. It would make more sense to send performanse stats on leave, but there doesn't
+            // seem to be a way to do this reliably, especially on mobile.
+            self.report_performance();
         }
         Ok(())
     }

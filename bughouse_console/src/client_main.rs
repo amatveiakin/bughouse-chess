@@ -180,7 +180,13 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
         }
     });
 
-    let mut client_state = ClientState::new(my_name.to_owned(), my_team, server_tx);
+    let user_agent = "Terminal".to_owned();
+    let time_zone = "?".to_owned();
+    // Improvement potential. Get timezone.
+    // Note. One could do this:
+    //   let time_zone = tzdata::Timezone::local().map_or("?".to_owned(), |tz| tz.name.clone());
+    // using `tzdata` crate, but it's unmaintained.
+    let mut client_state = ClientState::new(my_name.to_owned(), my_team, user_agent, time_zone, server_tx);
     let mut keyboard_input = String::new();
     let mut command_error = None;
     client_state.join();

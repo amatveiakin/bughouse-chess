@@ -13,6 +13,7 @@ mod scores;
 pub mod client;
 pub mod fen;
 pub mod janitor;
+pub mod meter;
 pub mod pgn;
 pub mod server;
 pub mod util;

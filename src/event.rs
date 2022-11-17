@@ -53,6 +53,14 @@ pub enum BughouseServerEvent {
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BughouseClientPerformance {
+    pub user_agent: String,
+    pub time_zone: String,  // location estimate
+    // Improvement potential. Send structured performance info and log to DB.
+    pub statistics: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseClientErrorReport {
     RustPanic{ panic_info: String, backtrace: String },
     RustError{ message: String },
@@ -79,5 +87,6 @@ pub enum BughouseClientEvent {
     RequestExport {
         format: BughouseExportFormat,
     },
+    ReportPerformace(BughouseClientPerformance),
     ReportError(BughouseClientErrorReport),
 }

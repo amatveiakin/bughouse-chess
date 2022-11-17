@@ -79,7 +79,9 @@ impl Client {
         let (incoming_tx, incoming_rx) = mpsc::channel();
         let (outgoing_tx, outgoing_rx) = mpsc::channel();
         let id = server.add_client(incoming_tx);
-        let state = client::ClientState::new(my_name, my_team, outgoing_tx);
+        let user_agent = "Test".to_owned();
+        let time_zone = "?".to_owned();
+        let state = client::ClientState::new(my_name, my_team, user_agent, time_zone, outgoing_tx);
         Client{ id, incoming_rx, outgoing_rx, state }
     }
 

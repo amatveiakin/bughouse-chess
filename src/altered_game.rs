@@ -146,7 +146,7 @@ impl AlteredGame {
     }
 
     pub fn try_local_turn(&mut self, turn_input: &TurnInput, time: GameInstant)
-        -> Result<(), TurnError>
+        -> Result<TurnMode, TurnError>
     {
         let BughouseParticipantId::Player(my_player_id) = self.my_id else {
             return Err(TurnError::NotPlayer);
@@ -156,7 +156,7 @@ impl AlteredGame {
         let turn = game_copy.try_turn_by_player(my_player_id, turn_input, mode, time)?;
         self.local_turn = Some((turn, mode, time));
         self.piece_drag = None;
-        Ok(())
+        Ok(mode)
     }
 
     pub fn piece_drag_state(&self) -> &Option<PieceDrag> {

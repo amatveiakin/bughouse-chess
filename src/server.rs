@@ -18,11 +18,12 @@ use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, BughouseGameStatus, BughouseGame};
 use crate::grid::Grid;
-use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientErrorReport};
+use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerformance, BughouseClientErrorReport};
 use crate::pgn::{self, BughouseExportFormat};
 use crate::player::{Player, PlayerInGame, Team};
 use crate::rules::{Teaming, ChessRules, BughouseRules};
 use crate::scores::Scores;
+use crate::util::indent_text;
 
 
 const TOTAL_PLAYERS: usize = 4;
@@ -85,6 +86,7 @@ pub struct Client {
     events_tx: mpsc::Sender<BughouseServerEvent>,
     player_id: Option<PlayerId>,
     logging_id: String,
+    latest_performance_report: Option<BughouseClientPerformance>,
 }
 
 impl Client {
@@ -111,6 +113,7 @@ impl Clients {
             events_tx,
             player_id: None,
             logging_id,
+            latest_performance_report: None,
         };
         let id = ClientId(self.next_id);
         self.next_id += 1;
@@ -124,7 +127,21 @@ impl Clients {
     // offline (for TUI: could use “ϟ” for “disconnected”; there is a plug emoji “🔌”
     // that works much better, but it's not supported by console fonts).
     pub fn remove_client(&mut self, id: ClientId) -> Option<String> {
-        self.map.remove(&id).map(|client| client.logging_id)
+        let client = self.map.remove(&id);
+        if let Some(client) = client {
+            if let Some(perf) = &client.latest_performance_report {
+                info!(
+                    "Client {} info:\nUser agent: {}\nTime zone: {}\nPerformance statistics:\n{}",
+                    client.logging_id,
+                    perf.user_agent,
+                    perf.time_zone,
+                    indent_text(&perf.statistics, "    "),
+                );
+            }
+            Some(client.logging_id)
+        } else {
+            None
+        }
     }
 
     // Sends the event to each client who has joined the game.
@@ -238,6 +255,9 @@ impl ServerState {
                     },
                     BughouseClientEvent::RequestExport{ format } => {
                         self.core.process_request_export(&mut clients, client_id, format);
+                    },
+                    BughouseClientEvent::ReportPerformace(performance) => {
+                        self.core.process_report_performance(&mut clients, client_id, performance);
                     },
                     BughouseClientEvent::ReportError(report) => {
                         self.core.process_report_error(&clients, client_id, report);
@@ -463,6 +483,8 @@ impl ServerStateCore {
         }
         // Note. Player will be removed automatically. This has to be the case, otherwise
         // clients disconnected due to a network error would've left abandoned players.
+        // Improvement potential. Do we really need this event? Clients are removed when the
+        // network channel is closed anyway.
     }
 
     fn process_reset(&mut self, clients: &mut ClientsGuard<'_>) {
@@ -488,6 +510,12 @@ impl ServerStateCore {
             pgn::export_to_bpgn(format, grid, game, round + 1)
         }).join("\n");
         clients[client_id].send(BughouseServerEvent::GameExportReady{ content });
+    }
+
+    fn process_report_performance(
+        &self, clients: &mut ClientsGuard<'_>, client_id: ClientId, performance: BughouseClientPerformance)
+    {
+        clients[client_id].latest_performance_report = Some(performance);
     }
 
     fn process_report_error(

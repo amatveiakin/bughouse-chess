@@ -24,6 +24,7 @@ use wasm_bindgen::prelude::*;
 
 use bughouse_chess::*;
 use bughouse_chess::client::*;
+use bughouse_chess::meter::*;
 
 
 type JsResult<T> = Result<T, JsValue>;
@@ -112,6 +113,23 @@ pub fn make_unknown_error_event(message: String) -> String {
 }
 
 #[wasm_bindgen]
+pub struct JsMeter {
+    meter: Meter,
+}
+
+#[wasm_bindgen]
+impl JsMeter {
+    fn new(meter: Meter) -> Self { JsMeter{ meter } }
+
+    // Note. It is possible to have a u64 argument, but it's passed as BigInt:
+    // https://rustwasm.github.io/docs/wasm-bindgen/reference/browser-support.html
+    pub fn record(&self, value: f64) {
+        assert!(value >= 0.0);
+        self.meter.record(value as u64);
+    }
+}
+
+#[wasm_bindgen]
 pub struct JsEventMyNoop {}  // in contrast to `null`, indicates that event list is not over
 
 #[wasm_bindgen]
@@ -153,7 +171,9 @@ pub struct WebClient {
 
 #[wasm_bindgen]
 impl WebClient {
-    pub fn new_client(my_name: &str, my_team: &str) -> JsResult<WebClient> {
+    pub fn new_client(my_name: String, my_team: &str, user_agent: String, time_zone: String)
+        -> JsResult<WebClient>
+    {
         let my_team = match my_team {
             "red" => Some(Team::Red),
             "blue" => Some(Team::Blue),
@@ -162,10 +182,14 @@ impl WebClient {
         };
         let (server_tx, server_rx) = mpsc::channel();
         Ok(WebClient {
-            state: ClientState::new(my_name.to_owned(), my_team, server_tx),
+            state: ClientState::new(my_name, my_team, user_agent, time_zone, server_tx),
             server_rx,
             rotate_boards: false,
         })
+    }
+
+    pub fn meter(&mut self, name: String) -> JsMeter {
+        JsMeter::new(self.state.meter(name))
     }
 
     pub fn join(&mut self) {
@@ -472,6 +496,10 @@ impl WebClient {
             }
         }
         Ok(())
+    }
+
+    pub fn meter_stats(&self) -> String {
+        self.state.meter_stats()
     }
 
     fn set_turn_highlights(&self, id_prefix: &str, turn: Option<&TurnExpanded>, board_idx: WebBoard)
