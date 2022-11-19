@@ -32,7 +32,11 @@ use clap::{arg, Command};
 
 
 fn main() -> io::Result<()> {
-    env_logger::init();
+    env_logger::Builder::new()
+        .target(env_logger::Target::Stdout)
+        .filter_level(log::LevelFilter::Info)
+        .parse_default_env()
+        .init();
 
     let matches = Command::new("Bughouse")
         .author(clap::crate_authors!())
