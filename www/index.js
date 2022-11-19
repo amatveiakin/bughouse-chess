@@ -1,5 +1,6 @@
 // TODO: Remove logging
 // TODO: Check if ==/!= have to be replaced with ===/!== and other JS weirdness.
+// TODO: Figure out if it's possible to enable strict mode with webpack.
 
 import './main.css'
 import * as wasm from 'bughouse-chess';
@@ -565,7 +566,7 @@ function download(text, filename) {
     document.body.removeChild(element);
 }
 
-// TODO: Is it possible to set a static favicon in a way that is recognized  by webpack?
+// TODO: Is it possible to set a static favicon in a way that is recognized by webpack?
 function set_favicon() {
     var link = document.querySelector("link[rel~='icon']");
     if (!link) {
