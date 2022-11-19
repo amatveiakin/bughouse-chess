@@ -24,6 +24,7 @@ pub mod network;
 pub mod tui;
 
 mod client_main;
+mod rusqlite_server_hooks;
 mod server_main;
 
 use std::io;
@@ -50,6 +51,7 @@ fn main() -> io::Result<()> {
                     .default_value("5:00"))
                 .arg(arg!(--teaming [TEAMING] "How players are split into teams")
                     .possible_values(["fixed", "dynamic"]).default_value("fixed"))
+                .arg(arg!(--sqlite_db [DB] "Path to an sqlite database file"))
         )
         .subcommand(
             Command::new("client")
@@ -65,6 +67,7 @@ fn main() -> io::Result<()> {
             server_main::run(server_main::ServerConfig {
                 teaming: sub_matches.value_of("teaming").unwrap().to_string(),
                 starting_time: sub_matches.value_of("starting_time").unwrap().to_string(),
+                sqlite_db: sub_matches.value_of("sqlite_db").map(|x| x.to_string()),
             });
             Ok(())
         },

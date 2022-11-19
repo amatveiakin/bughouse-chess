@@ -42,7 +42,7 @@ pub struct GameState {
     game_start: Option<Instant>,
     preturns: HashMap<BughousePlayerId, TurnInput>,
     starting_grid: Grid,
-    players_with_boards: Vec<(PlayerInGame, BughouseBoard)>,  // TODO: Extract from `game`
+    pub players_with_boards: Vec<(PlayerInGame, BughouseBoard)>, // TODO: Extract from `game`
     turn_log: Vec<TurnRecord>,
 }
 
