@@ -24,6 +24,7 @@ use crate::player::{Player, PlayerInGame, Team};
 use crate::rules::{Teaming, ChessRules, BughouseRules};
 use crate::scores::Scores;
 use crate::util::indent_text;
+use crate::server_hooks::{ServerHooks, NoopServerHooks};
 
 
 const TOTAL_PLAYERS: usize = 4;
@@ -36,7 +37,7 @@ pub enum IncomingEvent {
 }
 
 #[derive(Debug)]
-struct GameState {
+pub struct GameState {
     game: BughouseGame,
     game_start: Option<Instant>,
     preturns: HashMap<BughousePlayerId, TurnInput>,
@@ -173,6 +174,7 @@ struct ServerStateCore {
     match_history: Vec<(Grid, BughouseGame)>,  // starting position, final state
     game_state: Option<GameState>,  // active game or latest game
     board_assignment_override: Option<Vec<(String, BughousePlayerId)>>,  // for tests
+    hooks: Box<dyn ServerHooks>,
 }
 
 // Split state into two parts in order to allow things like:
@@ -188,7 +190,8 @@ impl ServerState {
     pub fn new(
         clients: Arc<Mutex<Clients>>,
         chess_rules: ChessRules,
-        bughouse_rules: BughouseRules
+        bughouse_rules: BughouseRules,
+        hooks: Option<Box<dyn ServerHooks>>,
     ) -> Self {
         ServerState {
             clients,
@@ -200,6 +203,7 @@ impl ServerState {
                 match_history: Vec::new(),
                 game_state: None,
                 board_assignment_override: None,
+                hooks: hooks.unwrap_or(Box::new(NoopServerHooks{})),
             }
         }
     }
@@ -288,11 +292,13 @@ impl ServerStateCore {
                     game.test_flag(game_now);
                     if game.status() != BughouseGameStatus::Active {
                         update_score_on_game_over(game, &mut self.scores);
-                        clients.broadcast(&BughouseServerEvent::GameOver {
+                        let ev = BughouseServerEvent::GameOver {
                             time: game_now,
                             game_status: game.status(),
                             scores: self.scores.clone(),
-                        });
+                        };
+                        self.hooks.on_event(&ev, self.game_state.as_ref(), self.match_history.len() + 1);
+                        clients.broadcast(&ev);
                     }
                 }
             }
@@ -395,11 +401,13 @@ impl ServerStateCore {
                     },
                 }
                 turn_log.extend_from_slice(&turns);
-                clients.broadcast(&BughouseServerEvent::TurnsMade {
+                let ev = BughouseServerEvent::TurnsMade {
                     turns,
                     game_status: game.status(),
                     scores: scores.clone(),
-                });
+                };
+                self.hooks.on_event(&ev, self.game_state.as_ref(), self.match_history.len() + 1);
+                clients.broadcast(&ev);
             },
             Ok(TurnMode::Preturn) => {
                 match preturns.entry(player_bughouse_id) {
@@ -455,11 +463,13 @@ impl ServerStateCore {
         );
         game.set_status(status, game_now);
         update_score_on_game_over(game, scores);
-        clients.broadcast(&BughouseServerEvent::GameOver {
+        let ev = BughouseServerEvent::GameOver {
             time: game_now,
             game_status: status,
             scores: scores.clone(),
-        });
+        };
+        self.hooks.on_event(&ev, self.game_state.as_ref(), self.match_history.len() + 1);
+        clients.broadcast(&ev);
     }
 
     fn process_set_ready(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, is_ready: bool) {
@@ -492,7 +502,9 @@ impl ServerStateCore {
         self.match_history = Vec::new();
         self.game_state = None;
         self.reset_readiness();
-        clients.broadcast(&self.make_contest_start_event());
+        let ev = self.make_contest_start_event();
+        self.hooks.on_event(&ev, self.game_state.as_ref(), self.match_history.len() + 1);
+        clients.broadcast(&ev);
         self.send_lobby_updated(clients);
     }
 
@@ -595,7 +607,9 @@ impl ServerStateCore {
             players_with_boards,
             turn_log: vec![],
         });
-        clients.broadcast(&self.make_game_start_event(now));
+        let ev = self.make_game_start_event(now);
+        self.hooks.on_event(&ev, self.game_state.as_ref(), self.match_history.len() + 1);
+        clients.broadcast(&ev);
         self.send_lobby_updated(clients);  // update readiness flags
     }
 
@@ -634,11 +648,13 @@ impl ServerStateCore {
         }
     }
 
-    fn send_lobby_updated(&self, clients: &mut ClientsGuard<'_>) {
+    fn send_lobby_updated(&mut self, clients: &mut ClientsGuard<'_>) {
         let player_to_send = self.players.iter().cloned().collect();
-        clients.broadcast(&BughouseServerEvent::LobbyUpdated {
+        let ev = BughouseServerEvent::LobbyUpdated {
             players: player_to_send,
-        });
+        };
+        self.hooks.on_event(&ev, self.game_state.as_ref(), self.match_history.len() + 1);
+        clients.broadcast(&ev);
     }
 
     fn reset_readiness(&mut self) {
