@@ -46,6 +46,11 @@ pub struct GameState {
     turn_log: Vec<TurnRecord>,
 }
 
+impl GameState {
+    pub fn bpgn(&self, format: BughouseExportFormat, round: usize) -> String {
+        pgn::export_to_bpgn(format, &self.starting_grid, &self.game, round)
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 struct PlayerId(usize);

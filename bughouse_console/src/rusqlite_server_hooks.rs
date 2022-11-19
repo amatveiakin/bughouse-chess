@@ -25,6 +25,7 @@ impl RusqliteServerHooks {
                     player_blue_a TEXT,
                     player_blue_b TEXT,
                     result TEXT,
+                    game_pgn TEXT,
                     PRIMARY KEY(invocation_id, game_number))",
             (),
         )?;
@@ -51,7 +52,7 @@ impl ServerHooks for RusqliteServerHooks {
         if let BughouseServerEvent::GameStarted { .. } = event {
             self.game_start_time = Some(std::time::SystemTime::now());
         }
-        self.record_game_finish(event, maybe_game);
+        self.record_game_finish(event, maybe_game, round);
     }
 }
 
@@ -60,8 +61,9 @@ impl RusqliteServerHooks {
         &mut self,
         event: &BughouseServerEvent,
         maybe_game: Option<&GameState>,
+        round: usize,
     ) -> Option<()> {
-        if let Some(row) = self.game_result(event, maybe_game) {
+        if let Some(row) = self.game_result(event, maybe_game, round) {
             self.game_number += 1;
             let execute_result = self.conn.execute(
                 "INSERT INTO finished_games
@@ -73,8 +75,9 @@ impl RusqliteServerHooks {
                      player_red_b,
                      player_blue_a,
                      player_blue_b,
-                     result)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                     result,
+                     game_pgn)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 (
                     row.invocation_id,
                     row.game_number,
@@ -85,6 +88,7 @@ impl RusqliteServerHooks {
                     row.player_blue_a,
                     row.player_blue_b,
                     row.result,
+                    row.game_pgn,
                 ),
             );
             if let Err(e) = execute_result {
@@ -102,6 +106,7 @@ impl RusqliteServerHooks {
         &self,
         event: &BughouseServerEvent,
         maybe_game: Option<&GameState>,
+        round: usize,
     ) -> Option<GameResultRow> {
         let game = maybe_game?;
         let (players, result) = match event {
@@ -125,6 +130,7 @@ impl RusqliteServerHooks {
             player_blue_a: players.2,
             player_blue_b: players.3,
             result,
+            game_pgn: game.bpgn(pgn::BughouseExportFormat{}, round),
         })
     }
 }
@@ -140,6 +146,7 @@ struct GameResultRow {
     player_blue_a: String,
     player_blue_b: String,
     result: String,
+    game_pgn: String,
 }
 
 fn game_result_str(status: BughouseGameStatus) -> Option<String> {
