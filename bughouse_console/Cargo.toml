@@ -19,5 +19,7 @@ tungstenite = "0.17.2"
 url = "2.2.2"
 serde = "1.0.136"
 serde_json = "1.0.79"
+rusqlite = { version = "0.28.0", features = ["bundled"] }
+uuid = { version = "1.2.2", features = ["v4"] }
 
 bughouse_chess = { path = ".." }

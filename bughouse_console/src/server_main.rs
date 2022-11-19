@@ -12,15 +12,19 @@ use log::{info, warn};
 use regex::Regex;
 use tungstenite::protocol;
 
+use bughouse_chess::server::*;
+use bughouse_chess::server_hooks::ServerHooks;
 use bughouse_chess::*;
 use bughouse_chess::server::*;
 
 use crate::network::{self, CommunicationError};
+use crate::rusqlite_server_hooks::*;
 
 
 pub struct ServerConfig {
     pub teaming: String,
     pub starting_time: String,
+    pub sqlite_db: Option<String>,
 }
 
 fn to_debug_string<T: std::fmt::Debug>(v: T) -> String {
@@ -115,7 +119,15 @@ pub fn run(config: ServerConfig) {
     let clients = Arc::new(Mutex::new(Clients::new()));
     let clients_copy = Arc::clone(&clients);
     thread::spawn(move || {
-        let mut server_state = ServerState::new(clients_copy, chess_rules, bughouse_rules);
+        let mut server_state = ServerState::new(
+            clients_copy,
+            chess_rules,
+            bughouse_rules,
+            config.sqlite_db.map(|db| {
+                Box::new(RusqliteServerHooks::new(db.as_str()).unwrap()) as Box<dyn ServerHooks>
+            }),
+        );
+
         for event in rx {
             server_state.apply_event(event);
         }
