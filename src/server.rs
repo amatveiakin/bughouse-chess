@@ -310,6 +310,13 @@ impl ServerStateCore {
         }
     }
 
+    fn broadcast(
+        &mut self, clients: &mut ClientsGuard<'_>, event: &BughouseServerEvent
+    ) {
+        self.hooks.on_event(event, self.game_state.as_ref(), self.match_history.len() + 1);
+        clients.broadcast(event);
+    }
+
     fn process_join(
         &mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, now: Instant,
         player_name: String, fixed_team: Option<Team>
@@ -411,8 +418,7 @@ impl ServerStateCore {
                     game_status: game.status(),
                     scores: scores.clone(),
                 };
-                self.hooks.on_event(&ev, self.game_state.as_ref(), self.match_history.len() + 1);
-                clients.broadcast(&ev);
+                self.broadcast(clients, &ev);
             },
             Ok(TurnMode::Preturn) => {
                 match preturns.entry(player_bughouse_id) {
@@ -473,8 +479,7 @@ impl ServerStateCore {
             game_status: status,
             scores: scores.clone(),
         };
-        self.hooks.on_event(&ev, self.game_state.as_ref(), self.match_history.len() + 1);
-        clients.broadcast(&ev);
+        self.broadcast(clients, &ev);
     }
 
     fn process_set_ready(&mut self, clients: &mut ClientsGuard<'_>, client_id: ClientId, is_ready: bool) {
@@ -509,7 +514,7 @@ impl ServerStateCore {
         self.reset_readiness();
         let ev = self.make_contest_start_event();
         self.hooks.on_event(&ev, self.game_state.as_ref(), self.match_history.len() + 1);
-        clients.broadcast(&ev);
+        self.broadcast(clients, &ev);
         self.send_lobby_updated(clients);
     }
 
@@ -613,8 +618,7 @@ impl ServerStateCore {
             turn_log: vec![],
         });
         let ev = self.make_game_start_event(now);
-        self.hooks.on_event(&ev, self.game_state.as_ref(), self.match_history.len() + 1);
-        clients.broadcast(&ev);
+        self.broadcast(clients, &ev);
         self.send_lobby_updated(clients);  // update readiness flags
     }
 
@@ -658,8 +662,7 @@ impl ServerStateCore {
         let ev = BughouseServerEvent::LobbyUpdated {
             players: player_to_send,
         };
-        self.hooks.on_event(&ev, self.game_state.as_ref(), self.match_history.len() + 1);
-        clients.broadcast(&ev);
+        self.broadcast(clients, &ev);
     }
 
     fn reset_readiness(&mut self) {
