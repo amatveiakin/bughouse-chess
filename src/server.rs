@@ -302,8 +302,7 @@ impl ServerStateCore {
                             game_status: game.status(),
                             scores: self.scores.clone(),
                         };
-                        self.hooks.on_event(&ev, self.game_state.as_ref(), self.match_history.len() + 1);
-                        clients.broadcast(&ev);
+                        self.broadcast(clients, &ev);
                     }
                 }
             }
@@ -512,9 +511,7 @@ impl ServerStateCore {
         self.match_history = Vec::new();
         self.game_state = None;
         self.reset_readiness();
-        let ev = self.make_contest_start_event();
-        self.hooks.on_event(&ev, self.game_state.as_ref(), self.match_history.len() + 1);
-        self.broadcast(clients, &ev);
+        self.broadcast(clients, &self.make_contest_start_event());
         self.send_lobby_updated(clients);
     }
 
@@ -617,8 +614,7 @@ impl ServerStateCore {
             players_with_boards,
             turn_log: vec![],
         });
-        let ev = self.make_game_start_event(now);
-        self.broadcast(clients, &ev);
+        self.broadcast(clients, &self.make_game_start_event(now));
         self.send_lobby_updated(clients);  // update readiness flags
     }
 
@@ -659,10 +655,9 @@ impl ServerStateCore {
 
     fn send_lobby_updated(&mut self, clients: &mut ClientsGuard<'_>) {
         let player_to_send = self.players.iter().cloned().collect();
-        let ev = BughouseServerEvent::LobbyUpdated {
+        self.broadcast(clients, &BughouseServerEvent::LobbyUpdated {
             players: player_to_send,
-        };
-        self.broadcast(clients, &ev);
+        });
     }
 
     fn reset_readiness(&mut self) {
