@@ -50,7 +50,7 @@ impl Server {
     fn new(chess_rules: ChessRules, bughouse_rules: BughouseRules) -> Self {
         let clients = Arc::new(Mutex::new(server::Clients::new()));
         let clients_copy = Arc::clone(&clients);
-        let state = server::ServerState::new(clients_copy, chess_rules, bughouse_rules);
+        let state = server::ServerState::new(clients_copy, chess_rules, bughouse_rules, None);
         Server{ clients, state }
     }
 
