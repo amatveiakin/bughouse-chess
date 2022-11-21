@@ -102,7 +102,7 @@ const info_string = document.getElementById('info-string');
 info_string.innerText = 'Type "/join name" to start'
 
 const command_input = document.getElementById('command');
-command_input.addEventListener('change', on_command);
+command_input.addEventListener('keydown', on_command_keydown);
 
 const ready_button = document.getElementById('ready-button');
 ready_button.addEventListener('click', function() { execute_command('/ready') });
@@ -230,10 +230,12 @@ function get_join_args(args_array) {
     }
 }
 
-function on_command(event) {
-    const input = String(event.target.value)
-    event.target.value = '';
-    execute_command(input);
+function on_command_keydown(event) {
+    if (!event.repeat && event.key == 'Enter') {
+        const input = String(command_input.value);
+        command_input.value = '';
+        execute_command(input);
+    }
 }
 
 function execute_command(input) {
