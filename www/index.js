@@ -101,6 +101,9 @@ let update_drag_state_meter = null;
 const info_string = document.getElementById('info-string');
 info_string.innerText = 'Type "/join name" to start'
 
+document.addEventListener('keydown', function(event) { command_input.focus(); });
+document.addEventListener('paste', function(event) { command_input.focus(); });
+
 const command_input = document.getElementById('command');
 command_input.addEventListener('keydown', on_command_keydown);
 
