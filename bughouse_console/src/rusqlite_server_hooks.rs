@@ -1,7 +1,9 @@
+use log::error;
+
 use bughouse_chess::server::*;
 use bughouse_chess::ServerHooks;
 use bughouse_chess::*;
-use log::error;
+
 
 pub struct RusqliteServerHooks {
     invocation_id: String,
@@ -14,15 +16,16 @@ impl RusqliteServerHooks {
         let conn = rusqlite::Connection::open(address)?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS finished_games (
-                    invocation_id TEXT,
-                    game_start_time INTEGER,
-                    game_end_time INTEGER,
-                    player_red_a TEXT,
-                    player_red_b TEXT,
-                    player_blue_a TEXT,
-                    player_blue_b TEXT,
-                    result TEXT,
-                    game_pgn TEXT)",
+                git_version TEXT,
+                invocation_id TEXT,
+                game_start_time TIMESTAMP,
+                game_end_time TIMESTAMP,
+                player_red_a TEXT,
+                player_red_b TEXT,
+                player_blue_a TEXT,
+                player_blue_b TEXT,
+                result TEXT,
+                game_pgn TEXT)",
             (),
         )?;
         Ok(Self {
@@ -56,18 +59,20 @@ impl RusqliteServerHooks {
     ) -> Option<()> {
         if let Some(row) = self.game_result(event, maybe_game, round) {
             let execute_result = self.conn.execute(
-                "INSERT INTO finished_games
-                    (invocation_id,
-                     game_start_time,
-                     game_end_time,
-                     player_red_a,
-                     player_red_b,
-                     player_blue_a,
-                     player_blue_b,
-                     result,
-                     game_pgn)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT INTO finished_games (
+                    git_version,
+                    invocation_id,
+                    game_start_time,
+                    game_end_time,
+                    player_red_a,
+                    player_red_b,
+                    player_blue_a,
+                    player_blue_b,
+                    result,
+                    game_pgn)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 (
+                    row.git_version,
                     row.invocation_id,
                     row.game_start_time,
                     row.game_end_time,
@@ -109,6 +114,7 @@ impl RusqliteServerHooks {
             }
         };
         Some(GameResultRow {
+            git_version: my_git_version!().to_owned(),
             invocation_id: self.invocation_id.to_string(),
             game_start_time: self.game_start_time.map(|x| x.timestamp()),
             game_end_time: Some(chrono::offset::Utc::now().timestamp()),
@@ -124,6 +130,7 @@ impl RusqliteServerHooks {
 
 #[derive(Debug)]
 struct GameResultRow {
+    git_version: String,
     invocation_id: String,
     game_start_time: Option<i64>,
     game_end_time: Option<i64>,

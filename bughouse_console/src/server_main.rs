@@ -134,7 +134,8 @@ pub fn run(config: ServerConfig) {
     });
 
     let listener = TcpListener::bind(("0.0.0.0", network::PORT)).unwrap();
-    info!("Listening to connection on {}...", listener.local_addr().unwrap());
+    info!("Starting bughouse server version {}...", my_git_version!());
+    info!("Listening to connections on {}...", listener.local_addr().unwrap());
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {

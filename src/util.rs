@@ -1,5 +1,13 @@
+pub use git_version::git_version;
 use itertools::Itertools;
 
+
+#[macro_export]
+macro_rules! my_git_version {
+    () => {
+        $crate::util::git_version!(args = ["--tags", "--always", "--dirty=-modified"])
+    };
+}
 
 // Slightly adjusted macro from https://docs.rs/once_cell/latest/once_cell/#lazily-compiled-regex:
 #[macro_export]
