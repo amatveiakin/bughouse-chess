@@ -3,11 +3,11 @@ use serde::{Serialize, Deserialize};
 use crate::board::TurnInput;
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseGameStatus, BughouseBoard};
-use crate::grid::Grid;
 use crate::pgn::BughouseExportFormat;
 use crate::player::{PlayerInGame, Player, Team};
 use crate::rules::{Teaming, ChessRules, BughouseRules};
 use crate::scores::Scores;
+use crate::starter::EffectiveStartingPosition;
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -25,7 +25,7 @@ pub enum BughouseServerEvent {
     GameStarted {  // TODO: Rename to take reconnection into account
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
-        starting_grid: Grid,
+        starting_position: EffectiveStartingPosition,
         players: Vec<(PlayerInGame, BughouseBoard)>,
         time: GameInstant,                // for re-connection
         turn_log: Vec<TurnRecord>,        // for re-connection

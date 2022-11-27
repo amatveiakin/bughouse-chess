@@ -8,7 +8,6 @@ use std::rc::Rc;
 use enum_map::{EnumMap, enum_map};
 use itertools::Itertools;
 use serde::{Serialize, Deserialize};
-use strum::IntoEnumIterator;
 
 use crate::once_cell_regex;
 use crate::coord::{SubjectiveRow, Row, Col, Coord};
@@ -19,6 +18,7 @@ use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, PieceForRepetitionDraw,
 use crate::player::PlayerInGame;
 use crate::rules::{DropAggression, ChessRules, BughouseRules};
 use crate::util::{sort_two, as_single_char};
+use crate::starter::{EffectiveStartingPosition, starting_piece_row, generate_starting_grid};
 
 
 fn iter_minmax<T: PartialOrd + Copy, I: Iterator<Item = T>>(iter: I) -> Option<(T, T)> {
@@ -289,19 +289,18 @@ fn proto_reachability_modulo_destination_square(grid: &Grid, from: Coord, to: Co
     }
 }
 
-fn initial_castling_rights(grid: &Grid, force: Force) -> CastlingRights {
-    let row = SubjectiveRow::from_one_based(1).to_row(force);
-    let king_pos = find_king(grid, force).unwrap();
-    assert!(king_pos.row == row);
+fn initial_castling_rights(starting_position: &EffectiveStartingPosition) -> CastlingRights {
+    let row = starting_piece_row(starting_position);
+    let king_pos = row.iter().position(|&p| p == PieceKind::King).unwrap();
+    let king_col = Col::from_zero_based(king_pos.try_into().unwrap());
     let mut rights = enum_map!{ _ => None };
     for col in Col::all() {
-        if let Some(piece) = grid[Coord::new(row, col)] {
-            if piece.kind == PieceKind::Rook && piece.force == force {
-                use CastleDirection::*;
-                let dir = if col < king_pos.col { ASide } else { HSide };
-                assert!(rights[dir].is_none());
-                rights[dir] = Some(col);
-            }
+        let piece = row[usize::from(col.to_zero_based())];
+        if piece == PieceKind::Rook {
+            use CastleDirection::*;
+            let dir = if col < king_col { ASide } else { HSide };
+            assert!(rights[dir].is_none());
+            rights[dir] = Some(col);
         }
     }
     rights
@@ -546,21 +545,17 @@ impl Board {
         chess_rules: Rc<ChessRules>,
         bughouse_rules: Option<Rc<BughouseRules>>,
         players: EnumMap<Force, Rc<PlayerInGame>>,
-        starting_grid: Grid,
+        starting_position: &EffectiveStartingPosition,
     ) -> Board {
         let time_control = chess_rules.time_control.clone();
-        let castling_rights = EnumMap::from_iter(
-            Force::iter().map(|force| {
-                (force, initial_castling_rights(&starting_grid, force))
-            })
-        );
+        let castling_rights = initial_castling_rights(starting_position);
         let mut board = Board {
             chess_rules,
             bughouse_rules,
             players,
             status: ChessGameStatus::Active,
-            grid: starting_grid,
-            castling_rights,
+            grid: generate_starting_grid(starting_position),
+            castling_rights: enum_map!{ _ => castling_rights },
             en_passant_target: None,
             reserves: enum_map!{ _ => enum_map!{ _ => 0 } },
             total_drops: 0,

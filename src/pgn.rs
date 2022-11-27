@@ -8,8 +8,8 @@ use crate::clock::TimeControl;
 use crate::fen;
 use crate::force::Force;
 use crate::game::{TurnRecordExpanded, BughousePlayerId, BughouseBoard, BughouseGameStatus, BughouseGame};
-use crate::grid::Grid;
 use crate::player::{Team, PlayerInGame};
+use crate::rules::StartingPosition;
 
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -72,17 +72,24 @@ fn dummy_player(team: Team) -> Rc<PlayerInGame> {
 }
 
 // Improvement potential. More human-readable "Termination" tag values.
-fn make_bughouse_bpng_header(starting_grid: &Grid, game: &BughouseGame, round: usize) -> String {
+fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
     use BughouseBoard::*;
     use Force::*;
     let now = chrono::offset::Utc::now();
-    let starting_board = Board::new(
-        Rc::clone(game.chess_rules()),
-        Some(Rc::clone(game.bughouse_rules())),
-        enum_map!{ White => dummy_player(Team::Red), Black => dummy_player(Team::Blue) },
-        starting_grid.clone()
-    );
-    let starting_position_fen = fen::starting_position_to_shredder_fen(&starting_board);
+    let (variant, starting_position_fen) = match game.chess_rules().starting_position {
+        StartingPosition::Classic =>
+            ("Bughouse", String::new()),
+        StartingPosition::FischerRandom => {
+            let starting_board = Board::new(
+                Rc::clone(game.chess_rules()),
+                Some(Rc::clone(game.bughouse_rules())),
+                enum_map!{ White => dummy_player(Team::Red), Black => dummy_player(Team::Blue) },
+                game.starting_position()
+            );
+            let one_board = fen::starting_position_to_shredder_fen(&starting_board);
+            ("Bughouse Chess960", format!("[FEN \"{one_board} | {one_board}\"]\n"))
+        }
+    };
     format!(
 r#"[Event "Friendly Bughouse Match"]
 [Site "bughouse.pro"]
@@ -94,10 +101,9 @@ r#"[Event "Friendly Bughouse Match"]
 [WhiteB "{}"]
 [BlackB "{}"]
 [TimeControl "{}"]
-[Variant "Bughouse"]
+[Variant "{}"]
 [SetUp "1"]
-[FEN "{} | {}"]
-[Result "{}"]
+{}[Result "{}"]
 [Termination "{:?}"]
 "#,
         now.format("%Y.%m.%d"),
@@ -108,7 +114,8 @@ r#"[Event "Friendly Bughouse Match"]
         game.board(B).player(White).name,
         game.board(B).player(Black).name,
         time_control_to_string(&game.chess_rules().time_control),
-        starting_position_fen, starting_position_fen,
+        variant,
+        starting_position_fen,
         make_result_string(game),
         game.status(),
     )
@@ -129,10 +136,10 @@ fn player_notation(player_id: BughousePlayerId) -> &'static str {
 // bughouse. Doc: https://bughousedb.com/Lieven_BPGN_Standard.txt
 // Based on PGN (Portable Game Notation), the de-facto standard plain format for recording
 // chess games. Doc: http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
-pub fn export_to_bpgn(_format: BughouseExportFormat, starting_grid: &Grid, game: &BughouseGame, round: usize)
+pub fn export_to_bpgn(_format: BughouseExportFormat, game: &BughouseGame, round: usize)
     -> String
 {
-    let header = make_bughouse_bpng_header(starting_grid, game, round);
+    let header = make_bughouse_bpng_header(game, round);
     let mut doc = TextDocument::new();
     let mut full_turn_idx = enum_map!{ _ => 1 };
     for turn_record in game.turn_log() {

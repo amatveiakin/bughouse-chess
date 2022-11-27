@@ -96,7 +96,8 @@ pub fn starting_position_to_shredder_fen(board: &Board) -> String {
     )
 }
 
-pub fn shredder_fen_to_starting_position(fen: &str) -> Result<Grid, String> {
+// TODO: Support import or remove this function
+pub fn shredder_fen_to_starting_grid(fen: &str) -> Result<Grid, String> {
     let (
         grid_notation,
         active_force_notation,

@@ -17,7 +17,6 @@ use strum::IntoEnumIterator;
 use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, BughouseGameStatus, BughouseGame};
-use crate::grid::Grid;
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerformance, BughouseClientErrorReport};
 use crate::pgn::{self, BughouseExportFormat};
 use crate::player::{Player, PlayerInGame, Team};
@@ -41,17 +40,14 @@ pub struct GameState {
     game: BughouseGame,
     game_start: Option<Instant>,
     preturns: HashMap<BughousePlayerId, TurnInput>,
-    starting_grid: Grid,
     players_with_boards: Vec<(PlayerInGame, BughouseBoard)>, // TODO: Extract from `game`
     turn_log: Vec<TurnRecord>,
 }
 
 impl GameState {
+    pub fn game(&self) -> &BughouseGame { &self.game }
     pub fn players_with_boards(&self) -> &Vec<(PlayerInGame, BughouseBoard)> {
         &self.players_with_boards
-    }
-    pub fn bpgn(&self, format: BughouseExportFormat, round: usize) -> String {
-        pgn::export_to_bpgn(format, &self.starting_grid, &self.game, round)
     }
 }
 
@@ -179,7 +175,7 @@ struct ServerStateCore {
     bughouse_rules: BughouseRules,
     players: Players,
     scores: Scores,
-    match_history: Vec<(Grid, BughouseGame)>,  // starting position, final state
+    match_history: Vec<BughouseGame>,  // final game states
     game_state: Option<GameState>,  // active game or latest game
     board_assignment_override: Option<Vec<(String, BughousePlayerId)>>,  // for tests
     hooks: Box<dyn ServerHooks>,
@@ -521,15 +517,14 @@ impl ServerStateCore {
     fn process_request_export(
         &self, clients: &mut ClientsGuard<'_>, client_id: ClientId, format: BughouseExportFormat)
     {
-        let Some(GameState{ ref starting_grid, ref game, .. }) = self.game_state else {
+        let Some(GameState{ ref game, .. }) = self.game_state else {
             clients[client_id].send_error("Cannot export: no game in progress".to_owned());
             return;
         };
         // Improvement potential: Replace map lambda with something more elegant.
-        let all_games = self.match_history.iter().map(|(grid, game)| (grid, game))
-            .chain(iter::once((starting_grid, game)));
-        let content = all_games.enumerate().map(|(round, (grid, game))| {
-            pgn::export_to_bpgn(format, grid, game, round + 1)
+        let all_games = self.match_history.iter().chain(iter::once(game));
+        let content = all_games.enumerate().map(|(round, game)| {
+            pgn::export_to_bpgn(format, game, round + 1)
         }).join("\n");
         clients[client_id].send(BughouseServerEvent::GameExportReady{ content });
     }
@@ -587,10 +582,10 @@ impl ServerStateCore {
         }
         if self.players.len() >= TOTAL_PLAYERS && self.players.iter().all(|p| p.is_ready) {
             let mut previous_players = None;
-            if let Some(GameState{ ref starting_grid, ref game, .. }) = self.game_state {
+            if let Some(GameState{ ref game, .. }) = self.game_state {
                 assert!(game.status() != BughouseGameStatus::Active,
                     "Players must not be allowed to set is_ready flag while the game is active");
-                self.match_history.push((starting_grid.clone(), game.clone()));
+                self.match_history.push(game.clone());
                 previous_players = Some(game.players().into_iter().map(|p| p.name.clone()).collect());
             }
             self.start_game(clients, now, previous_players);
@@ -604,7 +599,6 @@ impl ServerStateCore {
         let game = BughouseGame::new(
             self.chess_rules.clone(), self.bughouse_rules.clone(), player_map
         );
-        let starting_grid = game.board(BughouseBoard::A).grid().clone();
         let players_with_boards = players_with_boards.into_iter().map(|(p, board_idx)| {
             ((*p).clone(), board_idx)
         }).collect();
@@ -613,7 +607,6 @@ impl ServerStateCore {
             game,
             game_start: None,
             preturns: HashMap::new(),
-            starting_grid,
             players_with_boards,
             turn_log: vec![],
         });
@@ -647,7 +640,7 @@ impl ServerStateCore {
         BughouseServerEvent::GameStarted {
             chess_rules: self.chess_rules.clone(),
             bughouse_rules: self.bughouse_rules.clone(),
-            starting_grid: game_state.starting_grid.clone(),
+            starting_position: game_state.game.starting_position().clone(),
             players: game_state.players_with_boards.clone(),
             time,
             turn_log: game_state.turn_log.clone(),

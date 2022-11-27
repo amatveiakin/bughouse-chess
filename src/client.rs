@@ -10,7 +10,6 @@ use crate::board::{TurnError, TurnMode, TurnInput};
 use crate::clock::{GameInstant, WallGameTimePair};
 use crate::force::Force;
 use crate::game::{TurnRecord, BughouseParticipantId, BughouseObserserId, BughouseBoard, BughouseGameStatus, BughouseGame};
-use crate::grid::Grid;
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerformance};
 use crate::meter::{Meter, MeterBox};
 use crate::pgn::BughouseExportFormat;
@@ -53,8 +52,6 @@ pub enum EventError {
 
 #[derive(Debug)]
 pub struct GameState {
-    // Starting position.
-    pub starting_grid: Grid,
     // Game state including unconfirmed local changes.
     pub alt_game: AlteredGame,
     // Game start time: `None` before first move, non-`None` afterwards.
@@ -224,7 +221,7 @@ impl ClientState {
                 contest.is_ready = players.iter().find(|p| p.name == self.my_name).unwrap().is_ready;
                 contest.players = players;
             },
-            GameStarted{ chess_rules, bughouse_rules, starting_grid, players, time, turn_log, game_status, scores } => {
+            GameStarted{ chess_rules, bughouse_rules, starting_position, players, time, turn_log, game_status, scores } => {
                 let player_map = BughouseGame::make_player_map(
                     players.iter().map(|(p, board_idx)| (Rc::new(p.clone()), *board_idx))
                 );
@@ -234,8 +231,8 @@ impl ClientState {
                 } else {
                     Some(WallGameTimePair::new(Instant::now(), time.approximate()))
                 };
-                let game = BughouseGame::new_with_grid(
-                    chess_rules, bughouse_rules, starting_grid.clone(), player_map
+                let game = BughouseGame::new_with_starting_position(
+                    chess_rules, bughouse_rules, starting_position, player_map
                 );
                 let my_id = match game.find_player(&self.my_name) {
                     Some(id) => BughouseParticipantId::Player(id),
@@ -247,7 +244,6 @@ impl ClientState {
                 let alt_game = AlteredGame::new(my_id, game);
                 let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameStarted: no contest in progress"))?;
                 contest.game_state = Some(GameState {
-                    starting_grid,
                     alt_game,
                     time_pair,
                     next_low_time_warning_idx: 0,

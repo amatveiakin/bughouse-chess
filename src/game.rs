@@ -3,20 +3,16 @@
 use std::rc::Rc;
 
 use enum_map::{Enum, EnumMap, enum_map};
-use itertools::Itertools;
-use rand::prelude::*;
 use serde::{Serialize, Deserialize};
 use strum::EnumIter;
 
 use crate::TurnFacts;
 use crate::board::{Board, Reserve, Turn, TurnInput, TurnExpanded, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
 use crate::clock::GameInstant;
-use crate::coord::{Row, Col, Coord, NUM_ROWS};
 use crate::force::Force;
-use crate::grid::Grid;
-use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard};
 use crate::player::{PlayerInGame, Team};
-use crate::rules::{StartingPosition, ChessRules, BughouseRules};
+use crate::rules::{ChessRules, BughouseRules};
+use crate::starter::{EffectiveStartingPosition, generate_starting_position};
 
 
 // Stripped version of `TurnRecordExpanded`. For sending turns across network.
@@ -48,100 +44,31 @@ impl TurnRecordExpanded {
     }
 }
 
-fn new_white(kind: PieceKind) -> PieceOnBoard {
-    PieceOnBoard::new(kind, PieceOrigin::Innate, Force::White)
-}
-
-fn setup_white_pawns_on_2nd_row(grid: &mut Grid) {
-    for col in Col::all() {
-        grid[Coord::new(Row::_2, col)] = Some(new_white(PieceKind::Pawn));
-    }
-}
-
-fn setup_black_pieces_mirrorlike(grid: &mut Grid) {
-    for coord in Coord::all() {
-        if let Some(piece) = grid[coord] {
-            if piece.force == Force::White {
-                let mirror_row = Row::from_zero_based(NUM_ROWS - coord.row.to_zero_based() - 1);
-                let mirror_coord = Coord::new(mirror_row, coord.col);
-                assert!(grid[mirror_coord].is_none(), "{:?}", grid);
-                grid[mirror_coord] = Some(PieceOnBoard {
-                    force: Force::Black,
-                    ..piece
-                });
-            }
-        }
-    }
-}
-
-fn generate_starting_grid(starting_position: StartingPosition) -> Grid {
-    use PieceKind::*;
-    match starting_position {
-        StartingPosition::Classic => {
-            let mut grid = Grid::new();
-            grid[Coord::A1] = Some(new_white(Rook));
-            grid[Coord::B1] = Some(new_white(Knight));
-            grid[Coord::C1] = Some(new_white(Bishop));
-            grid[Coord::D1] = Some(new_white(Queen));
-            grid[Coord::E1] = Some(new_white(King));
-            grid[Coord::F1] = Some(new_white(Bishop));
-            grid[Coord::G1] = Some(new_white(Knight));
-            grid[Coord::H1] = Some(new_white(Rook));
-            setup_white_pawns_on_2nd_row(&mut grid);
-            setup_black_pieces_mirrorlike(&mut grid);
-            grid
-        },
-        StartingPosition::FischerRandom => {
-            let mut rng = rand::thread_rng();
-            let mut grid = Grid::new();
-            let row = Row::_1;
-            grid[Coord::new(row, Col::from_zero_based(rng.gen_range(0..4) * 2))] = Some(new_white(Bishop));
-            grid[Coord::new(row, Col::from_zero_based(rng.gen_range(0..4) * 2 + 1))] = Some(new_white(Bishop));
-            let mut cols = Col::all().filter(|col| grid[Coord::new(row, *col)].is_none()).collect_vec();
-            cols.shuffle(&mut rng);
-            let (king_and_rook_cols, queen_and_knight_cols) = cols.split_at(3);
-            let (&left_rook_col, &king_col, &right_rook_col) =
-                king_and_rook_cols.iter().sorted().collect_tuple().unwrap();
-            let (&queen_col, &knight_col_1, &knight_col_2) =
-                queen_and_knight_cols.iter().collect_tuple().unwrap();
-            grid[Coord::new(row, left_rook_col)] = Some(new_white(Rook));
-            grid[Coord::new(row, king_col)] = Some(new_white(King));
-            grid[Coord::new(row, right_rook_col)] = Some(new_white(Rook));
-            grid[Coord::new(row, queen_col)] = Some(new_white(Queen));
-            grid[Coord::new(row, knight_col_1)] = Some(new_white(Knight));
-            grid[Coord::new(row, knight_col_2)] = Some(new_white(Knight));
-            setup_white_pawns_on_2nd_row(&mut grid);
-            setup_black_pieces_mirrorlike(&mut grid);
-            grid
-        },
-    }
-}
-
 
 #[derive(Clone, Debug)]
 pub struct ChessGame {
+    #[allow(dead_code)] starting_position: EffectiveStartingPosition,
     board: Board,
 }
 
 impl ChessGame {
     pub fn new(rules: ChessRules, players: EnumMap<Force, Rc<PlayerInGame>>) -> Self {
-        let starting_grid = generate_starting_grid(rules.starting_position);
-        Self::new_with_grid(rules, starting_grid, players)
+        let starting_position = generate_starting_position(rules.starting_position);
+        Self::new_with_starting_position(rules, starting_position, players)
     }
 
-    pub fn new_with_grid(
+    pub fn new_with_starting_position(
         rules: ChessRules,
-        starting_grid: Grid,
+        starting_position: EffectiveStartingPosition,
         players: EnumMap<Force, Rc<PlayerInGame>>
     ) -> Self {
-        ChessGame {
-            board: Board::new(
-                Rc::new(rules),
-                None,
-                players,
-                starting_grid,
-            ),
-        }
+        let board = Board::new(
+            Rc::new(rules),
+            None,
+            players,
+            &starting_position,
+        );
+        ChessGame{ starting_position, board }
     }
 
     pub fn board(&self) -> &Board { &self.board }
@@ -278,6 +205,7 @@ impl BughouseGameView {
 
 #[derive(Clone, Debug)]
 pub struct BughouseGame {
+    starting_position: EffectiveStartingPosition,
     boards: EnumMap<BughouseBoard, Board>,
     turn_log: Vec<TurnRecordExpanded>,
     status: BughouseGameStatus,
@@ -289,14 +217,14 @@ impl BughouseGame {
         bughouse_rules: BughouseRules,
         players: EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>>
     ) -> Self {
-        let starting_grid = generate_starting_grid(chess_rules.starting_position);
-        Self::new_with_grid(chess_rules, bughouse_rules, starting_grid, players)
+        let starting_position = generate_starting_position(chess_rules.starting_position);
+        Self::new_with_starting_position(chess_rules, bughouse_rules, starting_position, players)
     }
 
-    pub fn new_with_grid(
+    pub fn new_with_starting_position(
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
-        starting_grid: Grid,
+        starting_position: EffectiveStartingPosition,
         players: EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>>
     ) -> Self {
         let chess_rules = Rc::new(chess_rules);
@@ -306,16 +234,17 @@ impl BughouseGame {
                 Rc::clone(&chess_rules),
                 Some(Rc::clone(&bughouse_rules)),
                 players[BughouseBoard::A].clone(),
-                starting_grid.clone()
+                &starting_position
             ),
             BughouseBoard::B => Board::new(
                 Rc::clone(&chess_rules),
                 Some(Rc::clone(&bughouse_rules)),
                 players[BughouseBoard::B].clone(),
-                starting_grid.clone()
+                &starting_position
             ),
         };
         BughouseGame {
+            starting_position,
             boards,
             status: BughouseGameStatus::Active,
             turn_log: Vec::new(),
@@ -337,6 +266,7 @@ impl BughouseGame {
         })
     }
 
+    pub fn starting_position(&self) -> &EffectiveStartingPosition { &self.starting_position }
     pub fn chess_rules(&self) -> &Rc<ChessRules> { self.boards[BughouseBoard::A].chess_rules() }
     pub fn bughouse_rules(&self) -> &Rc<BughouseRules> { self.boards[BughouseBoard::A].bughouse_rules().as_ref().unwrap() }
     // Improvement potential. Remove mutable access to the boards.

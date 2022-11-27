@@ -123,7 +123,7 @@ impl RusqliteServerHooks {
             player_blue_a: players.2,
             player_blue_b: players.3,
             result,
-            game_pgn: game.bpgn(pgn::BughouseExportFormat{}, round),
+            game_pgn: pgn::export_to_bpgn(pgn::BughouseExportFormat{}, game.game(), round),
         })
     }
 }

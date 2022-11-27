@@ -2,6 +2,8 @@ mod common;
 
 use std::time::Duration;
 
+use itertools::Itertools;
+
 use bughouse_chess::*;
 use common::*;
 
@@ -15,11 +17,11 @@ fn chess960_from_short_fen(pieces: &str) -> ChessGame {
         starting_position: StartingPosition::FischerRandom,
         time_control: TimeControl{ starting_time: Duration::from_secs(300) }
     };
-    let white_pieces = pieces.to_ascii_uppercase();
-    let black_pieces = pieces.to_ascii_lowercase();
-    let fen = format!("{black_pieces}/pppppppp/8/8/8/8/PPPPPPPP/{white_pieces} w KQkq - 0 1");
-    let grid = fen::shredder_fen_to_starting_position(&fen).unwrap();
-    ChessGame::new_with_grid(rules, grid, sample_chess_players())
+    let pieces: [PieceKind; 8] = pieces.chars()
+        .map(|ch| PieceKind::from_algebraic_char(ch).unwrap())
+        .collect_vec().try_into().unwrap();
+    let starting_position = EffectiveStartingPosition::FischerRandom(pieces);
+    ChessGame::new_with_starting_position(rules, starting_position, sample_chess_players())
 }
 
 // Improvement potential: Allow whitespace after turn number.
