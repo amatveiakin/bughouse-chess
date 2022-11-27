@@ -42,11 +42,14 @@ pub struct GameState {
     game_start: Option<Instant>,
     preturns: HashMap<BughousePlayerId, TurnInput>,
     starting_grid: Grid,
-    pub players_with_boards: Vec<(PlayerInGame, BughouseBoard)>, // TODO: Extract from `game`
+    players_with_boards: Vec<(PlayerInGame, BughouseBoard)>, // TODO: Extract from `game`
     turn_log: Vec<TurnRecord>,
 }
 
 impl GameState {
+    pub fn players_with_boards(&self) -> &Vec<(PlayerInGame, BughouseBoard)> {
+        &self.players_with_boards
+    }
     pub fn bpgn(&self, format: BughouseExportFormat, round: usize) -> String {
         pgn::export_to_bpgn(format, &self.starting_grid, &self.game, round)
     }
