@@ -12,9 +12,9 @@ use log::{info, warn};
 use regex::Regex;
 use tungstenite::protocol;
 
-use bughouse_chess::ServerHooks;
 use bughouse_chess::*;
 use bughouse_chess::server::*;
+use bughouse_chess::server_hooks::ServerHooks;
 
 use crate::network::{self, CommunicationError};
 use crate::rusqlite_server_hooks::*;
