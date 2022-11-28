@@ -78,7 +78,7 @@ fn render(
         } else {
             let players = &contest.players;
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-            match contest.teaming {
+            match contest.bughouse_rules.teaming {
                 Teaming::FixedTeams => {
                     let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
                     for p in players {

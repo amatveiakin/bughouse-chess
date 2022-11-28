@@ -5,7 +5,7 @@ use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseGameStatus, BughouseBoard};
 use crate::pgn::BughouseExportFormat;
 use crate::player::{PlayerInGame, Player, Team};
-use crate::rules::{Teaming, ChessRules, BughouseRules};
+use crate::rules::{ChessRules, BughouseRules};
 use crate::scores::Scores;
 use crate::starter::EffectiveStartingPosition;
 
@@ -16,15 +16,13 @@ pub enum BughouseServerEvent {
         message: String,
     },
     ContestStarted {
-        // TODO: Consider moving chess_rules and bughouse_rules here
-        teaming: Teaming,
+        chess_rules: ChessRules,
+        bughouse_rules: BughouseRules,
     },
     LobbyUpdated {
         players: Vec<Player>,
     },
     GameStarted {  // TODO: Rename to take reconnection into account
-        chess_rules: ChessRules,
-        bughouse_rules: BughouseRules,
         starting_position: EffectiveStartingPosition,
         players: Vec<(PlayerInGame, BughouseBoard)>,
         time: GameInstant,                // for re-connection

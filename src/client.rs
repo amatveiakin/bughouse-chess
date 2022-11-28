@@ -14,7 +14,7 @@ use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerfo
 use crate::meter::{Meter, MeterBox};
 use crate::pgn::BughouseExportFormat;
 use crate::player::{Player, Team};
-use crate::rules::Teaming;
+use crate::rules::{ChessRules, BughouseRules};
 use crate::scores::Scores;
 
 
@@ -64,7 +64,9 @@ pub struct GameState {
 
 #[derive(Debug)]
 pub struct Contest {
-    pub teaming: Teaming,
+    // Rules applied in every game of the contest.
+    pub chess_rules: ChessRules,
+    pub bughouse_rules: BughouseRules,
     // All players including those not participating in the current game.
     pub players: Vec<Player>,
     // Scores from the past matches.
@@ -204,9 +206,10 @@ impl ClientState {
             Error{ message } => {
                 return Err(EventError::ServerReturnedError(format!("Got error from server: {}", message)))
             },
-            ContestStarted{ teaming } => {
+            ContestStarted{ chess_rules, bughouse_rules } => {
                 self.contest = Some(Contest {
-                    teaming,
+                    chess_rules,
+                    bughouse_rules,
                     players: Vec::new(),
                     scores: Scores::new(),
                     is_ready: false,
@@ -221,7 +224,7 @@ impl ClientState {
                 contest.is_ready = players.iter().find(|p| p.name == self.my_name).unwrap().is_ready;
                 contest.players = players;
             },
-            GameStarted{ chess_rules, bughouse_rules, starting_position, players, time, turn_log, game_status, scores } => {
+            GameStarted{ starting_position, players, time, turn_log, game_status, scores } => {
                 let player_map = BughouseGame::make_player_map(
                     players.iter().map(|(p, board_idx)| (Rc::new(p.clone()), *board_idx))
                 );
@@ -231,8 +234,9 @@ impl ClientState {
                 } else {
                     Some(WallGameTimePair::new(Instant::now(), time.approximate()))
                 };
+                let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameStarted: no contest in progress"))?;
                 let game = BughouseGame::new_with_starting_position(
-                    chess_rules, bughouse_rules, starting_position, player_map
+                    contest.chess_rules.clone(), contest.bughouse_rules.clone(), starting_position, player_map
                 );
                 let my_id = match game.find_player(&self.my_name) {
                     Some(id) => BughouseParticipantId::Player(id),
@@ -242,7 +246,6 @@ impl ClientState {
                     }),
                 };
                 let alt_game = AlteredGame::new(my_id, game);
-                let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameStarted: no contest in progress"))?;
                 contest.game_state = Some(GameState {
                     alt_game,
                     time_pair,

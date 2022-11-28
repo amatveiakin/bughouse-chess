@@ -631,7 +631,8 @@ impl ContestState {
 
     fn make_contest_start_event(&self) -> BughouseServerEvent {
         BughouseServerEvent::ContestStarted {
-            teaming: self.bughouse_rules.teaming,
+            chess_rules: self.chess_rules.clone(),
+            bughouse_rules: self.bughouse_rules.clone(),
         }
     }
 
@@ -641,8 +642,6 @@ impl ContestState {
         };
         let time = GameInstant::from_now_game_maybe_active(game_state.game_start, now);
         BughouseServerEvent::GameStarted {
-            chess_rules: self.chess_rules.clone(),
-            bughouse_rules: self.bughouse_rules.clone(),
             starting_position: game_state.game.starting_position().clone(),
             players: game_state.players_with_boards.clone(),
             time,

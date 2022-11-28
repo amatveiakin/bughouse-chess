@@ -368,7 +368,7 @@ impl WebClient {
         let Some(contest) = self.state.contest() else {
             return Ok(());
         };
-        update_scores(&contest.scores, contest.teaming, self.state.my_team())?;
+        update_scores(&contest.scores, contest.bughouse_rules.teaming, self.state.my_team())?;
         let Some(GameState{ ref alt_game, .. }) = contest.game_state else {
             update_lobby(&contest)?;
             return Ok(());
@@ -626,7 +626,7 @@ pub fn init_page(
 fn update_lobby(contest: &Contest) -> JsResult<()> {
     let info_string = web_document().get_existing_element_by_id("info-string")?;
     // TODO: Show teams for the news game in individual mode.
-    match contest.teaming {
+    match contest.bughouse_rules.teaming {
         Teaming::FixedTeams => {
             let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
             for p in &contest.players {
