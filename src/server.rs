@@ -166,6 +166,8 @@ struct Context<'a, 'b> {
     hooks: &'a mut dyn ServerHooks,
 }
 
+type EventResult = Result<(), String>;
+
 // Split state into two parts in order to allow things like:
 //   let mut clients = self.clients.lock().unwrap();
 //   self.foo(&mut clients);
@@ -232,38 +234,7 @@ impl ServerState {
                     warn!("Got an event from disconnected client:\n{event:?}");
                     return;
                 }
-                match event {
-                    BughouseClientEvent::Join{ player_name, team } => {
-                        self.contest.process_join(ctx, client_id, now, player_name, team);
-                    },
-                    BughouseClientEvent::MakeTurn{ turn_input } => {
-                        self.contest.process_make_turn(ctx, client_id, now, turn_input);
-                    },
-                    BughouseClientEvent::CancelPreturn => {
-                        self.contest.process_cancel_preturn(ctx, client_id);
-                    },
-                    BughouseClientEvent::Resign => {
-                        self.contest.process_resign(ctx, client_id, now);
-                    },
-                    BughouseClientEvent::SetReady{ is_ready } => {
-                        self.contest.process_set_ready(ctx, client_id, is_ready);
-                    },
-                    BughouseClientEvent::Leave => {
-                        self.contest.process_leave(ctx, client_id);
-                    },
-                    BughouseClientEvent::Reset => {
-                        self.contest.process_reset(ctx);
-                    },
-                    BughouseClientEvent::RequestExport{ format } => {
-                        self.contest.process_request_export(ctx, client_id, format);
-                    },
-                    BughouseClientEvent::ReportPerformace(..) => {
-                        // Only used by server hooks.
-                    },
-                    BughouseClientEvent::ReportError(report) => {
-                        self.contest.process_report_error(ctx, client_id, report);
-                    },
-                }
+                self.contest.process_event(ctx, client_id, now, event);
             },
             IncomingEvent::Tick => {
                 // Any event triggers state update, so no additional action is required.
@@ -306,25 +277,64 @@ impl Contest {
         ctx.clients.broadcast(event);
     }
 
+    fn process_event(
+        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, event: BughouseClientEvent
+    ) {
+        let result = match event {
+            BughouseClientEvent::Join{ player_name, team } => {
+                self.process_join(ctx, client_id, now, player_name, team)
+            },
+            BughouseClientEvent::MakeTurn{ turn_input } => {
+                self.process_make_turn(ctx, client_id, now, turn_input)
+            },
+            BughouseClientEvent::CancelPreturn => {
+                self.process_cancel_preturn(ctx, client_id)
+            },
+            BughouseClientEvent::Resign => {
+                self.process_resign(ctx, client_id, now)
+            },
+            BughouseClientEvent::SetReady{ is_ready } => {
+                self.process_set_ready(ctx, client_id, is_ready)
+            },
+            BughouseClientEvent::Leave => {
+                self.process_leave(ctx, client_id)
+            },
+            BughouseClientEvent::Reset => {
+                self.process_reset(ctx)
+            },
+            BughouseClientEvent::RequestExport{ format } => {
+                self.process_request_export(ctx, client_id, format)
+            },
+            BughouseClientEvent::ReportPerformace(..) => {
+                // Only used by server hooks.
+                Ok(())
+            },
+            BughouseClientEvent::ReportError(report) => {
+                self.process_report_error(ctx, client_id, report)
+            },
+        };
+        if let Err(err) = result {
+            ctx.clients[client_id].send_error(err);
+        }
+    }
+
     fn process_join(
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
         player_name: String, fixed_team: Option<Team>
-    ) {
+    ) -> EventResult {
         if self.game_state.is_none() {
             if ctx.clients[client_id].player_id.is_some() {
-                ctx.clients[client_id].send_error("Cannot join: already joined".to_owned());
-                return;
+                return Err("Cannot join: already joined".to_owned());
             }
             if self.players.find_by_name(&player_name).is_some() {
-                ctx.clients[client_id].send_error(format!("Cannot join: player \"{}\" already exists", player_name));
-                return;
+                return Err(format!("Cannot join: player \"{}\" already exists", player_name));
             }
             if fixed_team.is_none() && self.bughouse_rules.teaming == Teaming::FixedTeams {
-                ctx.clients[client_id].send_error(format!("Cannot join: team is required in fixed teams mode"));
+                Err(format!("Cannot join: team is required in fixed teams mode"))
             } else if fixed_team.is_some() && self.bughouse_rules.teaming == Teaming::IndividualMode {
-                ctx.clients[client_id].send_error(format!("Cannot join: team is not allowed in individual mode"));
+                Err(format!("Cannot join: team is not allowed in individual mode"))
             } else if fixed_team.is_some() && self.players.iter().filter(|p| { p.fixed_team == fixed_team }).count() >= TOTAL_PLAYERS_PER_TEAM {
-                ctx.clients[client_id].send_error(format!("Cannot join: team {:?} is full", fixed_team));
+                Err(format!("Cannot join: team {:?} is full", fixed_team))
             } else {
                 info!("Player {} joined team {:?}", player_name, fixed_team);
                 ctx.clients[client_id].send(self.make_contest_start_event());
@@ -336,42 +346,40 @@ impl Contest {
                 });
                 ctx.clients[client_id].player_id = Some(player_id);
                 self.send_lobby_updated(ctx);
+                Ok(())
             }
         } else {
             let Some(existing_player_id) = self.players.find_by_name(&player_name) else {
                 // Improvement potential. Allow joining mid-game in individual mode.
                 //   Q. How to balance score in this case? Should we switch to negative numbers?
-                ctx.clients[client_id].send_error("Cannot join: game has already started".to_owned());
-                return;
+                return Err("Cannot join: game has already started".to_owned());
             };
             let current_fixed_team = self.players[existing_player_id].fixed_team;
             if ctx.clients.map.values().any(|c| c.player_id == Some(existing_player_id)) {
-                ctx.clients[client_id].send_error(format!(
-                    r#"Cannot join: client for player "{}" already connected"#, player_name));
+                Err(format!(r#"Cannot join: client for player "{}" already connected"#, player_name))
             } else if current_fixed_team != fixed_team {
-                ctx.clients[client_id].send_error(format!(
+                Err(format!(
                     r#"Cannot join: player "{}" is in team "{:?}", but connecting as team "{:?}""#,
                     player_name, current_fixed_team, fixed_team
-                ));
+                ))
             } else {
                 ctx.clients[client_id].player_id = Some(existing_player_id);
                 ctx.clients[client_id].send(self.make_contest_start_event());
                 ctx.clients[client_id].send(self.make_game_start_event(now));
+                Ok(())
             }
         }
     }
 
     fn process_make_turn(
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, turn_input: TurnInput
-    ) {
+    ) -> EventResult {
         let Some(GameState{ ref mut game_start, ref mut game, ref mut preturns, ref mut turn_log, .. }) = self.game_state else {
-            ctx.clients[client_id].send_error("Cannot make turn: no game in progress".to_owned());
-            return;
+            return Err("Cannot make turn: no game in progress".to_owned());
         };
         let scores = &mut self.scores;
         let Some(player_id) = ctx.clients[client_id].player_id else {
-            ctx.clients[client_id].send_error("Cannot make turn: not joined".to_owned());
-            return;
+            return Err("Cannot make turn: not joined".to_owned());
         };
         let player_bughouse_id = game.find_player(&self.players[player_id].name).unwrap();
         let mode = game.turn_mode_for_player(player_bughouse_id);
@@ -398,7 +406,7 @@ impl Contest {
                         }
                     },
                     Err(error) => {
-                        ctx.clients[client_id].send_error(format!("Impossible turn: {:?}", error));
+                        return Err(format!("Impossible turn: {:?}", error));
                     },
                 }
                 turn_log.extend_from_slice(&turns);
@@ -408,54 +416,51 @@ impl Contest {
                     scores: scores.clone(),
                 };
                 self.broadcast(ctx, &ev);
+                Ok(())
             },
             Ok(TurnMode::Preturn) => {
                 match preturns.entry(player_bughouse_id) {
                     hash_map::Entry::Occupied(_) => {
-                        ctx.clients[client_id].send_error("Only one premove is supported".to_owned());
+                        Err("Only one premove is supported".to_owned())
                     },
                     hash_map::Entry::Vacant(entry) => {
                         entry.insert(turn_input);
+                        Ok(())
                     },
                 }
             },
             Err(error) => {
-                ctx.clients[client_id].send_error(format!("Impossible turn: {:?}", error));
+                Err(format!("Impossible turn: {:?}", error))
             },
         }
     }
 
-    fn process_cancel_preturn(&mut self, ctx: &mut Context, client_id: ClientId) {
+    fn process_cancel_preturn(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
         let Some(GameState{ ref game, ref mut preturns, .. }) = self.game_state else {
-            ctx.clients[client_id].send_error("Cannot cancel pre-turn: no game in progress".to_owned());
-            return;
+            return Err("Cannot cancel pre-turn: no game in progress".to_owned());
         };
         let Some(player_id) = ctx.clients[client_id].player_id else {
-            ctx.clients[client_id].send_error("Cannot cancel pre-turn: not joined".to_owned());
-            return;
+            return Err("Cannot cancel pre-turn: not joined".to_owned());
         };
         let player_bughouse_id = game.find_player(&self.players[player_id].name).unwrap();
         preturns.remove(&player_bughouse_id);
+        Ok(())
     }
 
-    fn process_resign(&mut self, ctx: &mut Context, client_id: ClientId, now: Instant) {
+    fn process_resign(&mut self, ctx: &mut Context, client_id: ClientId, now: Instant) -> EventResult {
         let Some(GameState{ ref mut game, game_start, .. }) = self.game_state else {
-            ctx.clients[client_id].send_error("Cannot resign: no game in progress".to_owned());
-            return;
+            return Err("Cannot resign: no game in progress".to_owned());
         };
         let scores = &mut self.scores;
         if game.status() != BughouseGameStatus::Active {
-            ctx.clients[client_id].send_error("Cannot resign: game already over".to_owned());
-            return;
+            return Err("Cannot resign: game already over".to_owned());
         }
         let Some(player_id) = ctx.clients[client_id].player_id else {
-            ctx.clients[client_id].send_error("Cannot resign: not joined".to_owned());
-            return;
+            return Err("Cannot resign: not joined".to_owned());
         };
         let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
         let Some(bughouse_player_id) = game.find_player(&self.players[player_id].name) else {
-            ctx.clients[client_id].send_error("Cannot resign: player does not participate".to_owned());
-            return;
+            return Err("Cannot resign: player does not participate".to_owned());
         };
         let status = BughouseGameStatus::Victory(
             bughouse_player_id.team().opponent(),
@@ -469,24 +474,24 @@ impl Contest {
             scores: scores.clone(),
         };
         self.broadcast(ctx, &ev);
+        Ok(())
     }
 
-    fn process_set_ready(&mut self, ctx: &mut Context, client_id: ClientId, is_ready: bool) {
+    fn process_set_ready(&mut self, ctx: &mut Context, client_id: ClientId, is_ready: bool) -> EventResult {
         let Some(player_id) = ctx.clients[client_id].player_id else {
-            ctx.clients[client_id].send_error("Cannot update readiness: not joined".to_owned());
-            return;
+            return Err("Cannot update readiness: not joined".to_owned());
         };
         if let Some(GameState{ ref game, .. }) = self.game_state {
             if game.status() == BughouseGameStatus::Active {
-                ctx.clients[client_id].send_error("Cannot update readiness: game still in progress".to_owned());
-                return;
+                return Err("Cannot update readiness: game still in progress".to_owned());
             }
         }
         self.players[player_id].is_ready = is_ready;
         self.send_lobby_updated(ctx);
+        Ok(())
     }
 
-    fn process_leave(&mut self, ctx: &mut Context, client_id: ClientId) {
+    fn process_leave(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
         if let Some(logging_id) = ctx.clients.remove_client(client_id) {
             info!("Client {} left", logging_id);
         }
@@ -494,21 +499,24 @@ impl Contest {
         // clients disconnected due to a network error would've left abandoned players.
         // Improvement potential. Do we really need this event? Clients are removed when the
         // network channel is closed anyway.
+        Ok(())
     }
 
-    fn process_reset(&mut self, ctx: &mut Context) {
+    fn process_reset(&mut self, ctx: &mut Context) -> EventResult {
         self.scores = Scores::new();
         self.match_history = Vec::new();
         self.game_state = None;
         self.reset_readiness();
         self.broadcast(ctx, &self.make_contest_start_event());
         self.send_lobby_updated(ctx);
+        Ok(())
     }
 
-    fn process_request_export(&self, ctx: &mut Context, client_id: ClientId, format: BughouseExportFormat) {
+    fn process_request_export(
+        &self, ctx: &mut Context, client_id: ClientId, format: BughouseExportFormat
+    ) -> EventResult {
         let Some(GameState{ ref game, .. }) = self.game_state else {
-            ctx.clients[client_id].send_error("Cannot export: no game in progress".to_owned());
-            return;
+            return Err("Cannot export: no game in progress".to_owned());
         };
         // Improvement potential: Replace map lambda with something more elegant.
         let all_games = self.match_history.iter().chain(iter::once(game));
@@ -516,9 +524,12 @@ impl Contest {
             pgn::export_to_bpgn(format, game, round + 1)
         }).join("\n");
         ctx.clients[client_id].send(BughouseServerEvent::GameExportReady{ content });
+        Ok(())
     }
 
-    fn process_report_error(&self, ctx: &Context, client_id: ClientId, report: BughouseClientErrorReport) {
+    fn process_report_error(
+        &self, ctx: &Context, client_id: ClientId, report: BughouseClientErrorReport
+    ) -> EventResult {
         let logging_id = &ctx.clients[client_id].logging_id;
         match report {
             BughouseClientErrorReport::RustPanic{ panic_info, backtrace } => {
@@ -531,6 +542,7 @@ impl Contest {
                 warn!("Client {logging_id} experienced unknown error:\n{message}");
             }
         }
+        Ok(())
     }
 
     fn post_process(&mut self, ctx: &mut Context, now: Instant) {
