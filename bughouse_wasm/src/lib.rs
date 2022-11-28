@@ -499,7 +499,10 @@ impl WebClient {
     }
 
     pub fn meter_stats(&self) -> String {
-        self.state.meter_stats()
+        self.state.read_meter_stats().iter()
+            .sorted_by_key(|(metric, _)| metric.as_str())
+            .map(|(metric, stats)| format!("{metric}: {stats}"))
+            .join("\n")
     }
 
     fn set_turn_highlights(&self, id_prefix: &str, turn: Option<&TurnExpanded>, board_idx: WebBoard)

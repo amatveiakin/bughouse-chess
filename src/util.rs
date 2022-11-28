@@ -27,28 +27,7 @@ pub fn sort_two<T: Ord>(v: (T, T)) -> (T, T) {
 //   Replace with `a.div_ceil(b)`.
 pub fn div_ceil_u128(a: u128, b: u128) -> u128 { (a + b - 1) / b }
 
-pub fn indent_text(text: &str, indent: &str) -> String {
-    text.split('\n')
-        .map(|line| if line.is_empty() { String::new() } else { format!("{indent}{line}") })
-        .join("\n")
-}
-
 // If a string consists of a single character, returns the character. Otherwise returns none.
 pub fn as_single_char(s: &str) -> Option<char> {
     s.chars().collect_tuple().map(|(single_char,)| single_char)
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn indent_text_test() {
-        assert_eq!(indent_text("", ">>"), "".to_owned());
-        assert_eq!(indent_text("a", ">>"), ">>a".to_owned());
-        assert_eq!(indent_text("a\n", ">>"), ">>a\n".to_owned());
-        assert_eq!(indent_text("a\nb", ">>"), ">>a\n>>b".to_owned());
-        assert_eq!(indent_text("a\n\nb", ">>"), ">>a\n\n>>b".to_owned());
-    }
 }

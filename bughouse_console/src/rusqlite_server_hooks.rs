@@ -1,3 +1,10 @@
+// TODO: Move SQL writes to a separate thread (https://crates.io/crates/sqlx should
+//   do this automatically).
+// TODO: Cache compiled SQL queries (should be easy with https://crates.io/crates/sqlx).
+// TODO: Benchmark SQL write speed.
+// TODO: More structured way to map data between Rust types and SQL;
+//   consider https://crates.io/crates/sea-orm.
+
 use log::error;
 
 use bughouse_chess::server::*;
@@ -28,6 +35,27 @@ impl RusqliteServerHooks {
                 game_pgn TEXT)",
             (),
         )?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS client_performance (
+                git_version TEXT,
+                invocation_id TEXT,
+                user_agent TEXT,
+                time_zone TEXT,
+                turn_confirmation_p50,
+                turn_confirmation_p90,
+                turn_confirmation_p99,
+                turn_confirmation_n,
+                process_outgoing_events_p99,
+                process_notable_events_p99,
+                refresh_p99,
+                update_state_p50,
+                update_state_p90,
+                update_state_p99,
+                update_state_n,
+                update_clock_p99,
+                update_drag_state_p99)",
+            (),
+        )?;
         Ok(Self {
             invocation_id: uuid::Uuid::new_v4().to_string(),
             game_start_time: None,
@@ -37,7 +65,12 @@ impl RusqliteServerHooks {
 }
 
 impl ServerHooks for RusqliteServerHooks {
-    fn on_event(
+    fn on_client_event(&mut self, event: &BughouseClientEvent) {
+        if let BughouseClientEvent::ReportPerformace(performance) = event {
+            self.record_client_performance(&performance)
+        }
+    }
+    fn on_server_broadcast_event(
         &mut self,
         event: &BughouseServerEvent,
         maybe_game: Option<&GameState>,
@@ -56,42 +89,92 @@ impl RusqliteServerHooks {
         event: &BughouseServerEvent,
         maybe_game: Option<&GameState>,
         round: usize,
-    ) -> Option<()> {
-        if let Some(row) = self.game_result(event, maybe_game, round) {
-            let execute_result = self.conn.execute(
-                "INSERT INTO finished_games (
-                    git_version,
-                    invocation_id,
-                    game_start_time,
-                    game_end_time,
-                    player_red_a,
-                    player_red_b,
-                    player_blue_a,
-                    player_blue_b,
-                    result,
-                    game_pgn)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                (
-                    row.git_version,
-                    row.invocation_id,
-                    row.game_start_time,
-                    row.game_end_time,
-                    row.player_red_a,
-                    row.player_red_b,
-                    row.player_blue_a,
-                    row.player_blue_b,
-                    row.result,
-                    row.game_pgn,
-                ),
-            );
-            if let Err(e) = execute_result {
-                error!("Error persisting game result: {:?}", e);
-                None
-            } else {
-                Some(())
-            }
-        } else {
-            None
+    ) {
+        let Some(row) = self.game_result(event, maybe_game, round) else {
+            return;
+        };
+        let execute_result = self.conn.execute(
+            "INSERT INTO finished_games (
+                git_version,
+                invocation_id,
+                game_start_time,
+                game_end_time,
+                player_red_a,
+                player_red_b,
+                player_blue_a,
+                player_blue_b,
+                result,
+                game_pgn)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            (
+                row.git_version,
+                row.invocation_id,
+                row.game_start_time,
+                row.game_end_time,
+                row.player_red_a,
+                row.player_red_b,
+                row.player_blue_a,
+                row.player_blue_b,
+                row.result,
+                row.game_pgn,
+            ),
+        );
+        if let Err(e) = execute_result {
+            error!("Error persisting game result: {}", e);
+        }
+    }
+
+    fn record_client_performance(&mut self, perf: &BughouseClientPerformance) {
+        let stats = &perf.stats;
+        let turn_confirmation = stats.get("turn_confirmation");
+        let process_outgoing_events = stats.get("process_outgoing_events");
+        let process_notable_events = stats.get("process_notable_events");
+        let refresh = stats.get("refresh");
+        let update_state = stats.get("update_state");
+        let update_clock = stats.get("update_clock");
+        let update_drag_state = stats.get("update_drag_state");
+        let execute_result = self.conn.execute(
+            "INSERT INTO client_performance (
+                git_version,
+                invocation_id,
+                user_agent,
+                time_zone,
+                turn_confirmation_p50,
+                turn_confirmation_p90,
+                turn_confirmation_p99,
+                turn_confirmation_n,
+                process_outgoing_events_p99,
+                process_notable_events_p99,
+                refresh_p99,
+                update_state_p50,
+                update_state_p90,
+                update_state_p99,
+                update_state_n,
+                update_clock_p99,
+                update_drag_state_p99)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rusqlite::params![
+                my_git_version!().to_owned(),
+                self.invocation_id,
+                perf.user_agent,
+                perf.time_zone,
+                turn_confirmation.map(|s| s.p50),
+                turn_confirmation.map(|s| s.p90),
+                turn_confirmation.map(|s| s.p99),
+                turn_confirmation.map(|s| s.num_values),
+                process_outgoing_events.map(|s| s.p99),
+                process_notable_events.map(|s| s.p99),
+                refresh.map(|s| s.p99),
+                update_state.map(|s| s.p50),
+                update_state.map(|s| s.p90),
+                update_state.map(|s| s.p99),
+                update_state.map(|s| s.num_values),
+                update_clock.map(|s| s.p99),
+                update_drag_state.map(|s| s.p99),
+            ]
+        );
+        if let Err(e) = execute_result {
+            error!("Error persisting client performance: {}", e);
         }
     }
 

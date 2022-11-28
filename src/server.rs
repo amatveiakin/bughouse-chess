@@ -17,12 +17,11 @@ use strum::IntoEnumIterator;
 use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, BughouseGameStatus, BughouseGame};
-use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerformance, BughouseClientErrorReport};
+use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientErrorReport};
 use crate::pgn::{self, BughouseExportFormat};
 use crate::player::{Player, PlayerInGame, Team};
 use crate::rules::{Teaming, ChessRules, BughouseRules};
 use crate::scores::Scores;
-use crate::util::indent_text;
 use crate::server_hooks::{ServerHooks, NoopServerHooks};
 
 
@@ -91,7 +90,6 @@ pub struct Client {
     events_tx: mpsc::Sender<BughouseServerEvent>,
     player_id: Option<PlayerId>,
     logging_id: String,
-    latest_performance_report: Option<BughouseClientPerformance>,
 }
 
 impl Client {
@@ -118,7 +116,6 @@ impl Clients {
             events_tx,
             player_id: None,
             logging_id,
-            latest_performance_report: None,
         };
         let id = ClientId(self.next_id);
         self.next_id += 1;
@@ -132,21 +129,7 @@ impl Clients {
     // offline (for TUI: could use “ϟ” for “disconnected”; there is a plug emoji “🔌”
     // that works much better, but it's not supported by console fonts).
     pub fn remove_client(&mut self, id: ClientId) -> Option<String> {
-        let client = self.map.remove(&id);
-        if let Some(client) = client {
-            if let Some(perf) = &client.latest_performance_report {
-                info!(
-                    "Client {} info:\nUser agent: {}\nTime zone: {}\nPerformance statistics:\n{}",
-                    client.logging_id,
-                    perf.user_agent,
-                    perf.time_zone,
-                    indent_text(&perf.statistics, "    "),
-                );
-            }
-            Some(client.logging_id)
-        } else {
-            None
-        }
+        self.map.remove(&id).map(|client| client.logging_id)
     }
 
     // Sends the event to each client who has joined the game.
@@ -240,6 +223,7 @@ impl ServerState {
 
         match event {
             IncomingEvent::Network(client_id, event) => {
+                ctx.hooks.on_client_event(&event);
                 if !ctx.clients.map.contains_key(&client_id) {
                     // TODO: Should there be an exception for `BughouseClientEvent::ReportError`?
                     // TODO: Improve logging. Consider:
@@ -273,8 +257,8 @@ impl ServerState {
                     BughouseClientEvent::RequestExport{ format } => {
                         self.contest.process_request_export(ctx, client_id, format);
                     },
-                    BughouseClientEvent::ReportPerformace(performance) => {
-                        self.contest.process_report_performance(ctx, client_id, performance);
+                    BughouseClientEvent::ReportPerformace(..) => {
+                        // Only used by server hooks.
                     },
                     BughouseClientEvent::ReportError(report) => {
                         self.contest.process_report_error(ctx, client_id, report);
@@ -318,7 +302,7 @@ impl ContestState {
     }
 
     fn broadcast(&self, ctx: &mut Context, event: &BughouseServerEvent) {
-        ctx.hooks.on_event(event, self.game_state.as_ref(), self.match_history.len() + 1);
+        ctx.hooks.on_server_broadcast_event(event, self.game_state.as_ref(), self.match_history.len() + 1);
         ctx.clients.broadcast(event);
     }
 
@@ -532,12 +516,6 @@ impl ContestState {
             pgn::export_to_bpgn(format, game, round + 1)
         }).join("\n");
         ctx.clients[client_id].send(BughouseServerEvent::GameExportReady{ content });
-    }
-
-    fn process_report_performance(
-        &self, ctx: &mut Context, client_id: ClientId, performance: BughouseClientPerformance)
-    {
-        ctx.clients[client_id].latest_performance_report = Some(performance);
     }
 
     fn process_report_error(&self, ctx: &Context, client_id: ClientId, report: BughouseClientErrorReport) {

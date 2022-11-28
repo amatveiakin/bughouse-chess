@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use serde::{Serialize, Deserialize};
 
 use crate::board::TurnInput;
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseGameStatus, BughouseBoard};
+use crate::meter::MeterStats;
 use crate::pgn::BughouseExportFormat;
 use crate::player::{PlayerInGame, Player, Team};
 use crate::rules::{ChessRules, BughouseRules};
@@ -54,8 +57,7 @@ pub enum BughouseServerEvent {
 pub struct BughouseClientPerformance {
     pub user_agent: String,
     pub time_zone: String,  // location estimate
-    // Improvement potential. Send structured performance info and log to DB.
-    pub statistics: String,
+    pub stats: HashMap<String, MeterStats>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

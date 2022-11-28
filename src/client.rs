@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -11,7 +11,7 @@ use crate::clock::{GameInstant, WallGameTimePair};
 use crate::force::Force;
 use crate::game::{TurnRecord, BughouseParticipantId, BughouseObserserId, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerformance};
-use crate::meter::{Meter, MeterBox};
+use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::BughouseExportFormat;
 use crate::player::{Player, Team};
 use crate::rules::{ChessRules, BughouseRules};
@@ -132,7 +132,8 @@ impl ClientState {
     pub fn game_state_mut(&mut self) -> Option<&mut GameState> { self.contest.as_mut().and_then(|c| c.game_state.as_mut()) }
 
     pub fn meter(&mut self, name: String) -> Meter { self.meter_box.meter(name) }
-    pub fn meter_stats(&self) -> String { self.meter_box.statistics() }
+    pub fn read_meter_stats(&self) -> HashMap<String, MeterStats> { self.meter_box.read_stats() }
+    pub fn consume_meter_stats(&mut self) -> HashMap<String, MeterStats> { self.meter_box.consume_stats() }
 
     pub fn join(&mut self) {
         self.events_tx.send(BughouseClientEvent::Join {
@@ -156,10 +157,11 @@ impl ClientState {
         self.events_tx.send(BughouseClientEvent::Reset).unwrap();
     }
     pub fn report_performance(&mut self) {
+        let stats = self.consume_meter_stats();
         self.events_tx.send(BughouseClientEvent::ReportPerformace(BughouseClientPerformance {
             user_agent: self.user_agent.clone(),
             time_zone: self.time_zone.clone(),
-            statistics: self.meter_stats(),
+            stats,
         })).unwrap();
     }
     pub fn request_export(&mut self, format: BughouseExportFormat) {
