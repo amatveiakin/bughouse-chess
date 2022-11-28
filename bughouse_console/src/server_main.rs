@@ -117,14 +117,19 @@ pub fn run(config: ServerConfig) {
     });
     let clients = Arc::new(Mutex::new(Clients::new()));
     let clients_copy = Arc::clone(&clients);
+
     thread::spawn(move || {
+        let hooks = config.sqlite_db.map(|address| {
+            let hooks = RusqliteServerHooks::new(address.as_str()).unwrap_or_else(
+                |err| panic!("Cannot connect to SQLite DB {address}:\n{err}")
+            );
+            Box::new(hooks) as Box<dyn ServerHooks>
+        });
         let mut server_state = ServerState::new(
             clients_copy,
             chess_rules,
             bughouse_rules,
-            config.sqlite_db.map(|db| {
-                Box::new(RusqliteServerHooks::new(db.as_str()).unwrap()) as Box<dyn ServerHooks>
-            }),
+            hooks
         );
 
         for event in rx {
