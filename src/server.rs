@@ -151,7 +151,7 @@ impl ops::IndexMut<ClientId> for Clients {
 }
 
 
-struct ContestState {
+struct Contest {
     chess_rules: ChessRules,
     bughouse_rules: BughouseRules,
     players: Players,
@@ -173,7 +173,7 @@ struct Context<'a, 'b> {
 pub struct ServerState {
     clients: Arc<Mutex<Clients>>,
     hooks: Box<dyn ServerHooks>,
-    contest: ContestState,
+    contest: Contest,
 }
 
 impl ServerState {
@@ -186,7 +186,7 @@ impl ServerState {
         ServerState {
             clients,
             hooks: hooks.unwrap_or_else(|| Box::new(NoopServerHooks{})),
-            contest: ContestState {
+            contest: Contest {
                 chess_rules,
                 bughouse_rules,
                 players: Players::new(),
@@ -280,7 +280,7 @@ impl ServerState {
     }
 }
 
-impl ContestState {
+impl Contest {
     fn test_flags(&mut self, ctx: &mut Context, now: Instant) {
         if let Some(GameState{ game_start, ref mut game, .. }) = self.game_state {
             if let Some(game_start) = game_start {
