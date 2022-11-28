@@ -518,8 +518,8 @@ impl Reachability {
     pub fn ok(self) -> bool { self == Reachability::Ok }
 }
 
-// Improvement potential: Rc => references to a Box in Game classes
-// Improvement potential: Don't players here since they don't affect gaem process.
+// Improvement potential: Rc => references to a Box in Game classes.
+// Improvement potential: Don't store players here since they don't affect game process.
 #[derive(Clone, Debug)]
 pub struct Board {
     chess_rules: Rc<ChessRules>,
@@ -528,7 +528,7 @@ pub struct Board {
     status: ChessGameStatus,
     grid: Grid,
     // Tracks castling availability based on which pieces have moved. Castling is
-    // allowed with the rooks stand in the first row at specified columns. If the
+    // allowed when the rook stands in the first row at specified columns. If the
     // king has moved then the list is empty. Not affected by temporary limitations
     // (e.g. the king being checked).
     castling_rights: EnumMap<Force, CastlingRights>,
