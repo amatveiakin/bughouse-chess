@@ -1,13 +1,15 @@
 use std::rc::Rc;
 
 use enum_map::enum_map;
+use itertools::Itertools;
 use serde::{Serialize, Deserialize};
+use strum::IntoEnumIterator;
 
-use crate::board::Board;
+use crate::board::{Board, VictoryReason, DrawReason};
 use crate::clock::TimeControl;
 use crate::fen;
 use crate::force::Force;
-use crate::game::{TurnRecordExpanded, BughousePlayerId, BughouseBoard, BughouseGameStatus, BughouseGame};
+use crate::game::{TurnRecordExpanded, BughousePlayerId, BughouseBoard, BughouseGameStatus, BughouseGame, get_bughouse_force};
 use crate::player::{Team, PlayerInGame};
 use crate::rules::StartingPosition;
 
@@ -66,6 +68,26 @@ fn make_result_string(game: &BughouseGame) -> &'static str {
     }
 }
 
+fn make_termination_string(game: &BughouseGame) -> String {
+    use BughouseGameStatus::*;
+    use VictoryReason::*;
+    use DrawReason::*;
+    let make_team_string = |team| {
+        // Note. Not using `game.players()` because the order there is not specified.
+        BughouseBoard::iter()
+            .map(|board_idx| &game.board(board_idx).player(get_bughouse_force(team, board_idx)).name)
+            .join(" & ")
+    };
+    match game.status() {
+        Active => "Unterminated".to_owned(),
+        Victory(team, Checkmate) => format!("{} won by checkmate", make_team_string(team)),
+        Victory(team, Flag) => format!("{} won by flag", make_team_string(team)),
+        Victory(team, Resignation) => format!("{} won by resignation", make_team_string(team)),
+        Draw(SimultaneousFlag) => "Draw by simultaneous flags".to_owned(),
+        Draw(ThreefoldRepetition) => "Draw by threefold repetition".to_owned(),
+    }
+}
+
 // Dummy player object. Will not appear anywhere in the produced PGN.
 fn dummy_player(team: Team) -> Rc<PlayerInGame> {
     Rc::new(PlayerInGame{ name: format!("{:?}", team), team })
@@ -104,7 +126,7 @@ r#"[Event "Friendly Bughouse Match"]
 [Variant "{}"]
 [SetUp "1"]
 {}[Result "{}"]
-[Termination "{:?}"]
+[Termination "{}"]
 "#,
         now.format("%Y.%m.%d"),
         now.format("%H:%M:%S"),
@@ -117,7 +139,7 @@ r#"[Event "Friendly Bughouse Match"]
         variant,
         starting_position_fen,
         make_result_string(game),
-        game.status(),
+        make_termination_string(game),
     )
 }
 
