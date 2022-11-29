@@ -400,7 +400,7 @@ function update_drag_state() {
 function server_websocket_address() {
     // TODO: Get the port from Rust.
     const DEFAULT_PORT = 38617;
-    const DEFAULT_ADDRESS = '51.250.84.85';
+    const DEFAULT_ADDRESS = 'bughouse.pro';
     let address = my_search_params.get('server') ?? DEFAULT_ADDRESS;
     if (!address.includes('://')) {
         address = `ws://${address}`;
