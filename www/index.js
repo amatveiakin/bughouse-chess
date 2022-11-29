@@ -65,6 +65,8 @@ const turn_audio = new Audio(turn_sound);
 const reserve_restocked_audio = new Audio(reserve_restocked_sound);
 const low_time_audio = new Audio(low_time_sound);
 
+const my_search_params = new URLSearchParams(window.location.search);
+
 wasm.set_panic_hook();
 wasm.init_page(
     white_pawn, white_knight, white_bishop, white_rook, white_queen, white_king,
@@ -247,14 +249,9 @@ function execute_command(input) {
         if (input.startsWith('/')) {
             const args = input.slice(1).split(/\s+/);
             switch (args[0]) {
-                case 'local': {
-                    const [name, team] = get_join_args(args);
-                    request_join('localhost', name, team);
-                    break;
-                }
                 case 'join': {
                     const [name, team] = get_join_args(args);
-                    request_join('51.250.84.85', name, team);
+                    request_join(name, team);
                     break;
                 }
                 case 'sound': {
@@ -400,6 +397,23 @@ function update_drag_state() {
     }
 }
 
+function server_websocket_address() {
+    // TODO: Get the port from Rust.
+    const DEFAULT_PORT = 38617;
+    const DEFAULT_ADDRESS = '51.250.84.85';
+    let address = my_search_params.get('server') ?? DEFAULT_ADDRESS;
+    if (!address.includes('://')) {
+        address = `ws://${address}`;
+    }
+    const url = new URL(address);
+    url.protocol = 'ws:';
+    // TODO: Fix: `URL` automatically strips port 80, so it is ignored.
+    if (!url.port) {
+        url.port = DEFAULT_PORT;
+    }
+    return url;
+}
+
 function on_socket_opened() {
     with_error_handling(function() {
         wasm_client().join();
@@ -408,10 +422,10 @@ function on_socket_opened() {
     });
 }
 
-function request_join(address, my_name, my_team) {
+function request_join(my_name, my_team) {
     with_error_handling(function() {
         shutdown_wasm_client();
-        socket = new WebSocket(`ws://${address}:38617`);  // TODO: get the port from Rust
+        socket = new WebSocket(server_websocket_address());
         const user_agent = window.navigator.userAgent;
         const time_zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         wasm_client_object = wasm.WebClient.new_client(my_name, my_team, user_agent, time_zone);
