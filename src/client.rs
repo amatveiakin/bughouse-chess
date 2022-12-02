@@ -129,7 +129,9 @@ impl ClientState {
     pub fn is_ready(&self) -> Option<bool> { self.contest.as_ref().map(|c| c.is_ready) }
     pub fn contest(&self) -> Option<&Contest> { self.contest.as_ref() }
     pub fn game_state(&self) -> Option<&GameState> { self.contest.as_ref().and_then(|c| c.game_state.as_ref()) }
-    pub fn game_state_mut(&mut self) -> Option<&mut GameState> { self.contest.as_mut().and_then(|c| c.game_state.as_mut()) }
+    fn game_state_mut(&mut self) -> Option<&mut GameState> { self.contest.as_mut().and_then(|c| c.game_state.as_mut()) }
+    // TODO: Reduce public mutability. This is used only for drag&drop, so limit the mutable API to that.
+    pub fn alt_game_mut(&mut self) -> Option<&mut AlteredGame> { self.game_state_mut().map(|c| &mut c.alt_game) }
 
     pub fn meter(&mut self, name: String) -> Meter { self.meter_box.meter(name) }
     pub fn read_meter_stats(&self) -> HashMap<String, MeterStats> { self.meter_box.read_stats() }
@@ -195,7 +197,7 @@ impl ClientState {
     }
 
     pub fn cancel_preturn(&mut self) {
-        if let Some(GameState{ ref mut alt_game, .. }) = self.game_state_mut() {
+        if let Some(alt_game) = self.alt_game_mut() {
             if alt_game.cancel_preturn() {
                 self.events_tx.send(BughouseClientEvent::CancelPreturn).unwrap();
             }

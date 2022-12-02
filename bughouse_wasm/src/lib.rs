@@ -230,7 +230,7 @@ impl WebClient {
     }
 
     pub fn start_drag_piece(&mut self, source: &str) -> JsResult<()> {
-        let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() else {
+        let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
         let source = if let Some(piece) = source.strip_prefix("reserve-") {
@@ -251,7 +251,7 @@ impl WebClient {
     pub fn drag_piece_drop(&mut self, dest_x: f64, dest_y: f64, alternative_promotion: bool)
         -> JsResult<()>
     {
-        let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() else {
+        let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
         if let Some(dest_display) = position_to_square(dest_x, dest_y) {
@@ -279,7 +279,7 @@ impl WebClient {
         Ok(())
     }
     pub fn abort_drag_piece(&mut self) -> JsResult<()> {
-        if let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() {
+        if let Some(alt_game) = self.state.alt_game_mut() {
             alt_game.abort_drag_piece();
         }
         Ok(())
@@ -321,7 +321,7 @@ impl WebClient {
     pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
         match self.state.next_notable_event() {
             Some(NotableEvent::GameStarted) => {
-                let Some(GameState{ ref mut alt_game, .. }) = self.state.game_state_mut() else {
+                let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
                     return Err(rust_error!("No game in progress"));
                 };
                 let info_string = web_document().get_existing_element_by_id("info-string")?;
