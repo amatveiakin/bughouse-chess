@@ -103,7 +103,7 @@ let update_drag_state_meter = null;
 const info_string = document.getElementById('info-string');
 info_string.innerText = 'Type "/join name" to start'
 
-document.addEventListener('keydown', function(event) { command_input.focus(); });
+document.addEventListener('keydown', on_document_keydown);
 document.addEventListener('paste', function(event) { command_input.focus(); });
 
 const command_input = document.getElementById('command');
@@ -232,6 +232,13 @@ function get_join_args(args_array) {
         return args_without_command_name;
     } else {
         throw new InvalidCommand(`Usage: /join name [team]`);
+    }
+}
+
+function on_document_keydown(event) {
+    let isPrintableKey = event.key.length === 1;  // https://stackoverflow.com/a/38802011/3092679
+    if (isPrintableKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        command_input.focus();
     }
 }
 
