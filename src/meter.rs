@@ -53,7 +53,7 @@ impl MeterBox {
     }
     pub fn consume_stats(&mut self) -> HashMap<String, MeterStats> {
         let stats = self.read_stats();
-        self.meters.clear();
+        self.meters.values_mut().for_each(|meter| meter.reset());
         stats
     }
 }
@@ -80,6 +80,9 @@ impl Meter {
         self.record(value);
     }
 
+    fn reset(&mut self) {
+        self.histogram.borrow_mut().reset();
+    }
     fn stats(&self) -> MeterStats {
         let histogram = self.histogram.borrow();
         MeterStats {
