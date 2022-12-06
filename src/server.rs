@@ -483,6 +483,9 @@ impl Contest {
             } else if fixed_team.is_some() && self.players.iter().filter(|p| { p.fixed_team == fixed_team }).count() >= TOTAL_PLAYERS_PER_TEAM {
                 Err(format!("Cannot join: team {:?} is full", fixed_team))
             } else {
+                if !is_valid_player_name(&player_name) {
+                    return Err(format!("Invalid player name: \"{}\"", player_name))
+                }
                 info!("Player {} joined team {:?}", player_name, fixed_team);
                 ctx.clients[client_id].contest_id = Some(self.contest_id.clone());
                 let player_id = self.players.add_player(Player {
@@ -849,6 +852,16 @@ impl Contest {
                 (b, BughouseBoard::B),
             ]
         }).collect()
+    }
+}
+
+fn is_valid_player_name(name: &str) -> bool {
+    const MAX_NAME_LENGTH: usize = 20;
+    if name.is_empty() || name.chars().count() > MAX_NAME_LENGTH {
+        false
+    } else {
+        // Must be in sync with web name input checkers.
+        name.chars().all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_')
     }
 }
 
