@@ -5,21 +5,21 @@ authors = ["Andrei Matveiakin <a.matveiakin@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-crossterm = "0.23.2"
-console = "0.15.0"
-clap = { version = "3.1.9", features = ["cargo"] }
-enum-map = "2.1.0"
-env_logger = "0.9.0"
-chrono = "0.4.19"
+crossterm = "0.25.0"
+console = "0.15.2"
+clap = { version = "4.0.29", features = ["cargo"] }
+enum-map = "2.4.1"
+env_logger = "0.10.0"
+chrono = "0.4.23"
 instant = "0.1.12"
-itertools = "0.10.3"
+itertools = "0.10.5"
 log = "0.4.17"
-regex = "1.6.0"
+regex = "1.7.0"
 scopeguard = "1.1.0"
-tungstenite = "0.17.2"
-url = "2.2.2"
-serde = "1.0.136"
-serde_json = "1.0.79"
+tungstenite = "0.18.0"
+url = "2.3.1"
+serde = "1.0.149"
+serde_json = "1.0.89"
 rusqlite = { version = "0.28.0", features = ["bundled"] }
 uuid = { version = "1.2.2", features = ["v4"] }
 

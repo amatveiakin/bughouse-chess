@@ -12,20 +12,20 @@ authors = ["Andrei Matveiakin <a.matveiakin@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-chrono = { version = "0.4.19", features = ["wasmbind"] }
+chrono = { version = "0.4.23", features = ["wasmbind"] }
 derive-new = "0.5.9"
-enum-map = "2.1.0"
+enum-map = "2.4.1"
 git-version = "0.3.5"
 hdrhistogram = "7.5.2"
 instant = { version = "0.1.12", features = ["wasm-bindgen"] }
-itertools = "0.10.3"
+itertools = "0.10.5"
 log = "0.4.17"
 once_cell = "1.16.0"
 rand = "0.8.5"
 # TODO: Further reduce WASM size by stripping away all regex-related code,
 #   see https://github.com/rust-lang/regex/issues/913
-regex = { version = "1.6.0", default-features = false, features = ["std"] }
+regex = { version = "1.7.0", default-features = false, features = ["std"] }
 scopeguard = "1.1.0"
-serde = { version = "1.0.136", features = ["derive"] }
-serde_json = "1.0.79"
+serde = { version = "1.0.149", features = ["derive"] }
+serde_json = "1.0.89"
 strum = { version = "0.24", features = ["derive"] }
