@@ -10,7 +10,6 @@ console = "0.15.2"
 clap = { version = "4.0.29", features = ["cargo"] }
 enum-map = "2.4.1"
 env_logger = "0.10.0"
-chrono = "0.4.23"
 instant = "0.1.12"
 itertools = "0.10.5"
 log = "0.4.17"
@@ -21,6 +20,7 @@ url = "2.3.1"
 serde = "1.0.149"
 serde_json = "1.0.89"
 rusqlite = { version = "0.28.0", features = ["bundled"] }
+time = "0.3.17"
 uuid = { version = "1.2.2", features = ["v4"] }
 
 bughouse_chess = { path = ".." }

@@ -14,7 +14,7 @@ use bughouse_chess::*;
 
 pub struct RusqliteServerHooks {
     invocation_id: String,
-    game_start_time: Option<chrono::DateTime<chrono::Utc>>,
+    game_start_time: Option<time::OffsetDateTime>,
     conn: rusqlite::Connection,
 }
 
@@ -77,7 +77,7 @@ impl ServerHooks for RusqliteServerHooks {
         round: usize,
     ) {
         if let BughouseServerEvent::GameStarted { .. } = event {
-            self.game_start_time = Some(chrono::offset::Utc::now());
+            self.game_start_time = Some(time::OffsetDateTime::now_utc());
         }
         self.record_game_finish(event, maybe_game, round);
     }
@@ -199,8 +199,8 @@ impl RusqliteServerHooks {
         Some(GameResultRow {
             git_version: my_git_version!().to_owned(),
             invocation_id: self.invocation_id.to_string(),
-            game_start_time: self.game_start_time.map(|x| x.timestamp()),
-            game_end_time: Some(chrono::offset::Utc::now().timestamp()),
+            game_start_time: self.game_start_time.map(|x| x.unix_timestamp()),
+            game_end_time: Some(time::OffsetDateTime::now_utc().unix_timestamp()),
             player_red_a: players.0,
             player_red_b: players.1,
             player_blue_a: players.2,

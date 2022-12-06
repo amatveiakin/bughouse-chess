@@ -4,6 +4,7 @@ use enum_map::enum_map;
 use itertools::Itertools;
 use serde::{Serialize, Deserialize};
 use strum::IntoEnumIterator;
+use time::macros::format_description;
 
 use crate::board::{Board, VictoryReason, DrawReason};
 use crate::clock::TimeControl;
@@ -97,7 +98,7 @@ fn dummy_player(team: Team) -> Rc<PlayerInGame> {
 fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
     use BughouseBoard::*;
     use Force::*;
-    let now = chrono::offset::Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let (variant, starting_position_fen) = match game.chess_rules().starting_position {
         StartingPosition::Classic =>
             ("Bughouse", String::new()),
@@ -128,8 +129,8 @@ r#"[Event "Friendly Bughouse Match"]
 {}[Result "{}"]
 [Termination "{}"]
 "#,
-        now.format("%Y.%m.%d"),
-        now.format("%H:%M:%S"),
+        now.format(format_description!("[year].[month].[day]")).unwrap(),
+        now.format(format_description!("[hour]:[minute]:[second]")).unwrap(),
         round,
         game.board(A).player(White).name,
         game.board(A).player(Black).name,
