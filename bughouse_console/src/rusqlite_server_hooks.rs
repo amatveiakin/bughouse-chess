@@ -21,6 +21,7 @@ pub struct RusqliteServerHooks {
 impl RusqliteServerHooks {
     pub fn new(address: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let conn = rusqlite::Connection::open(address)?;
+        // TODO: Include contest_id in finished_games.
         conn.execute(
             "CREATE TABLE IF NOT EXISTS finished_games (
                 git_version TEXT,

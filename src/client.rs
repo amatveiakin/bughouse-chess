@@ -33,6 +33,7 @@ pub enum SubjectiveGameResult {
 
 #[derive(Clone, Debug)]
 pub enum NotableEvent {
+    GotContestId(String),
     GameStarted,
     GameOver(SubjectiveGameResult),
     MyTurnMade,
@@ -64,6 +65,9 @@ pub struct GameState {
 
 #[derive(Debug)]
 pub struct Contest {
+    pub contest_id: String,
+    pub my_name: String,
+    pub my_team: Option<Team>,
     // Rules applied in every game of the contest.
     pub chess_rules: ChessRules,
     pub bughouse_rules: BughouseRules,
@@ -77,13 +81,24 @@ pub struct Contest {
     pub game_state: Option<GameState>,
 }
 
+#[derive(Debug)]
+enum ContestState {
+    NotConnected,
+    Creating {
+        my_name: String,
+    },
+    Joining {
+        contest_id: String,
+        my_name: String,
+    },
+    Connected(Contest),
+}
+
 pub struct ClientState {
-    my_name: String,
-    my_team: Option<Team>,
     user_agent: String,
     time_zone: String,
     events_tx: mpsc::Sender<BughouseClientEvent>,
-    contest: Option<Contest>,
+    contest_state: ContestState,
     notable_event_queue: VecDeque<NotableEvent>,
     meter_box: MeterBox,
     turn_confirmed_meter: Meter,
@@ -106,30 +121,31 @@ macro_rules! cannot_apply_event {
 
 impl ClientState {
     pub fn new(
-        my_name: String, my_team: Option<Team>, user_agent: String, time_zone: String,
-        events_tx: mpsc::Sender<BughouseClientEvent>
+        user_agent: String, time_zone: String, events_tx: mpsc::Sender<BughouseClientEvent>
     ) -> Self {
         let mut meter_box = MeterBox::new();
         let turn_confirmed_meter = meter_box.meter("turn_confirmation".to_owned());
         ClientState {
-            my_name,
-            my_team,
             user_agent,
             time_zone,
             events_tx,
-            contest: None,
+            contest_state: ContestState::NotConnected,
             notable_event_queue: VecDeque::new(),
             meter_box,
             turn_confirmed_meter,
         }
     }
 
-    pub fn my_name(&self) -> &str { &self.my_name }
-    pub fn my_team(&self) -> Option<Team> { self.my_team }
-    pub fn is_ready(&self) -> Option<bool> { self.contest.as_ref().map(|c| c.is_ready) }
-    pub fn contest(&self) -> Option<&Contest> { self.contest.as_ref() }
-    pub fn game_state(&self) -> Option<&GameState> { self.contest.as_ref().and_then(|c| c.game_state.as_ref()) }
-    fn game_state_mut(&mut self) -> Option<&mut GameState> { self.contest.as_mut().and_then(|c| c.game_state.as_mut()) }
+    pub fn contest(&self) -> Option<&Contest> {
+        if let ContestState::Connected(ref c) = self.contest_state { Some(c) } else { None }
+    }
+    fn contest_mut(&mut self) -> Option<&mut Contest> {
+        if let ContestState::Connected(ref mut c) = self.contest_state { Some(c) } else { None }
+    }
+    pub fn is_ready(&self) -> Option<bool> { self.contest().map(|c| c.is_ready) }
+    pub fn contest_id(&self) -> Option<&String> { self.contest().map(|c| &c.contest_id) }
+    pub fn game_state(&self) -> Option<&GameState> { self.contest().and_then(|c| c.game_state.as_ref()) }
+    fn game_state_mut(&mut self) -> Option<&mut GameState> { self.contest_mut().and_then(|c| c.game_state.as_mut()) }
     // TODO: Reduce public mutability. This is used only for drag&drop, so limit the mutable API to that.
     pub fn alt_game_mut(&mut self) -> Option<&mut AlteredGame> { self.game_state_mut().map(|c| &mut c.alt_game) }
 
@@ -137,26 +153,36 @@ impl ClientState {
     pub fn read_meter_stats(&self) -> HashMap<String, MeterStats> { self.meter_box.read_stats() }
     pub fn consume_meter_stats(&mut self) -> HashMap<String, MeterStats> { self.meter_box.consume_stats() }
 
-    pub fn join(&mut self) {
-        self.events_tx.send(BughouseClientEvent::Join {
-            player_name: self.my_name.to_owned(),
-            team: self.my_team,
+    pub fn new_contest(
+        &mut self, chess_rules: ChessRules, bughouse_rules: BughouseRules, my_name: String, my_team: Option<Team>
+    ) {
+        self.events_tx.send(BughouseClientEvent::NewContest {
+            chess_rules,
+            bughouse_rules,
+            player_name: my_name.clone(),
+            team: my_team,
         }).unwrap();
+        self.contest_state = ContestState::Creating{ my_name };
+    }
+    pub fn join(&mut self, contest_id: String, my_name: String, my_team: Option<Team>) {
+        self.events_tx.send(BughouseClientEvent::Join {
+            contest_id: contest_id.clone(),
+            player_name: my_name.clone(),
+            team: my_team,
+        }).unwrap();
+        self.contest_state = ContestState::Joining{ contest_id, my_name };
     }
     pub fn resign(&mut self) {
         self.events_tx.send(BughouseClientEvent::Resign).unwrap();
     }
     pub fn set_ready(&mut self, is_ready: bool) {
-        if let Some(contest) = self.contest.as_mut() {
+        if let Some(contest) = self.contest_mut() {
             contest.is_ready = is_ready;
             self.events_tx.send(BughouseClientEvent::SetReady{ is_ready }).unwrap();
         }
     }
     pub fn leave(&mut self) {
         self.events_tx.send(BughouseClientEvent::Leave).unwrap();
-    }
-    pub fn reset(&mut self) {
-        self.events_tx.send(BughouseClientEvent::Reset).unwrap();
     }
     pub fn report_performance(&mut self) {
         let stats = self.consume_meter_stats();
@@ -189,7 +215,7 @@ impl ClientState {
                 *awaiting_turn_confirmation_since = Some(now);
             }
             self.events_tx.send(BughouseClientEvent::MakeTurn{ turn_input }).unwrap();
-            self.add_notable_event(NotableEvent::MyTurnMade);
+            self.notable_event_queue.push_back(NotableEvent::MyTurnMade);
             Ok(())
         } else {
             Err(TurnCommandError::IllegalTurn(TurnError::WrongTurnOrder))
@@ -210,8 +236,24 @@ impl ClientState {
             Error{ message } => {
                 return Err(EventError::ServerReturnedError(format!("Got error from server: {}", message)))
             },
-            ContestStarted{ chess_rules, bughouse_rules } => {
-                self.contest = Some(Contest {
+            ContestWelcome{ contest_id, chess_rules, bughouse_rules } => {
+                let my_name = match &self.contest_state {
+                    ContestState::Creating{ my_name } => {
+                        self.notable_event_queue.push_back(NotableEvent::GotContestId(contest_id.clone()));
+                        my_name.clone()
+                    }
+                    ContestState::Joining{ contest_id: id, my_name } => {
+                        if contest_id != *id {
+                            return Err(cannot_apply_event!("Cannot apply ContestWelcome: expected contest {id}, but got {contest_id}"));
+                        }
+                        my_name.clone()
+                    },
+                    _ => return Err(cannot_apply_event!("Cannot apply ContestWelcome: not expecting a new contest")),
+                };
+                self.contest_state = ContestState::Connected(Contest {
+                    contest_id,
+                    my_name,
+                    my_team: None,
                     chess_rules,
                     bughouse_rules,
                     players: Vec::new(),
@@ -221,11 +263,11 @@ impl ClientState {
                 });
             },
             LobbyUpdated{ players } => {
-                let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply LobbyUpdated: no contest in progress"))?;
+                let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply LobbyUpdated: no contest in progress"))?;
                 // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
                 //   (e.g. is_ready from another player) arrived before is_ready update from this
                 //   client reached the server.
-                contest.is_ready = players.iter().find(|p| p.name == self.my_name).unwrap().is_ready;
+                contest.is_ready = players.iter().find(|p| p.name == contest.my_name).unwrap().is_ready;
                 contest.players = players;
             },
             GameStarted{ starting_position, players, time, turn_log, game_status, scores } => {
@@ -238,11 +280,11 @@ impl ClientState {
                 } else {
                     Some(WallGameTimePair::new(Instant::now(), time.approximate()))
                 };
-                let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameStarted: no contest in progress"))?;
+                let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameStarted: no contest in progress"))?;
                 let game = BughouseGame::new_with_starting_position(
                     contest.chess_rules.clone(), contest.bughouse_rules.clone(), starting_position, player_map
                 );
-                let my_id = match game.find_player(&self.my_name) {
+                let my_id = match game.find_player(&contest.my_name) {
                     Some(id) => BughouseParticipantId::Player(id),
                     None => BughouseParticipantId::Observer(BughouseObserserId {
                         board_idx: BughouseBoard::A,
@@ -261,7 +303,7 @@ impl ClientState {
                 }
                 self.update_game_status(game_status, time)?;
                 self.update_scores(scores)?;
-                self.add_notable_event(NotableEvent::GameStarted);
+                self.notable_event_queue.push_back(NotableEvent::GameStarted);
                 self.update_low_time_warnings(false);
             },
             TurnsMade{ turns, game_status, scores } => {
@@ -275,7 +317,7 @@ impl ClientState {
                 }
             },
             GameOver{ time, game_status, scores: new_scores } => {
-                let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameOver: no contest in progress"))?;
+                let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameOver: no contest in progress"))?;
                 let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameOver: no game in progress"))?;
                 assert!(game_state.alt_game.status() == BughouseGameStatus::Active);
                 game_state.alt_game.set_status(game_status, time);
@@ -283,7 +325,7 @@ impl ClientState {
                 self.game_over_postprocess()?;
             },
             GameExportReady{ content } => {
-                self.add_notable_event(NotableEvent::GameExportReady(content));
+                self.notable_event_queue.push_back(NotableEvent::GameExportReady(content));
             },
         }
         Ok(())
@@ -293,15 +335,13 @@ impl ClientState {
         self.notable_event_queue.pop_front()
     }
 
-    fn add_notable_event(&mut self, event: NotableEvent) {
-        self.notable_event_queue.push_back(event);
-    }
-
     fn apply_remote_turn(&mut self, turn_record: TurnRecord, generate_notable_events: bool)
         -> Result<(), EventError>
     {
         let TurnRecord{ player_id, turn_algebraic, time } = turn_record;
-        let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot make turn: no contest in progress"))?;
+        let ContestState::Connected(contest) = &mut self.contest_state else {
+            return Err(cannot_apply_event!("Cannot make turn: no contest in progress"));
+        };
         let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot make turn: no game in progress"))?;
         let GameState{ ref mut alt_game, ref mut time_pair, ref mut awaiting_turn_confirmation_since, .. } = game_state;
         if alt_game.status() != BughouseGameStatus::Active {
@@ -333,18 +373,18 @@ impl ClientState {
         if generate_notable_events {
             if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
                 if player_id == my_player_id.opponent() {
-                    self.add_notable_event(NotableEvent::OpponentTurnMade);
+                    self.notable_event_queue.push_back(NotableEvent::OpponentTurnMade);
                 }
             }
             if new_reserve_size > old_reserve_size {
-                self.add_notable_event(NotableEvent::MyReserveRestocked);
+                self.notable_event_queue.push_back(NotableEvent::MyReserveRestocked);
             }
         }
         Ok(())
     }
 
     fn verify_game_status(&mut self, game_status: BughouseGameStatus) -> Result<(), EventError> {
-        let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot verify game status: no contest in progress"))?;
+        let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot verify game status: no contest in progress"))?;
         let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot verify game status: no game in progress"))?;
         let GameState{ ref mut alt_game, .. } = game_state;
         if game_status != alt_game.status() {
@@ -358,7 +398,7 @@ impl ClientState {
     fn update_game_status(&mut self, game_status: BughouseGameStatus, game_now: GameInstant)
         -> Result<(), EventError>
     {
-        let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot update game status: no contest in progress"))?;
+        let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot update game status: no contest in progress"))?;
         let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot update game status: no game in progress"))?;
         let GameState{ ref mut alt_game, .. } = game_state;
         if alt_game.status() == BughouseGameStatus::Active {
@@ -372,7 +412,7 @@ impl ClientState {
     }
 
     fn game_over_postprocess(&mut self) -> Result<(), EventError> {
-        let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot process game over: no contest in progress"))?;
+        let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot process game over: no contest in progress"))?;
         let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot process game over: no game in progress"))?;
         let GameState{ ref mut alt_game, .. } = game_state;
         if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
@@ -389,7 +429,7 @@ impl ClientState {
                 },
                 BughouseGameStatus::Draw(_) => SubjectiveGameResult::Draw,
             };
-            self.add_notable_event(NotableEvent::GameOver(game_status));
+            self.notable_event_queue.push_back(NotableEvent::GameOver(game_status));
             // Note. It would make more sense to send performanse stats on leave, but there doesn't
             // seem to be a way to do this reliably, especially on mobile.
             self.report_performance();
@@ -398,7 +438,7 @@ impl ClientState {
     }
 
     fn update_scores(&mut self, new_scores: Scores) -> Result<(), EventError> {
-        let contest = self.contest.as_mut().ok_or_else(|| cannot_apply_event!("Cannot update scores: no contest in progress"))?;
+        let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot update scores: no contest in progress"))?;
         contest.scores = new_scores;
         Ok(())
     }
@@ -429,7 +469,7 @@ impl ClientState {
         }
         if generate_notable_events {
             for _ in 0..num_events {
-                self.add_notable_event(NotableEvent::LowTime);
+                self.notable_event_queue.push_back(NotableEvent::LowTime);
             }
         }
     }

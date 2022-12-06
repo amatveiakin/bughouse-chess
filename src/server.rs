@@ -6,12 +6,13 @@ use std::iter;
 use std::ops;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
+use std::time::Duration;
 
 use enum_map::enum_map;
 use instant::Instant;
 use itertools::Itertools;
 use log::{info, warn};
-use rand::seq::SliceRandom;
+use rand::{Rng, seq::SliceRandom};
 use strum::IntoEnumIterator;
 
 use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
@@ -27,6 +28,7 @@ use crate::server_hooks::{ServerHooks, NoopServerHooks};
 
 const TOTAL_PLAYERS: usize = 4;
 const TOTAL_PLAYERS_PER_TEAM: usize = 2;
+const CONTEST_GC_INACTIVITY_THRESHOLD: Duration = Duration::from_secs(3600 * 24);
 
 #[derive(Debug)]
 pub enum IncomingEvent {
@@ -49,6 +51,11 @@ impl GameState {
         &self.players_with_boards
     }
 }
+
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+struct ContestId(String);
+
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 struct PlayerId(usize);
@@ -88,6 +95,7 @@ pub struct ClientId(usize);
 
 pub struct Client {
     events_tx: mpsc::Sender<BughouseServerEvent>,
+    contest_id: Option<ContestId>,
     player_id: Option<PlayerId>,
     logging_id: String,
 }
@@ -114,6 +122,7 @@ impl Clients {
     {
         let client = Client {
             events_tx,
+            contest_id: None,
             player_id: None,
             logging_id,
         };
@@ -122,9 +131,11 @@ impl Clients {
         assert!(self.map.insert(id, client).is_none());
         id
     }
+
     // Returns `logging_id` if the client existed.
     // A client can be removed multiple times, e.g. first on `Leave`, then on network
     // channel closure. This is not an error.
+    //
     // Improvement potential. Send an event informing other clients that somebody went
     // offline (for TUI: could use “ϟ” for “disconnected”; there is a plug emoji “🔌”
     // that works much better, but it's not supported by console fonts).
@@ -132,10 +143,13 @@ impl Clients {
         self.map.remove(&id).map(|client| client.logging_id)
     }
 
-    // Sends the event to each client who has joined the game.
-    fn broadcast(&mut self, event: &BughouseServerEvent) {
-        for Client{events_tx, player_id, ..} in self.map.values() {
-            if player_id.is_some() {
+    // Sends the event to each client who has joined the contest.
+    //
+    // Improvement potential. Do not iterate over all clients. Keep the list of clients
+    // in each contest.
+    fn broadcast(&mut self, contest_id: &ContestId, event: &BughouseServerEvent) {
+        for Client{events_tx, contest_id: client_contest_id, ..} in self.map.values() {
+            if client_contest_id.as_ref() == Some(contest_id) {
                 events_tx.send(event.clone()).unwrap();
             }
         }
@@ -152,12 +166,14 @@ impl ops::IndexMut<ClientId> for Clients {
 
 
 struct Contest {
+    contest_id: ContestId,
     chess_rules: ChessRules,
     bughouse_rules: BughouseRules,
     players: Players,
     scores: Scores,
     match_history: Vec<BughouseGame>,  // final game states
     game_state: Option<GameState>,  // active game or latest game
+    last_activity: Instant,  // for GC
     board_assignment_override: Option<Vec<(String, BughousePlayerId)>>,  // for tests
 }
 
@@ -166,41 +182,125 @@ struct Context<'a, 'b> {
     hooks: &'a mut dyn ServerHooks,
 }
 
+struct CoreServerState {
+    contests: HashMap<ContestId, Contest>,
+}
+
 type EventResult = Result<(), String>;
 
-// Split state into two parts in order to allow things like:
+// Split state into two parts (core and context) in order to allow things like:
 //   let mut clients = self.clients.lock().unwrap();
+//   self.core.foo(&mut clients);
+// whereas
 //   self.foo(&mut clients);
-// which would otherwise make the compiler complain that `self` is borrowed twice.
+// would make the compiler complain that `self` is borrowed twice.
 pub struct ServerState {
+    // Optimization potential: Lock-free map instead of Mutex<HashMap>.
     clients: Arc<Mutex<Clients>>,
     hooks: Box<dyn ServerHooks>,
-    contest: Contest,
+    core: CoreServerState,
 }
 
 impl ServerState {
     pub fn new(
         clients: Arc<Mutex<Clients>>,
-        chess_rules: ChessRules,
-        bughouse_rules: BughouseRules,
         hooks: Option<Box<dyn ServerHooks>>,
     ) -> Self {
         ServerState {
             clients,
             hooks: hooks.unwrap_or_else(|| Box::new(NoopServerHooks{})),
-            contest: Contest {
-                chess_rules,
-                bughouse_rules,
-                players: Players::new(),
-                scores: Scores::new(),
-                match_history: Vec::new(),
-                game_state: None,
-                board_assignment_override: None,
-            }
+            core: CoreServerState::new(),
         }
     }
 
     pub fn apply_event(&mut self, event: IncomingEvent) {
+        // Lock clients for the entire duration of the function. This means simpler and
+        // more predictable event processing, e.g. it gives a guarantee that all broadcasts
+        // from a single `apply_event` reach the same set of clients.
+        //
+        // Improvement potential. Rethink this approach. With multiple parallel contests this
+        // global mutex may become a bottleneck.
+        let mut clients = self.clients.lock().unwrap();
+
+        let mut ctx = Context {
+            clients: &mut clients,
+            hooks: self.hooks.as_mut()
+        };
+
+        self.core.apply_event(&mut ctx, event);
+    }
+
+    #[allow(non_snake_case)]
+    pub fn TEST_override_board_assignment(
+        &mut self, contest_id: String, assignment: Vec<(String, BughousePlayerId)>
+    ) {
+        let contest_id = ContestId(contest_id);
+        assert_eq!(assignment.len(), TOTAL_PLAYERS);
+        self.core.contests.get_mut(&contest_id).unwrap().board_assignment_override = Some(assignment);
+    }
+}
+
+impl CoreServerState {
+    fn new() -> Self {
+        CoreServerState{ contests: HashMap::new() }
+    }
+
+    fn make_contest(
+        &mut self, now: Instant, chess_rules: ChessRules, bughouse_rules: BughouseRules
+    ) -> ContestId {
+        // Exclude confusing characters:
+        //   - 'O' and '0' (easy to confuse);
+        //   - 'I' (looks like '1'; keep '1' because confusion in the other direction seems less likely).
+        const ALPHABET: [char; 33] = [
+            '1', '2', '3', '4', '5', '6', '7', '8', '9',
+            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M',
+            'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+        ];
+        const MIN_ID_LEN: usize = 4;
+        const MAX_ATTEMPTS_PER_LEN: usize = 100;
+        let mut rng = rand::thread_rng();
+        let mut id_len = MIN_ID_LEN;
+        let mut id = ContestId(String::new());
+        let mut attempts_at_this_len = 0;
+        while id.0.is_empty() || self.contests.contains_key(&id) {
+            id = ContestId((&mut rng)
+                .sample_iter(rand::distributions::Uniform::from(0..ALPHABET.len()))
+                .map(|idx| ALPHABET[idx])
+                .take(id_len)
+                .collect()
+            );
+            attempts_at_this_len += 1;
+            if attempts_at_this_len > MAX_ATTEMPTS_PER_LEN {
+                id_len += 1;
+                attempts_at_this_len = 0;
+            }
+        }
+        let contest = Contest {
+            contest_id: id.clone(),
+            chess_rules,
+            bughouse_rules,
+            players: Players::new(),
+            scores: Scores::new(),
+            match_history: Vec::new(),
+            game_state: None,
+            last_activity: now,
+            board_assignment_override: None,
+        };
+        assert!(self.contests.insert(id.clone(), contest).is_none());
+        id
+    }
+
+    fn new_contest(
+        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
+        chess_rules: ChessRules, bughouse_rules: BughouseRules
+    ) -> ContestId {
+        let contest_id = self.make_contest(now, chess_rules.clone(), bughouse_rules.clone());
+        ctx.clients[client_id].contest_id = Some(contest_id.clone());
+        info!("Contest {} created by client {}", contest_id.0, ctx.clients[client_id].logging_id);
+        contest_id
+    }
+
+    fn apply_event(&mut self, ctx: &mut Context, event: IncomingEvent) {
         // Use the same timestamp for the entire event processing. Other code reachable
         // from this function should not call `Instant::now()`. Doing so may cause a race
         // condition: e.g. if we check the flag, see that it's ok and then continue to
@@ -208,46 +308,93 @@ impl ServerState {
         // is over.
         let now = Instant::now();
 
-        // Lock clients for the entire duration of the function. This means simpler and
-        // more predictable event processing, e.g. it gives a guarantee that all broadcasts
-        // from a single `apply_event` reach the same set of clients.
-        let mut clients = self.clients.lock().unwrap();
-
-        // Create context.
-        let ctx = &mut Context {
-            clients: &mut clients,
-            hooks: self.hooks.as_mut()
-        };
-
-        // Now that we've fixed a `now`, test flags first. Thus we make sure that turns or
-        // other actions are not allowed after the time is over.
-        self.contest.test_flags(ctx, now);
-
         match event {
-            IncomingEvent::Network(client_id, event) => {
-                ctx.hooks.on_client_event(&event);
-                if !ctx.clients.map.contains_key(&client_id) {
-                    // TODO: Should there be an exception for `BughouseClientEvent::ReportError`?
-                    // TODO: Improve logging. Consider:
-                    //   - include logging_id inside client_id, or
-                    //   - keep disconnected clients in the map for some time.
-                    warn!("Got an event from disconnected client:\n{event:?}");
-                    return;
-                }
-                self.contest.process_event(ctx, client_id, now, event);
-            },
-            IncomingEvent::Tick => {
-                // Any event triggers state update, so no additional action is required.
-            },
+            IncomingEvent::Network(client_id, event) => self.on_client_event(ctx, client_id, now, event),
+            IncomingEvent::Tick => self.on_tick(ctx, now),
         }
-
-        self.contest.post_process(ctx, now);
     }
 
-    #[allow(non_snake_case)]
-    pub fn TEST_override_board_assignment(&mut self, assignment: Vec<(String, BughousePlayerId)>) {
-        assert_eq!(assignment.len(), TOTAL_PLAYERS);
-        self.contest.board_assignment_override = Some(assignment);
+    fn on_client_event(
+        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, event: BughouseClientEvent
+    ) {
+        ctx.hooks.on_client_event(&event);
+
+        if !ctx.clients.map.contains_key(&client_id) {
+            // TODO: Should there be an exception for `BughouseClientEvent::ReportError`?
+            // TODO: Improve logging. Consider:
+            //   - include logging_id inside client_id, or
+            //   - keep disconnected clients in the map for some time.
+            warn!("Got an event from disconnected client:\n{event:?}");
+            return;
+        }
+
+        // First, process events that don't require a contest.
+        match &event {
+            BughouseClientEvent::ReportPerformace(..) => {
+                // Only used by server hooks.
+                return;
+            },
+            BughouseClientEvent::ReportError(report) => {
+                process_report_error(ctx, client_id, report);
+                return;
+            },
+            _ => {},
+        };
+
+        let contest_id = match &event {
+            BughouseClientEvent::NewContest{ chess_rules, bughouse_rules, .. } => {
+                Some(self.new_contest(ctx, client_id, now, chess_rules.clone(), bughouse_rules.clone()))
+            },
+            BughouseClientEvent::Join{ contest_id, .. } => {
+                // Remove the client (not the player!) from the current contest:
+                //   - If they are re-joining to the same contest (to fix a desync presumably),
+                //     they will be reconnected immediately.
+                //     TODO: Log these events, they probably indicate client-side errors.
+                //   - If they are joining another contest, this is how we remove them from this one.
+                //     TODO: Add some kind of warning if leaving mid-game.
+                ctx.clients[client_id].player_id = None;
+                Some(ContestId(contest_id.clone()))
+            },
+            _ => ctx.clients[client_id].contest_id.clone(),
+        };
+
+        let Some(contest_id) = contest_id else {
+            // We've already processed all events that do not depend on a contest.
+            ctx.clients[client_id].send_error("Cannot process event: no contest in progress".to_owned());
+            return;
+        };
+
+        let Some(contest) = self.contests.get_mut(&contest_id) else {
+            // The only way to have a contest_id with no contest is when a client is trying
+            // to join with a bad contest_id. In other cases we are getting contest_id from
+            // trusted internal sources, so the contest must exist as well.
+            assert!(matches!(event, BughouseClientEvent::Join{ .. }));
+            ctx.clients[client_id].send_error(format!(r#"Cannot join "{}": no such contest"#, contest_id.0));
+            return;
+        };
+
+        // Test flags first. Thus we make sure that turns and other actions are
+        // not allowed after the time is over.
+        contest.test_flags(ctx, now);
+        contest.process_client_event(ctx, client_id, now, event);
+        contest.post_process(ctx, now);
+        contest.last_activity = now;
+    }
+
+    fn on_tick(&mut self, ctx: &mut Context, now: Instant) {
+        self.gc_old_contests(now);
+        for contest in self.contests.values_mut() {
+            contest.test_flags(ctx, now);
+            contest.post_process(ctx, now);
+        }
+    }
+
+    fn gc_old_contests(&mut self, now: Instant) {
+        // Improvement potential. O(1) time GC.
+        // Improvement potential. GC unused contests (zero games and/or no players) sooner.
+        self.contests.retain(|_, contest| {
+            contest.last_activity.duration_since(now) <= CONTEST_GC_INACTIVITY_THRESHOLD
+        });
     }
 }
 
@@ -274,15 +421,19 @@ impl Contest {
 
     fn broadcast(&self, ctx: &mut Context, event: &BughouseServerEvent) {
         ctx.hooks.on_server_broadcast_event(event, self.game_state.as_ref(), self.match_history.len() + 1);
-        ctx.clients.broadcast(event);
+        ctx.clients.broadcast(&self.contest_id, event);
     }
 
-    fn process_event(
+    fn process_client_event(
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, event: BughouseClientEvent
     ) {
         let result = match event {
-            BughouseClientEvent::Join{ player_name, team } => {
-                self.process_join(ctx, client_id, now, player_name, team)
+            BughouseClientEvent::NewContest{ player_name, team, .. } => {
+                // The contest was created earlier.
+                self.join_player(ctx, client_id, now, player_name, team)
+            },
+            BughouseClientEvent::Join{ contest_id: _, player_name, team } => {
+                self.join_player(ctx, client_id, now, player_name, team)
             },
             BughouseClientEvent::MakeTurn{ turn_input } => {
                 self.process_make_turn(ctx, client_id, now, turn_input)
@@ -299,18 +450,14 @@ impl Contest {
             BughouseClientEvent::Leave => {
                 self.process_leave(ctx, client_id)
             },
-            BughouseClientEvent::Reset => {
-                self.process_reset(ctx)
-            },
             BughouseClientEvent::RequestExport{ format } => {
                 self.process_request_export(ctx, client_id, format)
             },
             BughouseClientEvent::ReportPerformace(..) => {
-                // Only used by server hooks.
-                Ok(())
+                unreachable!("Contest-independent event must be processed separately");
             },
-            BughouseClientEvent::ReportError(report) => {
-                self.process_report_error(ctx, client_id, report)
+            BughouseClientEvent::ReportError(..) => {
+                unreachable!("Contest-independent event must be processed separately");
             },
         };
         if let Err(err) = result {
@@ -318,7 +465,7 @@ impl Contest {
         }
     }
 
-    fn process_join(
+    fn join_player(
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
         player_name: String, fixed_team: Option<Team>
     ) -> EventResult {
@@ -337,7 +484,7 @@ impl Contest {
                 Err(format!("Cannot join: team {:?} is full", fixed_team))
             } else {
                 info!("Player {} joined team {:?}", player_name, fixed_team);
-                ctx.clients[client_id].send(self.make_contest_start_event());
+                ctx.clients[client_id].contest_id = Some(self.contest_id.clone());
                 let player_id = self.players.add_player(Player {
                     name: player_name,
                     fixed_team,
@@ -345,6 +492,7 @@ impl Contest {
                     is_ready: false,
                 });
                 ctx.clients[client_id].player_id = Some(player_id);
+                ctx.clients[client_id].send(self.make_contest_welcome_event());
                 self.send_lobby_updated(ctx);
                 Ok(())
             }
@@ -363,8 +511,9 @@ impl Contest {
                     player_name, current_fixed_team, fixed_team
                 ))
             } else {
+                ctx.clients[client_id].contest_id = Some(self.contest_id.clone());
                 ctx.clients[client_id].player_id = Some(existing_player_id);
-                ctx.clients[client_id].send(self.make_contest_start_event());
+                ctx.clients[client_id].send(self.make_contest_welcome_event());
                 ctx.clients[client_id].send(self.make_game_start_event(now));
                 Ok(())
             }
@@ -502,16 +651,6 @@ impl Contest {
         Ok(())
     }
 
-    fn process_reset(&mut self, ctx: &mut Context) -> EventResult {
-        self.scores = Scores::new();
-        self.match_history = Vec::new();
-        self.game_state = None;
-        self.reset_readiness();
-        self.broadcast(ctx, &self.make_contest_start_event());
-        self.send_lobby_updated(ctx);
-        Ok(())
-    }
-
     fn process_request_export(
         &self, ctx: &mut Context, client_id: ClientId, format: BughouseExportFormat
     ) -> EventResult {
@@ -524,24 +663,6 @@ impl Contest {
             pgn::export_to_bpgn(format, game, round + 1)
         }).join("\n");
         ctx.clients[client_id].send(BughouseServerEvent::GameExportReady{ content });
-        Ok(())
-    }
-
-    fn process_report_error(
-        &self, ctx: &Context, client_id: ClientId, report: BughouseClientErrorReport
-    ) -> EventResult {
-        let logging_id = &ctx.clients[client_id].logging_id;
-        match report {
-            BughouseClientErrorReport::RustPanic{ panic_info, backtrace } => {
-                warn!("Client {logging_id} panicked:\n{panic_info}\nBacktrace: {backtrace}");
-            }
-            BughouseClientErrorReport::RustError{ message } => {
-                warn!("Client {logging_id} experienced Rust error:\n{message}");
-            }
-            BughouseClientErrorReport::UnknownError{ message } => {
-                warn!("Client {logging_id} experienced unknown error:\n{message}");
-            }
-        }
         Ok(())
     }
 
@@ -619,8 +740,9 @@ impl Contest {
         }
     }
 
-    fn make_contest_start_event(&self) -> BughouseServerEvent {
-        BughouseServerEvent::ContestStarted {
+    fn make_contest_welcome_event(&self) -> BughouseServerEvent {
+        BughouseServerEvent::ContestWelcome {
+            contest_id: self.contest_id.0.clone(),
             chess_rules: self.chess_rules.clone(),
             bughouse_rules: self.bughouse_rules.clone(),
         }
@@ -763,6 +885,22 @@ fn update_score_on_game_over(game: &BughouseGame, scores: &mut Scores) {
             for p in game.players() {
                 *scores.per_player.entry(p.name.clone()).or_insert(0) += team_scores[p.team];
             }
+        }
+    }
+}
+
+fn process_report_error(ctx: &Context, client_id: ClientId, report: &BughouseClientErrorReport) {
+    // TODO: Save errors to DB.
+    let logging_id = &ctx.clients[client_id].logging_id;
+    match report {
+        BughouseClientErrorReport::RustPanic{ panic_info, backtrace } => {
+            warn!("Client {logging_id} panicked:\n{panic_info}\nBacktrace: {backtrace}");
+        }
+        BughouseClientErrorReport::RustError{ message } => {
+            warn!("Client {logging_id} experienced Rust error:\n{message}");
+        }
+        BughouseClientErrorReport::UnknownError{ message } => {
+            warn!("Client {logging_id} experienced unknown error:\n{message}");
         }
     }
 }

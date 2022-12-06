@@ -18,7 +18,8 @@ pub enum BughouseServerEvent {
     Error {
         message: String,
     },
-    ContestStarted {
+    ContestWelcome {
+        contest_id: String,
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
     },
@@ -67,14 +68,29 @@ pub enum BughouseClientErrorReport {
     UnknownError{ message: String },
 }
 
+// TODO: Make sure server does not process events like MakeTurn sent during an older game.
+//   This hasn't been spotted in practice so far, but seems possible in theory. Solutions:
+//   - Add game_id tag to relevant events; or
+//   - Implement a barrier: don't start a new game until all clients confirmed that they are
+//     ready; or don't accept events for a new game until the client confirms game start.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseClientEvent {
-    Join {
+    NewContest {
+        chess_rules: ChessRules,
+        bughouse_rules: BughouseRules,
         player_name: String,
-        team: Option<Team>,
+        team: Option<Team>,  // TODO: Remove; choose the team in the lobby
     },
+    Join {
+        contest_id: String,
+        player_name: String,
+        team: Option<Team>,  // TODO: Remove; choose the team in the lobby
+    },
+    // TODO: Allow choosing the team in team mode
+    // SetTeam {
+    //     team: Team,
+    // },
     MakeTurn {
-        // TODO: Add `game_id` field to avoid replaying lingering moves from older games.
         turn_input: TurnInput,
     },
     CancelPreturn,
@@ -83,7 +99,6 @@ pub enum BughouseClientEvent {
         is_ready: bool,
     },
     Leave,
-    Reset,
     RequestExport {
         format: BughouseExportFormat,
     },

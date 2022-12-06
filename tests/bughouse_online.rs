@@ -2,8 +2,11 @@
 // In particular, add regression test for trying to make a turn after time ran out
 //   according to the client clock, but the server hasn't confirmed game over yet.
 
+// Improvement potential. Cover all events, including RequestExport and ReportError.
+
 mod common;
 
+use std::iter;
 use std::ops;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
@@ -47,10 +50,10 @@ struct Server {
 }
 
 impl Server {
-    fn new(chess_rules: ChessRules, bughouse_rules: BughouseRules) -> Self {
+    fn new() -> Self {
         let clients = Arc::new(Mutex::new(server::Clients::new()));
         let clients_copy = Arc::clone(&clients);
-        let state = server::ServerState::new(clients_copy, chess_rules, bughouse_rules, None);
+        let state = server::ServerState::new(clients_copy, None);
         Server{ clients, state }
     }
 
@@ -75,14 +78,18 @@ struct Client {
 }
 
 impl Client {
-    pub fn new(my_name: String, my_team: Option<Team>, server: &mut Server) -> Self {
+    pub fn new(server: &mut Server) -> Self {
         let (incoming_tx, incoming_rx) = mpsc::channel();
         let (outgoing_tx, outgoing_rx) = mpsc::channel();
         let id = server.add_client(incoming_tx);
         let user_agent = "Test".to_owned();
         let time_zone = "?".to_owned();
-        let state = client::ClientState::new(my_name, my_team, user_agent, time_zone, outgoing_tx);
+        let state = client::ClientState::new(user_agent, time_zone, outgoing_tx);
         Client{ id, incoming_rx, outgoing_rx, state }
+    }
+
+    fn join(&mut self, contest_id: &str, my_name: &str, my_team: Option<Team>) {
+        self.state.join(contest_id.to_owned(), my_name.to_owned(), my_team)
     }
 
     fn alt_game(&self) -> &AlteredGame { &self.state.game_state().unwrap().alt_game }
@@ -142,41 +149,60 @@ struct World {
 
 impl World {
     fn new() -> Self {
-        Self::new_with_rules(default_chess_rules(), default_bughouse_rules())
-    }
-    fn new_with_rules(chess_rules: ChessRules, bughouse_rules: BughouseRules) -> Self {
         World {
-            server: Server::new(chess_rules, bughouse_rules),
+            server: Server::new(),
             clients: vec![],
         }
     }
 
-    fn add_client(&mut self, name: &str, team: Option<Team>) -> TestClientId {
+    fn new_contest_with_rules(
+        &mut self, client_id: TestClientId, player_name: &str, player_team: Option<Team>,
+        chess_rules: ChessRules, bughouse_rules: BughouseRules
+    ) -> String {
+        self[client_id].state.new_contest(chess_rules, bughouse_rules, player_name.to_owned(), player_team);
+        self.process_all_events();
+        self[client_id].state.contest_id().unwrap().clone()
+    }
+    fn new_contest(
+        &mut self, client_id: TestClientId, player_name: &str, player_team: Option<Team>
+    ) -> String {
+        self.new_contest_with_rules(
+            client_id, player_name, player_team, default_chess_rules(), default_bughouse_rules()
+        )
+    }
+
+    fn new_client(&mut self) -> TestClientId {
         let idx = TestClientId(self.clients.len());
-        let mut client = Client::new(name.to_owned(), team, &mut self.server);
-        client.state.join();
+        let client = Client::new(&mut self.server);
         self.clients.push(client);
         idx
     }
-    fn default_clients(&mut self) -> (TestClientId, TestClientId, TestClientId, TestClientId) {
-        self.server.state.TEST_override_board_assignment(vec! [
+    fn new_clients<const NUM: usize>(&mut self) -> [TestClientId; NUM] {
+        iter::repeat_with(|| self.new_client()).take(NUM).collect_vec().try_into().unwrap()
+    }
+
+    fn default_clients(&mut self) -> (String, TestClientId, TestClientId, TestClientId, TestClientId) {
+        let [cl1, cl2, cl3, cl4] = self.new_clients();
+
+        let contest = self.new_contest(cl1, "p1", Some(Team::Red));
+
+        self.server.state.TEST_override_board_assignment(contest.clone(), vec! [
             ("p1".to_owned(), seating!(White A)),
             ("p2".to_owned(), seating!(Black B)),
             ("p3".to_owned(), seating!(Black A)),
             ("p4".to_owned(), seating!(White B)),
         ]);
-        let mut clients = [
-            self.add_client("p1", Some(Team::Red)),
-            self.add_client("p2", Some(Team::Red)),
-            self.add_client("p3", Some(Team::Blue)),
-            self.add_client("p4", Some(Team::Blue)),
-        ];
+
+        self[cl2].join(&contest, "p2", Some(Team::Red));
+        self[cl3].join(&contest, "p3", Some(Team::Blue));
+        self[cl4].join(&contest, "p4", Some(Team::Blue));
         self.process_all_events();
-        for cl in clients.iter_mut() {
+
+        for cl in [cl1, cl2, cl3, cl4].iter() {
             self[*cl].state.set_ready(true);
         }
         self.process_all_events();
-        clients.into_iter().collect_tuple().unwrap()
+        (contest, cl1, cl2, cl3, cl4)
     }
 
     fn process_events_for(&mut self, client_id: TestClientId) -> Result<(), client::EventError> {
@@ -246,17 +272,20 @@ impl ops::IndexMut<TestClientId> for World {
 #[test]
 fn play_online_misc() {
     let mut world = World::new();
-    world.server.state.TEST_override_board_assignment(vec! [
+    let [cl1, cl2, cl3, cl4] = world.new_clients();
+
+    let contest = world.new_contest(cl1, "p1", Some(Team::Red));
+
+    world.server.state.TEST_override_board_assignment(contest.clone(), vec! [
         ("p1".to_owned(), seating!(White A)),
         ("p2".to_owned(), seating!(Black B)),
         ("p3".to_owned(), seating!(Black A)),
         ("p4".to_owned(), seating!(White B)),
     ]);
 
-    let cl1 = world.add_client("p1", Some(Team::Red));
-    let cl2 = world.add_client("p2", Some(Team::Red));
-    let cl3 = world.add_client("p3", Some(Team::Blue));
-    let cl4 = world.add_client("p4", Some(Team::Blue));
+    world[cl2].join(&contest, "p2", Some(Team::Red));
+    world[cl3].join(&contest, "p3", Some(Team::Blue));
+    world[cl4].join(&contest, "p4", Some(Team::Blue));
     world.process_all_events();
 
     world[cl1].state.set_ready(true);
@@ -298,7 +327,7 @@ fn play_online_misc() {
 #[test]
 fn remote_turn_persisted() {
     let mut world = World::new();
-    let (cl1, _cl2, _cl3, cl4) = world.default_clients();
+    let (_, cl1, _cl2, _cl3, cl4) = world.default_clients();
 
     world[cl1].make_turn("e4").unwrap();
     world[cl4].make_turn("d4").unwrap();
@@ -310,7 +339,7 @@ fn remote_turn_persisted() {
 #[test]
 fn preturn_successful() {
     let mut world = World::new();
-    let (cl1, _cl2, cl3, _cl4) = world.default_clients();
+    let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
 
     // Valid pre-move executed after opponent's turn.
     world[cl3].make_turn("d5").unwrap();
@@ -324,7 +353,7 @@ fn preturn_successful() {
 #[test]
 fn preturn_failed_square_occupied() {
     let mut world = World::new();
-    let (cl1, _cl2, cl3, _cl4) = world.default_clients();
+    let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
 
     world[cl1].make_turn("e4").unwrap();  world.process_all_events();
     world[cl3].make_turn("d5").unwrap();  world.process_all_events();
@@ -340,7 +369,7 @@ fn preturn_failed_square_occupied() {
 #[test]
 fn preturn_failed_piece_captured() {
     let mut world = World::new();
-    let (cl1, _cl2, cl3, _cl4) = world.default_clients();
+    let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
 
     world[cl1].make_turn(drag_move!(E2 -> E4)).unwrap();  world.process_all_events();
     world[cl3].make_turn(drag_move!(D7 -> D5)).unwrap();  world.process_all_events();
@@ -355,7 +384,7 @@ fn preturn_failed_piece_captured() {
 #[test]
 fn preturn_cancellation() {
     let mut world = World::new();
-    let (cl1, _cl2, cl3, _cl4) = world.default_clients();
+    let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
 
     // Cancel pre-turn
     world[cl3].make_turn("Nc6").unwrap();
@@ -386,7 +415,7 @@ fn preturn_cancellation() {
 #[test]
 fn preturn_auto_cancellation_on_resign() {
     let mut world = World::new();
-    let (cl1, cl2, _cl3, _cl4) = world.default_clients();
+    let (_, cl1, cl2, _cl3, _cl4) = world.default_clients();
 
     world[cl2].make_turn("e5").unwrap();
     world.process_all_events();
@@ -401,7 +430,7 @@ fn preturn_auto_cancellation_on_resign() {
 #[test]
 fn preturn_auto_cancellation_on_checkmate() {
     let mut world = World::new();
-    let (cl1, cl2, cl3, _cl4) = world.default_clients();
+    let (_, cl1, cl2, cl3, _cl4) = world.default_clients();
 
     world[cl2].make_turn("e5").unwrap();
     world.process_all_events();
@@ -414,11 +443,13 @@ fn preturn_auto_cancellation_on_checkmate() {
 #[test]
 fn reconnect_lobby() {
     let mut world = World::new();
+    let [cl1, cl2, cl3] = world.new_clients();
 
-    let cl1 = world.add_client("p1", Some(Team::Red));
-    let cl2 = world.add_client("p2", Some(Team::Red));
-    let cl3 = world.add_client("p3", Some(Team::Blue));
+    let contest = world.new_contest(cl1, "p1", Some(Team::Red));
+    world[cl2].join(&contest, "p2", Some(Team::Red));
+    world[cl3].join(&contest, "p3", Some(Team::Blue));
     world.process_all_events();
+
     world[cl1].state.set_ready(true);
     world[cl2].state.set_ready(true);
     world[cl3].state.set_ready(true);
@@ -430,7 +461,8 @@ fn reconnect_lobby() {
     world.process_all_events();
     assert_eq!(world[cl1].state.contest().unwrap().players.len(), 1);
 
-    let cl4 = world.add_client("p4", Some(Team::Blue));
+    let cl4 = world.new_client();
+    world[cl4].join(&contest, "p4", Some(Team::Blue));
     world.process_all_events();
     world[cl4].state.set_ready(true);
     world.process_all_events();
@@ -439,14 +471,17 @@ fn reconnect_lobby() {
     assert_eq!(world[cl1].state.contest().unwrap().players.len(), 2);
 
     // Cannot reconnect as an active player.
-    let cl1_new = world.add_client("p1", Some(Team::Blue));
+    let cl1_new = world.new_client();
+    world[cl1_new].join(&contest, "p1", Some(Team::Blue));
     assert!(matches!(world.process_events_for(cl1_new), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // Can reconnect with the same name - that's fine.
-    let cl2_new = world.add_client("p2", Some(Team::Red));
+    let cl2_new = world.new_client();
+    world[cl2_new].join(&contest, "p2", Some(Team::Red));
     // Can use free spot to connect with a different name - that's fine too.
-    let cl5 = world.add_client("p5", Some(Team::Blue));
+    let cl5 = world.new_client();
+    world[cl5].join(&contest, "p5", Some(Team::Blue));
     world.process_all_events();
     assert!(world[cl1].state.game_state().is_none());
 
@@ -459,7 +494,7 @@ fn reconnect_lobby() {
 #[test]
 fn reconnect_game_active() {
     let mut world = World::new();
-    let (cl1, _cl2, cl3, _cl4) = world.default_clients();
+    let (contest, cl1, _cl2, cl3, _cl4) = world.default_clients();
     assert!(world[cl1].state.game_state().is_some());
 
     world[cl1].make_turn("e4").unwrap();   world.process_all_events();
@@ -473,22 +508,26 @@ fn reconnect_game_active() {
     assert!(world[cl1].state.game_state().is_some());
 
     // Cannot connect as a different player even though somebody has left.
-    let cl5 = world.add_client("p5", Some(Team::Blue));
+    let cl5 = world.new_client();
+    world[cl5].join(&contest, "p5", Some(Team::Blue));
     assert!(matches!(world.process_events_for(cl5), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // Cannot reconnect as an active player.
-    let cl2_new = world.add_client("p2", Some(Team::Blue));
+    let cl2_new = world.new_client();
+    world[cl2_new].join(&contest, "p2", Some(Team::Blue));
     assert!(matches!(world.process_events_for(cl2_new), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // Cannot reconnect as a different team.
-    let cl3_new = world.add_client("p3", Some(Team::Red));
+    let cl3_new = world.new_client();
+    world[cl3_new].join(&contest, "p3", Some(Team::Red));
     assert!(matches!(world.process_events_for(cl3_new), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // Reconnection successful.
-    let cl3_new = world.add_client("p3", Some(Team::Blue));
+    let cl3_new = world.new_client();
+    world[cl3_new].join(&contest, "p3", Some(Team::Blue));
     world.process_events_for(cl3_new).unwrap();
     world.process_all_events();
 
@@ -506,7 +545,7 @@ fn reconnect_game_active() {
 #[test]
 fn reconnect_game_over_checkmate() {
     let mut world = World::new();
-    let (cl1, _cl2, cl3, cl4) = world.default_clients();
+    let (contest, cl1, _cl2, cl3, cl4) = world.default_clients();
 
     world[cl4].make_turn("e4").unwrap();
     world.process_all_events();
@@ -514,7 +553,8 @@ fn reconnect_game_over_checkmate() {
     world.process_all_events();
 
     world.replay_white_checkmates_black(cl1, cl3);
-    let cl4_new = world.add_client("p4", Some(Team::Blue));
+    let cl4_new = world.new_client();
+    world[cl4_new].join(&contest, "p4", Some(Team::Blue));
     world.process_all_events();
     assert!(world[cl4_new].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
     assert_eq!(
@@ -526,7 +566,7 @@ fn reconnect_game_over_checkmate() {
 #[test]
 fn reconnect_game_over_resignation() {
     let mut world = World::new();
-    let (cl1, _cl2, _cl3, cl4) = world.default_clients();
+    let (contest, cl1, _cl2, _cl3, cl4) = world.default_clients();
 
     world[cl4].make_turn("e4").unwrap();
     world.process_all_events();
@@ -535,7 +575,8 @@ fn reconnect_game_over_resignation() {
 
     world[cl1].state.resign();
     world.process_all_events();
-    let cl4_new = world.add_client("p4", Some(Team::Blue));
+    let cl4_new = world.new_client();
+    world[cl4_new].join(&contest, "p4", Some(Team::Blue));
     world.process_all_events();
     assert!(world[cl4_new].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
     assert_eq!(
@@ -549,7 +590,7 @@ fn reconnect_game_over_resignation() {
 #[test]
 fn turn_after_game_ended_on_another_board() {
     let mut world = World::new();
-    let (cl1, _cl2, _cl3, cl4) = world.default_clients();
+    let (_, cl1, _cl2, _cl3, cl4) = world.default_clients();
     assert!(world[cl1].state.game_state().is_some());
 
     world[cl1].state.resign();
@@ -561,22 +602,12 @@ fn turn_after_game_ended_on_another_board() {
 }
 
 #[test]
-fn game_reset() {
-    let mut world = World::new();
-    let (cl1, cl2, cl3, cl4) = world.default_clients();
-
-    world.replay_white_checkmates_black(cl1, cl3);
-    world.process_all_events();
-    assert_eq!(world[cl2].state.contest().unwrap().scores.per_team.get(&Team::Red), Some(&2));
-
-    world[cl4].state.reset();
-    world.process_all_events();
-    assert_eq!(world[cl2].state.contest().unwrap().scores.per_team.get(&Team::Red), None);
-}
-
-#[test]
 fn five_players() {
-    let mut world = World::new_with_rules(
+    let mut world = World::new();
+    let [cl1, cl2, cl3, cl4, cl5] = world.new_clients();
+
+    let contest = world.new_contest_with_rules(
+        cl1, "p1", None,
         default_chess_rules(),
         BughouseRules {
             teaming: Teaming::IndividualMode,
@@ -584,28 +615,69 @@ fn five_players() {
         }
     );
 
-    world.server.state.TEST_override_board_assignment(vec! [
+    world.server.state.TEST_override_board_assignment(contest.clone(), vec! [
         ("p1".to_owned(), seating!(White A)),
         ("p2".to_owned(), seating!(Black B)),
         ("p3".to_owned(), seating!(Black A)),
         ("p4".to_owned(), seating!(White B)),
     ]);
-    let mut clients = [
-        world.add_client("p1", None),
-        world.add_client("p2", None),
-        world.add_client("p3", None),
-        world.add_client("p4", None),
-        world.add_client("p5", None),
-    ];
+
+    world[cl2].join(&contest, "p2", None);
+    world[cl3].join(&contest, "p3", None);
+    world[cl4].join(&contest, "p4", None);
+    world[cl5].join(&contest, "p5", None);
     world.process_all_events();
-    for cl in clients.iter_mut() {
+
+    for cl in [cl1, cl2, cl3, cl4, cl5].iter() {
         world[*cl].state.set_ready(true);
     }
     world.process_all_events();
-    let (cl1, _cl2, _cl3, _cl4, cl5) = clients.into_iter().collect_tuple().unwrap();
 
     // The player who does not participate should still be able to see the game.
     world[cl1].make_turn("e4").unwrap();
     world.process_all_events();
     assert!(world[cl5].local_game().board(BughouseBoard::A).grid()[Coord::E4].is(piece!(White Pawn)));
+}
+
+#[test]
+fn two_contests() {
+    let mut world = World::new();
+    let [cl1, cl2, cl3, cl4, cl5, cl6, cl7, cl8] = world.new_clients();
+
+    let contest1 = world.new_contest(cl1, "p1", Some(Team::Red));
+    let contest2 = world.new_contest(cl5, "p5", Some(Team::Red));
+
+    world.server.state.TEST_override_board_assignment(contest1.clone(), vec! [
+        ("p1".to_owned(), seating!(White A)),
+        ("p2".to_owned(), seating!(Black B)),
+        ("p3".to_owned(), seating!(Black A)),
+        ("p4".to_owned(), seating!(White B)),
+    ]);
+    world.server.state.TEST_override_board_assignment(contest2.clone(), vec! [
+        ("p5".to_owned(), seating!(White A)),
+        ("p6".to_owned(), seating!(Black B)),
+        ("p7".to_owned(), seating!(Black A)),
+        ("p8".to_owned(), seating!(White B)),
+    ]);
+
+    world[cl2].join(&contest1, "p2", Some(Team::Red));
+    world[cl3].join(&contest1, "p3", Some(Team::Blue));
+    world[cl4].join(&contest1, "p4", Some(Team::Blue));
+    world[cl6].join(&contest2, "p6", Some(Team::Red));
+    world[cl7].join(&contest2, "p7", Some(Team::Blue));
+    world[cl8].join(&contest2, "p8", Some(Team::Blue));
+    world.process_all_events();
+
+    for cl in [cl1, cl2, cl3, cl4, cl5, cl6, cl7, cl8].iter() {
+        world[*cl].state.set_ready(true);
+    }
+    world.process_all_events();
+
+    world[cl1].make_turn("e4").unwrap();
+    world[cl5].make_turn("Nc3").unwrap();
+    world.process_all_events();
+    assert!(world[cl2].local_game().board(BughouseBoard::A).grid()[Coord::E4].is(piece!(White Pawn)));
+    assert!(world[cl2].local_game().board(BughouseBoard::A).grid()[Coord::C3].is_none());
+    assert!(world[cl6].local_game().board(BughouseBoard::A).grid()[Coord::E4].is_none());
+    assert!(world[cl6].local_game().board(BughouseBoard::A).grid()[Coord::C3].is(piece!(White Knight)));
 }

@@ -5,6 +5,7 @@
 //   Better yet: subtler change by default and throbbing vignette on low time
 //   like in action games!
 
+
 extern crate console_error_panic_hook;
 extern crate enum_map;
 extern crate instant;
@@ -15,6 +16,7 @@ extern crate wasm_bindgen;
 extern crate bughouse_chess;
 
 use std::sync::mpsc;
+use std::time::Duration;
 
 use enum_map::{EnumMap, enum_map};
 use instant::Instant;
@@ -133,6 +135,9 @@ impl JsMeter {
 pub struct JsEventMyNoop {}  // in contrast to `null`, indicates that event list is not over
 
 #[wasm_bindgen]
+pub struct JsEventGotContestId { contest_id: String }
+
+#[wasm_bindgen]
 pub struct JsEventVictory {}
 
 #[wasm_bindgen]
@@ -151,9 +156,13 @@ pub struct JsEventMyReserveRestocked {}
 pub struct JsEventLowTime {}
 
 #[wasm_bindgen]
-pub struct JsEventGameExportReady {
-    content: String,
+pub struct JsEventGameExportReady { content: String }
+
+#[wasm_bindgen]
+impl JsEventGotContestId {
+    pub fn contest_id(&self) -> String { self.contest_id.clone() }
 }
+
 #[wasm_bindgen]
 impl JsEventGameExportReady {
     pub fn content(&self) -> String { self.content.clone() }
@@ -171,18 +180,10 @@ pub struct WebClient {
 
 #[wasm_bindgen]
 impl WebClient {
-    pub fn new_client(my_name: String, my_team: &str, user_agent: String, time_zone: String)
-        -> JsResult<WebClient>
-    {
-        let my_team = match my_team {
-            "red" => Some(Team::Red),
-            "blue" => Some(Team::Blue),
-            "" => None,
-            _ => { return Err(rust_error!("Unexpected team: {}", my_team)); }
-        };
+    pub fn new_client(user_agent: String, time_zone: String) -> JsResult<WebClient> {
         let (server_tx, server_rx) = mpsc::channel();
         Ok(WebClient {
-            state: ClientState::new(my_name, my_team, user_agent, time_zone, server_tx),
+            state: ClientState::new(user_agent, time_zone, server_tx),
             server_rx,
             rotate_boards: false,
         })
@@ -192,8 +193,24 @@ impl WebClient {
         JsMeter::new(self.state.meter(name))
     }
 
-    pub fn join(&mut self) {
-        self.state.join();
+    pub fn new_contest(&mut self, my_name: String) {
+        // TODO: Make rules configurable.
+        let chess_rules = ChessRules {
+            starting_position: StartingPosition::FischerRandom,
+            time_control: TimeControl {
+                starting_time: Duration::from_secs(300),
+            },
+        };
+        let bughouse_rules = BughouseRules {
+            teaming: Teaming::IndividualMode,
+            min_pawn_drop_row: SubjectiveRow::from_one_based(2),
+            max_pawn_drop_row: SubjectiveRow::from_one_based(6),
+            drop_aggression: DropAggression::NoChessMate,
+        };
+        self.state.new_contest(chess_rules, bughouse_rules, my_name, None);
+    }
+    pub fn join(&mut self, contest_id: String, my_name: String) {
+        self.state.join(contest_id, my_name, None);
     }
     pub fn resign(&mut self) {
         self.state.resign();
@@ -205,9 +222,6 @@ impl WebClient {
     }
     pub fn leave(&mut self) {
         self.state.leave();
-    }
-    pub fn reset(&mut self) {
-        self.state.reset();
     }
     pub fn request_export(&mut self) -> JsResult<()> {
         let format = pgn::BughouseExportFormat{};
@@ -320,6 +334,7 @@ impl WebClient {
 
     pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
         match self.state.next_notable_event() {
+            Some(NotableEvent::GotContestId(contest_id)) => Ok(JsEventGotContestId{ contest_id }.into()),
             Some(NotableEvent::GameStarted) => {
                 let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
                     return Err(rust_error!("No game in progress"));
@@ -368,7 +383,7 @@ impl WebClient {
         let Some(contest) = self.state.contest() else {
             return Ok(());
         };
-        update_scores(&contest.scores, contest.bughouse_rules.teaming, self.state.my_team())?;
+        update_scores(&contest.scores, contest.bughouse_rules.teaming, contest.my_team)?;
         let Some(GameState{ ref alt_game, .. }) = contest.game_state else {
             update_lobby(&contest)?;
             return Ok(());
@@ -629,25 +644,27 @@ pub fn init_page(
 fn update_lobby(contest: &Contest) -> JsResult<()> {
     let info_string = web_document().get_existing_element_by_id("info-string")?;
     // TODO: Show teams for the news game in individual mode.
-    match contest.bughouse_rules.teaming {
+    let player_info = match contest.bughouse_rules.teaming {
         Teaming::FixedTeams => {
             let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
             for p in &contest.players {
                 teams[p.fixed_team.unwrap()].push(player_with_readiness_status(p));
             }
-            info_string.set_text_content(Some(&format!(
+            format!(
                 "red:\n{}\nblue:\n{}",
                 teams[Team::Red].join("\n"),
                 teams[Team::Blue].join("\n"),
-            )));
+            )
         },
         Teaming::IndividualMode => {
-            info_string.set_text_content(Some(&contest.players.iter().map(|p| {
+            contest.players.iter().map(|p| {
                 assert!(p.fixed_team.is_none());
                 player_with_readiness_status(p)
-            }).join("\n")))
+            }).join("\n")
         },
-    }
+    };
+    let contest_id = &contest.contest_id;
+    info_string.set_text_content(Some(&format!("Contest {contest_id}\n{player_info}")));
     // TODO: Reset boards, clock, etc.
     Ok(())
 }

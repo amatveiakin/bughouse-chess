@@ -9,7 +9,6 @@ use std::thread;
 use std::time::Duration;
 
 use log::{info, warn};
-use regex::Regex;
 use tungstenite::protocol;
 
 use bughouse_chess::*;
@@ -21,23 +20,11 @@ use crate::rusqlite_server_hooks::*;
 
 
 pub struct ServerConfig {
-    pub teaming: String,
-    pub starting_time: String,
     pub sqlite_db: Option<String>,
 }
 
 fn to_debug_string<T: std::fmt::Debug>(v: T) -> String {
     format!("{v:?}")
-}
-
-fn parse_starting_time(time_str: &str) -> Duration {
-    let time_re = Regex::new(r"([0-9]+):([0-9]{2})").unwrap();
-    let cap = time_re.captures(time_str).unwrap_or_else(
-        || panic!("Invalid starting time format: '{}', expected 'm:ss'", time_str)
-    );
-    let minutes = cap.get(1).unwrap().as_str().parse::<u64>().unwrap();
-    let seconds = cap.get(2).unwrap().as_str().parse::<u64>().unwrap();
-    Duration::from_secs(minutes * 60 + seconds)
 }
 
 fn handle_connection(stream: TcpStream, clients: &Arc<Mutex<Clients>>, tx: mpsc::Sender<IncomingEvent>)
@@ -89,24 +76,6 @@ fn handle_connection(stream: TcpStream, clients: &Arc<Mutex<Clients>>, tx: mpsc:
 }
 
 pub fn run(config: ServerConfig) {
-    let teaming = match config.teaming.as_str() {
-        "fixed" => Teaming::FixedTeams,
-        "dynamic" => Teaming::IndividualMode,
-        other => panic!("Unexpected teaming: {}", other),
-    };
-    let chess_rules = ChessRules {
-        starting_position: StartingPosition::FischerRandom,
-        time_control: TimeControl {
-            starting_time: parse_starting_time(&config.starting_time)
-        },
-    };
-    let bughouse_rules = BughouseRules {
-        teaming,
-        min_pawn_drop_row: SubjectiveRow::from_one_based(2),
-        max_pawn_drop_row: SubjectiveRow::from_one_based(6),
-        drop_aggression: DropAggression::NoChessMate,
-    };
-
     let (tx, rx) = mpsc::channel();
     let tx_tick = tx.clone();
     thread::spawn(move || {
@@ -127,8 +96,6 @@ pub fn run(config: ServerConfig) {
         });
         let mut server_state = ServerState::new(
             clients_copy,
-            chess_rules,
-            bughouse_rules,
             hooks
         );
 

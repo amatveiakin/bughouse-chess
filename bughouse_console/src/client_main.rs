@@ -26,6 +26,8 @@ use crate::tui;
 
 pub struct ClientConfig {
     pub server_address: String,
+    // TODO: Allow to create new contests from the console client.
+    pub contest_id: String,
     pub player_name: String,
     pub team: Option<String>,
 }
@@ -128,6 +130,7 @@ fn render(
 }
 
 pub fn run(config: ClientConfig) -> io::Result<()> {
+    let contest_id = config.contest_id.trim().to_owned();
     let my_name = config.player_name.trim().to_owned();
     let my_team = config.team.as_ref().map(|t| match t.as_str() {
         "red" => Team::Red,
@@ -186,10 +189,10 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     // Note. One could do this:
     //   let time_zone = tzdata::Timezone::local().map_or("?".to_owned(), |tz| tz.name.clone());
     // using `tzdata` crate, but it's unmaintained.
-    let mut client_state = ClientState::new(my_name.to_owned(), my_team, user_agent, time_zone, server_tx);
+    let mut client_state = ClientState::new(user_agent, time_zone, server_tx);
     let mut keyboard_input = String::new();
     let mut command_error = None;
-    client_state.join();
+    client_state.join(contest_id, my_name.to_owned(), my_team);
     for event in rx {
         match event {
             IncomingEvent::Network(event) => {
@@ -250,6 +253,9 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
         client_state.refresh();
         for event in client_state.next_notable_event() {
             match event {
+                NotableEvent::GotContestId(..) => {
+                    // TODO: Display to the user.
+                }
                 NotableEvent::GameStarted => {
                     execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
                 },

@@ -11,7 +11,6 @@ extern crate console;
 extern crate enum_map;
 extern crate instant;
 extern crate itertools;
-extern crate regex;
 extern crate scopeguard;
 extern crate serde;
 extern crate serde_json;
@@ -47,16 +46,13 @@ fn main() -> io::Result<()> {
         .subcommand(
             Command::new("server")
                 .about("Run as server")
-                .arg(arg!(--starting_time [TIME] "Starting time for each player")
-                    .default_value("5:00"))
-                .arg(arg!(--teaming [TEAMING] "How players are split into teams")
-                    .value_parser(["fixed", "dynamic"]).default_value("fixed"))
                 .arg(arg!(--sqlite_db [DB] "Path to an sqlite database file"))
         )
         .subcommand(
             Command::new("client")
                 .about("Run as client")
                 .arg(arg!(<server_address> "Server address"))
+                .arg(arg!(<contest_id> "Contest ID"))
                 .arg(arg!(<player_name> "Player name"))
                 .arg(arg!([team] "Team").value_parser(["red", "blue"]))
         )
@@ -65,8 +61,6 @@ fn main() -> io::Result<()> {
     match matches.subcommand() {
         Some(("server", sub_matches)) => {
             server_main::run(server_main::ServerConfig {
-                teaming: sub_matches.get_one::<String>("teaming").unwrap().clone(),
-                starting_time: sub_matches.get_one::<String>("starting_time").unwrap().clone(),
                 sqlite_db: sub_matches.get_one::<String>("sqlite_db").cloned(),
             });
             Ok(())
@@ -74,6 +68,7 @@ fn main() -> io::Result<()> {
         Some(("client", sub_matches)) => {
             client_main::run(client_main::ClientConfig {
                 server_address: sub_matches.get_one::<String>("server_address").unwrap().clone(),
+                contest_id: sub_matches.get_one::<String>("contest_id").unwrap().clone(),
                 player_name: sub_matches.get_one::<String>("player_name").unwrap().clone(),
                 team: sub_matches.get_one::<String>("team").cloned(),
             })

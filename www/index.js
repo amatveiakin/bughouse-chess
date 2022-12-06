@@ -67,6 +67,8 @@ const low_time_audio = new Audio(low_time_sound);
 
 const my_search_params = new URLSearchParams(window.location.search);
 
+const info_string = document.getElementById('info-string');
+
 wasm.set_panic_hook();
 wasm.init_page(
     white_pawn, white_knight, white_bishop, white_rook, white_queen, white_king,
@@ -74,11 +76,9 @@ wasm.init_page(
 );
 set_up_drag_and_drop();
 
-let wasm_client_object = null;
+let wasm_client_object = make_wasm_client();
 let wasm_client_panicked = false;
-let socket = null;
-let socket_incoming_listener = null;
-let on_tick_interval_id = null;
+let socket = make_socket();
 
 // Parameters and data structures for the audio logic. Our goal is to make short and
 // important sounds (like turn sound) as clear as possible when several events occur
@@ -99,9 +99,7 @@ let refresh_meter = null;
 let update_state_meter = null;
 let update_clock_meter = null;
 let update_drag_state_meter = null;
-
-const info_string = document.getElementById('info-string');
-info_string.innerText = 'Type "/join name" to start'
+init_meters();
 
 document.addEventListener('keydown', on_document_keydown);
 document.addEventListener('paste', function(event) { command_input.focus(); });
@@ -111,6 +109,9 @@ command_input.addEventListener('keydown', on_command_keydown);
 
 const ready_button = document.getElementById('ready-button');
 ready_button.addEventListener('click', function() { execute_command('/ready') });
+
+setInterval(on_tick, 100);
+
 
 function with_error_handling(f) {
     // Note. Re-throw all unexpected errors to get a stacktrace.
@@ -130,7 +131,7 @@ function with_error_handling(f) {
         } else if (e?.constructor?.name == 'RustError') {
             const msg = `Internal Rust error: ${e.message()}`;
             info_string.innerText = msg;
-            if (socket) {
+            if (socket.readyState == WebSocket.OPEN) {
                 socket.send(wasm.make_rust_error_event(e));
             }
             throw msg;
@@ -139,7 +140,7 @@ function with_error_handling(f) {
             if (rust_panic) {
                 wasm_client_panicked = true;
                 let reported = '';
-                if (socket) {
+                if (socket.readyState == WebSocket.OPEN) {
                     socket.send(rust_panic);
                     reported = 'The error has been reported (unless that failed too).';
                 } else {
@@ -149,12 +150,13 @@ function with_error_handling(f) {
                     'Internal error! This client is now dead 💀 ' +
                     'Only refreshing the page may help you. We are very sorry. ' +
                     reported;
-                shutdown_wasm_client();
+            } else if (e.name === 'InvalidStateError' && socket.readyState == WebSocket.CONNECTING) {
+                info_string.innerText = 'Still connecting to the server... Please try again later.';
             } else {
                 console.log(log_time(), 'Unknown error: ', e);
                 const msg = `Unknown error: ${e}`;
                 info_string.innerText = msg;
-                if (socket) {
+                if (socket.readyState == WebSocket.OPEN) {
                     // Improvement potential. Include stack trace.
                     socket.send(wasm.make_unknown_error_event(e.toString()));
                 }
@@ -174,33 +176,32 @@ function wasm_client() {
     }
 }
 
-function shutdown_wasm_client() {
-    if (socket != null) {
-        socket.removeEventListener('message', socket_incoming_listener);
-        socket.close();
-    }
-    socket = null;
-    socket_incoming_listener = null;
-    wasm_client_object = null;
-    if (on_tick_interval_id != null) {
-        clearInterval(on_tick_interval_id);
-        on_tick_interval_id = null;
-    }
-    process_outgoing_events_meter = null;
-    process_notable_events_meter = null;
-    refresh_meter = null;
-    update_state_meter = null;
-    update_clock_meter = null;
-    update_drag_state_meter = null;
+function make_wasm_client() {
+    const user_agent = window.navigator.userAgent;
+    const time_zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return wasm.WebClient.new_client(user_agent, time_zone);
 }
 
-function initialize_meters() {
+function init_meters() {
     process_outgoing_events_meter = wasm_client().meter("process_outgoing_events");
     process_notable_events_meter = wasm_client().meter("process_notable_events");
     refresh_meter = wasm_client().meter("refresh");
     update_state_meter = wasm_client().meter("update_state");
     update_clock_meter = wasm_client().meter("update_clock");
     update_drag_state_meter = wasm_client().meter("update_drag_state");
+}
+
+function make_socket() {
+    const socket = new WebSocket(server_websocket_address());
+    socket.addEventListener('message', function(event) {
+        on_server_event(event.data);
+    });
+    socket.addEventListener('open', function(event) {
+        info_string.innerText = 'Use /new to create contest or /join to join';
+    });
+    // addEventListener('error', (event) => { })  // TODO: report socket errors
+    info_string.innerText = 'Connecting...';
+    return socket
 }
 
 function on_server_event(event) {
@@ -221,17 +222,6 @@ function get_args(args_array, expected_args) {
         return args_without_command_name;
     } else {
         throw usage_error(args_array, expected_args);
-    }
-}
-
-function get_join_args(args_array) {
-    const args_without_command_name = args_array.slice(1);
-    if (args_without_command_name.length === 1) {
-        return args_without_command_name.concat([""]);
-    } else if (args_without_command_name.length === 2) {
-        return args_without_command_name;
-    } else {
-        throw new InvalidCommand(`Usage: /join name [team]`);
     }
 }
 
@@ -256,9 +246,14 @@ function execute_command(input) {
         if (input.startsWith('/')) {
             const args = input.slice(1).split(/\s+/);
             switch (args[0]) {
+                case 'new': {
+                    const [name] = get_args(args, ['name']);
+                    wasm_client().new_contest(name);
+                    break;
+                }
                 case 'join': {
-                    const [name, team] = get_join_args(args);
-                    request_join(name, team);
+                    const [contest_id, name] = get_args(args, ['contest_id', 'name']);
+                    wasm_client().join(contest_id, name);
                     break;
                 }
                 case 'sound': {
@@ -296,10 +291,6 @@ function execute_command(input) {
                 case 'leave':
                     get_args(args, []);
                     wasm_client().leave();
-                    break;
-                case 'reset':
-                    get_args(args, []);
-                    wasm_client().reset();
                     break;
                 case 'save':
                     get_args(args, []);
@@ -361,6 +352,9 @@ function process_notable_events() {
         const js_event_type = js_event?.constructor?.name;
         if (js_event_type == 'JsEventMyNoop') {
             // noop, but are events might be coming
+        } else if (js_event_type == 'JsEventGotContestId') {
+            // TODO: Modify search param (via URLSearchParams.set + window.history.pushState)
+            //   and use it to autoconnect.
         } else if (js_event_type == 'JsEventVictory') {
             play_audio(victory_audio);
         } else if (js_event_type == 'JsEventDefeat') {
@@ -419,32 +413,6 @@ function server_websocket_address() {
         url.port = DEFAULT_PORT;
     }
     return url;
-}
-
-function on_socket_opened() {
-    with_error_handling(function() {
-        wasm_client().join();
-        on_tick_interval_id = setInterval(on_tick, 100);
-        update();
-    });
-}
-
-function request_join(my_name, my_team) {
-    with_error_handling(function() {
-        shutdown_wasm_client();
-        socket = new WebSocket(server_websocket_address());
-        const user_agent = window.navigator.userAgent;
-        const time_zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        wasm_client_object = wasm.WebClient.new_client(my_name, my_team, user_agent, time_zone);
-        initialize_meters();
-        info_string.innerText = 'Joining...';
-        socket_incoming_listener = socket.addEventListener('message', function(event) {
-            on_server_event(event.data);
-        });
-        socket.addEventListener('open', function(event) {
-            on_socket_opened();
-        });
-    });
 }
 
 function set_up_drag_and_drop() {
