@@ -56,6 +56,16 @@ log_time();  // start the counter
 
 set_favicon();
 
+// Improvement potential. Similarly group other global variables.
+const Storage = {
+    player_name: 'player-name',
+};
+
+const SearchParams = {
+    contest_id: 'contest-id',
+    server: 'server',
+};
+
 // Improvement potential. Establish priority on sounds; play more important sounds first
 // in case of a clash.
 const victory_audio = new Audio(victory_sound);
@@ -65,9 +75,26 @@ const turn_audio = new Audio(turn_sound);
 const reserve_restocked_audio = new Audio(reserve_restocked_sound);
 const low_time_audio = new Audio(low_time_sound);
 
-const my_search_params = new URLSearchParams(window.location.search);
-
 const info_string = document.getElementById('info-string');
+
+const menu_dialog = document.getElementById('menu-dialog');
+const menu_start_page = document.getElementById('menu-start-page');
+const menu_create_contest_page = document.getElementById('menu-create-contest-page');
+const menu_join_contest_page = document.getElementById('menu-join-contest-page');
+const menu_pages = document.getElementsByClassName('menu-page');
+
+const ready_button = document.getElementById('ready-button');
+const create_contest_button = document.getElementById('create-contest-button');
+const join_contest_button = document.getElementById('join-contest-button');
+const create_contest_back_button = document.getElementById('create-contest-back-button');
+const join_contest_back_button = document.getElementById('join-contest-back-button');
+
+const create_contest_player_name = document.getElementById('create-contest-player-name');
+const create_contest_teaming = document.getElementById('create-contest-teaming');
+const join_contest_player_name = document.getElementById('join-contest-player-name');
+const join_contest_id = document.getElementById('join-contest-id');
+
+init_menu();
 
 wasm.set_panic_hook();
 wasm.init_page(
@@ -102,13 +129,19 @@ let update_drag_state_meter = null;
 init_meters();
 
 document.addEventListener('keydown', on_document_keydown);
-document.addEventListener('paste', function(event) { command_input.focus(); });
+document.addEventListener('paste', on_paste);
 
 const command_input = document.getElementById('command');
 command_input.addEventListener('keydown', on_command_keydown);
 
-const ready_button = document.getElementById('ready-button');
 ready_button.addEventListener('click', function() { execute_command('/ready') });
+menu_dialog.addEventListener('cancel', function(event) { event.preventDefault(); });
+create_contest_button.addEventListener('click', on_create_contest_submenu);
+join_contest_button.addEventListener('click', on_join_contest_submenu);
+create_contest_back_button.addEventListener('click', show_start_page);
+join_contest_back_button.addEventListener('click', show_start_page);
+menu_create_contest_page.addEventListener('submit', on_create_contest_confirm);
+menu_join_contest_page.addEventListener('submit', on_join_contest_confirm);
 
 setInterval(on_tick, 100);
 
@@ -197,7 +230,7 @@ function make_socket() {
         on_server_event(event.data);
     });
     socket.addEventListener('open', function(event) {
-        info_string.innerText = 'Use /new to create contest or /join to join';
+        info_string.innerText = '';
     });
     // addEventListener('error', (event) => { })  // TODO: report socket errors
     info_string.innerText = 'Connecting...';
@@ -226,8 +259,20 @@ function get_args(args_array, expected_args) {
 }
 
 function on_document_keydown(event) {
-    let isPrintableKey = event.key.length === 1;  // https://stackoverflow.com/a/38802011/3092679
-    if (isPrintableKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+    if (menu_dialog.open) {
+        if (event.key === 'Escape') {
+            show_start_page();
+        }
+    } else {
+        let isPrintableKey = event.key.length === 1;  // https://stackoverflow.com/a/38802011/3092679
+        if (isPrintableKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+            command_input.focus();
+        }
+    }
+}
+
+function on_paste(event) {
+    if (!menu_dialog.open) {
         command_input.focus();
     }
 }
@@ -246,17 +291,8 @@ function execute_command(input) {
         if (input.startsWith('/')) {
             const args = input.slice(1).split(/\s+/);
             switch (args[0]) {
-                case 'new': {
-                    const [name] = get_args(args, ['name']);
-                    wasm_client().new_contest(name);
-                    break;
-                }
-                case 'join': {
-                    const [contest_id, name] = get_args(args, ['contest_id', 'name']);
-                    wasm_client().join(contest_id, name);
-                    break;
-                }
                 case 'sound': {
+                    // TODO: Save Storage to a local storage.
                     const expected_args = ['on:off:0:1:...:100'];
                     const [value] = get_args(args, expected_args);
                     switch (value) {
@@ -353,8 +389,9 @@ function process_notable_events() {
         if (js_event_type == 'JsEventMyNoop') {
             // noop, but are events might be coming
         } else if (js_event_type == 'JsEventGotContestId') {
-            // TODO: Modify search param (via URLSearchParams.set + window.history.pushState)
-            //   and use it to autoconnect.
+            const url = new URL(window.location);
+            url.searchParams.set(SearchParams.contest_id, js_event.contest_id());
+            window.history.pushState({}, '', url);
         } else if (js_event_type == 'JsEventVictory') {
             play_audio(victory_audio);
         } else if (js_event_type == 'JsEventDefeat') {
@@ -402,7 +439,8 @@ function server_websocket_address() {
     // TODO: Get the port from Rust.
     const DEFAULT_PORT = 38617;
     const DEFAULT_ADDRESS = 'bughouse.pro';
-    let address = my_search_params.get('server') ?? DEFAULT_ADDRESS;
+    const search_params = new URLSearchParams(window.location.search);
+    let address = search_params.get(SearchParams.server) ?? DEFAULT_ADDRESS;
     if (!address.includes('://')) {
         address = `ws://${address}`;
     }
@@ -513,6 +551,86 @@ function set_up_drag_and_drop() {
             update();
         });
     }
+}
+
+function on_hide_menu_page(page) {
+    if (page === menu_create_contest_page) {
+        window.localStorage.setItem(Storage.player_name, create_contest_player_name.value);
+    } else if (page === menu_join_contest_page) {
+        window.localStorage.setItem(Storage.player_name, join_contest_player_name.value);
+    }
+}
+
+function hide_menu_pages(execute_on_hide = true) {
+    for (const page of menu_pages) {
+        if (page.style.display !== 'none') {
+            if (execute_on_hide) {
+                on_hide_menu_page(page);
+            }
+            page.style.display = 'none';
+        }
+    }
+}
+
+function show_menu_page(page) {
+    hide_menu_pages();
+    page.style.display = 'block';
+}
+
+function close_menu() {
+    hide_menu_pages();  // hide the pages to execute "on hide" handlers
+    menu_dialog.close();
+}
+
+function show_start_page() {
+    show_menu_page(menu_start_page);
+}
+
+function init_menu() {
+    const search_params = new URLSearchParams(window.location.search);
+    const contest_id = search_params.get(SearchParams.contest_id);
+    hide_menu_pages(false);
+    menu_dialog.showModal();
+    if (contest_id) {
+        show_menu_page(menu_join_contest_page);
+        join_contest_id.value = contest_id;
+        join_contest_player_name.value = window.localStorage.getItem(Storage.player_name);
+        join_contest_player_name.focus();
+    } else {
+        show_menu_page(menu_start_page);
+    }
+}
+
+function on_create_contest_submenu(event) {
+    show_menu_page(menu_create_contest_page);
+    create_contest_player_name.value = window.localStorage.getItem(Storage.player_name);
+    create_contest_player_name.focus();
+}
+
+function on_join_contest_submenu(event) {
+    show_menu_page(menu_join_contest_page);
+    join_contest_player_name.value = window.localStorage.getItem(Storage.player_name);
+    join_contest_id.focus();
+}
+
+function on_create_contest_confirm(event) {
+    with_error_handling(function() {
+        const name = create_contest_player_name.value;
+        const teaming = create_contest_teaming.value;
+        wasm_client().new_contest(name, teaming);
+        update();
+        close_menu();
+    });
+}
+
+function on_join_contest_confirm(event) {
+    with_error_handling(function() {
+        const contest_id = join_contest_id.value.toUpperCase();
+        const name = join_contest_player_name.value;
+        wasm_client().join(contest_id, name);
+        update();
+        close_menu();
+    });
 }
 
 function play_audio(audio) {

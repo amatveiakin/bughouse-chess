@@ -193,8 +193,13 @@ impl WebClient {
         JsMeter::new(self.state.meter(name))
     }
 
-    pub fn new_contest(&mut self, my_name: String) {
-        // TODO: Make rules configurable.
+    pub fn new_contest(&mut self, my_name: String, teaming: &str) {
+        // TODO: Make all rules configurable.
+        let teaming = match teaming {
+            "fixed-teams" => Teaming::FixedTeams,
+            "individual-mode" => Teaming::IndividualMode,
+            _ => panic!("Unexpected teaming: {teaming}"),
+        };
         let chess_rules = ChessRules {
             starting_position: StartingPosition::FischerRandom,
             time_control: TimeControl {
@@ -202,7 +207,7 @@ impl WebClient {
             },
         };
         let bughouse_rules = BughouseRules {
-            teaming: Teaming::IndividualMode,
+            teaming,
             min_pawn_drop_row: SubjectiveRow::from_one_based(2),
             max_pawn_drop_row: SubjectiveRow::from_one_based(6),
             drop_aggression: DropAggression::NoChessMate,

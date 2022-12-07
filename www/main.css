@@ -34,6 +34,10 @@ svg {
   overflow: visible;  /* allow shadows outside of svg area */
 }
 
+dialog::backdrop {
+  background: #000000a0;
+}
+
 #page {
   display: grid;
   grid-template-areas:
@@ -354,7 +358,79 @@ body.observer #command {
   gap: calc(var(--sq-size-primary) * 0.1);
 }
 
-.btn {
+dialog {
+  background-color: #dfceb4;
+  min-width: 16em;
+  font-size: max(1em, 8pt);
+  padding: 0.2em 1em;
+}
+
+dialog button {
+  display: block;
+  padding: 0.5em 1em;
+  margin: 0.8em 0em;
+  width: 100%;
+  border: 0;
+  font-size: 1.2em;
+  text-align: center;
+  color: #101010;
+  text-shadow: 0.05em 0.05em 0.05em #eaac73;
+  border-radius: 0.5em;
+  background-color: #e59f5f;
+  background-image: linear-gradient(to top left,
+                                    rgba(0, 0, 0, 0.1),
+                                    rgba(0, 0, 0, 0.1) 30%,
+                                    rgba(0, 0, 0, 0));
+  box-shadow: inset 2px 2px 3px rgba(255, 255, 255, .6),
+              inset -2px -2px 3px rgba(0, 0, 0, .6);
+}
+dialog button:hover {
+  background-color: #eaac73;
+}
+dialog button:active {
+  box-shadow: inset -2px -2px 3px rgba(255, 255, 255, .6),
+              inset 2px 2px 3px rgba(0, 0, 0, .6);
+}
+
+.back-button {
+  padding: 0;
+  margin: 0.8em 0em;
+  height: 2em;
+  width: 2em;
+  font-size: 1em;
+  text-shadow: none;
+  border-radius: 0.3em;
+  background-color: #eed5ae;
+}
+.back-button:hover {
+  background-color: #f3debd;
+}
+
+dialog select, dialog input {
+  display: block;
+  box-sizing: border-box;
+  padding: 0.3em 1em;
+  margin: 0.8em 0em;
+  width: 100%;
+  border-width: 1px;
+  border-color: #808080;
+  font-size: 1em;
+  border-radius: 0.2em;
+  background-color: #f0e8dc;
+}
+
+/* The point of `:not(:placeholder-shown)` is to not make the cursor red if the input field is blank.
+   Here `:placeholder-shown` is an emptiness marker. Could switch to `:blank` if it's standardized. */
+dialog input:invalid:not(:placeholder-shown) {
+  color: red;
+}
+
+#join-contest-id:not(:placeholder-shown) {
+  /* This is of course a purely visual change. Actual input should be uppercased in JS. */
+  text-transform: uppercase;
+}
+
+.icon-button {
   box-sizing: border-box;
   padding: 0;
   border: none;
@@ -364,16 +440,16 @@ body.observer #command {
   height: calc(var(--sq-size-primary) * 0.4);
   cursor: pointer;
 }
-.btn:hover {
+.icon-button:hover {
   background-color: #ffffff30;
 }
-.btn:active {
+.icon-button:active {
   background-color: #ffffff50;
 }
 
-.btn-icon {
+.icon-button-svg {
   fill: #ffffff;
 }
-.btn-icon:active {
+.icon-button-svg:active {
   fill: #ceffb4;
 }
