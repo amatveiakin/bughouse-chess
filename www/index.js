@@ -2,7 +2,7 @@
 // TODO: Check if ==/!= have to be replaced with ===/!== and other JS weirdness.
 // TODO: Figure out if it's possible to enable strict mode with webpack.
 
-import './main.css'
+import './main.css';
 import * as wasm from 'bughouse-chess';
 
 import favicon from '../assets/favicon.png';
@@ -134,7 +134,7 @@ document.addEventListener('paste', on_paste);
 const command_input = document.getElementById('command');
 command_input.addEventListener('keydown', on_command_keydown);
 
-ready_button.addEventListener('click', function() { execute_command('/ready') });
+ready_button.addEventListener('click', function() { execute_command('/ready'); });
 menu_dialog.addEventListener('cancel', function(event) { event.preventDefault(); });
 create_contest_button.addEventListener('click', on_create_contest_submenu);
 join_contest_button.addEventListener('click', on_join_contest_submenu);
@@ -149,14 +149,14 @@ setInterval(on_tick, 100);
 function with_error_handling(f) {
     // Note. Re-throw all unexpected errors to get a stacktrace.
     try {
-        f()
+        f();
     } catch (e) {
         if (e instanceof WasmClientDoesNotExist) {
-            const msg = 'Not connected'
+            const msg = 'Not connected';
             info_string.innerText = msg;
             throw msg;
         } else if (e instanceof WasmClientPanicked) {
-            const msg = 'The client is dead. Please reload the page.'
+            const msg = 'The client is dead. Please reload the page.';
             info_string.innerText = msg;
             throw msg;
         } else if (e instanceof InvalidCommand) {
@@ -234,7 +234,7 @@ function make_socket() {
     });
     // addEventListener('error', (event) => { })  // TODO: report socket errors
     info_string.innerText = 'Connecting...';
-    return socket
+    return socket;
 }
 
 function on_server_event(event) {
@@ -337,7 +337,7 @@ function execute_command(input) {
                     info_string.innerText = wasm_client().meter_stats();
                     break;
                 default:
-                    throw new InvalidCommand(`Command does not exist: /${args[0]}`)
+                    throw new InvalidCommand(`Command does not exist: /${args[0]}`);
             }
         } else {
             wasm_client().make_turn_algebraic(input);
@@ -376,7 +376,7 @@ function update() {
 
 function process_outgoing_events() {
     let event;
-    while (event = wasm_client().next_outgoing_event()) {
+    while ((event = wasm_client().next_outgoing_event())) {
         console.log(log_time(), 'sending: ', event);
         socket.send(event);
     }
@@ -384,7 +384,7 @@ function process_outgoing_events() {
 
 function process_notable_events() {
     let js_event;
-    while (js_event = wasm_client().next_notable_event()) {
+    while ((js_event = wasm_client().next_notable_event())) {
         const js_event_type = js_event?.constructor?.name;
         if (js_event_type == 'JsEventMyNoop') {
             // noop, but are events might be coming
