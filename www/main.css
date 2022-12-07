@@ -7,8 +7,6 @@ body {
 body.observer {
   --sq-size-primary: min(4.4vw, 7.8vh);
   --sq-size-secondary: var(--sq-size-primary);
-  --board-size-secondary: calc(var(--sq-size-secondary) * 8);
-  --reserve-height-in-squares: 1.5;
 }
 
 html, body {
