@@ -659,6 +659,12 @@ pub fn init_page(
     Ok(())
 }
 
+#[wasm_bindgen]
+pub fn project_info() -> String {
+    // TODO: Add contacts.
+    format!("Bughouse chess {} (beta)\nAuthor: Andrei Matveiakin", my_git_version!())
+}
+
 fn update_lobby(contest: &Contest) -> JsResult<()> {
     let info_string = web_document().get_existing_element_by_id("info-string")?;
     // TODO: Show teams for the new game in individual mode.

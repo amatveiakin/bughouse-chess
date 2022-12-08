@@ -362,6 +362,15 @@ body.observer #command {
   gap: calc(var(--sq-size-primary) * 0.1);
 }
 
+#project-info {
+  position: absolute;
+  bottom: 0.5em;
+  right: 0.5em;
+  text-align: right;
+  font-size: 50%;
+  color: #ffffff60;
+}
+
 dialog {
   background-color: #dfceb4;
   min-width: 16em;

@@ -75,6 +75,7 @@ const turn_audio = new Audio(turn_sound);
 const reserve_restocked_audio = new Audio(reserve_restocked_sound);
 const low_time_audio = new Audio(low_time_sound);
 
+const project_info = document.getElementById('project-info');
 const info_string = document.getElementById('info-string');
 
 const menu_dialog = document.getElementById('menu-dialog');
@@ -101,6 +102,8 @@ wasm.init_page(
     white_pawn, white_knight, white_bishop, white_rook, white_queen, white_king,
     black_pawn, black_knight, black_bishop, black_rook, black_queen, black_king
 );
+project_info.innerText = wasm.project_info();
+
 set_up_drag_and_drop();
 
 let wasm_client_object = make_wasm_client();
