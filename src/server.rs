@@ -665,7 +665,6 @@ impl Contest {
         let Some(GameState{ ref game, .. }) = self.game_state else {
             return Err("Cannot export: no game in progress".to_owned());
         };
-        // Improvement potential: Replace map lambda with something more elegant.
         let all_games = self.match_history.iter().chain(iter::once(game));
         let content = all_games.enumerate().map(|(round, game)| {
             pgn::export_to_bpgn(format, game, round + 1)
