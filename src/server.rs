@@ -428,12 +428,15 @@ impl Contest {
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, event: BughouseClientEvent
     ) {
         let result = match event {
-            BughouseClientEvent::NewContest{ player_name, team, .. } => {
+            BughouseClientEvent::NewContest{ player_name, .. } => {
                 // The contest was created earlier.
-                self.join_player(ctx, client_id, now, player_name, team)
+                self.join_player(ctx, client_id, now, player_name)
             },
-            BughouseClientEvent::Join{ contest_id: _, player_name, team } => {
-                self.join_player(ctx, client_id, now, player_name, team)
+            BughouseClientEvent::Join{ contest_id: _, player_name } => {
+                self.join_player(ctx, client_id, now, player_name)
+            },
+            BughouseClientEvent::SetTeam{ team } => {
+                self.process_set_team(ctx, client_id, team)
             },
             BughouseClientEvent::MakeTurn{ turn_input } => {
                 self.process_make_turn(ctx, client_id, now, turn_input)
@@ -466,8 +469,7 @@ impl Contest {
     }
 
     fn join_player(
-        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
-        player_name: String, fixed_team: Option<Team>
+        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, player_name: String
     ) -> EventResult {
         if self.game_state.is_none() {
             if ctx.clients[client_id].player_id.is_some() {
@@ -476,51 +478,54 @@ impl Contest {
             if self.players.find_by_name(&player_name).is_some() {
                 return Err(format!("Cannot join: player \"{}\" already exists", player_name));
             }
-            if fixed_team.is_none() && self.bughouse_rules.teaming == Teaming::FixedTeams {
-                Err(format!("Cannot join: team is required in fixed teams mode"))
-            } else if fixed_team.is_some() && self.bughouse_rules.teaming == Teaming::IndividualMode {
-                Err(format!("Cannot join: team is not allowed in individual mode"))
-            } else if fixed_team.is_some() && self.players.iter().filter(|p| { p.fixed_team == fixed_team }).count() >= TOTAL_PLAYERS_PER_TEAM {
-                Err(format!("Cannot join: team {:?} is full", fixed_team))
-            } else {
-                if !is_valid_player_name(&player_name) {
-                    return Err(format!("Invalid player name: \"{}\"", player_name))
-                }
-                info!("Player {} joined team {:?}", player_name, fixed_team);
-                ctx.clients[client_id].contest_id = Some(self.contest_id.clone());
-                let player_id = self.players.add_player(Player {
-                    name: player_name,
-                    fixed_team,
-                    is_online: true,
-                    is_ready: false,
-                });
-                ctx.clients[client_id].player_id = Some(player_id);
-                ctx.clients[client_id].send(self.make_contest_welcome_event());
-                self.send_lobby_updated(ctx);
-                Ok(())
+            if !is_valid_player_name(&player_name) {
+                return Err(format!("Invalid player name: \"{}\"", player_name))
             }
+            info!(
+                "Client {} join contest {} as {}",
+                ctx.clients[client_id].logging_id, self.contest_id.0, player_name
+            );
+            ctx.clients[client_id].contest_id = Some(self.contest_id.clone());
+            let player_id = self.players.add_player(Player {
+                name: player_name,
+                fixed_team: None,
+                is_online: true,
+                is_ready: false,
+            });
+            ctx.clients[client_id].player_id = Some(player_id);
+            ctx.clients[client_id].send(self.make_contest_welcome_event());
+            self.send_lobby_updated(ctx);
+            Ok(())
         } else {
             let Some(existing_player_id) = self.players.find_by_name(&player_name) else {
                 // Improvement potential. Allow joining mid-game in individual mode.
                 //   Q. How to balance score in this case? Should we switch to negative numbers?
                 return Err("Cannot join: game has already started".to_owned());
             };
-            let current_fixed_team = self.players[existing_player_id].fixed_team;
             if ctx.clients.map.values().any(|c| c.player_id == Some(existing_player_id)) {
-                Err(format!(r#"Cannot join: client for player "{}" already connected"#, player_name))
-            } else if current_fixed_team != fixed_team {
-                Err(format!(
-                    r#"Cannot join: player "{}" is in team "{:?}", but connecting as team "{:?}""#,
-                    player_name, current_fixed_team, fixed_team
-                ))
-            } else {
-                ctx.clients[client_id].contest_id = Some(self.contest_id.clone());
-                ctx.clients[client_id].player_id = Some(existing_player_id);
-                ctx.clients[client_id].send(self.make_contest_welcome_event());
-                ctx.clients[client_id].send(self.make_game_start_event(now));
-                Ok(())
+                return Err(format!(r#"Cannot join: client for player "{}" already connected"#, player_name))
             }
+            ctx.clients[client_id].contest_id = Some(self.contest_id.clone());
+            ctx.clients[client_id].player_id = Some(existing_player_id);
+            ctx.clients[client_id].send(self.make_contest_welcome_event());
+            // LobbyUpdated should precede GameStarted, because this is how the client gets their
+            // team in FixedTeam mode.
+            self.send_lobby_updated(ctx);
+            ctx.clients[client_id].send(self.make_game_start_event(now));
+            Ok(())
         }
+    }
+
+    fn process_set_team(&mut self, ctx: &mut Context, client_id: ClientId, team: Team) -> EventResult {
+        let Some(player_id) = ctx.clients[client_id].player_id else {
+            return Err("Cannot set team: not joined".to_owned());
+        };
+        if self.game_state.is_some() {
+            return Err("Cannot set team: contest already started".to_owned());
+        }
+        self.players[player_id].fixed_team = Some(team);
+        self.send_lobby_updated(ctx);
+        Ok(())
     }
 
     fn process_make_turn(
@@ -670,6 +675,10 @@ impl Contest {
     }
 
     fn post_process(&mut self, ctx: &mut Context, now: Instant) {
+        // Improvement potential: Collapse `send_lobby_updated` events generated during one event
+        //   processing cycle. Right now there could up to three: one from the event (SetTeam/SetReady),
+        //   one from here and one from `self.start_game`.
+        //   Idea: Add `ctx.should_update_lobby` bit and check it in the end.
         let active_player_ids: HashSet<_> = ctx.clients.map.values().filter_map(|c| c.player_id).collect();
         if self.game_state.is_none() {
             let mut player_removed = false;
@@ -697,7 +706,26 @@ impl Contest {
                 self.send_lobby_updated(ctx);
             }
         }
-        if self.players.len() >= TOTAL_PLAYERS && self.players.iter().all(|p| p.is_ready) {
+
+        let enough_players = self.players.len() >= TOTAL_PLAYERS;
+        let all_ready = self.players.iter().all(|p| p.is_ready);
+        let teams_ok = match self.bughouse_rules.teaming {
+            Teaming::FixedTeams => {
+                let mut has_players_without_team = false;
+                let mut num_players_per_team = enum_map!{ _ => 0 };
+                for p in self.players.iter() {
+                    if let Some(fixed_team) = p.fixed_team {
+                        num_players_per_team[fixed_team] += 1;
+                    } else {
+                        has_players_without_team = true;
+                        break;
+                    }
+                }
+                !has_players_without_team && num_players_per_team.values().all(|&n| n == TOTAL_PLAYERS_PER_TEAM)
+            },
+            Teaming::IndividualMode => true,
+        };
+        if enough_players && all_ready && teams_ok {
             let mut previous_players = None;
             if let Some(GameState{ ref game, .. }) = self.game_state {
                 assert!(game.status() != BughouseGameStatus::Active,

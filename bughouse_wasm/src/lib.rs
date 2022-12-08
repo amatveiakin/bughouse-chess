@@ -212,10 +212,23 @@ impl WebClient {
             max_pawn_drop_row: SubjectiveRow::from_one_based(6),
             drop_aggression: DropAggression::NoChessMate,
         };
-        self.state.new_contest(chess_rules, bughouse_rules, my_name, None);
+        self.state.new_contest(chess_rules, bughouse_rules, my_name);
     }
     pub fn join(&mut self, contest_id: String, my_name: String) {
-        self.state.join(contest_id, my_name, None);
+        self.state.join(contest_id, my_name);
+    }
+    pub fn set_team(&mut self, team: &str) -> JsResult<()> {
+        let team = match team {
+            "red" => Team::Red,
+            "blue" => Team::Blue,
+            _ => {
+                let info_string = web_document().get_existing_element_by_id("info-string")?;
+                info_string.set_text_content(Some(r#"Supported teams are "red" and "blue""#));
+                return Ok(());
+            }
+        };
+        self.state.set_team(team);
+        Ok(())
     }
     pub fn resign(&mut self) {
         self.state.resign();
@@ -648,17 +661,26 @@ pub fn init_page(
 
 fn update_lobby(contest: &Contest) -> JsResult<()> {
     let info_string = web_document().get_existing_element_by_id("info-string")?;
-    // TODO: Show teams for the news game in individual mode.
+    // TODO: Show teams for the new game in individual mode.
     let player_info = match contest.bughouse_rules.teaming {
         Teaming::FixedTeams => {
+            // TODO: Allow observers in fixed teams mode; rename "teamless"/"unassigned" to "observer".
+            let mut teamless = vec![];
             let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
             for p in &contest.players {
-                teams[p.fixed_team.unwrap()].push(player_with_readiness_status(p));
+                let s = format!("{}\n", player_with_readiness_status(p));
+                if let Some(fixed_team) = p.fixed_team {
+                    teams[fixed_team].push(s);
+                } else {
+                    teamless.push(s);
+                }
             }
             format!(
-                "red:\n{}\nblue:\n{}",
-                teams[Team::Red].join("\n"),
-                teams[Team::Blue].join("\n"),
+                "{}{}red:\n{}blue:\n{}",
+                if teamless.is_empty() { "" } else { "unassigned:\n" },
+                teamless.join(""),
+                teams[Team::Red].join(""),
+                teams[Team::Blue].join(""),
             )
         },
         Teaming::IndividualMode => {
@@ -845,7 +867,12 @@ fn update_scores(scores: &Scores, teaming: Teaming, my_team: Option<Team>) -> Js
     match teaming {
         Teaming::FixedTeams => {
             assert!(scores.per_player.is_empty());
-            let my_team = my_team.unwrap();
+            let my_team = my_team.unwrap_or_else(|| {
+                // A player may be without a team only before the contest first game begun.
+                assert!(scores.per_team.values().all(|&v| v == 0));
+                // Return a team at random to show zeros in the desired format.
+                Team::Red
+            });
             team_node.set_text_content(Some(&format!(
                 "{}\n⎯\n{}",
                 normalize(*scores.per_team.get(&my_team.opponent()).unwrap_or(&0)),

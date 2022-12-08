@@ -79,17 +79,14 @@ pub enum BughouseClientEvent {
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
         player_name: String,
-        team: Option<Team>,  // TODO: Remove; choose the team in the lobby
     },
     Join {
         contest_id: String,
         player_name: String,
-        team: Option<Team>,  // TODO: Remove; choose the team in the lobby
     },
-    // TODO: Allow choosing the team in team mode
-    // SetTeam {
-    //     team: Team,
-    // },
+    SetTeam {
+        team: Team,
+    },
     MakeTurn {
         turn_input: TurnInput,
     },

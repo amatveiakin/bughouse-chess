@@ -295,6 +295,11 @@ function execute_command(input) {
         if (input.startsWith('/')) {
             const args = input.slice(1).split(/\s+/);
             switch (args[0]) {
+                case 'team': {
+                    const [team] = get_args(args, ['blue:red']);
+                    wasm_client().set_team(team);
+                    break;
+                }
                 case 'sound': {
                     // TODO: Save Storage to a local storage.
                     const expected_args = ['on:off:0:1:...:100'];

@@ -10,7 +10,6 @@ use std::time::Duration;
 
 use crossterm::{execute, terminal, cursor, event as term_event};
 use crossterm::style::{self, Stylize};
-use enum_map::{EnumMap, enum_map};
 use instant::Instant;
 use itertools::Itertools;
 use scopeguard::defer;
@@ -29,7 +28,6 @@ pub struct ClientConfig {
     // TODO: Allow to create new contests from the console client.
     pub contest_id: String,
     pub player_name: String,
-    pub team: Option<String>,
 }
 
 enum IncomingEvent {
@@ -82,6 +80,9 @@ fn render(
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
             match contest.bughouse_rules.teaming {
                 Teaming::FixedTeams => {
+                    // TODO: Fix team mode in console client.
+                    unimplemented!("Fixed team mode in console client is temporary not supported.");
+                    /*
                     let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
                     for p in players {
                         teams[p.fixed_team.unwrap()].push(p.name.clone());
@@ -97,6 +98,7 @@ fn render(
                         }
                         writeln_raw(stdout, "")?;
                     }
+                    */
                 },
                 Teaming::IndividualMode => {
                     for p in players {
@@ -132,11 +134,6 @@ fn render(
 pub fn run(config: ClientConfig) -> io::Result<()> {
     let contest_id = config.contest_id.trim().to_owned();
     let my_name = config.player_name.trim().to_owned();
-    let my_team = config.team.as_ref().map(|t| match t.as_str() {
-        "red" => Team::Red,
-        "blue" => Team::Blue,
-        other => panic!("Unexpected team: {}", other),
-    });
     let server_addr = (config.server_address.as_str(), network::PORT).to_socket_addrs().unwrap().collect_vec();
     println!("Connecting to {:?}...", server_addr);
     let stream = TcpStream::connect(&server_addr[..])?;
@@ -192,7 +189,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     let mut client_state = ClientState::new(user_agent, time_zone, server_tx);
     let mut keyboard_input = String::new();
     let mut command_error = None;
-    client_state.join(contest_id, my_name.to_owned(), my_team);
+    client_state.join(contest_id, my_name.to_owned());
     for event in rx {
         match event {
             IncomingEvent::Network(event) => {

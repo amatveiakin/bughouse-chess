@@ -336,10 +336,14 @@ body.observer .clock-active.clock-low-time {
   position: absolute;
   bottom: 0;
   left: 0;
+  /* Note: `z-index` and `background-color` are a "solution" for info-string text overflow. */
+  z-index: 1;
+  background-color: #1c3a0c80;
 }
 body.observer #info-string {
   top: 0;
   bottom: auto;
+  background-color: #33333380;
 }
 #command {
   flex-grow: 1;

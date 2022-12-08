@@ -88,8 +88,8 @@ impl Client {
         Client{ id, incoming_rx, outgoing_rx, state }
     }
 
-    fn join(&mut self, contest_id: &str, my_name: &str, my_team: Option<Team>) {
-        self.state.join(contest_id.to_owned(), my_name.to_owned(), my_team)
+    fn join(&mut self, contest_id: &str, my_name: &str) {
+        self.state.join(contest_id.to_owned(), my_name.to_owned())
     }
 
     fn alt_game(&self) -> &AlteredGame { &self.state.game_state().unwrap().alt_game }
@@ -156,19 +156,25 @@ impl World {
     }
 
     fn new_contest_with_rules(
-        &mut self, client_id: TestClientId, player_name: &str, player_team: Option<Team>,
+        &mut self, client_id: TestClientId, player_name: &str,
         chess_rules: ChessRules, bughouse_rules: BughouseRules
     ) -> String {
-        self[client_id].state.new_contest(chess_rules, bughouse_rules, player_name.to_owned(), player_team);
+        self[client_id].state.new_contest(chess_rules, bughouse_rules, player_name.to_owned());
         self.process_all_events();
         self[client_id].state.contest_id().unwrap().clone()
     }
-    fn new_contest(
-        &mut self, client_id: TestClientId, player_name: &str, player_team: Option<Team>
-    ) -> String {
+    fn new_contest(&mut self, client_id: TestClientId, player_name: &str) -> String {
         self.new_contest_with_rules(
-            client_id, player_name, player_team, default_chess_rules(), default_bughouse_rules()
+            client_id, player_name, default_chess_rules(), default_bughouse_rules()
         )
+    }
+
+    fn join_and_set_team(
+        &mut self, client_id: TestClientId, contest_id: &str, player_name: &str, team: Team
+    ) {
+        self[client_id].join(contest_id, player_name);
+        self.process_events_for(client_id).unwrap();
+        self[client_id].state.set_team(team);
     }
 
     fn new_client(&mut self) -> TestClientId {
@@ -184,7 +190,9 @@ impl World {
     fn default_clients(&mut self) -> (String, TestClientId, TestClientId, TestClientId, TestClientId) {
         let [cl1, cl2, cl3, cl4] = self.new_clients();
 
-        let contest = self.new_contest(cl1, "p1", Some(Team::Red));
+        let contest = self.new_contest(cl1, "p1");
+        self[cl1].state.set_team(Team::Red);
+        self.process_all_events();
 
         self.server.state.TEST_override_board_assignment(contest.clone(), vec! [
             ("p1".to_owned(), seating!(White A)),
@@ -193,9 +201,9 @@ impl World {
             ("p4".to_owned(), seating!(White B)),
         ]);
 
-        self[cl2].join(&contest, "p2", Some(Team::Red));
-        self[cl3].join(&contest, "p3", Some(Team::Blue));
-        self[cl4].join(&contest, "p4", Some(Team::Blue));
+        self.join_and_set_team(cl2, &contest, "p2", Team::Red);
+        self.join_and_set_team(cl3, &contest, "p3", Team::Blue);
+        self.join_and_set_team(cl4, &contest, "p4", Team::Blue);
         self.process_all_events();
 
         for cl in [cl1, cl2, cl3, cl4].iter() {
@@ -274,7 +282,9 @@ fn play_online_misc() {
     let mut world = World::new();
     let [cl1, cl2, cl3, cl4] = world.new_clients();
 
-    let contest = world.new_contest(cl1, "p1", Some(Team::Red));
+    let contest = world.new_contest(cl1, "p1");
+    world[cl1].state.set_team(Team::Red);
+    world.process_all_events();
 
     world.server.state.TEST_override_board_assignment(contest.clone(), vec! [
         ("p1".to_owned(), seating!(White A)),
@@ -283,9 +293,9 @@ fn play_online_misc() {
         ("p4".to_owned(), seating!(White B)),
     ]);
 
-    world[cl2].join(&contest, "p2", Some(Team::Red));
-    world[cl3].join(&contest, "p3", Some(Team::Blue));
-    world[cl4].join(&contest, "p4", Some(Team::Blue));
+    world.join_and_set_team(cl2, &contest, "p2", Team::Red);
+    world.join_and_set_team(cl3, &contest, "p3", Team::Blue);
+    world.join_and_set_team(cl4, &contest, "p4", Team::Blue);
     world.process_all_events();
 
     world[cl1].state.set_ready(true);
@@ -445,9 +455,10 @@ fn reconnect_lobby() {
     let mut world = World::new();
     let [cl1, cl2, cl3] = world.new_clients();
 
-    let contest = world.new_contest(cl1, "p1", Some(Team::Red));
-    world[cl2].join(&contest, "p2", Some(Team::Red));
-    world[cl3].join(&contest, "p3", Some(Team::Blue));
+    let contest = world.new_contest(cl1, "p1");
+    world[cl1].state.set_team(Team::Red);
+    world.join_and_set_team(cl2, &contest, "p2", Team::Red);
+    world.join_and_set_team(cl3, &contest, "p3", Team::Blue);
     world.process_all_events();
 
     world[cl1].state.set_ready(true);
@@ -462,7 +473,7 @@ fn reconnect_lobby() {
     assert_eq!(world[cl1].state.contest().unwrap().players.len(), 1);
 
     let cl4 = world.new_client();
-    world[cl4].join(&contest, "p4", Some(Team::Blue));
+    world.join_and_set_team(cl4, &contest, "p4", Team::Blue);
     world.process_all_events();
     world[cl4].state.set_ready(true);
     world.process_all_events();
@@ -472,16 +483,16 @@ fn reconnect_lobby() {
 
     // Cannot reconnect as an active player.
     let cl1_new = world.new_client();
-    world[cl1_new].join(&contest, "p1", Some(Team::Blue));
+    world[cl1_new].join(&contest, "p1");
     assert!(matches!(world.process_events_for(cl1_new), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // Can reconnect with the same name - that's fine.
     let cl2_new = world.new_client();
-    world[cl2_new].join(&contest, "p2", Some(Team::Red));
+    world.join_and_set_team(cl2_new, &contest, "p2", Team::Red);
     // Can use free spot to connect with a different name - that's fine too.
     let cl5 = world.new_client();
-    world[cl5].join(&contest, "p5", Some(Team::Blue));
+    world.join_and_set_team(cl5, &contest, "p5", Team::Blue);
     world.process_all_events();
     assert!(world[cl1].state.game_state().is_none());
 
@@ -509,25 +520,19 @@ fn reconnect_game_active() {
 
     // Cannot connect as a different player even though somebody has left.
     let cl5 = world.new_client();
-    world[cl5].join(&contest, "p5", Some(Team::Blue));
+    world[cl5].join(&contest, "p5");
     assert!(matches!(world.process_events_for(cl5), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // Cannot reconnect as an active player.
     let cl2_new = world.new_client();
-    world[cl2_new].join(&contest, "p2", Some(Team::Blue));
+    world[cl2_new].join(&contest, "p2");
     assert!(matches!(world.process_events_for(cl2_new), Err(client::EventError::ServerReturnedError(_))));
-    world.process_all_events();
-
-    // Cannot reconnect as a different team.
-    let cl3_new = world.new_client();
-    world[cl3_new].join(&contest, "p3", Some(Team::Red));
-    assert!(matches!(world.process_events_for(cl3_new), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 
     // Reconnection successful.
     let cl3_new = world.new_client();
-    world[cl3_new].join(&contest, "p3", Some(Team::Blue));
+    world[cl3_new].join(&contest, "p3");
     world.process_events_for(cl3_new).unwrap();
     world.process_all_events();
 
@@ -554,7 +559,7 @@ fn reconnect_game_over_checkmate() {
 
     world.replay_white_checkmates_black(cl1, cl3);
     let cl4_new = world.new_client();
-    world[cl4_new].join(&contest, "p4", Some(Team::Blue));
+    world[cl4_new].join(&contest, "p4");
     world.process_all_events();
     assert!(world[cl4_new].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
     assert_eq!(
@@ -576,7 +581,7 @@ fn reconnect_game_over_resignation() {
     world[cl1].state.resign();
     world.process_all_events();
     let cl4_new = world.new_client();
-    world[cl4_new].join(&contest, "p4", Some(Team::Blue));
+    world[cl4_new].join(&contest, "p4");
     world.process_all_events();
     assert!(world[cl4_new].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
     assert_eq!(
@@ -607,7 +612,7 @@ fn five_players() {
     let [cl1, cl2, cl3, cl4, cl5] = world.new_clients();
 
     let contest = world.new_contest_with_rules(
-        cl1, "p1", None,
+        cl1, "p1",
         default_chess_rules(),
         BughouseRules {
             teaming: Teaming::IndividualMode,
@@ -622,10 +627,10 @@ fn five_players() {
         ("p4".to_owned(), seating!(White B)),
     ]);
 
-    world[cl2].join(&contest, "p2", None);
-    world[cl3].join(&contest, "p3", None);
-    world[cl4].join(&contest, "p4", None);
-    world[cl5].join(&contest, "p5", None);
+    world[cl2].join(&contest, "p2");
+    world[cl3].join(&contest, "p3");
+    world[cl4].join(&contest, "p4");
+    world[cl5].join(&contest, "p5");
     world.process_all_events();
 
     for cl in [cl1, cl2, cl3, cl4, cl5].iter() {
@@ -644,8 +649,12 @@ fn two_contests() {
     let mut world = World::new();
     let [cl1, cl2, cl3, cl4, cl5, cl6, cl7, cl8] = world.new_clients();
 
-    let contest1 = world.new_contest(cl1, "p1", Some(Team::Red));
-    let contest2 = world.new_contest(cl5, "p5", Some(Team::Red));
+    let contest1 = world.new_contest(cl1, "p1");
+    world[cl1].state.set_team(Team::Red);
+    world.process_all_events();
+    let contest2 = world.new_contest(cl5, "p5");
+    world[cl5].state.set_team(Team::Red);
+    world.process_all_events();
 
     world.server.state.TEST_override_board_assignment(contest1.clone(), vec! [
         ("p1".to_owned(), seating!(White A)),
@@ -660,12 +669,12 @@ fn two_contests() {
         ("p8".to_owned(), seating!(White B)),
     ]);
 
-    world[cl2].join(&contest1, "p2", Some(Team::Red));
-    world[cl3].join(&contest1, "p3", Some(Team::Blue));
-    world[cl4].join(&contest1, "p4", Some(Team::Blue));
-    world[cl6].join(&contest2, "p6", Some(Team::Red));
-    world[cl7].join(&contest2, "p7", Some(Team::Blue));
-    world[cl8].join(&contest2, "p8", Some(Team::Blue));
+    world.join_and_set_team(cl2, &contest1, "p2", Team::Red);
+    world.join_and_set_team(cl3, &contest1, "p3", Team::Blue);
+    world.join_and_set_team(cl4, &contest1, "p4", Team::Blue);
+    world.join_and_set_team(cl6, &contest2, "p6", Team::Red);
+    world.join_and_set_team(cl7, &contest2, "p7", Team::Blue);
+    world.join_and_set_team(cl8, &contest2, "p8", Team::Blue);
     world.process_all_events();
 
     for cl in [cl1, cl2, cl3, cl4, cl5, cl6, cl7, cl8].iter() {

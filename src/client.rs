@@ -153,24 +153,26 @@ impl ClientState {
     pub fn read_meter_stats(&self) -> HashMap<String, MeterStats> { self.meter_box.read_stats() }
     pub fn consume_meter_stats(&mut self) -> HashMap<String, MeterStats> { self.meter_box.consume_stats() }
 
-    pub fn new_contest(
-        &mut self, chess_rules: ChessRules, bughouse_rules: BughouseRules, my_name: String, my_team: Option<Team>
-    ) {
+    pub fn new_contest(&mut self, chess_rules: ChessRules, bughouse_rules: BughouseRules, my_name: String) {
         self.events_tx.send(BughouseClientEvent::NewContest {
             chess_rules,
             bughouse_rules,
             player_name: my_name.clone(),
-            team: my_team,
         }).unwrap();
         self.contest_state = ContestState::Creating{ my_name };
     }
-    pub fn join(&mut self, contest_id: String, my_name: String, my_team: Option<Team>) {
+    pub fn join(&mut self, contest_id: String, my_name: String) {
         self.events_tx.send(BughouseClientEvent::Join {
             contest_id: contest_id.clone(),
             player_name: my_name.clone(),
-            team: my_team,
         }).unwrap();
         self.contest_state = ContestState::Joining{ contest_id, my_name };
+    }
+    pub fn set_team(&mut self, team: Team) {
+        if let Some(contest) = self.contest_mut() {
+            contest.my_team = Some(team);
+            self.events_tx.send(BughouseClientEvent::SetTeam{ team }).unwrap();
+        }
     }
     pub fn resign(&mut self) {
         self.events_tx.send(BughouseClientEvent::Resign).unwrap();
@@ -266,8 +268,10 @@ impl ClientState {
                 let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply LobbyUpdated: no contest in progress"))?;
                 // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
                 //   (e.g. is_ready from another player) arrived before is_ready update from this
-                //   client reached the server.
-                contest.is_ready = players.iter().find(|p| p.name == contest.my_name).unwrap().is_ready;
+                //   client reached the server. Same for `my_team`.
+                let me = players.iter().find(|p| p.name == contest.my_name).unwrap();
+                contest.is_ready = me.is_ready;
+                contest.my_team = me.fixed_team;
                 contest.players = players;
             },
             GameStarted{ starting_position, players, time, turn_log, game_status, scores } => {

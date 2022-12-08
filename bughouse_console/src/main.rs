@@ -54,7 +54,6 @@ fn main() -> io::Result<()> {
                 .arg(arg!(<server_address> "Server address"))
                 .arg(arg!(<contest_id> "Contest ID"))
                 .arg(arg!(<player_name> "Player name"))
-                .arg(arg!([team] "Team").value_parser(["red", "blue"]))
         )
         .get_matches();
 
@@ -70,7 +69,6 @@ fn main() -> io::Result<()> {
                 server_address: sub_matches.get_one::<String>("server_address").unwrap().clone(),
                 contest_id: sub_matches.get_one::<String>("contest_id").unwrap().clone(),
                 player_name: sub_matches.get_one::<String>("player_name").unwrap().clone(),
-                team: sub_matches.get_one::<String>("team").cloned(),
             })
         },
         _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),
