@@ -11,6 +11,7 @@ use crate::clock::{GameInstant, WallGameTimePair};
 use crate::force::Force;
 use crate::game::{TurnRecord, BughouseParticipantId, BughouseObserserId, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerformance};
+use crate::heartbeat::{Heart, HeartbeatOutcome};
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::BughouseExportFormat;
 use crate::player::{Player, Team};
@@ -94,10 +95,32 @@ enum ContestState {
     Connected(Contest),
 }
 
+struct Connection {
+    events_tx: mpsc::Sender<BughouseClientEvent>,
+    heart: Heart,
+}
+
+impl Connection {
+    fn new(events_tx: mpsc::Sender<BughouseClientEvent>) -> Self {
+        let now = Instant::now();
+        Connection {
+            events_tx,
+            heart: Heart::new(now),
+        }
+    }
+
+    fn send(&mut self, event: BughouseClientEvent) {
+        // Improvement potential: Propagate `now` from the caller.
+        let now = Instant::now();
+        self.events_tx.send(event).unwrap();
+        self.heart.register_outgoing(now);
+    }
+}
+
 pub struct ClientState {
     user_agent: String,
     time_zone: String,
-    events_tx: mpsc::Sender<BughouseClientEvent>,
+    connection: Connection,
     contest_state: ContestState,
     notable_event_queue: VecDeque<NotableEvent>,
     meter_box: MeterBox,
@@ -128,7 +151,7 @@ impl ClientState {
         ClientState {
             user_agent,
             time_zone,
-            events_tx,
+            connection: Connection::new(events_tx),
             contest_state: ContestState::NotConnected,
             notable_event_queue: VecDeque::new(),
             meter_box,
@@ -153,52 +176,55 @@ impl ClientState {
     pub fn read_meter_stats(&self) -> HashMap<String, MeterStats> { self.meter_box.read_stats() }
     pub fn consume_meter_stats(&mut self) -> HashMap<String, MeterStats> { self.meter_box.consume_stats() }
 
+    pub fn is_connection_ok(&self) -> bool { self.connection.heart.healthy() }
+
     pub fn new_contest(&mut self, chess_rules: ChessRules, bughouse_rules: BughouseRules, my_name: String) {
-        self.events_tx.send(BughouseClientEvent::NewContest {
+        self.connection.send(BughouseClientEvent::NewContest {
             chess_rules,
             bughouse_rules,
             player_name: my_name.clone(),
-        }).unwrap();
+        });
         self.contest_state = ContestState::Creating{ my_name };
     }
     pub fn join(&mut self, contest_id: String, my_name: String) {
-        self.events_tx.send(BughouseClientEvent::Join {
+        self.connection.send(BughouseClientEvent::Join {
             contest_id: contest_id.clone(),
             player_name: my_name.clone(),
-        }).unwrap();
+        });
         self.contest_state = ContestState::Joining{ contest_id, my_name };
     }
     pub fn set_team(&mut self, team: Team) {
         if let Some(contest) = self.contest_mut() {
             contest.my_team = Some(team);
-            self.events_tx.send(BughouseClientEvent::SetTeam{ team }).unwrap();
+            self.connection.send(BughouseClientEvent::SetTeam{ team });
         }
     }
     pub fn resign(&mut self) {
-        self.events_tx.send(BughouseClientEvent::Resign).unwrap();
+        self.connection.send(BughouseClientEvent::Resign);
     }
     pub fn set_ready(&mut self, is_ready: bool) {
         if let Some(contest) = self.contest_mut() {
             contest.is_ready = is_ready;
-            self.events_tx.send(BughouseClientEvent::SetReady{ is_ready }).unwrap();
+            self.connection.send(BughouseClientEvent::SetReady{ is_ready });
         }
     }
     pub fn leave(&mut self) {
-        self.events_tx.send(BughouseClientEvent::Leave).unwrap();
+        self.connection.send(BughouseClientEvent::Leave);
     }
     pub fn report_performance(&mut self) {
         let stats = self.consume_meter_stats();
-        self.events_tx.send(BughouseClientEvent::ReportPerformace(BughouseClientPerformance {
+        self.connection.send(BughouseClientEvent::ReportPerformace(BughouseClientPerformance {
             user_agent: self.user_agent.clone(),
             time_zone: self.time_zone.clone(),
             stats,
-        })).unwrap();
+        }));
     }
     pub fn request_export(&mut self, format: BughouseExportFormat) {
-        self.events_tx.send(BughouseClientEvent::RequestExport{ format }).unwrap();
+        self.connection.send(BughouseClientEvent::RequestExport{ format });
     }
 
     pub fn refresh(&mut self) {
+        self.check_connection();
         self.update_low_time_warnings(true);
     }
 
@@ -216,7 +242,7 @@ impl ClientState {
             if mode == TurnMode::Normal {
                 *awaiting_turn_confirmation_since = Some(now);
             }
-            self.events_tx.send(BughouseClientEvent::MakeTurn{ turn_input }).unwrap();
+            self.connection.send(BughouseClientEvent::MakeTurn{ turn_input });
             self.notable_event_queue.push_back(NotableEvent::MyTurnMade);
             Ok(())
         } else {
@@ -227,13 +253,15 @@ impl ClientState {
     pub fn cancel_preturn(&mut self) {
         if let Some(alt_game) = self.alt_game_mut() {
             if alt_game.cancel_preturn() {
-                self.events_tx.send(BughouseClientEvent::CancelPreturn).unwrap();
+                self.connection.send(BughouseClientEvent::CancelPreturn);
             }
         }
     }
 
     pub fn process_server_event(&mut self, event: BughouseServerEvent) -> Result<(), EventError> {
         use BughouseServerEvent::*;
+        let now = Instant::now();
+        self.connection.heart.register_incoming(now);
         match event {
             Error{ message } => {
                 return Err(EventError::ServerReturnedError(format!("Got error from server: {}", message)))
@@ -282,7 +310,7 @@ impl ClientState {
                     assert!(time.elapsed_since_start().is_zero());
                     None
                 } else {
-                    Some(WallGameTimePair::new(Instant::now(), time.approximate()))
+                    Some(WallGameTimePair::new(now, time.approximate()))
                 };
                 let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameStarted: no contest in progress"))?;
                 let game = BughouseGame::new_with_starting_position(
@@ -331,6 +359,9 @@ impl ClientState {
             GameExportReady{ content } => {
                 self.notable_event_queue.push_back(NotableEvent::GameExportReady(content));
             },
+            Heartbeat => {
+                // This event is needed only for `heart.register_incoming` above.
+            }
         }
         Ok(())
     }
@@ -445,6 +476,19 @@ impl ClientState {
         let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot update scores: no contest in progress"))?;
         contest.scores = new_scores;
         Ok(())
+    }
+
+    fn check_connection(&mut self) {
+        use HeartbeatOutcome::*;
+        let now = Instant::now();
+        match self.connection.heart.beat(now) {
+            AllGood => {},
+            SendBeat => {
+                self.connection.send(BughouseClientEvent::Heartbeat);
+            },
+            OtherPartyTemporatyLost => {},
+            OtherPartyPermanentlyLost => {},
+        }
     }
 
     fn update_low_time_warnings(&mut self, generate_notable_events: bool) {

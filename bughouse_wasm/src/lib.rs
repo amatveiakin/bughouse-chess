@@ -352,6 +352,8 @@ impl WebClient {
 
     pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
         match self.state.next_notable_event() {
+            // TODO: Change `GotContestId` to `ContestStarted` so that clients that join also
+            //   have their URL search params updated.
             Some(NotableEvent::GotContestId(contest_id)) => Ok(JsEventGotContestId{ contest_id }.into()),
             Some(NotableEvent::GameStarted) => {
                 let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
@@ -390,8 +392,13 @@ impl WebClient {
         }
     }
 
-    pub fn refresh(&mut self) {
+    pub fn refresh(&mut self) -> JsResult<()> {
         self.state.refresh();
+        if !self.state.is_connection_ok() {
+            let info_string = web_document().get_existing_element_by_id("info-string")?;
+            info_string.set_text_content(Some("🔌 Connection problem!\nConsider reloading the page."));
+        }
+        Ok(())
     }
 
     pub fn update_state(&self) -> JsResult<()> {

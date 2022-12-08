@@ -1,4 +1,4 @@
-// TODO: Remove logging
+// TODO: Remove logging (or at least don't log heartbeat events).
 // TODO: Check if ==/!= have to be replaced with ===/!== and other JS weirdness.
 // TODO: Figure out if it's possible to enable strict mode with webpack.
 
@@ -248,6 +248,7 @@ function on_server_event(event) {
     with_error_handling(function() {
         console.log(log_time(), 'server: ', event);
         wasm_client().process_server_event(event);
+        // TODO: Avoid full update on heartbeat.
         update();
     });
 }
@@ -363,6 +364,8 @@ function on_tick() {
         const timer = new Timer();
         wasm_client().refresh();
         timer.meter(refresh_meter);
+        process_outgoing_events();
+        timer.meter(process_outgoing_events_meter);
         wasm_client().update_clock();
         timer.meter(update_clock_meter);
         process_notable_events();
@@ -373,10 +376,10 @@ function on_tick() {
 function update() {
     with_error_handling(function() {
         const timer = new Timer();
-        process_outgoing_events();
-        timer.meter(process_outgoing_events_meter);
         wasm_client().refresh();
         timer.meter(refresh_meter);
+        process_outgoing_events();
+        timer.meter(process_outgoing_events_meter);
         wasm_client().update_state();
         timer.meter(update_state_meter);
         process_notable_events();

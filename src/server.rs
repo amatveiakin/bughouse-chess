@@ -18,6 +18,7 @@ use strum::IntoEnumIterator;
 use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, BughouseGameStatus, BughouseGame};
+use crate::heartbeat::{Heart, HeartbeatOutcome};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientErrorReport};
 use crate::pgn::{self, BughouseExportFormat};
 use crate::player::{Player, PlayerInGame, Team};
@@ -98,11 +99,15 @@ pub struct Client {
     contest_id: Option<ContestId>,
     player_id: Option<PlayerId>,
     logging_id: String,
+    heart: Heart,
 }
 
 impl Client {
     fn send(&mut self, event: BughouseServerEvent) {
+        // Improvement potential: Propagate `now` from the caller.
+        let now = Instant::now();
         self.events_tx.send(event).unwrap();
+        self.heart.register_outgoing(now);
     }
     fn send_error(&mut self, message: String) {
         self.send(BughouseServerEvent::Error{ message });
@@ -120,11 +125,13 @@ impl Clients {
     pub fn add_client(&mut self, events_tx: mpsc::Sender<BughouseServerEvent>, logging_id: String)
         -> ClientId
     {
+        let now = Instant::now();
         let client = Client {
             events_tx,
             contest_id: None,
             player_id: None,
             logging_id,
+            heart: Heart::new(now),
         };
         let id = ClientId(self.next_id);
         self.next_id += 1;
@@ -135,6 +142,9 @@ impl Clients {
     // Returns `logging_id` if the client existed.
     // A client can be removed multiple times, e.g. first on `Leave`, then on network
     // channel closure. This is not an error.
+    //
+    // TODO: Make sure network connection is closed in a reasnable timeframe whenever
+    //   a client is removed.
     //
     // Improvement potential. Send an event informing other clients that somebody went
     // offline (for TUI: could use “ϟ” for “disconnected”; there is a plug emoji “🔌”
@@ -148,9 +158,9 @@ impl Clients {
     // Improvement potential. Do not iterate over all clients. Keep the list of clients
     // in each contest.
     fn broadcast(&mut self, contest_id: &ContestId, event: &BughouseServerEvent) {
-        for Client{events_tx, contest_id: client_contest_id, ..} in self.map.values() {
-            if client_contest_id.as_ref() == Some(contest_id) {
-                events_tx.send(event.clone()).unwrap();
+        for client in self.map.values_mut() {
+            if client.contest_id.as_ref() == Some(contest_id) {
+                client.send(event.clone());
             }
         }
     }
@@ -318,6 +328,8 @@ impl CoreServerState {
             return;
         }
 
+        ctx.clients[client_id].heart.register_incoming(now);
+
         // First, process events that don't require a contest.
         match &event {
             BughouseClientEvent::ReportPerformace(..) => {
@@ -326,6 +338,10 @@ impl CoreServerState {
             },
             BughouseClientEvent::ReportError(report) => {
                 process_report_error(ctx, client_id, report);
+                return;
+            },
+            BughouseClientEvent::Heartbeat => {
+                // This event is needed only for `heart.register_incoming` above.
                 return;
             },
             _ => {},
@@ -374,6 +390,7 @@ impl CoreServerState {
 
     fn on_tick(&mut self, ctx: &mut Context, now: Instant) {
         self.gc_old_contests(now);
+        self.check_client_connections(ctx, now);
         for contest in self.contests.values_mut() {
             contest.test_flags(ctx, now);
             contest.post_process(ctx, now);
@@ -385,6 +402,21 @@ impl CoreServerState {
         // Improvement potential. GC unused contests (zero games and/or no players) sooner.
         self.contests.retain(|_, contest| {
             contest.last_activity.duration_since(now) <= CONTEST_GC_INACTIVITY_THRESHOLD
+        });
+    }
+
+    fn check_client_connections(&mut self, ctx: &mut Context, now: Instant) {
+        use HeartbeatOutcome::*;
+        ctx.clients.map.retain(|_, client| {
+            match client.heart.beat(now) {
+                AllGood => true,
+                SendBeat => {
+                    client.send(BughouseServerEvent::Heartbeat);
+                    true
+                },
+                OtherPartyTemporatyLost => true,
+                OtherPartyPermanentlyLost => false,
+            }
         });
     }
 }
@@ -453,6 +485,9 @@ impl Contest {
             BughouseClientEvent::ReportError(..) => {
                 unreachable!("Contest-independent event must be processed separately");
             },
+            BughouseClientEvent::Heartbeat => {
+                unreachable!("Contest-independent event must be processed separately");
+            },
         };
         if let Err(err) = result {
             ctx.clients[client_id].send_error(err);
@@ -465,6 +500,7 @@ impl Contest {
         assert!(ctx.clients[client_id].contest_id.is_none());
         assert!(ctx.clients[client_id].player_id.is_none());
         if self.game_state.is_none() {
+            // TODO: Allow to kick players from the lobby when the old client is offline.
             if self.players.find_by_name(&player_name).is_some() {
                 return Err(format!("Cannot join: player \"{}\" already exists", player_name));
             }
@@ -487,16 +523,23 @@ impl Contest {
             self.send_lobby_updated(ctx);
             Ok(())
         } else {
-            let Some(existing_player_id) = self.players.find_by_name(&player_name) else {
+            let Some(player_id) = self.players.find_by_name(&player_name) else {
                 // Improvement potential. Allow joining mid-game in individual mode.
                 //   Q. How to balance score in this case? Should we switch to negative numbers?
                 return Err("Cannot join: game has already started".to_owned());
             };
-            if ctx.clients.map.values().any(|c| c.player_id == Some(existing_player_id)) {
-                return Err(format!(r#"Cannot join: client for player "{}" already connected"#, player_name))
-            }
+            let existing_client_id = ctx.clients.map.iter().find_map(
+                |(&id, c)| if c.player_id == Some(player_id) { Some(id) } else { None }
+            );
+            if let Some(existing_client_id) = existing_client_id {
+                if ctx.clients[existing_client_id].heart.healthy() {
+                    return Err(format!(r#"Cannot join: client for player "{}" already connected"#, player_name))
+                } else {
+                    ctx.clients.remove_client(existing_client_id);
+                }
+            };
             ctx.clients[client_id].contest_id = Some(self.contest_id.clone());
-            ctx.clients[client_id].player_id = Some(existing_player_id);
+            ctx.clients[client_id].player_id = Some(player_id);
             ctx.clients[client_id].send(self.make_contest_welcome_event());
             // LobbyUpdated should precede GameStarted, because this is how the client gets their
             // team in FixedTeam mode.
@@ -668,6 +711,7 @@ impl Contest {
         //   processing cycle. Right now there could up to three: one from the event (SetTeam/SetReady),
         //   one from here and one from `self.start_game`.
         //   Idea: Add `ctx.should_update_lobby` bit and check it in the end.
+        // TODO: Show lobby players as offline when `!c.heart.is_online()`.
         let active_player_ids: HashSet<_> = ctx.clients.map.values().filter_map(|c| c.player_id).collect();
         if self.game_state.is_none() {
             let mut player_removed = false;
