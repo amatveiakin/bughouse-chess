@@ -143,7 +143,7 @@ join_contest_back_button.addEventListener('click', show_start_page);
 menu_create_contest_page.addEventListener('submit', on_create_contest_confirm);
 menu_join_contest_page.addEventListener('submit', on_join_contest_confirm);
 
-setInterval(on_tick, 100);
+let on_tick_interval_id = setInterval(on_tick, 100);
 
 
 function with_error_handling(f) {
@@ -183,6 +183,10 @@ function with_error_handling(f) {
                     'Internal error! This client is now dead 💀 ' +
                     'Only refreshing the page may help you. We are very sorry. ' +
                     reported;
+                if (on_tick_interval_id != null) {
+                    clearInterval(on_tick_interval_id);
+                    on_tick_interval_id = null;
+                }
             } else if (e.name === 'InvalidStateError' && socket.readyState == WebSocket.CONNECTING) {
                 info_string.innerText = 'Still connecting to the server... Please try again later.';
             } else {
