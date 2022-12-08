@@ -290,16 +290,6 @@ impl CoreServerState {
         id
     }
 
-    fn new_contest(
-        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
-        chess_rules: ChessRules, bughouse_rules: BughouseRules
-    ) -> ContestId {
-        let contest_id = self.make_contest(now, chess_rules.clone(), bughouse_rules.clone());
-        ctx.clients[client_id].contest_id = Some(contest_id.clone());
-        info!("Contest {} created by client {}", contest_id.0, ctx.clients[client_id].logging_id);
-        contest_id
-    }
-
     fn apply_event(&mut self, ctx: &mut Context, event: IncomingEvent) {
         // Use the same timestamp for the entire event processing. Other code reachable
         // from this function should not call `Instant::now()`. Doing so may cause a race
@@ -343,15 +333,16 @@ impl CoreServerState {
 
         let contest_id = match &event {
             BughouseClientEvent::NewContest{ chess_rules, bughouse_rules, .. } => {
-                Some(self.new_contest(ctx, client_id, now, chess_rules.clone(), bughouse_rules.clone()))
+                ctx.clients[client_id].contest_id = None;
+                ctx.clients[client_id].player_id = None;
+                let contest_id = self.make_contest(now, chess_rules.clone(), bughouse_rules.clone());
+                info!("Contest {} created by client {}", contest_id.0, ctx.clients[client_id].logging_id);
+                Some(contest_id)
             },
             BughouseClientEvent::Join{ contest_id, .. } => {
-                // Remove the client (not the player!) from the current contest:
-                //   - If they are re-joining to the same contest (to fix a desync presumably),
-                //     they will be reconnected immediately.
-                //     TODO: Log these events, they probably indicate client-side errors.
-                //   - If they are joining another contest, this is how we remove them from this one.
-                //     TODO: Add some kind of warning if leaving mid-game.
+                // Improvement potential: Log cases when a client reconnects to their current
+                //   contest. This likely indicates a client error.
+                ctx.clients[client_id].contest_id = None;
                 ctx.clients[client_id].player_id = None;
                 Some(ContestId(contest_id.clone()))
             },
@@ -471,10 +462,9 @@ impl Contest {
     fn join_player(
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, player_name: String
     ) -> EventResult {
+        assert!(ctx.clients[client_id].contest_id.is_none());
+        assert!(ctx.clients[client_id].player_id.is_none());
         if self.game_state.is_none() {
-            if ctx.clients[client_id].player_id.is_some() {
-                return Err("Cannot join: already joined".to_owned());
-            }
             if self.players.find_by_name(&player_name).is_some() {
                 return Err(format!("Cannot join: player \"{}\" already exists", player_name));
             }
