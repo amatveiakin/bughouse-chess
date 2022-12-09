@@ -469,11 +469,11 @@ impl WebClient {
                     &player_name_node_id(web_board_idx, player_idx)
                 )?;
                 let player_name = &board.player(force).name;
+                let player = contest.players.iter().find(|p| p.name == *player_name).unwrap();
                 let player_string = if game.status() == BughouseGameStatus::Active {
-                    player_name.clone()
+                    player_string(&player)
                 } else {
-                    let player = contest.players.iter().find(|p| p.name == *player_name).unwrap();
-                    player_with_readiness_status(&player)
+                    player_string_with_readiness(&player)
                 };
                 name_node.set_text_content(Some(&player_string));
                 update_reserve(board.reserve(force), force, web_board_idx, player_idx)?;
@@ -641,7 +641,7 @@ fn update_lobby(contest: &Contest) -> JsResult<()> {
             let mut teamless = vec![];
             let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
             for p in &contest.players {
-                let s = format!("{}\n", player_with_readiness_status(p));
+                let s = format!("{}\n", player_string_with_readiness(p));
                 if let Some(fixed_team) = p.fixed_team {
                     teams[fixed_team].push(s);
                 } else {
@@ -659,7 +659,7 @@ fn update_lobby(contest: &Contest) -> JsResult<()> {
         Teaming::IndividualMode => {
             contest.players.iter().map(|p| {
                 assert!(p.fixed_team.is_none());
-                player_with_readiness_status(p)
+                player_string_with_readiness(p)
             }).join("\n")
         },
     };
@@ -702,12 +702,20 @@ fn reset_square_highlight(id: &str) -> JsResult<()> {
     Ok(())
 }
 
-fn player_with_readiness_status(p: &Player) -> String {
-    format!(
-        "{} {}",
-        if p.is_ready { "☑" } else { "☐" },
-        p.name
-    )
+// Improvement potential: Find a better icon for connection problems.
+// Improvement potential: Add a tooltip explaining the meaning of the icon.
+fn player_string(p: &Player) -> String {
+    let icon = if p.is_online { "" } else { "⚠️ " };
+    format!("{}{}", icon, p.name)
+}
+
+fn player_string_with_readiness(p: &Player) -> String {
+    let icon = if p.is_online {
+        if p.is_ready { "☑ " } else { "☐ " }
+    } else {
+        "⚠️ "
+    };
+    format!("{}{}", icon, p.name)
 }
 
 // Renders reserve.
