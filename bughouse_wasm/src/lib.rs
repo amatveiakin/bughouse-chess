@@ -15,6 +15,7 @@ extern crate wasm_bindgen;
 
 extern crate bughouse_chess;
 
+use std::cell::RefCell;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -37,9 +38,10 @@ const BOARD_LEFT: f64 = 0.0;
 const BOARD_TOP: f64 = 0.0;
 // TODO: Viewbox size asserts.
 
-// Mutable singleton should be ok since the relevant code is single-threaded.
-// TODO: Consider wrapping into once_cell or thread_local for better safety.
-static mut LAST_PANIC: String = String::new();
+// The client is single-threaded, so wrapping all mutable singletons in `thread_local!` seems ok.
+thread_local! {
+    static LAST_PANIC: RefCell<String> = RefCell::new(String::new());
+}
 
 // Copied from console_error_panic_hook
 #[wasm_bindgen]
@@ -70,18 +72,14 @@ pub fn set_panic_hook() {
                 panic_info: panic_info.to_string(),
                 backtrace,
             });
-            unsafe {
-                LAST_PANIC = serde_json::to_string(&event).unwrap();
-            }
+            LAST_PANIC.with(|cell| *cell.borrow_mut() = serde_json::to_string(&event).unwrap());
         }));
     });
 }
 
 #[wasm_bindgen]
 pub fn last_panic() -> String {
-    unsafe {
-        LAST_PANIC.clone()
-    }
+    LAST_PANIC.with(|cell| cell.borrow().clone())
 }
 
 #[wasm_bindgen]
