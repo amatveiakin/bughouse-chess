@@ -39,7 +39,6 @@ const BOARD_TOP: f64 = 0.0;
 
 // Mutable singleton should be ok since the relevant code is single-threaded.
 // TODO: Consider wrapping into once_cell or thread_local for better safety.
-static mut PIECE_PATH: Option<EnumMap<Force, EnumMap<PieceKind, String>>> = None;
 static mut LAST_PANIC: String = String::new();
 
 // Copied from console_error_panic_hook
@@ -627,40 +626,7 @@ fn remove_all_children(node: &web_sys::Node) -> JsResult<()> {
 }
 
 #[wasm_bindgen]
-pub fn init_page(
-    white_pawn: String,
-    white_knight: String,
-    white_bishop: String,
-    white_rook: String,
-    white_queen: String,
-    white_king: String,
-    black_pawn: String,
-    black_knight: String,
-    black_bishop: String,
-    black_rook: String,
-    black_queen: String,
-    black_king: String,
-) -> JsResult<()> {
-    use Force::*;
-    use PieceKind::*;
-    let mut piece_path = enum_map!{
-        _ => enum_map!{ _ => String::new() }
-    };
-    piece_path[White][Pawn] = white_pawn;
-    piece_path[White][Knight] = white_knight;
-    piece_path[White][Bishop] = white_bishop;
-    piece_path[White][Rook] = white_rook;
-    piece_path[White][Queen] = white_queen;
-    piece_path[White][King] = white_king;
-    piece_path[Black][Pawn] = black_pawn;
-    piece_path[Black][Knight] = black_knight;
-    piece_path[Black][Bishop] = black_bishop;
-    piece_path[Black][Rook] = black_rook;
-    piece_path[Black][Queen] = black_queen;
-    piece_path[Black][King] = black_king;
-    unsafe {
-        PIECE_PATH = Some(piece_path);
-    }
+pub fn init_page() -> JsResult<()> {
     render_grids(false)?;
     render_starting()?;
     Ok(())
@@ -790,13 +756,11 @@ fn render_reserve(
             if iter > 0 {
                 x += piece_sep;
             }
-            let node = document.create_svg_element("image")?;
+            let node = document.create_svg_element("use")?;
             node.set_attribute("href", &filename)?;
             node.set_attribute("data-bughouse-location", &location)?;
             node.set_attribute("x", &x.to_string())?;
             node.set_attribute("y", &y.to_string())?;
-            node.set_attribute("width", "1")?;
-            node.set_attribute("height", "1")?;
             if draggable {
                 node.set_attribute("class", "draggable")?;
             }
@@ -1000,10 +964,8 @@ fn render_grid(board_idx: WebBoard, rotate_boards: bool) -> JsResult<()> {
 }
 
 fn make_piece_node(id: &str) -> JsResult<web_sys::Element> {
-    let node = web_document().create_svg_element("image")?;
+    let node = web_document().create_svg_element("use")?;
     node.set_attribute("id", id)?;
-    node.set_attribute("width", "1")?;
-    node.set_attribute("height", "1")?;
     return Ok(node);
 }
 
@@ -1143,8 +1105,21 @@ fn square_color_class(row: Row, col: Col) -> String {
     }
 }
 
-fn piece_path(piece_kind: PieceKind, force: Force) -> String {
-    unsafe {
-        return PIECE_PATH.as_ref().unwrap()[force][piece_kind].clone();
+fn piece_path(piece_kind: PieceKind, force: Force) -> &'static str {
+    use PieceKind::*;
+    use Force::*;
+    match (force, piece_kind) {
+        (White, Pawn) => "#white-pawn",
+        (White, Knight) => "#white-knight",
+        (White, Bishop) => "#white-bishop",
+        (White, Rook) => "#white-rook",
+        (White, Queen) => "#white-queen",
+        (White, King) => "#white-king",
+        (Black, Pawn) => "#black-pawn",
+        (Black, Knight) => "#black-knight",
+        (Black, Bishop) => "#black-bishop",
+        (Black, Rook) => "#black-rook",
+        (Black, Queen) => "#black-queen",
+        (Black, King) => "#black-king",
     }
 }

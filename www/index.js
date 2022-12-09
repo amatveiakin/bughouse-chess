@@ -95,13 +95,27 @@ const create_contest_teaming = document.getElementById('create-contest-teaming')
 const join_contest_player_name = document.getElementById('join-contest-player-name');
 const join_contest_id = document.getElementById('join-contest-id');
 
+const svg_defs = document.getElementById('svg-defs');
+
+load_piece_images([
+    [ white_pawn, 'white-pawn' ],
+    [ white_knight, 'white-knight' ],
+    [ white_bishop, 'white-bishop' ],
+    [ white_rook, 'white-rook' ],
+    [ white_queen, 'white-queen' ],
+    [ white_king, 'white-king' ],
+    [ black_pawn, 'black-pawn' ],
+    [ black_knight, 'black-knight' ],
+    [ black_bishop, 'black-bishop' ],
+    [ black_rook, 'black-rook' ],
+    [ black_queen, 'black-queen' ],
+    [ black_king, 'black-king' ],
+]);
+
 init_menu();
 
 wasm.set_panic_hook();
-wasm.init_page(
-    white_pawn, white_knight, white_bishop, white_rook, white_queen, white_king,
-    black_pawn, black_knight, black_bishop, black_rook, black_queen, black_king
-);
+wasm.init_page();
 project_info.innerText = wasm.project_info();
 
 set_up_drag_and_drop();
@@ -613,6 +627,41 @@ function init_menu() {
         join_contest_player_name.focus();
     } else {
         show_menu_page(menu_start_page);
+    }
+}
+
+function make_piece_image(symbol_id) {
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const symbol = document.createElementNS(SVG_NS, 'symbol');
+    symbol.id = symbol_id;
+    const image = document.createElementNS(SVG_NS, 'image');
+    image.id = `${symbol_id}-image`;
+    image.setAttribute('width', '1');
+    image.setAttribute('height', '1');
+    symbol.appendChild(image);
+    svg_defs.appendChild(symbol);
+}
+
+async function load_image(filepath, target_id) {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+        const image = document.getElementById(target_id);
+        image.setAttribute('href', reader.result);
+    }, false);
+    reader.addEventListener('error', () => {
+        console.error(`Cannot load image ${filepath}`);
+    });
+    const response = await fetch(filepath);
+    const blob = await response.blob();
+    reader.readAsDataURL(blob);
+}
+
+async function load_piece_images(image_records) {
+    for (const record of image_records) {
+        const [filepath, symbol_id] = record;
+        const image_id = `${symbol_id}-image`;
+        make_piece_image(symbol_id);
+        load_image(filepath, image_id);
     }
 }
 
