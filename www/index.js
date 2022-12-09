@@ -75,7 +75,7 @@ const turn_audio = new Audio(turn_sound);
 const reserve_restocked_audio = new Audio(reserve_restocked_sound);
 const low_time_audio = new Audio(low_time_sound);
 
-const project_info = document.getElementById('project-info');
+const git_version = document.getElementById('git-version');
 const info_string = document.getElementById('info-string');
 
 const menu_dialog = document.getElementById('menu-dialog');
@@ -116,7 +116,7 @@ init_menu();
 
 wasm.set_panic_hook();
 wasm.init_page();
-project_info.innerText = wasm.project_info();
+git_version.innerText = wasm.git_version();
 
 set_up_drag_and_drop();
 

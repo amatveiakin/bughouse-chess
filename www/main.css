@@ -370,6 +370,9 @@ body.observer #command {
   font-size: 50%;
   color: #ffffff60;
 }
+#project-info a {
+  color: #ffffff60;
+}
 
 dialog {
   background-color: #dfceb4;

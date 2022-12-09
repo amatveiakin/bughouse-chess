@@ -633,9 +633,8 @@ pub fn init_page() -> JsResult<()> {
 }
 
 #[wasm_bindgen]
-pub fn project_info() -> String {
-    // TODO: Add contacts.
-    format!("Bughouse chess {} (beta)\nAuthor: Andrei Matveiakin", my_git_version!())
+pub fn git_version() -> String {
+    my_git_version!().to_owned()
 }
 
 fn update_lobby(contest: &Contest) -> JsResult<()> {
