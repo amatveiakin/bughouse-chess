@@ -1,25 +1,33 @@
 // TODO: streaming support + APIs.
 use bughouse_chess::*;
 
+use clap::Parser;
 use log::error;
 use rusqlite::*;
-use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::ops::Range;
-use std::sync::*;
 use tide::http::Mime;
 use tide::{Request, Response, StatusCode};
 use tide_jsx::*;
-use time::formatting::Formattable;
-use time::Duration;
 use time::OffsetDateTime;
+
+/// Simple program to greet a person
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+   #[arg(long, default_value = "0.0.0.0:38618")]
+   bind_address: String,
+
+   /// Number of times to greet
+   #[arg(short, long)]
+   database_address: String,
+}
 
 #[async_std::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    //env_logger::init();
     femme::start();
-    let db_address = "/home/kost/tmp/bughouse.db";
-    let mut app = tide::with_state(RusqliteReader::new(db_address)?);
+    let args = Args::parse();
+    let mut app = tide::with_state(RusqliteReader::new(&args.database_address)?);
     app.with(tide::log::LogMiddleware::new());
 
     app.with(tide::utils::After(|mut res: Response| async {
@@ -35,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.at("/dyn/pgn/:rowid").get(pgn);
     app.at("/dyn/stats").get(|r| stats(r, None));
     app.at("/dyn/stats/:duration").get(stats_with_duration);
-    app.listen("0.0.0.0:38618").await?;
+    app.listen(args.bind_address).await?;
     Ok(())
 }
 
