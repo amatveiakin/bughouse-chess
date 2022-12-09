@@ -11,7 +11,6 @@ use bughouse_chess::server::*;
 use bughouse_chess::server_hooks::ServerHooks;
 use bughouse_chess::*;
 
-
 pub struct RusqliteServerHooks {
     invocation_id: String,
     game_start_time: Option<time::OffsetDateTime>,
@@ -209,20 +208,6 @@ impl RusqliteServerHooks {
             game_pgn: pgn::export_to_bpgn(pgn::BughouseExportFormat{}, game.game(), round),
         })
     }
-}
-
-#[derive(Debug)]
-struct GameResultRow {
-    git_version: String,
-    invocation_id: String,
-    game_start_time: Option<i64>,
-    game_end_time: Option<i64>,
-    player_red_a: String,
-    player_red_b: String,
-    player_blue_a: String,
-    player_blue_b: String,
-    result: String,
-    game_pgn: String,
 }
 
 fn game_result_str(status: BughouseGameStatus) -> Option<String> {
