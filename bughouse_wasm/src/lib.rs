@@ -472,13 +472,8 @@ impl WebClient {
                 let player_string = if game.status() == BughouseGameStatus::Active {
                     player_name.clone()
                 } else {
-                    // TODO: Fix this on server side instead: send the full list of players even
-                    //   if somebody went offline.
-                    if let Some(player) = contest.players.iter().find(|p| p.name == *player_name) {
-                        player_with_readiness_status(&player)
-                    } else {
-                        player_name.clone()
-                    }
+                    let player = contest.players.iter().find(|p| p.name == *player_name).unwrap();
+                    player_with_readiness_status(&player)
                 };
                 name_node.set_text_content(Some(&player_string));
                 update_reserve(board.reserve(force), force, web_board_idx, player_idx)?;
