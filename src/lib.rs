@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 // Visibility philosophy:
 //   - Chess concept (rules, pieces, boards...) are exposed directly.
 //     Modules defining them should do

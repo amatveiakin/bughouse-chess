@@ -5,6 +5,8 @@
 //   * "Rust-upgrade" - place where code can be improved using a Rust feature
 //       that is not implemented or stabilized yet.
 
+#![forbid(unsafe_code)]
+
 extern crate crossterm;
 extern crate clap;
 extern crate console;
