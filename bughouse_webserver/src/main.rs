@@ -1,26 +1,25 @@
 // TODO: streaming support + APIs.
-use bughouse_chess::*;
+use std::collections::HashMap;
+use std::ops::Range;
 
 use clap::Parser;
 use log::error;
 use rusqlite::*;
-use std::collections::HashMap;
-use std::ops::Range;
 use tide::http::Mime;
 use tide::{Request, Response, StatusCode};
 use tide_jsx::*;
 use time::OffsetDateTime;
 
-/// Simple program to greet a person
+use bughouse_chess::*;
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-   #[arg(long, default_value = "0.0.0.0:38618")]
-   bind_address: String,
+    #[arg(long, default_value = "0.0.0.0:38618")]
+    bind_address: String,
 
-   /// Number of times to greet
-   #[arg(short, long)]
-   database_address: String,
+    #[arg(short, long)]
+    database_address: String,
 }
 
 #[async_std::main]
@@ -47,13 +46,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct RowId {
     id: i64,
 }
 
 trait DatabaseReader {
     // TODO: An API with bounded response size
+    // Returns all finished games within the given time range, omitting pgns.
+    // Each game is augmented with its RowId that can be then used to with
+    // pgn() to retrieve the game record.
     fn finished_games(
         &self,
         game_start_time_range: Range<OffsetDateTime>,
@@ -85,7 +87,18 @@ impl DatabaseReader for RusqliteReader {
     ) -> Result<Vec<(RowId, GameResultRow)>, anyhow::Error> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT *, ROWID from finished_games
+            "SELECT
+                ROWID,
+                git_version,
+                invocation_id,
+                game_start_time,
+                game_end_time,
+                player_red_a,
+                player_red_b,
+                player_blue_a,
+                player_blue_b,
+                result
+             FROM finished_games
              WHERE game_start_time >= ?1 AND game_start_time < ?2
              ORDER BY game_start_time DESC",
         )?;
@@ -97,18 +110,20 @@ impl DatabaseReader for RusqliteReader {
                 ),
                 |row| {
                     Ok((
-                        RowId { id: row.get(10)? },
+                        RowId {
+                            id: row.get("ROWID")?,
+                        },
                         GameResultRow {
-                            git_version: row.get(0)?,
-                            invocation_id: row.get(1)?,
-                            game_start_time: row.get(2)?,
-                            game_end_time: row.get(3)?,
-                            player_red_a: row.get(4)?,
-                            player_red_b: row.get(5)?,
-                            player_blue_a: row.get(6)?,
-                            player_blue_b: row.get(7)?,
-                            result: row.get(8)?,
-                            game_pgn: row.get(9)?,
+                            git_version: row.get("git_version")?,
+                            invocation_id: row.get("invocation_id")?,
+                            game_start_time: row.get("game_start_time")?,
+                            game_end_time: row.get("game_end_time")?,
+                            player_red_a: row.get("player_red_a")?,
+                            player_red_b: row.get("player_red_b")?,
+                            player_blue_a: row.get("player_blue_a")?,
+                            player_blue_b: row.get("player_blue_b")?,
+                            result: row.get("result")?,
+                            game_pgn: String::new(),
                         },
                     ))
                 },
@@ -125,7 +140,7 @@ impl DatabaseReader for RusqliteReader {
         }
         if oks.is_empty() && !errs.is_empty() {
             // None of the rows parsed, return the first error.
-            Err(errs.into_iter().next().unwrap().err().unwrap().into())
+            Err(errs.into_iter().next().unwrap().unwrap_err().into())
         } else {
             Ok(oks.into_iter().map(Result::unwrap).collect())
         }
@@ -197,7 +212,7 @@ async fn games<D: DatabaseReader>(req: Request<D>) -> tide::Result {
           <table>
             <tr>
                 <th>{"Date"}</th>
-                <th>{"Time"}</th>
+                <th>{"Time (UTC)"}</th>
                 <th>{"Winners"}</th>
                 <th>{"Losers"}</th>
                 <th>{"Drawers"}</th>
@@ -257,7 +272,7 @@ async fn stats<D: DatabaseReader>(
     let now = OffsetDateTime::now_utc();
     let range_start = match lookback {
         None => OffsetDateTime::UNIX_EPOCH,
-        Some(d) => now - d,
+        Some(d) => now.saturating_sub(d),
     };
     let games = req
         .state()
@@ -306,10 +321,10 @@ async fn stats<D: DatabaseReader>(
     let mut final_team_stats = process_stats(
         team_stats
             .into_iter()
-            .map(|(t, s)| (format!("{}, {}", t[0], t[1]), s)),
+            .map(|([t0, t1], s)| (format!("{}, {}", t0, t1), s)),
     );
-    final_player_stats.sort_by(|a, b| b.pointrate.partial_cmp(&a.pointrate).unwrap());
-    final_team_stats.sort_by(|a, b| b.pointrate.partial_cmp(&a.pointrate).unwrap());
+    final_player_stats.sort_unstable_by(|a, b| b.pointrate.partial_cmp(&a.pointrate).unwrap());
+    final_team_stats.sort_unstable_by(|a, b| b.pointrate.partial_cmp(&a.pointrate).unwrap());
 
     let leaderboard = |final_stats: Vec<FinalStats>| {
         final_stats
@@ -395,14 +410,14 @@ fn format_timestamp_date_and_time(maybe_ts: Option<i64>) -> Option<(String, Stri
     let ts = maybe_ts?;
     let datetime = OffsetDateTime::from_unix_timestamp(ts).ok()?;
     let date = datetime
-        .format(
-            &time::format_description::parse("[year]-[month]-[day], [weekday repr:short]").ok()?,
-        )
+        .format(&time::macros::format_description!(
+            "[year]-[month]-[day], [weekday repr:short]"
+        ))
         .ok()?;
     let time = datetime
-        .format(
-            &time::format_description::parse("[hour]:[minute]:[second] UTC+[offset_hour]").ok()?,
-        )
+        .format(&time::macros::format_description!(
+            "[hour]:[minute]:[second]"
+        ))
         .ok()?;
     Some((date, time))
 }

@@ -406,6 +406,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "bughouse-webserver"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-std",
+ "bughouse_chess",
+ "clap",
+ "femme",
+ "humantime",
+ "log",
+ "rusqlite",
+ "tide",
+ "tide-jsx",
+ "time 0.3.17",
+]
+
+[[package]]
 name = "bughouse_chess"
 version = "0.1.0"
 dependencies = [
@@ -2543,23 +2560,6 @@ checksum = "bcda906d8be16e728fd5adc5b729afad4e444e106ab28cd1c7256e54fa61510f"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "webserver"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-std",
- "bughouse_chess",
- "clap",
- "femme",
- "humantime",
- "log",
- "rusqlite",
- "tide",
- "tide-jsx",
- "time 0.3.17",
 ]
 
 [[package]]
