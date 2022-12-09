@@ -3,6 +3,7 @@ use std::time::Duration;
 use enum_map::{EnumMap, enum_map};
 use instant::Instant;
 use serde::{Serialize, Deserialize};
+use strum::IntoEnumIterator;
 
 use crate::force::Force;
 
@@ -11,6 +12,7 @@ use crate::force::Force;
 pub struct TimeControl {
     pub starting_time: Duration,
     // Improvement potential. Support increment, delay, etc.
+    //   Note that `Clock::total_time_elapsed` should be adjusted in this case.
 }
 
 
@@ -128,6 +130,15 @@ impl Clock {
             }
         }
         ret
+    }
+    pub fn total_time_elapsed(&self) -> GameInstant {
+        // Note. This assumes no time increments, delays, etc.
+        let elapsed_since_start = Force::iter()
+            .map(|force| self.control.starting_time - self.remaining_time[force]).sum();
+        GameInstant {
+            elapsed_since_start,
+            measurement: TimeMeasurement::Exact,
+        }
     }
 
     pub fn new_turn(&mut self, new_force: Force, now: GameInstant) {

@@ -816,11 +816,10 @@ impl Contest {
         let Some(game_state) = &self.game_state else {
             panic!("Expected ContestState::Game");
         };
-        let time = GameInstant::from_now_game_maybe_active(game_state.game_start, now);
         BughouseServerEvent::GameStarted {
             starting_position: game_state.game.starting_position().clone(),
             players: game_state.players_with_boards.clone(),
-            time,
+            time: current_game_time(game_state, now),
             turn_log: game_state.turn_log.clone(),
             game_status: game_state.game.status(),
             scores: self.scores.clone(),
@@ -923,6 +922,17 @@ fn is_valid_player_name(name: &str) -> bool {
     } else {
         // Must be in sync with web name input checkers.
         name.chars().all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_')
+    }
+}
+
+fn current_game_time(game_state: &GameState, now: Instant) -> GameInstant {
+    if game_state.game.status() == BughouseGameStatus::Active {
+        GameInstant::from_now_game_maybe_active(game_state.game_start, now)
+    } else {
+        let elapsed_a = game_state.game.board(BughouseBoard::A).clock().total_time_elapsed();
+        let elapsed_b = game_state.game.board(BughouseBoard::B).clock().total_time_elapsed();
+        assert_eq!(elapsed_a, elapsed_b);
+        elapsed_a
     }
 }
 
