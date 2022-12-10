@@ -17,7 +17,8 @@ Folder structure:
 
 - `/` — the core library (`bughouse_chess` Rust package).
 - `/bughouse_console` — a binary that can run as a server or as console client.
-- `/bughouse_wasm` — WASM (WebAssembly) bindings.
+- `/bughouse_wasm` — WASM (WebAssembly) bindings for the web client.
+- `/bughouse_webserver` — Dynamic HTML content server.
 - `/www` — web client based on the abovementioned WASM bindings.
 
 
@@ -80,3 +81,24 @@ Run on Apache:
 cd www && npm run build
 sudo cp dist/* /var/www/your-website-folder
 ```
+
+### Enabling bughouse_webserver with Apache
+
+Run the webserver:
+
+```
+export RUST_BACKTRACE=1
+export RUST_LOG=INFO
+cargo run -r --package bughouse_webserver -- --database-address <address>
+```
+
+Install Apache proxy modules:
+
+```
+sudo a2enmod proxy
+sudo a2enmod proxy_http
+```
+
+Enable request redirection, see `apache-vhost-example.conf`.
+Note that if https is enabled, the proxy rules should be under
+`<VirtualHost *:443>`, not `<VirtualHost *:80>`.
