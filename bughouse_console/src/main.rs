@@ -25,12 +25,14 @@ pub mod network;
 pub mod tui;
 
 mod client_main;
-mod rusqlite_server_hooks;
+mod sqlx_server_hooks;
 mod server_main;
 
 use std::io;
 
 use clap::{arg, Command};
+
+use server_main::DatabaseOptions;
 
 
 fn main() -> io::Result<()> {
@@ -49,6 +51,7 @@ fn main() -> io::Result<()> {
             Command::new("server")
                 .about("Run as server")
                 .arg(arg!(--sqlite_db [DB] "Path to an sqlite database file"))
+                .arg(arg!(--postgres_db [DB] "Address of a postgres database"))
         )
         .subcommand(
             Command::new("client")
@@ -61,8 +64,17 @@ fn main() -> io::Result<()> {
 
     match matches.subcommand() {
         Some(("server", sub_matches)) => {
+            let database_options = match (
+                sub_matches.get_one::<String>("sqlite_db"),
+                sub_matches.get_one::<String>("postgres_db"),
+            ) {
+                (None, None) => DatabaseOptions::NoDatabase,
+                (Some(_), Some(_)) => panic!("Sqlite and postgres can not be specified simultanously."),
+                (Some(db), None) => DatabaseOptions::Sqlite(db.clone()),
+                (None, Some(db)) => DatabaseOptions::Postgres(db.clone()),
+            };
             server_main::run(server_main::ServerConfig {
-                sqlite_db: sub_matches.get_one::<String>("sqlite_db").cloned(),
+                database_options
             });
             Ok(())
         },
