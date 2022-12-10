@@ -66,15 +66,6 @@ const SearchParams = {
     server: 'server',
 };
 
-// Improvement potential. Establish priority on sounds; play more important sounds first
-// in case of a clash.
-const victory_audio = new Audio(victory_sound);
-const defeat_audio = new Audio(defeat_sound);
-const draw_audio = new Audio(draw_sound);
-const turn_audio = new Audio(turn_sound);
-const reserve_restocked_audio = new Audio(reserve_restocked_sound);
-const low_time_audio = new Audio(low_time_sound);
-
 const git_version = document.getElementById('git-version');
 const info_string = document.getElementById('info-string');
 
@@ -111,6 +102,18 @@ load_piece_images([
     [ black_queen, 'black-queen' ],
     [ black_king, 'black-king' ],
 ]);
+
+// TODO: Don't start the game until the sounds are loaded.
+// Improvement potential. Establish priority on sounds; play more important sounds first
+// in case of a clash.
+const Sound = load_sounds({
+    victory: victory_sound,
+    defeat: defeat_sound,
+    draw: draw_sound,
+    turn: turn_sound,
+    reserve_restocked: reserve_restocked_sound,
+    low_time: low_time_sound,
+});
 
 init_menu();
 
@@ -422,17 +425,17 @@ function process_notable_events() {
             url.searchParams.set(SearchParams.contest_id, js_event.contest_id());
             window.history.pushState({}, '', url);
         } else if (js_event_type == 'JsEventVictory') {
-            play_audio(victory_audio);
+            play_audio(Sound.victory);
         } else if (js_event_type == 'JsEventDefeat') {
-            play_audio(defeat_audio);
+            play_audio(Sound.defeat);
         } else if (js_event_type == 'JsEventDraw') {
-            play_audio(draw_audio);
+            play_audio(Sound.draw);
         } else if (js_event_type == 'JsEventTurnMade') {
-            play_audio(turn_audio);
+            play_audio(Sound.turn);
         } else if (js_event_type == 'JsEventMyReserveRestocked') {
-            play_audio(reserve_restocked_audio);
+            play_audio(Sound.reserve_restocked);
         } else if (js_event_type == 'JsEventLowTime') {
-            play_audio(low_time_audio);
+            play_audio(Sound.low_time);
         } else if (js_event_type == 'JsEventGameExportReady') {
             download(js_event.content(), 'game.pgn');
         } else if (js_event_type != null) {
@@ -655,13 +658,36 @@ async function load_image(filepath, target_id) {
     reader.readAsDataURL(blob);
 }
 
-async function load_piece_images(image_records) {
+function load_piece_images(image_records) {
     for (const record of image_records) {
         const [filepath, symbol_id] = record;
         const image_id = `${symbol_id}-image`;
         make_piece_image(symbol_id);
         load_image(filepath, image_id);
     }
+}
+
+async function load_sound(filepath, key) {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+        const audio = Sound[key];
+        audio.setAttribute('src', reader.result);
+    }, false);
+    reader.addEventListener('error', () => {
+        console.error(`Cannot load sound ${filepath}`);
+    });
+    const response = await fetch(filepath);
+    const blob = await response.blob();
+    reader.readAsDataURL(blob);
+}
+
+function load_sounds(sound_map) {
+    const ret = {};
+    for (const [key, filepath] of Object.entries(sound_map)) {
+        ret[key] = new Audio();
+        load_sound(filepath, key);
+    }
+    return ret;
 }
 
 function on_create_contest_submenu(event) {
