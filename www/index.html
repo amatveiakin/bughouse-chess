@@ -11,7 +11,9 @@
     <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
     <script src="./bootstrap.js"></script>
     <div id="page">
-      <svg style="display: none">
+      <!-- Note. Cannot use "display: none" because of a Firefox bug:
+           https://bugzilla.mozilla.org/show_bug.cgi?id=376027 -->
+      <svg width="0" height="0" style="position: absolute">
         <defs id="svg-defs">
           <filter id="board-shadow">
             <feDropShadow dx=0.04 dy=0.04 stdDeviation=0.05 flood-color="#000000" flood-opacity=0.6 />
