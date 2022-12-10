@@ -16,11 +16,16 @@ use bughouse_chess::server::*;
 use bughouse_chess::server_hooks::ServerHooks;
 
 use crate::network::{self, CommunicationError};
-use crate::rusqlite_server_hooks::*;
+use crate::sqlx_server_hooks::*;
 
+pub enum DatabaseOptions {
+    NoDatabase,
+    Sqlite(String),
+    Postgres(String),
+}
 
 pub struct ServerConfig {
-    pub sqlite_db: Option<String>,
+    pub database_options: DatabaseOptions,
 }
 
 fn to_debug_string<T: std::fmt::Debug>(v: T) -> String {
@@ -88,12 +93,21 @@ pub fn run(config: ServerConfig) {
     let clients_copy = Arc::clone(&clients);
 
     thread::spawn(move || {
-        let hooks = config.sqlite_db.map(|address| {
-            let hooks = RusqliteServerHooks::new(address.as_str()).unwrap_or_else(
-                |err| panic!("Cannot connect to SQLite DB {address}:\n{err}")
-            );
-            Box::new(hooks) as Box<dyn ServerHooks>
-        });
+        let hooks = match config.database_options {
+            DatabaseOptions::NoDatabase => None,
+            DatabaseOptions::Sqlite(address) =>
+                Some(Box::new(
+                    SqlxServerHooks::<sqlx::Sqlite>::new(address.as_str()).unwrap_or_else(
+                            |err| panic!("Cannot connect to SQLite DB {address}:\n{err}")))
+                    as Box<dyn ServerHooks>
+                ),
+            DatabaseOptions::Postgres(address) =>
+                Some(Box::new(
+                    SqlxServerHooks::<sqlx::Postgres>::new(address.as_str()).unwrap_or_else(
+                            |err| panic!("Cannot connect to Postgres DB {address}:\n{err}")))
+                    as Box<dyn ServerHooks>
+                ),
+        };
         let mut server_state = ServerState::new(
             clients_copy,
             hooks
