@@ -10,7 +10,7 @@ use tide::{Request, Response, StatusCode};
 use tide_jsx::*;
 use time::OffsetDateTime;
 
-use bughouse_chess::*;
+use bughouse_chess::persistence::*;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -323,8 +323,8 @@ async fn stats<D: DatabaseReader>(
             .into_iter()
             .map(|([t0, t1], s)| (format!("{}, {}", t0, t1), s)),
     );
-    final_player_stats.sort_unstable_by(|a, b| b.pointrate.partial_cmp(&a.pointrate).unwrap());
-    final_team_stats.sort_unstable_by(|a, b| b.pointrate.partial_cmp(&a.pointrate).unwrap());
+    final_player_stats.sort_unstable_by(|a, b| b.pointrate.total_cmp(&a.pointrate));
+    final_team_stats.sort_unstable_by(|a, b| b.pointrate.total_cmp(&a.pointrate));
 
     let leaderboard = |final_stats: Vec<FinalStats>| {
         final_stats

@@ -1,3 +1,13 @@
+// Visibility philosophy:
+//   - Chess concept (rules, pieces, boards...) are exposed directly.
+//     Modules defining them should do
+//       mod Foo;
+//       ...
+//       pub use Foo:*;
+//   - Auxiliary concepts (networking, persistent, utils...) are behind namespaces.
+//     Modules defining them should do
+//       pub mod Foo;
+
 mod altered_game;
 mod board;
 mod clock;
@@ -6,7 +16,6 @@ mod event;
 mod force;
 mod game;
 mod grid;
-mod persistence;
 mod piece;
 mod player;
 mod rules;
@@ -16,6 +25,7 @@ pub mod client;
 pub mod fen;
 pub mod janitor;
 pub mod meter;
+pub mod persistence;
 pub mod pgn;
 pub mod server;
 pub mod server_hooks;
@@ -29,7 +39,6 @@ pub use event::*;
 pub use force::*;
 pub use game::*;
 pub use grid::*;
-pub use persistence::*;
 pub use piece::*;
 pub use player::*;
 pub use rules::*;

@@ -7,6 +7,7 @@
 
 use log::error;
 
+use bughouse_chess::persistence::*;
 use bughouse_chess::server::*;
 use bughouse_chess::server_hooks::ServerHooks;
 use bughouse_chess::*;
