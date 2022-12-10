@@ -75,30 +75,46 @@ Test locally:
 cd www && npm run start
 ```
 
-Run on Apache:
+### Serving with Apache
+
+Serve static content:
 
 ```
-cd www && npm run build
-sudo cp dist/* /var/www/your-website-folder
+cd bughouse_wasm && wasm-pack build && cd www && npm run build
+sudo cp dist/* /var/www/<site>
 ```
 
-### Enabling bughouse_webserver with Apache
+Install Apache proxy modules:
+
+```
+sudo a2enmod proxy proxy_http proxy_wstunnel
+```
+
+Enable request redirection. Add this to `/etc/apache2/sites-available/<site>`:
+
+```
+<VirtualHost *:443>
+    ProxyPreserveHost On
+    ProxyRequests Off
+    ProxyPass /dyn http://localhost:38618/dyn
+    ProxyPassReverse /dyn http://localhost:38618/dyn
+    ProxyPass /ws ws://localhost:38617 keepalive=On
+    ProxyPassReverse /ws ws://localhost:38617
+</VirtualHost>
+```
+
+Run the server:
+
+```
+export RUST_BACKTRACE=1
+export RUST_LOG=INFO
+cargo run -r --package bughouse_console -- server --sqlite_db <DB>
+```
 
 Run the webserver:
 
 ```
 export RUST_BACKTRACE=1
 export RUST_LOG=INFO
-cargo run -r --package bughouse_webserver -- --database-address <address>
+cargo run -r --package bughouse_webserver -- --database-address <DB>
 ```
-
-Install Apache proxy modules:
-
-```
-sudo a2enmod proxy
-sudo a2enmod proxy_http
-```
-
-Enable request redirection, see `apache-vhost-example.conf`.
-Note that if https is enabled, the proxy rules should be under
-`<VirtualHost *:443>`, not `<VirtualHost *:80>`.

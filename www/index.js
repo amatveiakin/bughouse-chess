@@ -465,20 +465,14 @@ function update_drag_state() {
 }
 
 function server_websocket_address() {
-    // TODO: Get the port from Rust.
-    const DEFAULT_PORT = 38617;
-    const DEFAULT_ADDRESS = 'bughouse.pro';
+    const DEFAULT_ADDRESS = `${window.location.origin}/ws`;
     const search_params = new URLSearchParams(window.location.search);
     let address = search_params.get(SearchParams.server) ?? DEFAULT_ADDRESS;
     if (!address.includes('://')) {
-        address = `ws://${address}`;
+        address = `wss://${address}`;
     }
     const url = new URL(address);
-    url.protocol = 'ws:';
-    // TODO: Fix: `URL` automatically strips port 80, so it is ignored.
-    if (!url.port) {
-        url.port = DEFAULT_PORT;
-    }
+    url.protocol = 'wss:';
     return url;
 }
 
