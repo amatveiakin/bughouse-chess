@@ -30,6 +30,12 @@ pub struct GameInstant {
 }
 
 impl GameInstant {
+    pub fn from_duration(elapsed_since_start: Duration) -> Self {
+        GameInstant {
+            elapsed_since_start,
+            measurement: TimeMeasurement::Exact
+        }
+    }
     pub fn from_now_game_active(game_start: Instant, now: Instant) -> Self {
         GameInstant {
             elapsed_since_start: now - game_start,
@@ -131,14 +137,9 @@ impl Clock {
         }
         ret
     }
-    pub fn total_time_elapsed(&self) -> GameInstant {
+    pub fn total_time_elapsed(&self) -> Duration {
         // Note. This assumes no time increments, delays, etc.
-        let elapsed_since_start = Force::iter()
-            .map(|force| self.control.starting_time - self.remaining_time[force]).sum();
-        GameInstant {
-            elapsed_since_start,
-            measurement: TimeMeasurement::Exact,
-        }
+        Force::iter().map(|force| self.control.starting_time - self.remaining_time[force]).sum()
     }
 
     pub fn new_turn(&mut self, new_force: Force, now: GameInstant) {
