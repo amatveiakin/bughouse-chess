@@ -468,11 +468,16 @@ function server_websocket_address() {
     const DEFAULT_ADDRESS = `${window.location.origin}/ws`;
     const search_params = new URLSearchParams(window.location.search);
     let address = search_params.get(SearchParams.server) ?? DEFAULT_ADDRESS;
+    if (address === 'local') {
+        address = 'ws://localhost:38617';
+    }
     if (!address.includes('://')) {
         address = `wss://${address}`;
     }
     const url = new URL(address);
-    url.protocol = 'wss:';
+    if (url.protocol !== 'ws:') {
+        url.protocol = 'wss:';
+    }
     return url;
 }
 
