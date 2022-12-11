@@ -498,12 +498,12 @@ function update_drag_state() {
 }
 
 function server_websocket_address() {
-    const DEFAULT_ADDRESS = `${window.location.origin}/ws`;
     const search_params = new URLSearchParams(window.location.search);
-    let address = search_params.get(SearchParams.server) ?? DEFAULT_ADDRESS;
-    if (address === 'local') {
+    let address = search_params.get(SearchParams.server);
+    if (address === 'local' || (!address && window.location.hostname === 'localhost')) {
         address = 'ws://localhost:38617';
     }
+    address ??= `${window.location.origin}/ws`;
     if (!address.includes('://')) {
         address = `wss://${address}`;
     }
