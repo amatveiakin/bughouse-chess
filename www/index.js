@@ -175,13 +175,7 @@ let audio_muted = false;
 
 let drag_element = null;
 
-let process_outgoing_events_meter = null;
-let process_notable_events_meter = null;
-let refresh_meter = null;
-let update_state_meter = null;
-let update_clock_meter = null;
-let update_drag_state_meter = null;
-init_meters();
+const Meter = make_meters();
 
 document.addEventListener('keydown', on_document_keydown);
 document.addEventListener('paste', on_paste);
@@ -274,13 +268,15 @@ function make_wasm_client() {
     return wasm.WebClient.new_client(user_agent, time_zone);
 }
 
-function init_meters() {
-    process_outgoing_events_meter = wasm_client().meter("process_outgoing_events");
-    process_notable_events_meter = wasm_client().meter("process_notable_events");
-    refresh_meter = wasm_client().meter("refresh");
-    update_state_meter = wasm_client().meter("update_state");
-    update_clock_meter = wasm_client().meter("update_clock");
-    update_drag_state_meter = wasm_client().meter("update_drag_state");
+function make_meters() {
+    return {
+        process_outgoing_events: wasm_client().meter("process_outgoing_events"),
+        process_notable_events: wasm_client().meter("process_notable_events"),
+        refresh: wasm_client().meter("refresh"),
+        update_state: wasm_client().meter("update_state"),
+        update_clock: wasm_client().meter("update_clock"),
+        update_drag_state: wasm_client().meter("update_drag_state"),
+    };
 }
 
 function make_socket() {
@@ -414,13 +410,13 @@ function on_tick() {
     with_error_handling(function() {
         const timer = new Timer();
         wasm_client().refresh();
-        timer.meter(refresh_meter);
+        timer.meter(Meter.refresh);
         process_outgoing_events();
-        timer.meter(process_outgoing_events_meter);
+        timer.meter(Meter.process_outgoing_events);
         wasm_client().update_clock();
-        timer.meter(update_clock_meter);
+        timer.meter(Meter.update_clock);
         process_notable_events();
-        timer.meter(process_notable_events_meter);
+        timer.meter(Meter.process_notable_events);
     });
 }
 
@@ -428,15 +424,15 @@ function update() {
     with_error_handling(function() {
         const timer = new Timer();
         wasm_client().refresh();
-        timer.meter(refresh_meter);
+        timer.meter(Meter.refresh);
         process_outgoing_events();
-        timer.meter(process_outgoing_events_meter);
+        timer.meter(Meter.process_outgoing_events);
         wasm_client().update_state();
-        timer.meter(update_state_meter);
+        timer.meter(Meter.update_state);
         process_notable_events();
-        timer.meter(process_notable_events_meter);
+        timer.meter(Meter.process_notable_events);
         update_drag_state();
-        timer.meter(update_drag_state_meter);
+        timer.meter(Meter.update_drag_state);
     });
 }
 
