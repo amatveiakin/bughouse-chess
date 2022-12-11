@@ -41,21 +41,21 @@ dialog::backdrop {
 #page {
   display: grid;
   grid-template-areas:
-    "   fill-a       fill-x  prim-rsrv-top   fill-y      fill-k      fill-w      fill-p    "
-    "   fill-a       fill-x  prim-rsrv-top   fill-y   scnd-rsrv-top  fill-w      fill-p    "
-    "prim-name-top   fill-x  prim-rsrv-top   fill-y   scnd-rsrv-top  fill-w   scnd-name-top"
-    "prim-clock-top  fill-x   prim-board     fill-y    scnd-board    fill-w  scnd-clock-top"
-    "   fill-b       fill-x   prim-board     fill-y    scnd-board    fill-w      fill-q    "
-    "   fill-b       fill-x   prim-board    scr-team   scnd-board    fill-w      fill-q    "
-    "   fill-b       fill-x   prim-board     fill-z    scnd-board    fill-w      fill-q    "
-    "   fill-b       fill-x   prim-board     fill-z    scnd-board    fill-w  scnd-clock-bot"
-    "   fill-b       fill-x   prim-board     fill-z   scnd-rsrv-bot  fill-w   scnd-name-bot"
-    "   fill-b       fill-x   prim-board     fill-z   scnd-rsrv-bot  fill-w      fill-r    "
-    "   fill-b       fill-x   prim-board     fill-z       info       fill-w  scr-individual"
-    "prim-clock-bot  fill-x   prim-board     fill-z       info       fill-w  scr-individual"
-    "prim-clock-bot  fill-x   prim-board     fill-z      command     fill-w  scr-individual"
-    "prim-name-bot   fill-x  prim-rsrv-bot   fill-z      fill-m      fill-w  scr-individual"
-    "   fill-c       fill-x  prim-rsrv-bot   fill-z      fill-m      fill-w  scr-individual"
+    "      .         .  prim-rsrv-top     .           .         .        .       "
+    "      .         .  prim-rsrv-top     .      scnd-rsrv-top  .        .       "
+    "prim-name-top   .  prim-rsrv-top     .      scnd-rsrv-top  .   scnd-name-top"
+    "prim-clock-top  .   prim-board       .       scnd-board    .  scnd-clock-top"
+    "      .         .   prim-board       .       scnd-board    .        .       "
+    "      .         .   prim-board    scr-team   scnd-board    .        .       "
+    "      .         .   prim-board       .       scnd-board    .        .       "
+    "      .         .   prim-board       .       scnd-board    .  scnd-clock-bot"
+    "      .         .   prim-board       .      scnd-rsrv-bot  .   scnd-name-bot"
+    "      .         .   prim-board       .      scnd-rsrv-bot  .        .       "
+    "      .         .   prim-board       .          info       .  scr-individual"
+    "prim-clock-bot  .   prim-board       .          info       .  scr-individual"
+    "prim-clock-bot  .   prim-board       .         command     .  scr-individual"
+    "prim-name-bot   .  prim-rsrv-bot     .           .         .  scr-individual"
+    "      .         .  prim-rsrv-bot     .           .         .  scr-individual"
   ;
   grid-template-columns:
     minmax(3em, 1fr)
