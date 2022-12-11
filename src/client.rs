@@ -34,7 +34,7 @@ pub enum SubjectiveGameResult {
 
 #[derive(Clone, Debug)]
 pub enum NotableEvent {
-    GotContestId(String),
+    ContestStarted(String),  // contains ContestID
     GameStarted,
     GameOver(SubjectiveGameResult),
     MyTurnMade,
@@ -269,7 +269,6 @@ impl ClientState {
             ContestWelcome{ contest_id, chess_rules, bughouse_rules } => {
                 let my_name = match &self.contest_state {
                     ContestState::Creating{ my_name } => {
-                        self.notable_event_queue.push_back(NotableEvent::GotContestId(contest_id.clone()));
                         my_name.clone()
                     }
                     ContestState::Joining{ contest_id: id, my_name } => {
@@ -280,6 +279,7 @@ impl ClientState {
                     },
                     _ => return Err(cannot_apply_event!("Cannot apply ContestWelcome: not expecting a new contest")),
                 };
+                self.notable_event_queue.push_back(NotableEvent::ContestStarted(contest_id.clone()));
                 self.contest_state = ContestState::Connected(Contest {
                     contest_id,
                     my_name,

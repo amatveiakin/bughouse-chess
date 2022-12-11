@@ -133,7 +133,7 @@ impl JsMeter {
 pub struct JsEventMyNoop {}  // in contrast to `null`, indicates that event list is not over
 
 #[wasm_bindgen]
-pub struct JsEventGotContestId { contest_id: String }
+pub struct JsEventContestStarted { contest_id: String }
 
 #[wasm_bindgen]
 pub struct JsEventVictory {}
@@ -157,7 +157,7 @@ pub struct JsEventLowTime {}
 pub struct JsEventGameExportReady { content: String }
 
 #[wasm_bindgen]
-impl JsEventGotContestId {
+impl JsEventContestStarted {
     pub fn contest_id(&self) -> String { self.contest_id.clone() }
 }
 
@@ -392,9 +392,7 @@ impl WebClient {
 
     pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
         match self.state.next_notable_event() {
-            // TODO: Change `GotContestId` to `ContestStarted` so that clients that join also
-            //   have their URL search params updated.
-            Some(NotableEvent::GotContestId(contest_id)) => Ok(JsEventGotContestId{ contest_id }.into()),
+            Some(NotableEvent::ContestStarted(contest_id)) => Ok(JsEventContestStarted{ contest_id }.into()),
             Some(NotableEvent::GameStarted) => {
                 let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
                     return Err(rust_error!("No game in progress"));

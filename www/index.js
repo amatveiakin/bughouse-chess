@@ -449,7 +449,7 @@ function process_notable_events() {
         const js_event_type = js_event?.constructor?.name;
         if (js_event_type == 'JsEventMyNoop') {
             // noop, but are events might be coming
-        } else if (js_event_type == 'JsEventGotContestId') {
+        } else if (js_event_type == 'JsEventContestStarted') {
             const url = new URL(window.location);
             url.searchParams.set(SearchParams.contest_id, js_event.contest_id());
             window.history.pushState({}, '', url);

@@ -250,8 +250,8 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
         client_state.refresh();
         for event in client_state.next_notable_event() {
             match event {
-                NotableEvent::GotContestId(..) => {
-                    // TODO: Display to the user.
+                NotableEvent::ContestStarted(..) => {
+                    // TODO: Display contest ID to the user.
                 }
                 NotableEvent::GameStarted => {
                     execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
