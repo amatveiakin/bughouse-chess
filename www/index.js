@@ -54,8 +54,6 @@ function log_time() {
 }
 log_time();  // start the counter
 
-set_favicon();
-
 // Improvement potential. Similarly group other global variables.
 const Storage = {
     player_name: 'player-name',
@@ -88,6 +86,44 @@ const join_contest_id = document.getElementById('join-contest-id');
 
 const svg_defs = document.getElementById('svg-defs');
 
+const loading_status = new class {
+    #resources_required = 0;
+    #resources_loaded = 0;
+    #connected = false;
+
+    constructor() {
+        this.#update();
+    }
+    resource_required() {
+        this.#resources_required += 1;
+        this.#update();
+    }
+    resource_loaded() {
+        this.#resources_loaded += 1;
+        this.#update();
+    }
+    connected() {
+        this.#connected = true;
+        this.#update();
+    }
+    #update() {
+        // TODO: Don't start the game until everything is ready.
+        console.assert(this.#resources_loaded <= this.#resources_required);
+        const resources_ready = this.#resources_loaded == this.#resources_required;
+        if (resources_ready && this.#connected) {
+            info_string.innerText = '';
+        } else {
+            const connection_string = this.#connected ? 'Connected' : 'Connecting...';
+            const resource_string = resources_ready
+                ? 'Resources loaded'
+                : `Loading resources... ${this.#resources_loaded} / ${this.#resources_required}`;
+            info_string.innerText = `${connection_string}\n${resource_string}`;
+        }
+    }
+};
+
+set_favicon();
+
 load_piece_images([
     [ white_pawn, 'white-pawn' ],
     [ white_knight, 'white-knight' ],
@@ -103,7 +139,6 @@ load_piece_images([
     [ black_king, 'black-king' ],
 ]);
 
-// TODO: Don't start the game until the sounds are loaded.
 // Improvement potential. Establish priority on sounds; play more important sounds first
 // in case of a clash.
 const Sound = load_sounds({
@@ -254,10 +289,9 @@ function make_socket() {
         on_server_event(event.data);
     });
     socket.addEventListener('open', function(event) {
-        info_string.innerText = '';
+        loading_status.connected();
     });
     // addEventListener('error', (event) => { })  // TODO: report socket errors
-    info_string.innerText = 'Connecting...';
     return socket;
 }
 
@@ -649,6 +683,7 @@ async function load_image(filepath, target_id) {
     reader.addEventListener('load', () => {
         const image = document.getElementById(target_id);
         image.setAttribute('href', reader.result);
+        loading_status.resource_loaded();
     }, false);
     reader.addEventListener('error', () => {
         console.error(`Cannot load image ${filepath}`);
@@ -664,6 +699,7 @@ function load_piece_images(image_records) {
         const image_id = `${symbol_id}-image`;
         make_piece_image(symbol_id);
         load_image(filepath, image_id);
+        loading_status.resource_required();
     }
 }
 
@@ -672,6 +708,7 @@ async function load_sound(filepath, key) {
     reader.addEventListener('load', () => {
         const audio = Sound[key];
         audio.setAttribute('src', reader.result);
+        loading_status.resource_loaded();
     }, false);
     reader.addEventListener('error', () => {
         console.error(`Cannot load sound ${filepath}`);
@@ -686,6 +723,7 @@ function load_sounds(sound_map) {
     for (const [key, filepath] of Object.entries(sound_map)) {
         ret[key] = new Audio();
         load_sound(filepath, key);
+        loading_status.resource_required();
     }
     return ret;
 }
