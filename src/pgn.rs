@@ -113,6 +113,7 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
             ("Bughouse Chess960", format!("[FEN \"{one_board} | {one_board}\"]\n"))
         }
     };
+    // TODO: Save complete rules.
     format!(
 r#"[Event "Friendly Bughouse Match"]
 [Site "bughouse.pro"]

@@ -89,34 +89,79 @@
     </div>
 
     <dialog id="menu-dialog">
+      <!-- All input fields must have a non-empty placeholder for the `:placeholder-shown` css trick
+            to work. If there is no meaningful placeholder text, use "&nbsp;" -->
       <div id="menu-start-page" class="menu-page">
-        <button id="create-contest-button">Create contest</button>
-        <button id="join-contest-button">Join contest</button>
+        <div class="dialog-button-container">
+          <button id="create-contest-button">Create contest</button>
+        </div>
+        <div class="dialog-button-container">
+          <button id="join-contest-button">Join contest</button>
+        </div>
       </div>
       <form id="menu-create-contest-page" class="menu-page" action="javascript:;">
-        <button type="button" id="create-contest-back-button" class="back-button" title="Go back">🡨</button>
-        <!-- `pattern` and `maxlength` must be in sync with join contest player name field and with `is_valid_player_name` -->
-        <!-- Improvement potential. Dedup player name properties (like `pattern` and `title`),
-              or reuse the same <input> via dynamic css grids. -->
-        <input type="text" id="create-contest-player-name" placeholder="Player name" spellcheck="false"
-          maxlength="20" pattern="([\p{L}\p{N}_-])+" required
-          title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
-        <select id="create-contest-teaming">
-          <option value="individual-mode">Individual mode</option>
-          <option value="fixed-teams">Fixed teams</option>
-        </select>
-        <button id="create-contest-confirm-button">Create contest!</button>
+        <button type="button" id="cc-back-button" class="back-button" title="Go back">🡨</button>
+        <div class="menu-page-body">
+          <!-- `pattern` and `maxlength` must be in sync with join contest player name field and with `is_valid_player_name` -->
+          <!-- Improvement potential. Dedup player name properties (like `pattern` and `title`),
+                or reuse the same <input> via dynamic css grids. -->
+          <!-- TODO: Visually separate player name from contest params. -->
+          <!-- TODO: Add presets (default and chess.com). -->
+          <label for="cc-player-name">Player name</label>
+          <input type="text" id="cc-player-name" name="player-name"
+            placeholder="&nbsp;" spellcheck="false" required
+            maxlength="20" pattern="[\p{L}\p{N}_-]+"
+            title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
+          <label for="cc-teaming">Teaming</label>
+          <select id="cc-teaming" name="teaming">
+            <option value="individual-mode">Individual mode</option>
+            <option value="fixed-teams">Fixed teams</option>
+          </select>
+          <label for="cc-starting-position">Starting position</label>
+          <select id="cc-starting-position" name="starting-position">
+            <option value="classic">Classic</option>
+            <option value="fischer-random" selected>Fischer random</option>
+          </select>
+          <label for="cc-starting-time">Starting time</label>
+          <input type="text" id="cc-starting-time" name="starting-time"
+            placeholder="m:ss" spellcheck="false" autocomplete="off" required
+            value="5:00" pattern="[0-9]+:[0-5][0-9]"
+            title="Starting time in “m:ss” format. Increments and delays are not allowed." />
+          <label for="cc-drop-aggression">Drop aggression</label>
+          <select id="cc-drop-aggression" name="drop-aggression">
+            <option value="no-check">No check</option>
+            <option value="no-chess-mate" selected>No chess mate</option>
+            <option value="no-bughouse-mate">No bughouse mate</option>
+            <option value="mate-allowed">Mate allowed</option>
+          </select>
+          <label for="cc-pawn-drop-rows">Pawn drop rows</label>
+          <input type="text" id="cc-pawn-drop-rows" name="pawn-drop-rows"
+            placeholder="min-max" spellcheck="false" autocomplete="off" required
+            value="2-6" pattern="1-[1-7]|2-[2-7]|3-[3-7]|4-[4-7]|5-[5-7]|6-[6-7]|7-[7-7]"
+            title="Allowed pawn drop rows in “min-max” format. Rows are counted starting from the player, so “2-6” means White can drop from row 2 to row 6 and Black can drop from row 7 to row 3. &#013;Limitations: 1 ≤ min ≤ max ≤ 7" />
+        </div>
+        <div class="dialog-button-container">
+          <button id="cc-confirm-button">Create contest!</button>
+        </div>
       </form>
       <form id="menu-join-contest-page" class="menu-page" action="javascript:;">
-        <button type="button" id="join-contest-back-button" class="back-button" title="Go back">🡨</button>
-        <input type="text" id="join-contest-id" placeholder="Contest ID" spellcheck="false"
-          maxlength="10" pattern="([a-zA-Z0-9])*" required autocomplete="off"
-          title="Contest ID consists of Latin letters and numbers" />
-        <!-- `pattern` and `maxlength` must be in sync with join contest player name field and with `is_valid_player_name` -->
-        <input type="text" id="join-contest-player-name" placeholder="Player name" spellcheck="false"
-          maxlength="20" pattern="([\p{L}\p{N}_-])+" required
-          title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
-        <button id="create-contest-confirm-button">Join contest!</button>
+        <button type="button" id="jc-back-button" class="back-button" title="Go back">🡨</button>
+        <div class="menu-page-body">
+          <label for="jc-contest-id">Contest ID</label>
+          <input type="text" id="jc-contest-id" name="contest-id"
+            placeholder="&nbsp;" spellcheck="false" autocomplete="off" required
+            maxlength="10" pattern="[a-zA-Z0-9]*"
+            title="Contest ID consists of Latin letters and numbers" />
+          <!-- `pattern` and `maxlength` must be in sync with join contest player name field and with `is_valid_player_name` -->
+          <label for="jc-player-name">Player name</label>
+          <input type="text" id="jc-player-name" name="player-name"
+            placeholder="&nbsp;" spellcheck="false" required
+            maxlength="20" pattern="[\p{L}\p{N}_-]+"
+            title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
+        </div>
+        <div class="dialog-button-container">
+          <button id="jc-confirm-button">Join contest!</button>
+        </div>
       </form>
     </dialog>
   </body>

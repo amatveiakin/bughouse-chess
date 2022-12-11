@@ -8,6 +8,7 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+chain-cmp = "0.2.0"
 enum-map = "2.4.1"
 getrandom = { version = "0.2.8", features = ["js"] }
 instant = { version = "0.1.12", features = [ "wasm-bindgen" ] }

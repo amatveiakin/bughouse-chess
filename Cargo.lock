@@ -454,6 +454,7 @@ name = "bughouse_wasm"
 version = "0.1.0"
 dependencies = [
  "bughouse_chess",
+ "chain-cmp",
  "console_error_panic_hook",
  "enum-map",
  "getrandom 0.2.8",
@@ -518,6 +519,17 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+
+[[package]]
+name = "chain-cmp"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f79df327ef28c3df5ff8ebce709246ba5f031b1be8ae464b8a5af1ccd645f7d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "chrono"

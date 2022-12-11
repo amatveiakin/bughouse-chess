@@ -73,16 +73,15 @@ const menu_create_contest_page = document.getElementById('menu-create-contest-pa
 const menu_join_contest_page = document.getElementById('menu-join-contest-page');
 const menu_pages = document.getElementsByClassName('menu-page');
 
-const ready_button = document.getElementById('ready-button');
 const create_contest_button = document.getElementById('create-contest-button');
 const join_contest_button = document.getElementById('join-contest-button');
-const create_contest_back_button = document.getElementById('create-contest-back-button');
-const join_contest_back_button = document.getElementById('join-contest-back-button');
+const cc_back_button = document.getElementById('cc-back-button');
+const cc_player_name = document.getElementById('cc-player-name');
+const jc_back_button = document.getElementById('jc-back-button');
+const jc_player_name = document.getElementById('jc-player-name');
+const jc_contest_id = document.getElementById('jc-contest-id');
 
-const create_contest_player_name = document.getElementById('create-contest-player-name');
-const create_contest_teaming = document.getElementById('create-contest-teaming');
-const join_contest_player_name = document.getElementById('join-contest-player-name');
-const join_contest_id = document.getElementById('join-contest-id');
+const ready_button = document.getElementById('ready-button');
 
 const svg_defs = document.getElementById('svg-defs');
 
@@ -187,8 +186,8 @@ ready_button.addEventListener('click', function() { execute_command('/ready'); }
 menu_dialog.addEventListener('cancel', function(event) { event.preventDefault(); });
 create_contest_button.addEventListener('click', on_create_contest_submenu);
 join_contest_button.addEventListener('click', on_join_contest_submenu);
-create_contest_back_button.addEventListener('click', show_start_page);
-join_contest_back_button.addEventListener('click', show_start_page);
+cc_back_button.addEventListener('click', show_start_page);
+jc_back_button.addEventListener('click', show_start_page);
 menu_create_contest_page.addEventListener('submit', on_create_contest_confirm);
 menu_join_contest_page.addEventListener('submit', on_join_contest_confirm);
 
@@ -616,9 +615,9 @@ function set_up_drag_and_drop() {
 
 function on_hide_menu_page(page) {
     if (page === menu_create_contest_page) {
-        window.localStorage.setItem(Storage.player_name, create_contest_player_name.value);
+        window.localStorage.setItem(Storage.player_name, cc_player_name.value);
     } else if (page === menu_join_contest_page) {
-        window.localStorage.setItem(Storage.player_name, join_contest_player_name.value);
+        window.localStorage.setItem(Storage.player_name, jc_player_name.value);
     }
 }
 
@@ -654,9 +653,9 @@ function init_menu() {
     menu_dialog.showModal();
     if (contest_id) {
         show_menu_page(menu_join_contest_page);
-        join_contest_id.value = contest_id;
-        join_contest_player_name.value = window.localStorage.getItem(Storage.player_name);
-        join_contest_player_name.focus();
+        jc_contest_id.value = contest_id;
+        jc_player_name.value = window.localStorage.getItem(Storage.player_name);
+        jc_player_name.focus();
     } else {
         show_menu_page(menu_start_page);
     }
@@ -726,21 +725,27 @@ function load_sounds(sound_map) {
 
 function on_create_contest_submenu(event) {
     show_menu_page(menu_create_contest_page);
-    create_contest_player_name.value = window.localStorage.getItem(Storage.player_name);
-    create_contest_player_name.focus();
+    cc_player_name.value = window.localStorage.getItem(Storage.player_name);
+    cc_player_name.focus();
 }
 
 function on_join_contest_submenu(event) {
     show_menu_page(menu_join_contest_page);
-    join_contest_player_name.value = window.localStorage.getItem(Storage.player_name);
-    join_contest_id.focus();
+    jc_player_name.value = window.localStorage.getItem(Storage.player_name);
+    jc_contest_id.focus();
 }
 
 function on_create_contest_confirm(event) {
     with_error_handling(function() {
-        const name = create_contest_player_name.value;
-        const teaming = create_contest_teaming.value;
-        wasm_client().new_contest(name, teaming);
+        const data = new FormData(event.target);
+        wasm_client().new_contest(
+            data.get('player-name'),
+            data.get('teaming'),
+            data.get('starting-position'),
+            data.get('starting-time'),
+            data.get('drop-aggression'),
+            data.get('pawn-drop-rows'),
+        );
         update();
         close_menu();
     });
@@ -748,9 +753,11 @@ function on_create_contest_confirm(event) {
 
 function on_join_contest_confirm(event) {
     with_error_handling(function() {
-        const contest_id = join_contest_id.value.toUpperCase();
-        const name = join_contest_player_name.value;
-        wasm_client().join(contest_id, name);
+        const data = new FormData(event.target);
+        wasm_client().join(
+            data.get('contest-id').toUpperCase(),
+            data.get('player-name'),
+        );
         update();
         close_menu();
     });

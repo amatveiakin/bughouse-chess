@@ -19,6 +19,7 @@ use std::cell::RefCell;
 use std::sync::mpsc;
 use std::time::Duration;
 
+use chain_cmp::chmp;
 use enum_map::{EnumMap, enum_map};
 use instant::Instant;
 use itertools::Itertools;
@@ -190,27 +191,69 @@ impl WebClient {
         JsMeter::new(self.state.meter(name))
     }
 
-    pub fn new_contest(&mut self, my_name: String, teaming: &str) {
-        // TODO: Make all rules configurable.
+    pub fn new_contest(
+        &mut self,
+        player_name: &str,
+        teaming: &str,
+        starting_position: &str,
+        starting_time: &str,
+        drop_aggression: &str,
+        pawn_drop_rows: &str,
+    ) -> JsResult<()> {
         let teaming = match teaming {
             "fixed-teams" => Teaming::FixedTeams,
             "individual-mode" => Teaming::IndividualMode,
-            _ => panic!("Unexpected teaming: {teaming}"),
+            _ => return Err(format!("Invalid teaming: {teaming}").into()),
         };
+        let starting_position = match starting_position {
+            "classic" => StartingPosition::Classic,
+            "fischer-random" => StartingPosition::FischerRandom,
+            _ => return Err(format!("Invalid starting position: {starting_position}").into()),
+        };
+        let drop_aggression = match drop_aggression {
+            "no-check" => DropAggression::NoCheck,
+            "no-chess-mate" => DropAggression::NoChessMate,
+            "no-bughouse-mate" => DropAggression::NoBughouseMate,
+            "mate-allowed" => DropAggression::MateAllowed,
+            _ => return Err(format!("Invalid drop aggression: {drop_aggression}").into()),
+        };
+
+        let Some((Ok(starting_minutes), Ok(starting_seconds))) = starting_time
+            .split(':')
+            .map(|v| v.parse::<u64>())
+            .collect_tuple()
+        else {
+            return Err(format!("Invalid starting time: {starting_time}").into());
+        };
+        let starting_time = Duration::from_secs(starting_minutes * 60 + starting_seconds);
+
+        let Some((Ok(min_pawn_drop_row), Ok(max_pawn_drop_row))) = pawn_drop_rows
+            .split('-')
+            .map(|v| v.parse::<u8>())
+            .collect_tuple()
+        else {
+            return Err(format!("Invalid pawn drop rows: {pawn_drop_rows}").into());
+        };
+        if !chmp!(1 <= min_pawn_drop_row <= max_pawn_drop_row <= 7) {
+            return Err(format!("Invalid pawn drop rows: {pawn_drop_rows}").into());
+        }
+
         let chess_rules = ChessRules {
-            starting_position: StartingPosition::FischerRandom,
+            starting_position,
             time_control: TimeControl {
-                starting_time: Duration::from_secs(300),
+                starting_time,
             },
         };
         let bughouse_rules = BughouseRules {
             teaming,
-            min_pawn_drop_row: SubjectiveRow::from_one_based(2),
-            max_pawn_drop_row: SubjectiveRow::from_one_based(6),
-            drop_aggression: DropAggression::NoChessMate,
+            min_pawn_drop_row: SubjectiveRow::from_one_based(min_pawn_drop_row),
+            max_pawn_drop_row: SubjectiveRow::from_one_based(max_pawn_drop_row),
+            drop_aggression,
         };
-        self.state.new_contest(chess_rules, bughouse_rules, my_name);
+        self.state.new_contest(chess_rules, bughouse_rules, player_name.to_owned());
+        Ok(())
     }
+
     pub fn join(&mut self, contest_id: String, my_name: String) {
         self.state.join(contest_id, my_name);
     }
