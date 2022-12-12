@@ -17,7 +17,7 @@ pub struct TimeControl {
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
-enum TimeMeasurement {
+pub enum TimeMeasurement {
     Exact,
     Approximate,
 }
@@ -79,14 +79,17 @@ impl GameInstant {
                 self.elapsed_since_start.saturating_sub(earlier.elapsed_since_start),
         }
     }
+
+    pub fn measurement(&self) -> TimeMeasurement { self.measurement }
+    pub fn set_measurement(mut self, m: TimeMeasurement) -> Self {
+        self.measurement = m;
+        self
+    }
     // Mark as approximate, so that attemps to go back in time wouldn't panic. Could be
     // used in online clients where local time and server time can be sligtly desynced.
     // Should not be used on the server side or in offline clients - if you get a crash
     // without it this is likely a bug.
-    pub fn approximate(mut self) -> Self {
-        self.measurement = TimeMeasurement::Approximate;
-        self
-    }
+    pub fn approximate(self) -> Self { self.set_measurement(TimeMeasurement::Approximate) }
 }
 
 

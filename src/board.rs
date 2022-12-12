@@ -464,6 +464,7 @@ pub enum ChessGameStatus {
     Draw(DrawReason),
 }
 
+#[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TurnError {
     NotPlayer,
@@ -472,6 +473,7 @@ pub enum TurnError {
     CaptureNotationRequiresCapture,
     PieceMissing,
     WrongTurnOrder,
+    PreturnLimitReached,
     ImpossibleTrajectory,
     PathBlocked,
     UnprotectedKing,

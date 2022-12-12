@@ -389,7 +389,7 @@ fn preturn_failed_piece_captured() {
 }
 
 #[test]
-fn preturn_cancellation() {
+fn preturn_cancellation_successful() {
     let mut world = World::new();
     let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
 
@@ -416,6 +416,25 @@ fn preturn_cancellation() {
     world.process_all_events();
     assert!(world[cl1].my_board().grid()[Coord::A6].is_none());
     assert!(world[cl1].my_board().grid()[Coord::H6].is(piece!(Black Pawn)));
+}
+
+#[test]
+fn preturn_cancellation_late() {
+    let mut world = World::new();
+    let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
+
+    world[cl3].make_turn("e5").unwrap();
+    world.process_events_for(cl3).unwrap();
+    world[cl3].state.cancel_preturn();
+    world[cl3].make_turn("d5").unwrap();
+    world[cl1].make_turn("Nc3").unwrap();
+    world.process_events_for(cl1).unwrap();
+    assert!(world[cl3].my_board().grid()[Coord::E5].is_none());
+    assert!(world[cl3].my_board().grid()[Coord::D5].is(piece!(Black Pawn)));
+
+    world.process_all_events();
+    assert!(world[cl3].my_board().grid()[Coord::E5].is(piece!(Black Pawn)));
+    assert!(world[cl3].my_board().grid()[Coord::D5].is_none());
 }
 
 // Regression test: having preturn when game ends shouldn't panic.
@@ -445,6 +464,49 @@ fn preturn_auto_cancellation_on_checkmate() {
 
     world.replay_white_checkmates_black(cl1, cl3);
     assert!(world[cl2].my_board().grid()[Coord::E5].is_none());
+}
+
+#[test]
+fn two_local_turns_both_successful() {
+    let mut world = World::new();
+    let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
+
+    world[cl1].make_turn("e4").unwrap();
+    world[cl1].make_turn("d4").unwrap();
+    world[cl3].make_turn("e5").unwrap();
+    assert!(world[cl1].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
+    assert!(world[cl3].my_board().grid()[Coord::E4].is_none());
+    assert!(world[cl1].my_board().grid()[Coord::D4].is(piece!(White Pawn)));
+    assert!(world[cl3].my_board().grid()[Coord::D4].is_none());
+    assert!(world[cl1].my_board().grid()[Coord::E5].is_none());
+    assert!(world[cl3].my_board().grid()[Coord::E5].is(piece!(Black Pawn)));
+
+    world.process_all_events();
+    assert!(world[cl1].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
+    assert!(world[cl3].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
+    assert!(world[cl1].my_board().grid()[Coord::D4].is(piece!(White Pawn)));
+    assert!(world[cl3].my_board().grid()[Coord::D4].is(piece!(White Pawn)));
+    assert!(world[cl1].my_board().grid()[Coord::E5].is(piece!(Black Pawn)));
+    assert!(world[cl3].my_board().grid()[Coord::E5].is(piece!(Black Pawn)));
+}
+
+#[test]
+fn two_local_turns_keep_preturn() {
+    let mut world = World::new();
+    let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
+
+    world[cl1].make_turn("e4").unwrap();
+    world.process_outgoing_events_for(cl1);
+    world[cl1].make_turn("d4").unwrap();
+    world[cl3].make_turn("e5").unwrap();
+    world.process_events_for(cl3).unwrap();
+    world.process_incoming_events_for(cl1).1.unwrap();
+    assert!(world[cl1].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
+    assert!(world[cl3].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
+    assert!(world[cl1].my_board().grid()[Coord::D4].is(piece!(White Pawn)));
+    assert!(world[cl3].my_board().grid()[Coord::D4].is_none());
+    assert!(world[cl1].my_board().grid()[Coord::E5].is(piece!(Black Pawn)));
+    assert!(world[cl3].my_board().grid()[Coord::E5].is(piece!(Black Pawn)));
 }
 
 #[test]

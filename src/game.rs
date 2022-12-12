@@ -348,7 +348,7 @@ impl BughouseGame {
         -> Result<Turn, TurnError>
     {
         if self.status != BughouseGameStatus::Active {
-            // `Board::try_turn` will also test status, but that's not enough: the game
+            // `Board::try_turn` will also test game status, but that's not enough: the game
             // may have ended earlier on the other board.
             return Err(TurnError::GameOver);
         }
@@ -377,7 +377,8 @@ impl BughouseGame {
     )
         -> Result<Turn, TurnError>
     {
-        if mode != self.turn_mode_for_player(player_id)? {
+        let expected_mode = self.turn_mode_for_player(player_id)?;
+        if mode != expected_mode {
             return Err(TurnError::WrongTurnOrder);
         }
         self.try_turn(player_id.board_idx, turn_input, mode, now)

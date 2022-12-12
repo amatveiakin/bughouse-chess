@@ -233,21 +233,15 @@ impl ClientState {
         let GameState{ ref mut alt_game, time_pair, ref mut awaiting_turn_confirmation_since, .. } = game_state;
         let now = Instant::now();
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
-        if alt_game.status() != BughouseGameStatus::Active {
-            Err(TurnCommandError::IllegalTurn(TurnError::GameOver))
-        } else if alt_game.can_make_local_turn() {
-            let mode = alt_game.try_local_turn(turn_input.clone(), game_now).map_err(|err| {
-                TurnCommandError::IllegalTurn(err)
-            })?;
-            if mode == TurnMode::Normal {
-                *awaiting_turn_confirmation_since = Some(now);
-            }
-            self.connection.send(BughouseClientEvent::MakeTurn{ turn_input });
-            self.notable_event_queue.push_back(NotableEvent::MyTurnMade);
-            Ok(())
-        } else {
-            Err(TurnCommandError::IllegalTurn(TurnError::WrongTurnOrder))
+        let mode = alt_game.try_local_turn(turn_input.clone(), game_now).map_err(|err| {
+            TurnCommandError::IllegalTurn(err)
+        })?;
+        if mode == TurnMode::Normal {
+            *awaiting_turn_confirmation_since = Some(now);
         }
+        self.connection.send(BughouseClientEvent::MakeTurn{ turn_input });
+        self.notable_event_queue.push_back(NotableEvent::MyTurnMade);
+        Ok(())
     }
 
     pub fn cancel_preturn(&mut self) {
