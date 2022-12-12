@@ -2,6 +2,8 @@ env:
   browser: true
   es2021: true
 extends: eslint:recommended
+plugins:
+  - only-warn
 overrides: []
 parserOptions:
   ecmaVersion: latest
