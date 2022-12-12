@@ -43,7 +43,6 @@ pub struct GameState {
     game_start: Option<Instant>,
     preturns: HashMap<BughousePlayerId, TurnInput>,
     players_with_boards: Vec<(PlayerInGame, BughouseBoard)>, // TODO: Extract from `game`
-    turn_log: Vec<TurnRecord>,
 }
 
 impl GameState {
@@ -564,7 +563,7 @@ impl Contest {
     fn process_make_turn(
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, turn_input: TurnInput
     ) -> EventResult {
-        let Some(GameState{ ref mut game_start, ref mut game, ref mut preturns, ref mut turn_log, .. }) = self.game_state else {
+        let Some(GameState{ ref mut game_start, ref mut game, ref mut preturns, .. }) = self.game_state else {
             return Err("Cannot make turn: no game in progress".to_owned());
         };
         let scores = &mut self.scores;
@@ -599,7 +598,6 @@ impl Contest {
                         return Err(format!("Impossible turn: {:?}", error));
                     },
                 }
-                turn_log.extend_from_slice(&turns);
                 let ev = BughouseServerEvent::TurnsMade {
                     turns,
                     game_status: game.status(),
@@ -786,7 +784,6 @@ impl Contest {
             game_start: None,
             preturns: HashMap::new(),
             players_with_boards,
-            turn_log: vec![],
         });
         self.broadcast(ctx, &self.make_game_start_event(now));
         self.send_lobby_updated(ctx);  // update readiness flags
@@ -820,7 +817,7 @@ impl Contest {
             starting_position: game_state.game.starting_position().clone(),
             players: game_state.players_with_boards.clone(),
             time: current_game_time(game_state, now),
-            turn_log: game_state.turn_log.clone(),
+            turn_log: game_state.game.turn_log().iter().map(|t| t.trim_for_sending()).collect(),
             game_status: game_state.game.status(),
             scores: self.scores.clone(),
         }
