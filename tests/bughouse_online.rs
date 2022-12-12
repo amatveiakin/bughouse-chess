@@ -213,10 +213,16 @@ impl World {
         (contest, cl1, cl2, cl3, cl4)
     }
 
+
+    fn process_outgoing_events_for(&mut self, client_id: TestClientId) -> bool {
+        self.clients[client_id.0].process_outgoing_events(&mut self.server)
+    }
+    fn process_incoming_events_for(&mut self, client_id: TestClientId) -> (bool, Result<(), client::EventError>) {
+        self.clients[client_id.0].process_incoming_events()
+    }
     fn process_events_for(&mut self, client_id: TestClientId) -> Result<(), client::EventError> {
-        let client = &mut self.clients[client_id.0];
-        client.process_outgoing_events(&mut self.server);
-        client.process_incoming_events().1
+        self.process_outgoing_events_for(client_id);
+        self.process_incoming_events_for(client_id).1
     }
     fn process_events_from_clients(&mut self) -> bool {
         let mut something_changed = false;
