@@ -46,7 +46,7 @@ pub struct AlteredGame {
     //   - if TurnMode::Normal: a turn not confirmed by the server yet, but displayed on
     //       the client; always a valid turn for the `game_confirmed`;
     //   - if TurnMode::Preturn: a preturn.
-    local_turn: Option<(Turn, TurnMode, GameInstant)>,
+    local_turn: Option<(TurnInput, TurnMode, GameInstant)>,
     // Drag&drop state if making turn by mouse or touch.
     piece_drag: Option<PieceDrag>,
 }
@@ -79,17 +79,22 @@ impl AlteredGame {
         &mut self, player_id: BughousePlayerId, turn_algebraic: &str, time: GameInstant)
         -> Result<Turn, TurnError>
     {
-        if let BughouseParticipantId::Player(my_player_id) = self.my_id {
-            if player_id.board_idx == my_player_id.board_idx {
-                self.local_turn = None;
-            }
-        }
         let turn_input = TurnInput::Algebraic(turn_algebraic.to_owned());
         let turn = self.game_confirmed.try_turn_by_player(
             player_id, &turn_input, TurnMode::Normal, time
         )?;
         if self.game_confirmed.status() != BughouseGameStatus::Active {
             self.reset_local_changes();
+        } else if let BughouseParticipantId::Player(my_player_id) = self.my_id {
+            if player_id.board_idx == my_player_id.board_idx {
+                if player_id == my_player_id {
+                    self.local_turn = None;
+                } else if let Some((turn_input, turn_mode, turn_time)) = self.local_turn.take() {
+                    assert_eq!(turn_mode, TurnMode::Preturn);
+                    // Note: this will now be executed as a local turn and rejected if invalid.
+                    _ = self.try_local_turn(turn_input, turn_time);
+                }
+            }
         }
         if let Some(ref mut drag) = self.piece_drag {
             let BughouseParticipantId::Player(my_player_id) = self.my_id else {
@@ -111,13 +116,12 @@ impl AlteredGame {
 
     pub fn local_game(&self) -> BughouseGame {
         let mut game = self.game_confirmed.clone();
-        if let Some((turn, mode, turn_time)) = self.local_turn {
+        if let Some((ref turn_input, mode, turn_time)) = self.local_turn {
             let BughouseParticipantId::Player(my_player_id) = self.my_id else {
                 panic!("Only an active player can make moves");
             };
-            let turn_input = TurnInput::Explicit(turn);
             // Note. Not calling `test_flag`, because only server records flag defeat.
-            game.try_turn_by_player(my_player_id, &turn_input, mode, turn_time).unwrap();
+            game.try_turn_by_player(my_player_id, turn_input, mode, turn_time).unwrap();
         }
         if let Some(ref drag) = self.piece_drag {
             let BughouseParticipantId::Player(my_player_id) = self.my_id else {
@@ -145,7 +149,7 @@ impl AlteredGame {
         self.local_turn.is_none()
     }
 
-    pub fn try_local_turn(&mut self, turn_input: &TurnInput, time: GameInstant)
+    pub fn try_local_turn(&mut self, turn_input: TurnInput, time: GameInstant)
         -> Result<TurnMode, TurnError>
     {
         let BughouseParticipantId::Player(my_player_id) = self.my_id else {
@@ -153,8 +157,8 @@ impl AlteredGame {
         };
         let mut game_copy = self.game_confirmed.clone();
         let mode = game_copy.turn_mode_for_player(my_player_id)?;
-        let turn = game_copy.try_turn_by_player(my_player_id, turn_input, mode, time)?;
-        self.local_turn = Some((turn, mode, time));
+        game_copy.try_turn_by_player(my_player_id, &turn_input, mode, time)?;
+        self.local_turn = Some((turn_input, mode, time));
         self.piece_drag = None;
         Ok(mode)
     }

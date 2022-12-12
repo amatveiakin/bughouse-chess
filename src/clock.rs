@@ -61,7 +61,7 @@ impl GameInstant {
         }
     }
 
-    pub fn game_start() -> Self {
+    pub const fn game_start() -> Self {
         GameInstant {
             elapsed_since_start: Duration::ZERO,
             measurement: TimeMeasurement::Exact

@@ -1,3 +1,6 @@
+// Rust-upgrade (https://github.com/rust-lang/rust/issues/46379):
+//   remove `#[allow(dead_code)]` before public functions.
+
 use std::rc::Rc;
 
 use enum_map::{EnumMap, enum_map};
@@ -61,7 +64,23 @@ macro_rules! drag_move {
     };
 }
 
-#[allow(dead_code)]  // Rust-upgrade (https://github.com/rust-lang/rust/issues/46379): remove
+#[allow(dead_code)]
+pub fn algebraic_turn(algebraic: &str) -> TurnInput {
+    bughouse_chess::TurnInput::Algebraic(algebraic.to_owned())
+}
+
+
+#[macro_export]
+macro_rules! seating {
+    ($force:ident $board_idx:ident) => {
+        bughouse_chess::BughousePlayerId {
+            board_idx: bughouse_chess::BughouseBoard::$board_idx,
+            force: bughouse_chess::Force::$force,
+        }
+    };
+}
+
+#[allow(dead_code)]
 pub fn sample_chess_players() -> EnumMap<Force, Rc<PlayerInGame>> {
     enum_map! {
         Force::White => Rc::new(PlayerInGame{ name: "Alice".to_owned(), team: Team::Red }),
@@ -69,7 +88,7 @@ pub fn sample_chess_players() -> EnumMap<Force, Rc<PlayerInGame>> {
     }
 }
 
-#[allow(dead_code)]  // Rust-upgrade (https://github.com/rust-lang/rust/issues/46379): remove
+#[allow(dead_code)]
 pub fn sample_bughouse_players() -> EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>> {
     enum_map! {
         BughouseBoard::A => enum_map! {

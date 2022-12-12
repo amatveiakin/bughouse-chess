@@ -236,7 +236,7 @@ impl ClientState {
         if alt_game.status() != BughouseGameStatus::Active {
             Err(TurnCommandError::IllegalTurn(TurnError::GameOver))
         } else if alt_game.can_make_local_turn() {
-            let mode = alt_game.try_local_turn(&turn_input, game_now).map_err(|err| {
+            let mode = alt_game.try_local_turn(turn_input.clone(), game_now).map_err(|err| {
                 TurnCommandError::IllegalTurn(err)
             })?;
             if mode == TurnMode::Normal {

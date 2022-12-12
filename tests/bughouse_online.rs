@@ -18,15 +18,6 @@ use bughouse_chess::client::TurnCommandError::IllegalTurn;
 use common::*;
 
 
-macro_rules! seating {
-    ($force:ident $board_idx:ident) => {
-        bughouse_chess::BughousePlayerId {
-            board_idx: bughouse_chess::BughouseBoard::$board_idx,
-            force: bughouse_chess::Force::$force,
-        }
-    };
-}
-
 fn default_chess_rules() -> ChessRules {
     ChessRules {
         starting_position: StartingPosition::Classic,
