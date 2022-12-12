@@ -13,18 +13,18 @@ pub type GridForRepetitionDraw = GenericGrid<PieceForRepetitionDraw>;
 // Improvement potential: Benchmark if it's better to change grid data type to a `Box`
 //   (inline storage makes the object expensive to move which Rust does a lot).
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct GenericGrid<T: Copy> {
+pub struct GenericGrid<T: Clone> {
     data: [[Option<T>; NUM_COLS as usize]; NUM_ROWS as usize],
 }
 
-impl<T: Copy> GenericGrid<T> {
+impl<T: Clone> GenericGrid<T> {
     pub fn new() -> Self {
         GenericGrid { data: Default::default() }
     }
 
-    pub fn map<U: Copy>(&self, f: impl Fn(T) -> U + Copy) -> GenericGrid<U> {
+    pub fn map<U: Clone>(&self, f: impl Fn(T) -> U + Copy) -> GenericGrid<U> {
         GenericGrid {
-            data: self.data.map(|inner| inner.map(|v| v.map(f))),
+            data: self.data.clone().map(|inner| inner.map(|v| v.map(f))),
         }
     }
 
@@ -35,14 +35,14 @@ impl<T: Copy> GenericGrid<T> {
         let original = match change {
             None => None,
             Some((pos, new_piece)) => {
-                let original_piece = self[pos];
+                let original_piece = self[pos].take();
                 self[pos] = new_piece;
                 Some((pos, original_piece))
             },
         };
         Janitor::new(self, move |grid| {
-            if let Some((pos, original_piece)) = original {
-                grid[pos] = original_piece;
+            if let Some((pos, ref original_piece)) = original {
+                grid[pos] = original_piece.clone();
             }
         })
     }
@@ -50,20 +50,20 @@ impl<T: Copy> GenericGrid<T> {
     pub fn scoped_set(&mut self, pos: Coord, piece: Option<T>)
         -> impl ops::DerefMut<Target = Self> + '_
     {
-        let original_piece = self[pos];
+        let original_piece = self[pos].take();
         self[pos] = piece;
-        Janitor::new(self, move |grid| grid[pos] = original_piece)
+        Janitor::new(self, move |grid| grid[pos] = original_piece.clone())
     }
 }
 
-impl<T: Copy> ops::Index<Coord> for GenericGrid<T> {
+impl<T: Clone> ops::Index<Coord> for GenericGrid<T> {
     type Output = Option<T>;
     fn index(&self, pos: Coord) -> &Self::Output {
         &self.data[pos.row.to_zero_based() as usize][pos.col.to_zero_based() as usize]
     }
 }
 
-impl<T: Copy> ops::IndexMut<Coord> for GenericGrid<T> {
+impl<T: Clone> ops::IndexMut<Coord> for GenericGrid<T> {
     fn index_mut(&mut self, pos: Coord) -> &mut Self::Output {
         &mut self.data[pos.row.to_zero_based() as usize][pos.col.to_zero_based() as usize]
     }
