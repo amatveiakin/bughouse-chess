@@ -4,6 +4,7 @@
 use std::fmt;
 use std::io;
 use std::net::{TcpStream, ToSocketAddrs};
+use std::panic;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -143,6 +144,14 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     let (mut socket_in, _) = tungstenite::client(ws_request, stream).unwrap();
     let mut socket_out = network::clone_websocket(&socket_in, protocol::Role::Client);
     std::mem::drop(config);
+
+    let std_panic_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |panic_info| {
+        // TODO: Also report the error via `BughouseClientEvent::ReportError`.
+        _ = terminal::disable_raw_mode();
+        _ = execute!(io::stdout(), terminal::LeaveAlternateScreen);
+        std_panic_hook(panic_info);
+    }));
 
     let mut stdout = io::stdout();
     terminal::enable_raw_mode()?;  // TODO: Should this be reverted on exit?
