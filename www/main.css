@@ -202,6 +202,7 @@ body.observer #page {
   height: calc(var(--sq-size-primary) * 8);
   user-select: none;
   touch-action: none;
+  z-index: 10;  /* show dragged pieces above other UI elements */
 }
 #board-secondary {
   width: calc(var(--sq-size-secondary) * 8);
