@@ -538,6 +538,7 @@ function set_up_drag_and_drop() {
 
     const svg = document.getElementById('board-primary');
     svg.addEventListener('contextmenu', cancel_preturn);
+    document.addEventListener('contextmenu', cancel_drag);
 
     function is_main_pointer(event) {
         return event.button == 0 || event.changedTouches?.length >= 1;
@@ -603,12 +604,20 @@ function set_up_drag_and_drop() {
     function cancel_preturn(event) {
         with_error_handling(function() {
             event.preventDefault();
-            if (drag_element) {
-                wasm_client().abort_drag_piece();
-            } else {
+            if (!drag_element) {
                 wasm_client().cancel_preturn();
+                update();
             }
-            update();
+        });
+    }
+
+    function cancel_drag(event) {
+        with_error_handling(function() {
+            if (drag_element) {
+                event.preventDefault();
+                wasm_client().abort_drag_piece();
+                update();
+            }
         });
     }
 }
