@@ -23,7 +23,7 @@ use chain_cmp::chmp;
 use enum_map::{EnumMap, enum_map};
 use instant::Instant;
 use itertools::Itertools;
-use strum::{EnumIter, IntoEnumIterator};
+use strum::IntoEnumIterator;
 use wasm_bindgen::prelude::*;
 
 use bughouse_chess::*;
@@ -35,8 +35,6 @@ type JsResult<T> = Result<T, JsValue>;
 
 const RESERVE_HEIGHT: f64 = 1.5;  // total reserve area height, in squares
 const RESERVE_PADDING: f64 = 0.25;  // padding between board and reserve, in squares
-const BOARD_LEFT: f64 = 0.0;
-const BOARD_TOP: f64 = 0.0;
 // TODO: Viewbox size asserts.
 
 // The client is single-threaded, so wrapping all mutable singletons in `thread_local!` seems ok.
@@ -173,7 +171,7 @@ pub struct WebClient {
     //   during game phase, add a generic `UserData` parameter to `ContestState::Game`.
     state: ClientState,
     server_rx: mpsc::Receiver<BughouseClientEvent>,
-    rotate_boards: bool,
+    perspective: Perspective,
 }
 
 #[wasm_bindgen]
@@ -183,7 +181,7 @@ impl WebClient {
         Ok(WebClient {
             state: ClientState::new(user_agent, time_zone, server_tx),
             server_rx,
-            rotate_boards: false,
+            perspective: Perspective::PlayAsWhite,
         })
     }
 
@@ -309,16 +307,16 @@ impl WebClient {
             PieceDragStart::Reserve(PieceKind::from_algebraic(piece).unwrap())
         } else {
             let coord = Coord::from_algebraic(source);
-            let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
+            let board_orientation = get_board_orientation(DisplayBoard::Primary, self.perspective);
             let display_coord = to_display_coord(coord, board_orientation);
-            set_square_highlight("drag-start-highlight", WebBoard::Primary, Some(display_coord))?;
+            set_square_highlight("drag-start-highlight", DisplayBoard::Primary, Some(display_coord))?;
             PieceDragStart::Board(coord)
         };
         alt_game.start_drag_piece(source).map_err(|err| rust_error!("Drag&drop error: {:?}", err))?;
         Ok(())
     }
     pub fn drag_piece(&mut self, dest_x: f64, dest_y: f64) -> JsResult<()> {
-        set_square_highlight("drag-over-highlight", WebBoard::Primary, position_to_square(dest_x, dest_y))
+        set_square_highlight("drag-over-highlight", DisplayBoard::Primary, position_to_square(dest_x, dest_y))
     }
     pub fn drag_piece_drop(&mut self, dest_x: f64, dest_y: f64, alternative_promotion: bool)
         -> JsResult<()>
@@ -328,7 +326,7 @@ impl WebClient {
         };
         if let Some(dest_display) = position_to_square(dest_x, dest_y) {
             use PieceKind::*;
-            let board_orientation = get_board_orientation(WebBoard::Primary, self.rotate_boards);
+            let board_orientation = get_board_orientation(DisplayBoard::Primary, self.perspective);
             let dest_coord = from_display_coord(dest_display, board_orientation);
             let promote_to = if alternative_promotion { Knight } else { Queen };
             match alt_game.drag_piece_drop(dest_coord, promote_to) {
@@ -401,8 +399,8 @@ impl WebClient {
                 info_string.set_text_content(None);
                 let my_id = alt_game.my_id();
                 let is_observer = matches!(my_id, BughouseParticipantId::Observer(_));
-                self.rotate_boards = my_id.display_force() == Force::Black;
-                render_grids(self.rotate_boards)?;
+                self.perspective = Perspective::for_force(my_id.visual_force());
+                render_grids(self.perspective)?;
                 setup_participation_mode(is_observer)?;
                 Ok(JsEventMyNoop{}.into())
             },
@@ -454,16 +452,16 @@ impl WebClient {
         // TODO: Better readiness status display.
         let game = alt_game.local_game();
         let my_id = alt_game.my_id();
-        let my_display_board_idx = my_id.display_board_idx();
-        let my_display_force = my_id.display_force();
+        let my_display_board_idx = my_id.visual_board_idx();
+        let my_display_force = my_id.visual_force();
         for (board_idx, board) in game.boards() {
             let is_primary = board_idx == my_display_board_idx;
-            let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
-            let board_orientation = get_board_orientation(web_board_idx, self.rotate_boards);
-            let svg = document.get_existing_element_by_id(&board_node_id(web_board_idx))?;
+            let display_board_idx = if is_primary { DisplayBoard::Primary } else { DisplayBoard::Secondary };
+            let board_orientation = get_board_orientation(display_board_idx, self.perspective);
+            let svg = document.get_existing_element_by_id(&board_node_id(display_board_idx))?;
             let grid = board.grid();
             for coord in Coord::all() {
-                let node_id = piece_id(web_board_idx, coord);
+                let node_id = piece_id(display_board_idx, coord);
                 let node = document.get_element_by_id(&node_id);
                 let piece = grid[coord];
                 if let Some(piece) = piece {
@@ -497,15 +495,15 @@ impl WebClient {
                     }
                 }
             }
-            for player_idx in WebPlayer::iter() {
-                use WebPlayer::*;
-                use WebBoard::*;
-                let force = match (player_idx, web_board_idx) {
+            for player_idx in DisplayPlayer::iter() {
+                use DisplayPlayer::*;
+                use DisplayBoard::*;
+                let force = match (player_idx, display_board_idx) {
                     (Bottom, Primary) | (Top, Secondary) => my_display_force,
                     (Top, Primary) | (Bottom, Secondary) => my_display_force.opponent(),
                 };
                 let name_node = document.get_existing_element_by_id(
-                    &player_name_node_id(web_board_idx, player_idx)
+                    &player_name_node_id(display_board_idx, player_idx)
                 )?;
                 let player_name = &board.player(force).name;
                 let player = contest.players.iter().find(|p| p.name == *player_name).unwrap();
@@ -515,7 +513,7 @@ impl WebClient {
                     player_string_with_readiness(&player)
                 };
                 name_node.set_text_content(Some(&player_string));
-                update_reserve(board.reserve(force), force, web_board_idx, player_idx)?;
+                update_reserve(board.reserve(force), force, display_board_idx, player_idx)?;
             }
             let latest_turn = game.turn_log().iter().rev()
                 .find(|record| record.player_id.board_idx == board_idx);
@@ -523,14 +521,14 @@ impl WebClient {
                 let latest_turn_highlight = latest_turn
                     .filter(|record| BughouseParticipantId::Player(record.player_id) != my_id)
                     .map(|record| &record.turn_expanded);
-                let hightlight_id = format!("latest-{}", board_id(web_board_idx));
-                self.set_turn_highlights(&hightlight_id, latest_turn_highlight, web_board_idx)?;
+                let hightlight_id = format!("latest-{}", board_id(display_board_idx));
+                self.set_turn_highlights(&hightlight_id, latest_turn_highlight, display_board_idx)?;
             }
-            if web_board_idx == WebBoard::Primary {
+            if display_board_idx == DisplayBoard::Primary {
                 let pre_turn_highlight = latest_turn
                     .filter(|record| record.mode == TurnMode::Preturn)
                     .map(|record| &record.turn_expanded);
-                self.set_turn_highlights("pre", pre_turn_highlight, web_board_idx)?;
+                self.set_turn_highlights("pre", pre_turn_highlight, display_board_idx)?;
             }
         }
         if alt_game.status() != BughouseGameStatus::Active {
@@ -549,19 +547,19 @@ impl WebClient {
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         let game = alt_game.local_game();
         let my_id = alt_game.my_id();
-        let my_display_board_idx = my_id.display_board_idx();
-        let my_display_force = my_id.display_force();
+        let my_display_board_idx = my_id.visual_board_idx();
+        let my_display_force = my_id.visual_force();
         for (board_idx, board) in game.boards() {
             let is_primary = board_idx == my_display_board_idx;
-            let web_board_idx = if is_primary { WebBoard::Primary } else { WebBoard::Secondary };
-            for player_idx in WebPlayer::iter() {
-                use WebPlayer::*;
-                use WebBoard::*;
-                let force = match (player_idx, web_board_idx) {
+            let display_board_idx = if is_primary { DisplayBoard::Primary } else { DisplayBoard::Secondary };
+            for player_idx in DisplayPlayer::iter() {
+                use DisplayPlayer::*;
+                use DisplayBoard::*;
+                let force = match (player_idx, display_board_idx) {
                     (Bottom, Primary) | (Top, Secondary) => my_display_force,
                     (Top, Primary) | (Bottom, Secondary) => my_display_force.opponent(),
                 };
-                let id_suffix = format!("{}-{}", board_id(web_board_idx), player_id(player_idx));
+                let id_suffix = format!("{}-{}", board_id(display_board_idx), player_id(player_idx));
                 // TODO: Dedup against `update_state`. Everything except the two lines below
                 //   is copy-pasted from there.
                 let clock_node = document.get_existing_element_by_id(&format!("clock-{}", id_suffix))?;
@@ -578,7 +576,7 @@ impl WebClient {
             .join("\n")
     }
 
-    fn set_turn_highlights(&self, id_prefix: &str, turn: Option<&TurnExpanded>, board_idx: WebBoard)
+    fn set_turn_highlights(&self, id_prefix: &str, turn: Option<&TurnExpanded>, board_idx: DisplayBoard)
         -> JsResult<()>
     {
         // Optimization potential: do not reset highlights that stay in place.
@@ -588,7 +586,7 @@ impl WebClient {
         reset_square_highlight(&format!("{}-turn-to-extra", id_prefix))?;
         reset_square_highlight(&format!("{}-drop-to", id_prefix))?;
         reset_square_highlight(&format!("{}-capture", id_prefix))?;
-        let board_orientation = get_board_orientation(board_idx, self.rotate_boards);
+        let board_orientation = get_board_orientation(board_idx, self.perspective);
         if let Some(turn) = turn {
             for (id_suffix, coord) in turn_highlights(turn) {
                 let id = format!("{}-{}", id_prefix, id_suffix);
@@ -597,30 +595,6 @@ impl WebClient {
         }
         Ok(())
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
-enum WebBoard {
-    Primary,
-    Secondary,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
-enum WebPlayer {
-    Top,
-    Bottom,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum BoardOrientation {
-    Normal,
-    Rotated,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-struct DisplayCoord {
-    x: u8,
-    y: u8,
 }
 
 struct WebDocument(web_sys::Document);
@@ -661,7 +635,7 @@ fn remove_all_children(node: &web_sys::Node) -> JsResult<()> {
 
 #[wasm_bindgen]
 pub fn init_page() -> JsResult<()> {
-    render_grids(false)?;
+    render_grids(Perspective::PlayAsWhite)?;
     render_starting()?;
     Ok(())
 }
@@ -710,7 +684,7 @@ fn update_lobby(contest: &Contest) -> JsResult<()> {
 
 // Note. Each `id` should unambiguously correspond to a fixed board.
 // TODO: Separate highlight layers based on z-order: put drag highlight above the rest.
-fn set_square_highlight(id: &str, board_idx: WebBoard, coord: Option<DisplayCoord>) -> JsResult<()> {
+fn set_square_highlight(id: &str, board_idx: DisplayBoard, coord: Option<DisplayCoord>) -> JsResult<()> {
     let document = web_document();
     if let Some(coord) = coord {
         let node = document.get_element_by_id(id);
@@ -762,7 +736,7 @@ fn player_string_with_readiness(p: &Player) -> String {
 // less fixed, thus reducing the chance of grabbing the wrong piece after a last-moment
 // reserve update.
 fn render_reserve(
-    force: Force, board_idx: WebBoard, player_idx: WebPlayer, draggable: bool,
+    force: Force, board_idx: DisplayBoard, player_idx: DisplayPlayer, draggable: bool,
     piece_kind_sep: f64, reserve_iter: impl Iterator<Item = (PieceKind, u8)> + Clone
 ) -> JsResult<()>
 {
@@ -812,10 +786,10 @@ fn render_reserve(
     Ok(())
 }
 
-fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_idx: WebPlayer)
+fn update_reserve(reserve: &Reserve, force: Force, board_idx: DisplayBoard, player_idx: DisplayPlayer)
     -> JsResult<()>
 {
-    let is_me = (board_idx == WebBoard::Primary) && (player_idx == WebPlayer::Bottom);
+    let is_me = (board_idx == DisplayBoard::Primary) && (player_idx == DisplayPlayer::Bottom);
     let piece_kind_sep = 1.0;
     let reserve_iter = reserve.iter()
         .filter(|(kind, _)| *kind != PieceKind::King)
@@ -826,8 +800,8 @@ fn update_reserve(reserve: &Reserve, force: Force, board_idx: WebBoard, player_i
 fn render_starting() -> JsResult<()> {
     use PieceKind::*;
     use Force::*;
-    use WebBoard::*;
-    use WebPlayer::*;
+    use DisplayBoard::*;
+    use DisplayPlayer::*;
     let reserve = [
         (Pawn, 8),
         (Knight, 2),
@@ -911,9 +885,9 @@ fn update_scores(scores: &Scores, teaming: Teaming, my_team: Option<Team>) -> Js
     Ok(())
 }
 
-fn render_grids(rotate_boards: bool) -> JsResult<()> {
-    for board_idx in WebBoard::iter() {
-        render_grid(board_idx, rotate_boards)?;
+fn render_grids(perspective: Perspective) -> JsResult<()> {
+    for board_idx in DisplayBoard::iter() {
+        render_grid(board_idx, perspective)?;
     }
     Ok(())
 }
@@ -928,8 +902,8 @@ fn setup_participation_mode(observer: bool) -> JsResult<()> {
     Ok(())
 }
 
-fn render_grid(board_idx: WebBoard, rotate_boards: bool) -> JsResult<()> {
-    let board_orientation = get_board_orientation(board_idx, rotate_boards);
+fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()> {
+    let board_orientation = get_board_orientation(board_idx, perspective);
     let text_h_padding = 0.07;
     let text_v_padding = 0.09;
 
@@ -992,7 +966,7 @@ fn render_grid(board_idx: WebBoard, rotate_boards: bool) -> JsResult<()> {
     border.set_attribute("class", "board-border")?;
     svg.append_child(&border)?;
 
-    for player_idx in WebPlayer::iter() {
+    for player_idx in DisplayPlayer::iter() {
         let reserve = document.create_svg_element("g")?;
         reserve.set_attribute("id", &reserve_node_id(board_idx, player_idx))?;
         reserve.set_attribute("class", "reserve")?;
@@ -1008,13 +982,6 @@ fn make_piece_node(id: &str) -> JsResult<web_sys::Element> {
     let node = web_document().create_svg_element("use")?;
     node.set_attribute("id", id)?;
     return Ok(node);
-}
-
-fn get_board_orientation(board_idx: WebBoard, rotate_180: bool) -> BoardOrientation {
-    match (board_idx, rotate_180) {
-        (WebBoard::Primary, false) | (WebBoard::Secondary, true) => BoardOrientation::Normal,
-        (WebBoard::Primary, true) | (WebBoard::Secondary, false) => BoardOrientation::Rotated,
-    }
 }
 
 fn turn_highlights(turn_expanded: &TurnExpanded) -> Vec<(&'static str, Coord)> {
@@ -1039,94 +1006,48 @@ fn turn_highlights(turn_expanded: &TurnExpanded) -> Vec<(&'static str, Coord)> {
     highlights
 }
 
-fn to_display_coord(coord: Coord, board_orientation: BoardOrientation) -> DisplayCoord {
-    match board_orientation {
-        BoardOrientation::Normal => DisplayCoord {
-            x: coord.col.to_zero_based(),
-            y: NUM_ROWS - coord.row.to_zero_based() - 1,
-        },
-        BoardOrientation::Rotated => DisplayCoord {
-            x: NUM_COLS - coord.col.to_zero_based() - 1,
-            y: coord.row.to_zero_based(),
-        },
-    }
-}
-
-fn from_display_coord(coord: DisplayCoord, board_orientation: BoardOrientation) -> Coord {
-    match board_orientation {
-        BoardOrientation::Normal => Coord {
-            row: Row::from_zero_based(NUM_ROWS - coord.y - 1),
-            col: Col::from_zero_based(coord.x),
-        },
-        BoardOrientation::Rotated => Coord {
-            row: Row::from_zero_based(coord.y),
-            col: Col::from_zero_based(NUM_COLS - coord.x - 1),
-        },
-    }
-}
-
-// position of the top-left corner of a square
-fn square_position(coord: DisplayCoord) -> (f64, f64) {
-    return (
-        f64::from(coord.x) + BOARD_LEFT,
-        f64::from(coord.y) + BOARD_TOP,
-    );
-}
-
-fn position_to_square(x: f64, y: f64) -> Option<DisplayCoord> {
-    let x = (x - BOARD_LEFT) as i32;
-    let y = (y - BOARD_TOP) as i32;
-    if 0 <= x && x < NUM_COLS as i32 && 0 <= y && y < NUM_ROWS as i32 {
-        // Improvement potential: clamp instead of asserting the values are in range.
-        // Who knows if all browsers guarantee click coords cannot be 0.00001px away?
-        Some(DisplayCoord{ x: x.try_into().unwrap(), y: y.try_into().unwrap() })
-    } else {
-        None
-    }
-}
-
-fn board_id(idx: WebBoard) -> String {
+fn board_id(idx: DisplayBoard) -> String {
     match idx {
-        WebBoard::Primary => "primary",
-        WebBoard::Secondary => "secondary",
+        DisplayBoard::Primary => "primary",
+        DisplayBoard::Secondary => "secondary",
     }.to_owned()
 }
 
-fn board_node_id(idx: WebBoard) -> String {
+fn board_node_id(idx: DisplayBoard) -> String {
     format!("board-{}", board_id(idx))
 }
 
-fn player_id(idx: WebPlayer) -> String {
+fn player_id(idx: DisplayPlayer) -> String {
     match idx {
-        WebPlayer::Top => "top",
-        WebPlayer::Bottom => "bottom",
+        DisplayPlayer::Top => "top",
+        DisplayPlayer::Bottom => "bottom",
     }.to_owned()
 }
 
-fn piece_id(board_idx: WebBoard, coord: Coord) -> String {
+fn piece_id(board_idx: DisplayBoard, coord: Coord) -> String {
     format!("{}-{}", board_id(board_idx), coord.to_algebraic())
 }
 
-fn player_name_node_id(board_idx: WebBoard, player_idx: WebPlayer) -> String {
+fn player_name_node_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String {
     format!("player-name-{}-{}", board_id(board_idx), player_id(player_idx))
 }
 
-fn reserve_container_id(board_idx: WebBoard, player_idx: WebPlayer) -> String {
+fn reserve_container_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String {
     format!("reserve-{}-{}", board_id(board_idx), player_id(player_idx))
 }
 
-fn reserve_node_id(board_idx: WebBoard, player_idx: WebPlayer) -> String {
+fn reserve_node_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String {
     format!("reserve-group-{}-{}", board_id(board_idx), player_id(player_idx))
 }
 
-fn square_highlight_layer(board_idx: WebBoard) -> String {
+fn square_highlight_layer(board_idx: DisplayBoard) -> String {
     format!("square-highlight-layer-{}", board_id(board_idx))
 }
 
-fn reserve_y_pos(player_idx: WebPlayer) -> f64 {
+fn reserve_y_pos(player_idx: DisplayPlayer) -> f64 {
     match player_idx {
-        WebPlayer::Top => RESERVE_HEIGHT - 1.0 - RESERVE_PADDING,
-        WebPlayer::Bottom => RESERVE_PADDING,
+        DisplayPlayer::Top => RESERVE_HEIGHT - 1.0 - RESERVE_PADDING,
+        DisplayPlayer::Bottom => RESERVE_PADDING,
     }
 }
 

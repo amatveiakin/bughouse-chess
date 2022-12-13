@@ -169,7 +169,7 @@ impl BughousePlayerId {
 impl BughouseParticipantId {
     // To be used for rendering purposes only. If actions are to be taken on a board, use
     // `let BughouseParticipantId::Player(...) = ...` to check that this is an actual player.
-    pub fn display_board_idx(self) -> BughouseBoard {
+    pub fn visual_board_idx(self) -> BughouseBoard {
         match self {
             Self::Player(id) => id.board_idx,
             Self::Observer(id) => id.board_idx,
@@ -177,28 +177,10 @@ impl BughouseParticipantId {
     }
     // To be used for rendering purposes only. If actions are to be taken on behalf of a force, use
     // `let BughouseParticipantId::Player(...) = ...` to check that this is an actual player.
-    pub fn display_force(self) -> Force {
+    pub fn visual_force(self) -> Force {
         match self {
             Self::Player(id) => id.force,
             Self::Observer(id) => id.force,
-        }
-    }
-}
-
-// TODO: Unify board flipping for tui and web clients
-#[derive(Clone, Copy, Debug)]
-pub struct BughouseGameView {
-    pub flip_boards: bool,
-    pub flip_forces: bool,
-}
-
-impl BughouseGameView {
-    pub fn for_participant(participant_id: BughouseParticipantId) -> Self {
-        use BughouseBoard::*;
-        use Force::*;
-        BughouseGameView {
-            flip_boards: match participant_id.display_board_idx() { A => false, B => true },
-            flip_forces: match participant_id.display_force() { White => false, Black => true },
         }
     }
 }

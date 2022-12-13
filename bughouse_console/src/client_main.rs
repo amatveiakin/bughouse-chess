@@ -62,8 +62,7 @@ fn render(
             let my_id = alt_game.my_id();
             let game_now = GameInstant::from_pair_game_maybe_active(time_pair, now);
             let game = alt_game.local_game();
-            let view = BughouseGameView::for_participant(my_id);
-            writeln_raw(stdout, format!("{}\n", tui::render_bughouse_game(&game, view, game_now)))?;
+            writeln_raw(stdout, format!("{}\n", tui::render_bughouse_game(&game, my_id, game_now)))?;
             // Note. Don't clear the board to avoid blinking.
             // TODO: Show last turn by opponent.
             execute!(stdout, terminal::Clear(terminal::ClearType::FromCursorDown))?;

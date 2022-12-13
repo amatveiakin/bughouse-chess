@@ -1,21 +1,16 @@
-use std::mem;
-
 // Improvement potential. Use `crossterm` instead (fix: for some reason rendering
 //   reserve background was more buggy with it).
+
 use console::Style;
 use itertools::Itertools;
 
-use bughouse_chess::{
-    Row, Col, Coord, NUM_COLS, Force, PlayerInGame,
-    Grid, PieceKind, Board, Reserve, GameInstant, Clock,
-    ChessGame, BughouseBoard, BughouseGame, BughouseGameView,
-    util::div_ceil_u128,
-};
+use bughouse_chess::*;
+use bughouse_chess::util::div_ceil_u128;
 
 
 const BOARD_WIDTH: usize = (NUM_COLS as usize + 2) * 3;
 
-pub fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, usize) {
+fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, usize) {
     // Improvement potential: Support longer time controls (with hours).
     let is_active = clock.active_force() == Some(force);
     let millis = clock.time_left(force, now).as_millis();
@@ -41,22 +36,23 @@ pub fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, u
     (clock_str, clock_str_len)
 }
 
-pub fn render_player(player: &PlayerInGame) -> (String, usize) {
+fn render_player(player: &PlayerInGame) -> (String, usize) {
     (player.name.clone(), player.name.len())
 }
 
-pub fn render_header(clock: &Clock, player: &PlayerInGame, force: Force, now: GameInstant, flip: bool) -> String {
+fn render_header(
+    clock: &Clock, player: &PlayerInGame, force: Force, now: GameInstant, view_board: DisplayBoard
+) -> String {
     let (clock_str, clock_str_len) = render_clock(clock, force, now);
     let (player_str, player_str_len) = render_player(player);
     let space = String::from(' ').repeat(BOARD_WIDTH - clock_str_len - player_str_len);
-    if flip {
-        format!("{}{}{}\n", player_str, space, clock_str)
-    } else {
-        format!("{}{}{}\n", clock_str, space, player_str)
+    match view_board {
+        DisplayBoard::Primary => format!("{}{}{}\n", clock_str, space, player_str),
+        DisplayBoard::Secondary => format!("{}{}{}\n", player_str, space, clock_str),
     }
 }
 
-pub fn render_reserve(reserve: &Reserve, force: Force) -> String {
+fn render_reserve(reserve: &Reserve, force: Force) -> String {
     let mut stacks = Vec::new();
     for (piece_kind, &amount) in reserve.iter() {
         if amount > 0 {
@@ -70,82 +66,65 @@ pub fn render_reserve(reserve: &Reserve, force: Force) -> String {
     )
 }
 
-pub fn render_chess_game(game: &ChessGame, now: GameInstant) -> String {
+fn render_bughouse_board(
+    board: &Board, now: GameInstant, view_board: DisplayBoard, perspective: Perspective
+) -> String {
     use self::Force::*;
-    let board = game.board();
-    format!(
-        "{}\n{}\n{}",
-        render_header(board.clock(), board.player(Black), Black, now, false),
-        render_grid(board.grid()),
-        render_header(board.clock(), board.player(White), White, now, false),
-    )
-}
-
-pub fn render_bughouse_board(board: &Board, now: GameInstant, second_board: bool) -> String {
-    use self::Force::*;
+    let orientation = get_board_orientation(view_board, perspective);
     format!(
         "{}\n{}{}{}\n{}",
-        render_header(board.clock(), board.player(Black), Black, now, second_board),
+        render_header(board.clock(), board.player(Black), Black, now, view_board),
         render_reserve(board.reserve(Black), Black),
-        render_grid(board.grid()),
+        render_grid(board.grid(), orientation),
         render_reserve(board.reserve(White), White),
-        render_header(board.clock(), board.player(White), White, now, second_board),
+        render_header(board.clock(), board.player(White), White, now, view_board),
     )
 }
 
-pub fn render_bughouse_game(game: &BughouseGame, view: BughouseGameView, now: GameInstant) -> String {
-    let (mut board_idx1, mut board_idx2) = (BughouseBoard::A, BughouseBoard::B);
-    if view.flip_boards {
-        mem::swap(&mut board_idx1, &mut board_idx2);
-    }
-    let board1 = render_bughouse_board(game.board(board_idx1), now, false);
-    let board2 = render_bughouse_board(game.board(board_idx2), now, true);
-    let lines1 = board1.lines();
-    let lines2 = board2.lines();
-    let join_lines = |(l1, l2)| format!("{}      {}", l1, l2);
-    // TODO: Rotate board 180 degrees rather than flip horizontally.
-    if view.flip_forces {
-        lines1.rev().zip(lines2).map(join_lines).join("\n")
-    } else {
-        lines1.zip(lines2.rev()).map(join_lines).join("\n")
-    }
+pub fn render_bughouse_game(game: &BughouseGame, my_id: BughouseParticipantId, now: GameInstant) -> String {
+    use DisplayBoard::*;
+    let perspective = Perspective::for_force(my_id.visual_force());
+    let primary_idx = get_board_index(Primary, my_id);
+    let secondary_idx = get_board_index(Secondary, my_id);
+    let board_primary = render_bughouse_board(game.board(primary_idx), now, Primary, perspective);
+    let board_secondary = render_bughouse_board(game.board(secondary_idx), now, Secondary, perspective);
+    board_primary.lines().zip(board_secondary.lines()).map(
+        |(l1, l2)| format!("{}      {}", l1, l2)
+    ).join("\n")
 }
 
-pub fn render_grid(grid: &Grid) -> String {
+fn render_grid(grid: &Grid, orientation: BoardOrientation) -> String {
     let colors = [
+        Style::new().color256(233).on_color256(222),
         Style::new().color256(233).on_color256(230),
-        Style::new().color256(233).on_color256(222)
     ];
-
-    let mut col_names = String::new();
-    col_names.push_str(&format_square(' '));
-    for col in Col::all() {
-        col_names.push_str(&format_square(col.to_algebraic()));
-    }
-    col_names.push_str(&format_square(' '));
-    col_names.push('\n');
-
-    let mut color_idx = 0;
     let mut ret = String::new();
-    ret.push_str(&col_names);
-    let mut rows = Row::all().collect_vec();
-    rows.reverse();
-    for row in rows.into_iter() {
-        ret.push_str(&format_square(row.to_algebraic()));
-        for col in Col::all() {
-            ret.push_str(&colors[color_idx].apply_to(
-                format_square(match grid[Coord::new(row, col)] {
-                    Some(piece) => to_unicode_char(piece.kind, piece.force),
-                    None => ' ',
-                })
-            ).to_string());
-            color_idx = 1 - color_idx;
+    for y in (-1) ..= (NUM_COLS as i32) {
+        for x in (-1) ..= (NUM_ROWS as i32) {
+            let row_header = x < 0 || x >= NUM_COLS.into();
+            let col_header = y < 0 || y >= NUM_ROWS.into();
+            let square = match (row_header, col_header) {
+                (true, true) => format_square(' '),
+                (true, false) => format_square(from_display_row(y.try_into().unwrap(), orientation).to_algebraic()),
+                (false, true) => format_square(from_display_col(x.try_into().unwrap(), orientation).to_algebraic()),
+                (false, false) => {
+                    let coord = from_display_coord(DisplayCoord {
+                        x: x.try_into().unwrap(),
+                        y: y.try_into().unwrap()
+                    }, orientation);
+                    let color_idx = (coord.row.to_zero_based() + coord.col.to_zero_based()) % 2;
+                    colors[usize::from(color_idx)].apply_to(
+                        format_square(match grid[coord] {
+                            Some(piece) => to_unicode_char(piece.kind, piece.force),
+                            None => ' ',
+                        })
+                    ).to_string()
+                }
+            };
+            ret.push_str(&square);
         }
-        ret.push_str(&format_square(row.to_algebraic()));
-        color_idx = 1 - color_idx;
         ret.push('\n');
     }
-    ret.push_str(&col_names);
     ret
 }
 
