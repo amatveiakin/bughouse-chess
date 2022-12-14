@@ -7,7 +7,9 @@ use instant::Instant;
 
 use crate::altered_game::AlteredGame;
 use crate::board::{TurnError, TurnMode, TurnInput};
+use crate::chalk::{Chalkboard, ChalkCanvas, ChalkDrawing, ChalkMark};
 use crate::clock::{GameInstant, WallGameTimePair};
+use crate::display::{DisplayBoard, get_board_index};
 use crate::force::Force;
 use crate::game::{TurnRecord, BughouseParticipantId, BughouseObserserId, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerformance};
@@ -58,6 +60,13 @@ pub struct GameState {
     pub alt_game: AlteredGame,
     // Game start time: `None` before first move, non-`None` afterwards.
     pub time_pair: Option<WallGameTimePair>,
+    // Chalk drawings from all players, including unconfirmed local marks.
+    // TODO: Fix race condition: local drawings could be temporary reverted when the
+    //   server sends drawings from other players. This is the same problem that we
+    //   have for `is_ready` and `my_team`.
+    pub chalkboard: Chalkboard,
+    // Canvas for the current client to draw on.
+    pub chalk_canvas: ChalkCanvas,
     // Index of the next warning in `LOW_TIME_WARNING_THRESHOLDS`.
     next_low_time_warning_idx: usize,
     // Used to track how long it took the server to confirm a turn.
@@ -170,7 +179,18 @@ impl ClientState {
     pub fn game_state(&self) -> Option<&GameState> { self.contest().and_then(|c| c.game_state.as_ref()) }
     fn game_state_mut(&mut self) -> Option<&mut GameState> { self.contest_mut().and_then(|c| c.game_state.as_mut()) }
     // TODO: Reduce public mutability. This is used only for drag&drop, so limit the mutable API to that.
-    pub fn alt_game_mut(&mut self) -> Option<&mut AlteredGame> { self.game_state_mut().map(|c| &mut c.alt_game) }
+    pub fn alt_game_mut(&mut self) -> Option<&mut AlteredGame> { self.game_state_mut().map(|s| &mut s.alt_game) }
+    pub fn my_id(&self) -> Option<BughouseParticipantId> { self.game_state().map(|s| s.alt_game.my_id()) }
+    pub fn my_name(&self) -> Option<&str> {
+        match &self.contest_state {
+            ContestState::NotConnected => None,
+            ContestState::Creating{ my_name } => Some(&my_name),
+            ContestState::Joining{ my_name, .. } => Some(&my_name),
+            ContestState::Connected(Contest{ my_name, .. }) => Some(&my_name),
+        }
+    }
+    pub fn chalk_canvas(&self) -> Option<&ChalkCanvas> { self.game_state().map(|s| &s.chalk_canvas) }
+    pub fn chalk_canvas_mut(&mut self) -> Option<&mut ChalkCanvas> { self.game_state_mut().map(|s| &mut s.chalk_canvas) }
 
     pub fn meter(&mut self, name: String) -> Meter { self.meter_box.meter(name) }
     pub fn read_meter_stats(&self) -> HashMap<String, MeterStats> { self.meter_box.read_stats() }
@@ -252,6 +272,26 @@ impl ClientState {
         }
     }
 
+    pub fn add_chalk_mark(&mut self, display_board: DisplayBoard, mark: ChalkMark) {
+        self.update_chalk_board(
+            display_board,
+            |chalkboard, my_name, board_idx| chalkboard.add_mark(my_name, board_idx, mark)
+        );
+    }
+    pub fn remove_last_chalk_mark(&mut self, display_board: DisplayBoard) {
+        self.update_chalk_board(
+            display_board,
+            |chalkboard, my_name, board_idx| chalkboard.remove_last_mark(my_name, board_idx)
+        );
+    }
+    pub fn clear_chalk_drawing(&mut self, display_board: DisplayBoard) {
+        self.update_chalk_board(
+            display_board,
+            |chalkboard, my_name, board_idx| chalkboard.clear_drawing(my_name, board_idx)
+        );
+    }
+
+    // Improvement potential: Split into functions like `CoreServerState.on_client_event` does.
     pub fn process_server_event(&mut self, event: BughouseServerEvent) -> Result<(), EventError> {
         use BughouseServerEvent::*;
         let now = Instant::now();
@@ -318,9 +358,12 @@ impl ClientState {
                     }),
                 };
                 let alt_game = AlteredGame::new(my_id, game);
+                let perspective = alt_game.perspective();
                 contest.game_state = Some(GameState {
                     alt_game,
                     time_pair,
+                    chalkboard: Chalkboard::new(),
+                    chalk_canvas: ChalkCanvas::new(perspective),
                     next_low_time_warning_idx: 0,
                     awaiting_turn_confirmation_since: None,
                 });
@@ -349,6 +392,11 @@ impl ClientState {
                 game_state.alt_game.set_status(game_status, time);
                 contest.scores = new_scores;
                 self.game_over_postprocess()?;
+            },
+            ChalkboardUpdated{ chalkboard } => {
+                let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply ChalkboardUpdated: no contest in progress"))?;
+                let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply ChalkboardUpdated: no game in progress"))?;
+                game_state.chalkboard = chalkboard;
             },
             GameExportReady{ content } => {
                 self.notable_event_queue.push_back(NotableEvent::GameExportReady(content));
@@ -470,6 +518,33 @@ impl ClientState {
         let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot update scores: no contest in progress"))?;
         contest.scores = new_scores;
         Ok(())
+    }
+
+    fn update_chalk_board<F>(&mut self, display_board: DisplayBoard, f: F)
+    where
+        F: FnOnce(&mut Chalkboard, String, BughouseBoard)
+    {
+        let Some(contest) = self.contest_mut() else {
+            return;
+        };
+        let Some(ref mut game_state) = contest.game_state else {
+            return;
+        };
+        if game_state.alt_game.status() == BughouseGameStatus::Active {
+            return;
+        }
+        let board_idx = get_board_index(display_board, game_state.alt_game.my_id());
+        f(&mut game_state.chalkboard, contest.my_name.clone(), board_idx);
+        self.send_chalk_drawing_update();
+    }
+
+    fn send_chalk_drawing_update(&mut self) {
+        // Caller must ensure that contest and game exist.
+        let contest = self.contest().unwrap();
+        let game_state = contest.game_state.as_ref().unwrap();
+        let drawing = game_state.chalkboard.drawings_by(&contest.my_name).cloned()
+            .unwrap_or_else(|| ChalkDrawing::new());
+        self.connection.send(BughouseClientEvent::UpdateChalkDrawing{ drawing })
     }
 
     fn check_connection(&mut self) {

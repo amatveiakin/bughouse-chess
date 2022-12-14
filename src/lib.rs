@@ -12,6 +12,7 @@
 
 mod altered_game;
 mod board;
+mod chalk;
 mod clock;
 mod coord;
 mod display;
@@ -37,6 +38,7 @@ pub mod util;
 
 pub use altered_game::*;
 pub use board::*;
+pub use chalk::*;
 pub use clock::*;
 pub use coord::*;
 pub use display::*;

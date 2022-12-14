@@ -1,8 +1,14 @@
+// Improvement potential: Standardize naming.
+// Improvement potential: Add tests verifying inverse and commutative relations.
+
+use std::ops;
+
+use serde::{Serialize, Deserialize};
 use strum::EnumIter;
 
 use crate::coord::{Row, Col, Coord, NUM_ROWS, NUM_COLS};
 use crate::force::Force;
-use crate::game::BughouseBoard;
+use crate::game::{BughouseBoard, BughouseParticipantId};
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
@@ -36,6 +42,24 @@ pub enum BoardOrientation {
 pub struct DisplayCoord {
     pub x: u8,
     pub y: u8,
+}
+
+// Floating-point coords associated with `Coord` coordinate system.
+// Point (0., 0.) corresponds to the outer corner of 'a1' square, while
+// point (8., 8.) corresponds to the outer corner of 'h8' square.
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+pub struct FCoord {
+    pub x: f64,
+    pub y: f64,
+}
+
+// Floating-point coords associated with `DisplayCoord` coordinate system.
+// Point (0., 0.) corresponds to the top left corner of the top left square, while
+// point (8., 8.) corresponds to the bottom right corner of the bottom right square.
+#[derive(Clone, Copy, Debug)]
+pub struct DisplayFCoord {
+    pub x: f64,
+    pub y: f64,
 }
 
 
@@ -77,6 +101,13 @@ pub fn to_display_coord(coord: Coord, orientation: BoardOrientation) -> DisplayC
     }
 }
 
+pub fn to_display_fcoord(p: FCoord, orientation: BoardOrientation) -> DisplayFCoord {
+    match orientation {
+        BoardOrientation::Normal => DisplayFCoord{ x: p.x, y: (NUM_ROWS as f64) - p.y },
+        BoardOrientation::Rotated => DisplayFCoord{ x: (NUM_COLS as f64) - p.x, y: p.y },
+    }
+}
+
 pub fn from_display_row(y: u8, orientation: BoardOrientation) -> Row {
     match orientation {
         BoardOrientation::Normal => Row::from_zero_based(NUM_ROWS - y - 1),
@@ -91,29 +122,79 @@ pub fn from_display_col(x: u8, orientation: BoardOrientation) -> Col {
     }
 }
 
-pub fn from_display_coord(coord: DisplayCoord, orientation: BoardOrientation) -> Coord {
+pub fn from_display_coord(q: DisplayCoord, orientation: BoardOrientation) -> Coord {
     Coord {
-        row: from_display_row(coord.y, orientation),
-        col: from_display_col(coord.x, orientation),
+        row: from_display_row(q.y, orientation),
+        col: from_display_col(q.x, orientation),
     }
 }
 
-// Position of the top-left corner of a square.
-pub fn square_position(coord: DisplayCoord) -> (f64, f64) {
-    return (
-        f64::from(coord.x),
-        f64::from(coord.y),
-    );
+pub fn display_to_fcoord(q: DisplayFCoord, orientation: BoardOrientation) -> FCoord {
+    match orientation {
+        BoardOrientation::Normal => FCoord{ x: q.x, y: (NUM_ROWS as f64) - q.y },
+        BoardOrientation::Rotated => FCoord{ x: (NUM_COLS as f64) - q.x, y: q.y },
+    }
 }
 
-pub fn position_to_square(x: f64, y: f64) -> Option<DisplayCoord> {
-    let x = x as i32;
-    let y = y as i32;
-    if 0 <= x && x < NUM_COLS as i32 && 0 <= y && y < NUM_ROWS as i32 {
-        // Improvement potential: clamp instead of asserting the values are in range.
-        // Who knows if all browsers guarantee click coords cannot be 0.00001px away?
-        Some(DisplayCoord{ x: x.try_into().unwrap(), y: y.try_into().unwrap() })
-    } else {
-        None
+impl FCoord {
+    // Returns the closes valid board square.
+    pub fn to_coord_snapped(&self) -> Coord {
+        Coord::new(
+            Row::from_zero_based((self.y.clamp(0., (NUM_ROWS - 1) as f64)) as u8),
+            Col::from_zero_based((self.x.clamp(0., (NUM_COLS - 1) as f64)) as u8),
+        )
     }
+}
+
+impl DisplayFCoord {
+    // Position of the top-left corner of a square.
+    pub fn square_pivot(coord: DisplayCoord) -> Self {
+        return DisplayFCoord {
+            x: f64::from(coord.x),
+            y: f64::from(coord.y),
+        }
+    }
+
+    pub fn square_center(coord: DisplayCoord) -> Self {
+        return DisplayFCoord {
+            x: f64::from(coord.x) + 0.5,
+            y: f64::from(coord.y) + 0.5,
+        }
+    }
+
+    pub fn to_square(&self) -> Option<DisplayCoord> {
+        let x = self.x as i32;
+        let y = self.y as i32;
+        if 0 <= x && x < NUM_COLS as i32 && 0 <= y && y < NUM_ROWS as i32 {
+            // Improvement potential: clamp instead of asserting the values are in range.
+            // Who knows if all browsers guarantee click coords cannot be 0.00001px away?
+            Some(DisplayCoord{ x: x.try_into().unwrap(), y: y.try_into().unwrap() })
+        } else {
+            None
+        }
+    }
+}
+
+// Poor man's 2D geometry. Four vector operation should be enough for everybody.
+
+impl ops::Add<(f64, f64)> for DisplayFCoord {
+    type Output = Self;
+    fn add(self, (x, y): (f64, f64)) -> Self::Output {
+        DisplayFCoord{ x: self.x + x, y: self.y + y }
+    }
+}
+
+impl ops::Sub for DisplayFCoord {
+    type Output = (f64, f64);
+    fn sub(self, rhs: DisplayFCoord) -> Self::Output {
+        (self.x - rhs.x, self.y - rhs.y)
+    }
+}
+
+pub fn mult_vec((x, y): (f64, f64), s: f64) -> (f64, f64) {
+    (x * s, y * s)
+}
+
+pub fn normalize_vec((x, y): (f64, f64)) -> (f64, f64) {
+    mult_vec((x, y), 1. / x.hypot(y))
 }

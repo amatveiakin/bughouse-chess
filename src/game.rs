@@ -154,6 +154,15 @@ pub enum BughouseParticipantId {
     Observer(BughouseObserserId)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
+pub enum ParticipantRelation {
+    Myself,
+    Opponent,
+    Partner,
+    Diagonal,
+    Other,  // either me or the other party is not a player
+}
+
 impl BughousePlayerId {
     pub fn team(self) -> Team {
         get_bughouse_team(self.board_idx, self.force)
@@ -183,7 +192,29 @@ impl BughouseParticipantId {
             Self::Observer(id) => id.force,
         }
     }
+
+    pub fn relation_to(self, other_party: BughouseParticipantId) -> ParticipantRelation {
+        if self == other_party {
+            // Self is still self even if it's not a player.
+            return ParticipantRelation::Myself;
+        }
+        let BughouseParticipantId::Player(p1) = self else {
+            return ParticipantRelation::Other;
+        };
+        let BughouseParticipantId::Player(p2) = other_party else {
+            return ParticipantRelation::Other;
+        };
+        let same_board = p1.board_idx == p2.board_idx;
+        let same_team = p1.team() == p2.team();
+        match (same_board, same_team) {
+            (true, true) => ParticipantRelation::Myself,
+            (true, false) => ParticipantRelation::Opponent,
+            (false, true) => ParticipantRelation::Partner,
+            (false, false) => ParticipantRelation::Diagonal,
+        }
+    }
 }
+
 
 #[derive(Clone, Debug)]
 pub struct BughouseGame {

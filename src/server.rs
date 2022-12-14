@@ -16,6 +16,7 @@ use rand::{Rng, seq::SliceRandom};
 use strum::IntoEnumIterator;
 
 use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
+use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, BughouseGameStatus, BughouseGame};
 use crate::heartbeat::{Heart, HeartbeatOutcome};
@@ -42,6 +43,7 @@ pub struct GameState {
     game: BughouseGame,
     game_start: Option<Instant>,
     preturns: HashMap<BughousePlayerId, TurnInput>,
+    chalkboard: Chalkboard,
     players_with_boards: Vec<(PlayerInGame, BughouseBoard)>, // TODO: Extract from `game`
 }
 
@@ -475,6 +477,9 @@ impl Contest {
             BughouseClientEvent::Leave => {
                 self.process_leave(ctx, client_id)
             },
+            BughouseClientEvent::UpdateChalkDrawing{ drawing } => {
+                self.process_update_chalk_drawing(ctx, client_id, drawing)
+            },
             BughouseClientEvent::RequestExport{ format } => {
                 self.process_request_export(ctx, client_id, format)
             },
@@ -498,30 +503,7 @@ impl Contest {
     ) -> EventResult {
         assert!(ctx.clients[client_id].contest_id.is_none());
         assert!(ctx.clients[client_id].player_id.is_none());
-        if self.game_state.is_none() {
-            // TODO: Allow to kick players from the lobby when the old client is offline.
-            if self.players.find_by_name(&player_name).is_some() {
-                return Err(format!("Cannot join: player \"{}\" already exists", player_name));
-            }
-            if !is_valid_player_name(&player_name) {
-                return Err(format!("Invalid player name: \"{}\"", player_name))
-            }
-            info!(
-                "Client {} join contest {} as {}",
-                ctx.clients[client_id].logging_id, self.contest_id.0, player_name
-            );
-            ctx.clients[client_id].contest_id = Some(self.contest_id.clone());
-            let player_id = self.players.add_player(Player {
-                name: player_name,
-                fixed_team: None,
-                is_online: true,
-                is_ready: false,
-            });
-            ctx.clients[client_id].player_id = Some(player_id);
-            ctx.clients[client_id].send(self.make_contest_welcome_event());
-            self.send_lobby_updated(ctx);
-            Ok(())
-        } else {
+        if let Some(ref game_state) = self.game_state {
             let Some(player_id) = self.players.find_by_name(&player_name) else {
                 // Improvement potential. Allow joining mid-game in individual mode.
                 //   Q. How to balance score in this case? Should we switch to negative numbers?
@@ -544,6 +526,31 @@ impl Contest {
             // team in FixedTeam mode.
             self.send_lobby_updated(ctx);
             ctx.clients[client_id].send(self.make_game_start_event(now));
+            let chalkboard = game_state.chalkboard.clone();
+            ctx.clients[client_id].send(BughouseServerEvent::ChalkboardUpdated{ chalkboard });
+            Ok(())
+        } else {
+            // TODO: Allow to kick players from the lobby when the old client is offline.
+            if self.players.find_by_name(&player_name).is_some() {
+                return Err(format!("Cannot join: player \"{}\" already exists", player_name));
+            }
+            if !is_valid_player_name(&player_name) {
+                return Err(format!("Invalid player name: \"{}\"", player_name))
+            }
+            info!(
+                "Client {} join contest {} as {}",
+                ctx.clients[client_id].logging_id, self.contest_id.0, player_name
+            );
+            ctx.clients[client_id].contest_id = Some(self.contest_id.clone());
+            let player_id = self.players.add_player(Player {
+                name: player_name,
+                fixed_team: None,
+                is_online: true,
+                is_ready: false,
+            });
+            ctx.clients[client_id].player_id = Some(player_id);
+            ctx.clients[client_id].send(self.make_contest_welcome_event());
+            self.send_lobby_updated(ctx);
             Ok(())
         }
     }
@@ -690,6 +697,24 @@ impl Contest {
         Ok(())
     }
 
+    fn process_update_chalk_drawing(
+        &mut self, ctx: &mut Context, client_id: ClientId, drawing: ChalkDrawing
+    ) -> EventResult {
+        let Some(GameState{ ref mut chalkboard, ref game, .. }) = self.game_state else {
+            return Err("Cannot update chalk drawing: no game in progress".to_owned());
+        };
+        let Some(player_id) = ctx.clients[client_id].player_id else {
+            return Err("Cannot update chalk drawing: not joined".to_owned());
+        };
+        if game.status() == BughouseGameStatus::Active {
+            return Err("Cannot update chalk drawing: can draw only after game is over".to_owned());
+        }
+        chalkboard.set_drawing(self.players[player_id].name.clone(), drawing);
+        let chalkboard = chalkboard.clone();
+        self.broadcast(ctx, &BughouseServerEvent::ChalkboardUpdated{ chalkboard });
+        Ok(())
+    }
+
     fn process_request_export(
         &self, ctx: &mut Context, client_id: ClientId, format: BughouseExportFormat
     ) -> EventResult {
@@ -783,6 +808,7 @@ impl Contest {
             game,
             game_start: None,
             preturns: HashMap::new(),
+            chalkboard: Chalkboard::new(),
             players_with_boards,
         });
         self.broadcast(ctx, &self.make_game_start_event(now));
@@ -823,7 +849,7 @@ impl Contest {
         }
     }
 
-    fn send_lobby_updated(&mut self, ctx: &mut Context) {
+    fn send_lobby_updated(&self, ctx: &mut Context) {
         let player_to_send = self.players.iter().cloned().collect();
         self.broadcast(ctx, &BughouseServerEvent::LobbyUpdated {
             players: player_to_send,

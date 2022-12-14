@@ -171,7 +171,6 @@ pub struct WebClient {
     //   during game phase, add a generic `UserData` parameter to `ContestState::Game`.
     state: ClientState,
     server_rx: mpsc::Receiver<BughouseClientEvent>,
-    perspective: Perspective,
 }
 
 #[wasm_bindgen]
@@ -181,7 +180,6 @@ impl WebClient {
         Ok(WebClient {
             state: ClientState::new(user_agent, time_zone, server_tx),
             server_rx,
-            perspective: Perspective::PlayAsWhite,
         })
     }
 
@@ -307,7 +305,7 @@ impl WebClient {
             PieceDragStart::Reserve(PieceKind::from_algebraic(piece).unwrap())
         } else {
             let coord = Coord::from_algebraic(source);
-            let board_orientation = get_board_orientation(DisplayBoard::Primary, self.perspective);
+            let board_orientation = get_board_orientation(DisplayBoard::Primary, alt_game.perspective());
             let display_coord = to_display_coord(coord, board_orientation);
             set_square_highlight("drag-start-highlight", DisplayBoard::Primary, Some(display_coord))?;
             PieceDragStart::Board(coord)
@@ -315,18 +313,20 @@ impl WebClient {
         alt_game.start_drag_piece(source).map_err(|err| rust_error!("Drag&drop error: {:?}", err))?;
         Ok(())
     }
-    pub fn drag_piece(&mut self, dest_x: f64, dest_y: f64) -> JsResult<()> {
-        set_square_highlight("drag-over-highlight", DisplayBoard::Primary, position_to_square(dest_x, dest_y))
+    pub fn drag_piece(&mut self, x: f64, y: f64) -> JsResult<()> {
+        let pos = DisplayFCoord{ x, y };
+        set_square_highlight("drag-over-highlight", DisplayBoard::Primary, pos.to_square())
     }
-    pub fn drag_piece_drop(&mut self, dest_x: f64, dest_y: f64, alternative_promotion: bool)
+    pub fn drag_piece_drop(&mut self, x: f64, y: f64, alternative_promotion: bool)
         -> JsResult<()>
     {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
-        if let Some(dest_display) = position_to_square(dest_x, dest_y) {
+        let pos = DisplayFCoord{ x, y };
+        if let Some(dest_display) = pos.to_square() {
             use PieceKind::*;
-            let board_orientation = get_board_orientation(DisplayBoard::Primary, self.perspective);
+            let board_orientation = get_board_orientation(DisplayBoard::Primary, alt_game.perspective());
             let dest_coord = from_display_coord(dest_display, board_orientation);
             let promote_to = if alternative_promotion { Knight } else { Queen };
             match alt_game.drag_piece_drop(dest_coord, promote_to) {
@@ -381,6 +381,89 @@ impl WebClient {
         self.state.cancel_preturn();
     }
 
+    pub fn is_chalk_active(&self) -> bool {
+        self.state.chalk_canvas().map_or(false, |c| c.is_painting())
+    }
+    pub fn chalk_down(&mut self, board_node: &str, x: f64, y: f64, alternative_mode: bool) -> JsResult<()> {
+        let Some(GameState{ alt_game, .. }) = self.state.game_state() else { return Ok(()); };
+        if alt_game.status() == BughouseGameStatus::Active {
+            return Ok(());
+        }
+        let Some(canvas) = self.state.chalk_canvas_mut() else { return Ok(()); };
+        let board_idx = parse_board_node_id(board_node)?;
+        canvas.chalk_down(board_idx, DisplayFCoord{ x, y }, alternative_mode);
+        self.repaint_chalk()?;
+        Ok(())
+    }
+    pub fn chalk_move(&mut self, x: f64, y: f64) -> JsResult<()> {
+        let Some(canvas) = self.state.chalk_canvas_mut() else { return Ok(()); };
+        canvas.chalk_move(DisplayFCoord{ x, y });
+        self.repaint_chalk()?;
+        Ok(())
+    }
+    pub fn chalk_up(&mut self, x: f64, y: f64) -> JsResult<()> {
+        let Some(canvas) = self.state.chalk_canvas_mut() else { return Ok(()); };
+        let Some((board_idx, mark)) = canvas.chalk_up(DisplayFCoord{ x, y }) else { return Ok(()); };
+        self.state.add_chalk_mark(board_idx, mark);
+        self.repaint_chalk()?;
+        Ok(())
+    }
+    pub fn chalk_abort(&mut self) -> JsResult<()> {
+        let Some(canvas) = self.state.chalk_canvas_mut() else { return Ok(()); };
+        canvas.chalk_abort();
+        self.repaint_chalk()?;
+        Ok(())
+    }
+    pub fn chalk_remove_last(&mut self, board_node: &str) -> JsResult<()> {
+        let board_idx = parse_board_node_id(board_node)?;
+        self.state.remove_last_chalk_mark(board_idx);
+        self.repaint_chalk()?;
+        Ok(())
+    }
+    pub fn chalk_clear(&mut self, board_node: &str) -> JsResult<()> {
+        let board_idx = parse_board_node_id(board_node)?;
+        self.state.clear_chalk_drawing(board_idx);
+        self.repaint_chalk()?;
+        Ok(())
+    }
+
+    pub fn repaint_chalk(&self) -> JsResult<()> {
+        // Improvement potential: Meter.
+        // Improvement potential: Repaint only the current mark while drawing.
+        let Some(GameState{ alt_game, chalkboard, .. }) = self.state.game_state() else {
+            return Ok(());
+        };
+        let my_id = alt_game.my_id();
+        let document = web_document();
+        for board_idx in DisplayBoard::iter() {
+            let layer = document.get_existing_element_by_id(&chalk_highlight_layer_id(board_idx))?;
+            remove_all_children(&layer)?;
+            let layer = document.get_existing_element_by_id(&chalk_drawing_layer_id(board_idx))?;
+            remove_all_children(&layer)?;
+        }
+        for (player_name, drawing) in chalkboard.all_drawings() {
+            let owner = if self.state.my_name() == Some(player_name) {
+                ParticipantRelation::Myself
+            } else {
+                alt_game.game_confirmed().find_player(player_name).map_or(
+                    ParticipantRelation::Other,
+                    |id| my_id.relation_to(BughouseParticipantId::Player(id))
+                )
+            };
+            for board_idx in DisplayBoard::iter() {
+                for mark in drawing.board(get_board_index(board_idx, my_id)) {
+                    self.render_chalk_mark(board_idx, owner, mark)?;
+                }
+            }
+        }
+        if let Some(canvas) = self.state.chalk_canvas() {
+            if let Some((board_idx, mark)) = canvas.current_painting() {
+                self.render_chalk_mark(*board_idx, ParticipantRelation::Myself, mark)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn process_server_event(&mut self, event: &str) -> JsResult<()> {
         let server_event = serde_json::from_str(event).unwrap();
         self.state.process_server_event(server_event).map_err(|err| {
@@ -399,8 +482,7 @@ impl WebClient {
                 info_string.set_text_content(None);
                 let my_id = alt_game.my_id();
                 let is_observer = matches!(my_id, BughouseParticipantId::Observer(_));
-                self.perspective = Perspective::for_force(my_id.visual_force());
-                render_grids(self.perspective)?;
+                render_grids(alt_game.perspective())?;
                 setup_participation_mode(is_observer)?;
                 Ok(JsEventMyNoop{}.into())
             },
@@ -457,8 +539,8 @@ impl WebClient {
         for (board_idx, board) in game.boards() {
             let is_primary = board_idx == my_display_board_idx;
             let display_board_idx = if is_primary { DisplayBoard::Primary } else { DisplayBoard::Secondary };
-            let board_orientation = get_board_orientation(display_board_idx, self.perspective);
-            let svg = document.get_existing_element_by_id(&board_node_id(display_board_idx))?;
+            let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
+            let piece_layer = document.get_existing_element_by_id(&piece_layer_id(display_board_idx))?;
             let grid = board.grid();
             for coord in Coord::all() {
                 let node_id = piece_id(display_board_idx, coord);
@@ -469,15 +551,16 @@ impl WebClient {
                     let node = match node {
                         Some(v) => v,
                         None => {
-                            let v = make_piece_node(&node_id)?;
-                            svg.append_child(&v)?;
+                            let v = web_document().create_svg_element("use")?;
+                            v.set_attribute("id", &node_id)?;
+                            piece_layer.append_child(&v)?;
                             v
                         },
                     };
                     let filename = piece_path(piece.kind, piece.force);
-                    let (x, y) = square_position(display_coord);
-                    node.set_attribute("x", &x.to_string())?;
-                    node.set_attribute("y", &y.to_string())?;
+                    let pos = DisplayFCoord::square_pivot(display_coord);
+                    node.set_attribute("x", &pos.x.to_string())?;
+                    node.set_attribute("y", &pos.y.to_string())?;
                     node.set_attribute("href", &filename)?;
                     node.set_attribute("data-bughouse-location", &coord.to_algebraic())?;
                     let mut draggable = false;
@@ -531,6 +614,7 @@ impl WebClient {
                 self.set_turn_highlights("pre", pre_turn_highlight, display_board_idx)?;
             }
         }
+        self.repaint_chalk()?;
         if alt_game.status() != BughouseGameStatus::Active {
             // TODO: Print "victory / defeat" instead of team color.
             info_string.set_text_content(Some(&format!("Game over: {:?}", alt_game.status())));
@@ -576,6 +660,65 @@ impl WebClient {
             .join("\n")
     }
 
+    fn render_chalk_mark(
+        &self, board_idx: DisplayBoard, owner: ParticipantRelation, mark: &ChalkMark
+    ) -> JsResult<()> {
+        use ParticipantRelation::*;
+        let Some(GameState{ alt_game, .. }) = self.state.game_state() else {
+            return Ok(());
+        };
+        let document = web_document();
+        let orientation = get_board_orientation(board_idx, alt_game.perspective());
+        match mark {
+            ChalkMark::Arrow{ from, to } => {
+                let layer = document.get_existing_element_by_id(&chalk_drawing_layer_id(board_idx))?;
+                let from = DisplayFCoord::square_center(to_display_coord(*from, orientation));
+                let to = DisplayFCoord::square_center(to_display_coord(*to, orientation));
+                let node = document.create_svg_element("line")?;
+                let d = normalize_vec(to - from);
+                let from = from + mult_vec(d, 0.3);
+                let to = to + mult_vec(d, -0.45);
+                node.set_attribute("x1", &from.x.to_string())?;
+                node.set_attribute("y1", &from.y.to_string())?;
+                node.set_attribute("x2", &to.x.to_string())?;
+                node.set_attribute("y2", &to.y.to_string())?;
+                node.set_attribute("class", &["chalk-arrow", &chalk_line_color_class(owner)].join(" "))?;
+                layer.append_child(&node)?;
+            },
+            ChalkMark::FreehandLine{ points } => {
+                let layer = document.get_existing_element_by_id(&chalk_drawing_layer_id(board_idx))?;
+                let node = document.create_svg_element("polyline")?;
+                let points = points.iter().map(|&q| {
+                    let p = to_display_fcoord(q, orientation);
+                    format!("{},{}", p.x, p.y)
+                }).join(" ");
+                node.set_attribute("points", &points)?;
+                node.set_attribute("class", &["chalk-freehand-line", &chalk_line_color_class(owner)].join(" "))?;
+                layer.append_child(&node)?;
+            },
+            ChalkMark::SquareHighlight{ coord } => {
+                let layer = document.get_existing_element_by_id(&chalk_highlight_layer_id(board_idx))?;
+                let node = document.create_svg_element("polygon")?;
+                let p = DisplayFCoord::square_pivot(to_display_coord(*coord, orientation));
+                // Note. The corners are chosen so that they corresponds to the seating, as seen
+                // by the current player. Another approach would be to have one highlight element,
+                // <use> it here and rotate in CSS based on class.
+                let points = match owner {
+                    Myself   => vec![ p + (0., 1.), p + (0.5, 1.), p + (0., 0.5) ],
+                    Opponent => vec![ p + (0., 0.), p + (0., 0.5), p + (0.5, 0.) ],
+                    Partner  => vec![ p + (1., 1.), p + (1., 0.5), p + (0.5, 1.) ],
+                    Diagonal => vec![ p + (1., 0.), p + (0.5, 0.), p + (1., 0.5) ],
+                    Other    => vec![ p + (0.5, 0.1), p + (0.1, 0.5), p + (0.5, 0.9), p + (0.9, 0.5) ],
+                };
+                let points = points.iter().map(|&p| format!("{},{}", p.x, p.y)).join(" ");
+                node.set_attribute("points", &points)?;
+                node.set_attribute("class", &["chalk-square-highlight", &chalk_square_color_class(owner)].join(" "))?;
+                layer.append_child(&node)?;
+            },
+        }
+        Ok(())
+    }
+
     fn set_turn_highlights(&self, id_prefix: &str, turn: Option<&TurnExpanded>, board_idx: DisplayBoard)
         -> JsResult<()>
     {
@@ -586,7 +729,10 @@ impl WebClient {
         reset_square_highlight(&format!("{}-turn-to-extra", id_prefix))?;
         reset_square_highlight(&format!("{}-drop-to", id_prefix))?;
         reset_square_highlight(&format!("{}-capture", id_prefix))?;
-        let board_orientation = get_board_orientation(board_idx, self.perspective);
+        let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
+            return Ok(());
+        };
+        let board_orientation = get_board_orientation(board_idx, alt_game.perspective());
         if let Some(turn) = turn {
             for (id_suffix, coord) in turn_highlights(turn) {
                 let id = format!("{}-{}", id_prefix, id_suffix);
@@ -635,6 +781,7 @@ fn remove_all_children(node: &web_sys::Node) -> JsResult<()> {
 
 #[wasm_bindgen]
 pub fn init_page() -> JsResult<()> {
+    generate_svg_markers()?;
     render_grids(Perspective::PlayAsWhite)?;
     render_starting()?;
     Ok(())
@@ -688,7 +835,7 @@ fn set_square_highlight(id: &str, board_idx: DisplayBoard, coord: Option<Display
     let document = web_document();
     if let Some(coord) = coord {
         let node = document.get_element_by_id(id);
-        let highlight_layer = document.get_existing_element_by_id(&square_highlight_layer(board_idx))?;
+        let highlight_layer = document.get_existing_element_by_id(&square_highlight_layer_id(board_idx))?;
         let node = node.ok_or(JsValue::UNDEFINED).or_else(|_| -> JsResult<web_sys::Element> {
             let node = document.create_svg_element("rect")?;
             node.set_attribute("id", id)?;
@@ -697,9 +844,9 @@ fn set_square_highlight(id: &str, board_idx: DisplayBoard, coord: Option<Display
             highlight_layer.append_child(&node)?;
             Ok(node)
         })?;
-        let (x, y) = square_position(coord);
-        node.set_attribute("x", &x.to_string())?;
-        node.set_attribute("y", &y.to_string())?;
+        let pos = DisplayFCoord::square_pivot(coord);
+        node.set_attribute("x", &pos.x.to_string())?;
+        node.set_attribute("y", &pos.y.to_string())?;
     } else {
         reset_square_highlight(id)?;
     }
@@ -909,9 +1056,9 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
 
     let make_board_rect = |document: &WebDocument| -> JsResult<web_sys::Element> {
         let rect = document.create_svg_element("rect")?;
-        let (x, y) = square_position(DisplayCoord{ x: 0, y: 0 });
-        rect.set_attribute("x", &x.to_string())?;
-        rect.set_attribute("y", &y.to_string())?;
+        let pos = DisplayFCoord::square_pivot(DisplayCoord{ x: 0, y: 0 });
+        rect.set_attribute("x", &pos.x.to_string())?;
+        rect.set_attribute("y", &pos.y.to_string())?;
         rect.set_attribute("width", &NUM_COLS.to_string())?;
         rect.set_attribute("height", &NUM_ROWS.to_string())?;
         Ok(rect)
@@ -929,7 +1076,7 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
         for col in Col::all() {
             let sq = document.create_svg_element("rect")?;
             let display_coord = to_display_coord(Coord::new(row, col), board_orientation);
-            let (x, y) = square_position(display_coord);
+            let DisplayFCoord{ x, y } = DisplayFCoord::square_pivot(display_coord);
             sq.set_attribute("x", &x.to_string())?;
             sq.set_attribute("y", &y.to_string())?;
             sq.set_attribute("width", "1")?;
@@ -957,10 +1104,17 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
         }
     }
 
-    // Layer for square highlight that should be displayed below pieces.
-    let highlight_layer = document.create_svg_element("g")?;
-    highlight_layer.set_attribute("id", &square_highlight_layer(board_idx))?;
-    svg.append_child(&highlight_layer)?;
+    let add_layer = |id: String| -> JsResult<()> {
+        let layer = document.create_svg_element("g")?;
+        layer.set_attribute("id", &id)?;
+        svg.append_child(&layer)?;
+        Ok(())
+    };
+
+    add_layer(square_highlight_layer_id(board_idx))?;
+    add_layer(chalk_highlight_layer_id(board_idx))?;
+    add_layer(piece_layer_id(board_idx))?;
+    add_layer(chalk_drawing_layer_id(board_idx))?;
 
     let border = make_board_rect(&document)?;
     border.set_attribute("class", "board-border")?;
@@ -978,10 +1132,28 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
     Ok(())
 }
 
-fn make_piece_node(id: &str) -> JsResult<web_sys::Element> {
-    let node = web_document().create_svg_element("use")?;
-    node.set_attribute("id", id)?;
-    return Ok(node);
+fn generate_svg_markers() -> JsResult<()> {
+    let document = web_document();
+    let svg_defs = document.get_existing_element_by_id("svg-defs")?;
+    for relation in ParticipantRelation::iter() {
+        // These definition are identical, but having multiple copies allows us to color them
+        // differently in css. Yep, that's the only way to have multiple arrowhear colors in SVG
+        // (although it might be changed in SVG2):
+        // https://stackoverflow.com/questions/16664584/changing-an-svg-markers-color-css
+        let marker = document.create_svg_element("marker")?;
+        marker.set_attribute("id", &arrowhead_id(relation))?;
+        marker.set_attribute("viewBox", "0 0 10 10")?;
+        marker.set_attribute("refX", "5")?;
+        marker.set_attribute("refY", "5")?;
+        marker.set_attribute("markerWidth", "2.5")?;
+        marker.set_attribute("markerHeight", "2.5")?;
+        marker.set_attribute("orient", "auto-start-reverse")?;
+        let path = document.create_svg_element("path")?;
+        path.set_attribute("d", "M 4 0 L 10 5 L 4 10 z")?;
+        marker.append_child(&path)?;
+        svg_defs.append_child(&marker)?;
+    }
+    Ok(())
 }
 
 fn turn_highlights(turn_expanded: &TurnExpanded) -> Vec<(&'static str, Coord)> {
@@ -1017,6 +1189,14 @@ fn board_node_id(idx: DisplayBoard) -> String {
     format!("board-{}", board_id(idx))
 }
 
+fn parse_board_node_id(id: &str) -> JsResult<DisplayBoard> {
+    match id {
+        "board-primary" => Ok(DisplayBoard::Primary),
+        "board-secondary" => Ok(DisplayBoard::Secondary),
+        _ => Err(format!(r#"Invalid board node: "{id}""#).into()),
+    }
+}
+
 fn player_id(idx: DisplayPlayer) -> String {
     match idx {
         DisplayPlayer::Top => "top",
@@ -1040,8 +1220,42 @@ fn reserve_node_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String
     format!("reserve-group-{}-{}", board_id(board_idx), player_id(player_idx))
 }
 
-fn square_highlight_layer(board_idx: DisplayBoard) -> String {
+fn piece_layer_id(board_idx: DisplayBoard) -> String {
+    format!("piece-layer-{}", board_id(board_idx))
+}
+
+fn square_highlight_layer_id(board_idx: DisplayBoard) -> String {
     format!("square-highlight-layer-{}", board_id(board_idx))
+}
+
+fn chalk_highlight_layer_id(board_idx: DisplayBoard) -> String {
+    format!("chalk-highlight-layer-{}", board_id(board_idx))
+}
+
+fn chalk_drawing_layer_id(board_idx: DisplayBoard) -> String {
+    format!("chalk-drawing-layer-{}", board_id(board_idx))
+}
+
+fn participant_relation_id(owner: ParticipantRelation) -> &'static str {
+    match owner {
+        ParticipantRelation::Myself => "myself",
+        ParticipantRelation::Opponent => "opponent",
+        ParticipantRelation::Partner => "partner",
+        ParticipantRelation::Diagonal => "diagonal",
+        ParticipantRelation::Other => "other",
+    }
+}
+
+fn arrowhead_id(owner: ParticipantRelation) -> String {
+    format!("arrowhead-{}", participant_relation_id(owner))
+}
+
+fn chalk_line_color_class(owner: ParticipantRelation) -> String {
+    format!("chalk-line-{}", participant_relation_id(owner))
+}
+
+fn chalk_square_color_class(owner: ParticipantRelation) -> String {
+    format!("chalk-square-{}", participant_relation_id(owner))
 }
 
 fn reserve_y_pos(player_idx: DisplayPlayer) -> f64 {

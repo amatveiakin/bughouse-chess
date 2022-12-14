@@ -3,6 +3,7 @@ use std::cmp;
 use crate::board::{Turn, TurnInput, TurnMove, TurnDrop, TurnMode, TurnError};
 use crate::clock::GameInstant;
 use crate::coord::{SubjectiveRow, Coord};
+use crate::display::Perspective;
 use crate::game::{BughouseParticipantId, BughousePlayerId, BughouseGameStatus, BughouseGame};
 use crate::piece::{CastleDirection, PieceKind};
 
@@ -161,6 +162,7 @@ impl AlteredGame {
     }
 
     pub fn my_id(&self) -> BughouseParticipantId { self.my_id }
+    pub fn perspective(&self) -> Perspective { Perspective::for_force(self.my_id.visual_force()) }
     pub fn game_confirmed(&self) -> &BughouseGame { &self.game_confirmed }
 
     pub fn local_game(&self) -> BughouseGame {

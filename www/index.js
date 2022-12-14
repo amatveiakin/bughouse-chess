@@ -156,6 +156,7 @@ wasm.init_page();
 git_version.innerText = wasm.git_version();
 
 set_up_drag_and_drop();
+set_up_chalk_drawing();
 
 let wasm_client_object = make_wasm_client();
 let wasm_client_panicked = false;
@@ -544,7 +545,7 @@ function set_up_drag_and_drop() {
         return event.button == 0 || event.changedTouches?.length >= 1;
     }
 
-    function viewbox_mouse_position(event) {
+    function mouse_position_relative_to_board(event) {
         const ctm = svg.getScreenCTM();
         const src = event.changedTouches ? event.changedTouches[0] : event;
         return {
@@ -581,7 +582,7 @@ function set_up_drag_and_drop() {
     function drag(event) {
         with_error_handling(function() {
             if (drag_element) {
-                const coord = viewbox_mouse_position(event);
+                const coord = mouse_position_relative_to_board(event);
                 drag_element.setAttribute('x', coord.x - 0.5);
                 drag_element.setAttribute('y', coord.y - 0.5);
                 wasm_client().drag_piece(coord.x, coord.y);
@@ -592,7 +593,7 @@ function set_up_drag_and_drop() {
     function end_drag(event) {
         with_error_handling(function() {
             if (drag_element && is_main_pointer(event)) {
-                const coord = viewbox_mouse_position(event);
+                const coord = mouse_position_relative_to_board(event);
                 drag_element.remove();
                 drag_element = null;
                 wasm_client().drag_piece_drop(coord.x, coord.y, event.shiftKey);
@@ -619,6 +620,83 @@ function set_up_drag_and_drop() {
                 update();
             }
         });
+    }
+}
+
+function set_up_chalk_drawing() {
+    function is_draw_button(event) { return event.button == 2; }
+    function is_cancel_button(event) { return event.button == 0; }
+
+    function viewbox_mouse_position(event) {
+        const ctm = event.currentTarget.getScreenCTM();
+        return {
+            x: (event.clientX - ctm.e) / ctm.a,
+            y: (event.clientY - ctm.f) / ctm.d,
+        };
+    }
+
+    function mouse_down(event) {
+        with_error_handling(function() {
+            if (drag_element) {
+                // Do not draw while a turn is being made.
+            } else if (!wasm_client().is_chalk_active() && is_draw_button(event)) {
+                const coord = viewbox_mouse_position(event);
+                wasm_client().chalk_down(event.currentTarget.id, coord.x, coord.y, event.shiftKey);
+            } else if (wasm_client().is_chalk_active() && is_cancel_button(event)) {
+                wasm_client().chalk_abort();
+            }
+        });
+    }
+
+    function mouse_move(event) {
+        with_error_handling(function() {
+            if (wasm_client().is_chalk_active()) {
+                const coord = viewbox_mouse_position(event);
+                wasm_client().chalk_move(coord.x, coord.y, event.shiftKey);
+            }
+        });
+    }
+
+    function mouse_up(event) {
+        with_error_handling(function() {
+            if (wasm_client().is_chalk_active() && is_draw_button(event)) {
+                const coord = viewbox_mouse_position(event);
+                wasm_client().chalk_up(coord.x, coord.y, event.shiftKey);
+            }
+        });
+    }
+
+    function mouse_leave(event) {
+        // Improvement potential: Don't abort drawing if the user temporarily moved the
+        //   mouse outside the board.
+        with_error_handling(function() {
+            if (wasm_client().is_chalk_active()) {
+                wasm_client().chalk_abort();
+            }
+        });
+    }
+
+    function mouse_click(event) {
+        with_error_handling(function() {
+            if (is_cancel_button(event)) {
+                if (event.shiftKey) {
+                    wasm_client().chalk_clear(event.currentTarget.id);
+                } else {
+                    wasm_client().chalk_remove_last(event.currentTarget.id);
+                }
+            }
+        });
+    }
+
+    for (const board of ['primary', 'secondary']) {
+        // Improvement potential. Support chalk on touch screens.
+        const svg = document.getElementById(`board-${board}`);
+        svg.addEventListener('mousedown', mouse_down);
+        svg.addEventListener('mousemove', mouse_move);
+        svg.addEventListener('mouseup', mouse_up);
+        svg.addEventListener('mouseleave', mouse_leave);
+        svg.addEventListener('click', mouse_click);
+        svg.addEventListener('contextmenu', function(event) { event.preventDefault(); });
     }
 }
 

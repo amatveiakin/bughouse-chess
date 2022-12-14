@@ -3,6 +3,13 @@ body {
   --sq-size-secondary: calc(var(--sq-size-primary) / 1.5);
   --board-size-secondary: calc(var(--sq-size-secondary) * 8);
   --reserve-height-in-squares: 1.5;
+
+  --color-chalk-myself: #2b7b00;
+  --color-chalk-partner: #048ea2;
+  --color-chalk-opponent: #d12727;
+  --color-chalk-diagonal: #9a118b;
+  --color-chalk-other: #404040;
+  --color-chalk-other-light: #808080;
 }
 body.observer {
   --sq-size-primary: min(4.4vw, 7.8vh);
@@ -196,6 +203,51 @@ body.observer #page {
 .draggable.dragged {
   cursor: grabbing;
 }
+
+.chalk-arrow {
+  fill: none;
+  stroke-width: 0.25;
+  stroke-linecap: butt;
+  opacity: 0.6;
+  pointer-events: none;
+}
+.chalk-freehand-line {
+  fill: none;
+  stroke-width: 0.15;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.6;
+  pointer-events: none;
+}
+.chalk-square-highlight {
+  stroke: none;
+  opacity: 1.0;
+  pointer-events: none;
+}
+
+.chalk-line-myself { stroke: var(--color-chalk-myself); }
+.chalk-line-partner { stroke: var(--color-chalk-partner); }
+.chalk-line-opponent { stroke: var(--color-chalk-opponent); }
+.chalk-line-diagonal { stroke: var(--color-chalk-diagonal); }
+.chalk-line-other { stroke: var(--color-chalk-other); }
+
+.chalk-arrow.chalk-line-myself { marker-end: url(#arrowhead-myself); }
+.chalk-arrow.chalk-line-partner { marker-end: url(#arrowhead-partner); }
+.chalk-arrow.chalk-line-opponent { marker-end: url(#arrowhead-opponent); }
+.chalk-arrow.chalk-line-diagonal { marker-end: url(#arrowhead-diagonal); }
+.chalk-arrow.chalk-line-other { marker-end: url(#arrowhead-other); }
+
+.chalk-square-myself { fill: var(--color-chalk-myself); }
+.chalk-square-partner { fill: var(--color-chalk-partner); }
+.chalk-square-opponent { fill: var(--color-chalk-opponent); }
+.chalk-square-diagonal { fill: var(--color-chalk-diagonal); }
+.chalk-square-other { fill: var(--color-chalk-other-light); }
+
+#arrowhead-myself { fill: var(--color-chalk-myself); }
+#arrowhead-partner { fill: var(--color-chalk-partner); }
+#arrowhead-opponent { fill: var(--color-chalk-opponent); }
+#arrowhead-diagonal { fill: var(--color-chalk-diagonal); }
+#arrowhead-other { fill: var(--color-chalk-other); }
 
 #board-primary {
   width: calc(var(--sq-size-primary) * 8);

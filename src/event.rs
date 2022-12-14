@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 
 use crate::board::TurnInput;
+use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseGameStatus, BughouseBoard};
 use crate::meter::MeterStats;
@@ -47,6 +48,9 @@ pub enum BughouseServerEvent {
         time: GameInstant,
         game_status: BughouseGameStatus,
         scores: Scores,
+    },
+    ChalkboardUpdated {
+        chalkboard: Chalkboard,
     },
     GameExportReady {
         content: String,
@@ -97,6 +101,9 @@ pub enum BughouseClientEvent {
         is_ready: bool,
     },
     Leave,
+    UpdateChalkDrawing {
+        drawing: ChalkDrawing,
+    },
     RequestExport {
         format: BughouseExportFormat,
     },
