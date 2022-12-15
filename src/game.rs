@@ -243,20 +243,12 @@ impl BughouseGame {
         let chess_rules = Rc::new(chess_rules);
         let bughouse_rules = Rc::new(bughouse_rules);
         let player_map = make_player_map(players);
-        let boards = enum_map!{
-            BughouseBoard::A => Board::new(
-                Rc::clone(&chess_rules),
-                Some(Rc::clone(&bughouse_rules)),
-                player_map[BughouseBoard::A].clone(),
-                &starting_position
-            ),
-            BughouseBoard::B => Board::new(
-                Rc::clone(&chess_rules),
-                Some(Rc::clone(&bughouse_rules)),
-                player_map[BughouseBoard::B].clone(),
-                &starting_position
-            ),
-        };
+        let boards = player_map.map(|_, board_players| Board::new(
+            Rc::clone(&chess_rules),
+            Some(Rc::clone(&bughouse_rules)),
+            board_players,
+            &starting_position
+        ));
         BughouseGame {
             starting_position,
             boards,
