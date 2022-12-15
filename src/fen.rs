@@ -68,6 +68,9 @@ pub fn starting_position_to_shredder_fen(board: &Board) -> String {
                     empty_col_count = 0;
                 }
                 row_notation.push(piece_notation(piece.kind, piece.force));
+                // Note. If this is extended to save arbitrary (not just starting) position,
+                // then we need to include "~" after promoted pieces.
+                // See https://bughousedb.com/Lieven_BPGN_Standard.txt, section 3.2.
             } else {
                 empty_col_count += 1;
             }

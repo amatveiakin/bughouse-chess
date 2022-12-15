@@ -69,7 +69,24 @@ fn make_result_string(game: &BughouseGame) -> &'static str {
     }
 }
 
-fn make_termination_string(game: &BughouseGame) -> String {
+fn make_termination_string(game: &BughouseGame) -> &'static str {
+    use BughouseGameStatus::*;
+    use VictoryReason::*;
+    use DrawReason::*;
+    match game.status() {
+        Active => "unterminated",
+        Victory(_, Checkmate) => "normal",
+        Victory(_, Flag) => "time forfeit",
+        // There is no "resign" Termination, should use "normal" apparently:
+        // https://lichess.org/forum/general-chess-discussion/how-do-i-make-it-say-that-one-side-resigned#4
+        Victory(_, Resignation) => "normal",
+        // Somehow I'm skeptical many chess engines would be prepared for a "time forfeit" draw
+        Draw(SimultaneousFlag) => "normal",
+        Draw(ThreefoldRepetition) => "normal",
+    }
+}
+
+fn make_outcome_string(game: &BughouseGame) -> String {
     use BughouseGameStatus::*;
     use VictoryReason::*;
     use DrawReason::*;
@@ -94,7 +111,6 @@ fn dummy_player(team: Team) -> Rc<PlayerInGame> {
     Rc::new(PlayerInGame{ name: format!("{:?}", team), team })
 }
 
-// Improvement potential. More human-readable "Termination" tag values.
 fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
     use BughouseBoard::*;
     use Force::*;
@@ -110,7 +126,7 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
                 game.starting_position()
             );
             let one_board = fen::starting_position_to_shredder_fen(&starting_board);
-            ("Bughouse Chess960", format!("[FEN \"{one_board} | {one_board}\"]\n"))
+            ("Bughouse Chess960", format!("[SetUp \"1\"]\n[FEN \"{one_board} | {one_board}\"]\n"))
         }
     };
     // TODO: Save complete rules.
@@ -126,9 +142,9 @@ r#"[Event "Friendly Bughouse Match"]
 [BlackB "{}"]
 [TimeControl "{}"]
 [Variant "{}"]
-[SetUp "1"]
 {}[Result "{}"]
 [Termination "{}"]
+[Outcome "{}"]
 "#,
         now.format(format_description!("[year].[month].[day]")).unwrap(),
         now.format(format_description!("[hour]:[minute]:[second]")).unwrap(),
@@ -142,6 +158,7 @@ r#"[Event "Friendly Bughouse Match"]
         starting_position_fen,
         make_result_string(game),
         make_termination_string(game),
+        make_outcome_string(game),
     )
 }
 
@@ -160,6 +177,11 @@ fn player_notation(player_id: BughousePlayerId) -> &'static str {
 // bughouse. Doc: https://bughousedb.com/Lieven_BPGN_Standard.txt
 // Based on PGN (Portable Game Notation), the de-facto standard plain format for recording
 // chess games. Doc: http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
+//
+// Also contains non-standard extension fields:
+//   - "Variant" - follow chess.com example;
+//   - "Outcome" - human-readable game result description; this is addition to "Result"
+//     and "Termination" fields, which follow PGN standard, but are less informative.
 pub fn export_to_bpgn(_format: BughouseExportFormat, game: &BughouseGame, round: usize)
     -> String
 {
