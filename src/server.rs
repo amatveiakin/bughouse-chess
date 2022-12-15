@@ -573,11 +573,13 @@ impl Contest {
         let Some(GameState{ ref mut game_start, ref mut game, ref mut preturns, .. }) = self.game_state else {
             return Err("Cannot make turn: no game in progress".to_owned());
         };
-        let scores = &mut self.scores;
         let Some(player_id) = ctx.clients[client_id].player_id else {
             return Err("Cannot make turn: not joined".to_owned());
         };
-        let player_bughouse_id = game.find_player(&self.players[player_id].name).unwrap();
+        let Some(player_bughouse_id) = game.find_player(&self.players[player_id].name) else {
+            return Err("Cannot make turn: player does not participate".to_owned());
+        };
+        let scores = &mut self.scores;
         let mode = game.turn_mode_for_player(player_bughouse_id);
         match mode {
             Ok(TurnMode::Normal) => {
@@ -637,7 +639,9 @@ impl Contest {
         let Some(player_id) = ctx.clients[client_id].player_id else {
             return Err("Cannot cancel pre-turn: not joined".to_owned());
         };
-        let player_bughouse_id = game.find_player(&self.players[player_id].name).unwrap();
+        let Some(player_bughouse_id) = game.find_player(&self.players[player_id].name) else {
+            return Err("Cannot cancel pre-turn: player does not participate".to_owned());
+        };
         preturns.remove(&player_bughouse_id);
         Ok(())
     }
@@ -646,21 +650,21 @@ impl Contest {
         let Some(GameState{ ref mut game, game_start, .. }) = self.game_state else {
             return Err("Cannot resign: no game in progress".to_owned());
         };
-        let scores = &mut self.scores;
         if game.status() != BughouseGameStatus::Active {
             return Err("Cannot resign: game already over".to_owned());
         }
         let Some(player_id) = ctx.clients[client_id].player_id else {
             return Err("Cannot resign: not joined".to_owned());
         };
-        let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
-        let Some(bughouse_player_id) = game.find_player(&self.players[player_id].name) else {
+        let Some(player_bughouse_id) = game.find_player(&self.players[player_id].name) else {
             return Err("Cannot resign: player does not participate".to_owned());
         };
         let status = BughouseGameStatus::Victory(
-            bughouse_player_id.team().opponent(),
+            player_bughouse_id.team().opponent(),
             VictoryReason::Resignation
         );
+        let scores = &mut self.scores;
+        let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
         game.set_status(status, game_now);
         update_score_on_game_over(game, scores);
         let ev = BughouseServerEvent::GameOver {
