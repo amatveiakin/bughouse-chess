@@ -19,7 +19,7 @@ tungstenite = "0.18.0"
 url = "2.3.1"
 serde = "1.0.149"
 serde_json = "1.0.89"
-sqlx = { version = "0.6.2", features = ["postgres", "sqlite", "runtime-async-std-native-tls", "time"] }
+sqlx = { version = "0.6.2", features = ["postgres", "sqlite", "runtime-async-std-rustls", "time"] }
 time = "0.3.17"
 uuid = { version = "1.2.2", features = ["v4"] }
 
