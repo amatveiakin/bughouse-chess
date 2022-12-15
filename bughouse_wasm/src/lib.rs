@@ -30,7 +30,6 @@ type JsResult<T> = Result<T, JsValue>;
 
 const RESERVE_HEIGHT: f64 = 1.5;  // total reserve area height, in squares
 const RESERVE_PADDING: f64 = 0.25;  // padding between board and reserve, in squares
-// TODO: Viewbox size asserts.
 
 // The client is single-threaded, so wrapping all mutable singletons in `thread_local!` seems ok.
 thread_local! {
@@ -1068,6 +1067,7 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
 
     let document = web_document();
     let svg = document.get_existing_element_by_id(&board_node_id(board_idx))?;
+    svg.set_attribute("viewBox", &format!("0 0 {NUM_COLS} {NUM_ROWS}"))?;
     remove_all_children(&svg)?;
 
     let shadow = make_board_rect(&document)?;
@@ -1129,6 +1129,8 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
         let reserve_container = document.get_existing_element_by_id(
             &reserve_container_id(board_idx, player_idx)
         )?;
+        // Note that reserve height is also encoded in CSS.
+        reserve_container.set_attribute("viewBox", &format!("0 0 {NUM_COLS} {RESERVE_HEIGHT}"))?;
         reserve_container.append_child(&reserve)?;
     }
     Ok(())
