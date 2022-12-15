@@ -1171,11 +1171,11 @@ fn turn_highlights(turn_expanded: &TurnExpanded) -> Vec<(&'static str, Coord)> {
     highlights
 }
 
-fn board_id(idx: DisplayBoard) -> String {
+fn board_id(idx: DisplayBoard) -> &'static str {
     match idx {
         DisplayBoard::Primary => "primary",
         DisplayBoard::Secondary => "secondary",
-    }.to_owned()
+    }
 }
 
 fn board_node_id(idx: DisplayBoard) -> String {
@@ -1190,11 +1190,11 @@ fn parse_board_node_id(id: &str) -> JsResult<DisplayBoard> {
     }
 }
 
-fn player_id(idx: DisplayPlayer) -> String {
+fn player_id(idx: DisplayPlayer) -> &'static str {
     match idx {
         DisplayPlayer::Top => "top",
         DisplayPlayer::Bottom => "bottom",
-    }.to_owned()
+    }
 }
 
 fn piece_id(board_idx: DisplayBoard, coord: Coord) -> String {
@@ -1258,19 +1258,19 @@ fn reserve_y_pos(player_idx: DisplayPlayer) -> f64 {
     }
 }
 
-fn square_text_color_class(row: Row, col: Col) -> String {
+fn square_text_color_class(row: Row, col: Col) -> &'static str {
     if (row.to_zero_based() + col.to_zero_based()) % 2 == 0 {
-        "on-sq-black".to_owned()
+        "on-sq-black"
     } else {
-        "on-sq-white".to_owned()
+        "on-sq-white"
     }
 }
 
-fn square_color_class(row: Row, col: Col) -> String {
+fn square_color_class(row: Row, col: Col) -> &'static str {
     if (row.to_zero_based() + col.to_zero_based()) % 2 == 0 {
-        "sq-black".to_owned()
+        "sq-black"
     } else {
-        "sq-white".to_owned()
+        "sq-white"
     }
 }
 
