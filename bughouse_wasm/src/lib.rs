@@ -609,8 +609,9 @@ impl WebClient {
         }
         self.repaint_chalk()?;
         if alt_game.status() != BughouseGameStatus::Active {
-            // TODO: Print "victory / defeat" instead of team color.
-            info_string.set_text_content(Some(&format!("Game over: {:?}", alt_game.status())));
+            // Safe to use `game_confirmed` here, because there could be no local status
+            // changes after game over.
+            info_string.set_text_content(Some(&alt_game.game_confirmed().outcome()));
         }
         Ok(())
     }

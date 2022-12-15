@@ -3,8 +3,9 @@
 use std::rc::Rc;
 
 use enum_map::{Enum, EnumMap, enum_map};
+use itertools::Itertools;
 use serde::{Serialize, Deserialize};
-use strum::EnumIter;
+use strum::{EnumIter, IntoEnumIterator};
 
 use crate::TurnFacts;
 use crate::board::{Board, Reserve, Turn, TurnInput, TurnExpanded, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
@@ -387,6 +388,26 @@ impl BughouseGame {
             return Err(TurnError::WrongTurnOrder);
         }
         self.try_turn(player_id.board_idx, turn_input, mode, now)
+    }
+
+    pub fn outcome(&self) -> String {
+        use BughouseGameStatus::*;
+        use VictoryReason::*;
+        use DrawReason::*;
+        let make_team_string = |team| {
+            // Note. Not using `self.players()` because the order there is not specified.
+            BughouseBoard::iter()
+                .map(|board_idx| &self.board(board_idx).player(get_bughouse_force(team, board_idx)).name)
+                .join(" & ")
+        };
+        match self.status() {
+            Active => "Unterminated".to_owned(),
+            Victory(team, Checkmate) => format!("{} won by checkmate", make_team_string(team)),
+            Victory(team, Flag) => format!("{} won by flag", make_team_string(team)),
+            Victory(team, Resignation) => format!("{} won by resignation", make_team_string(team)),
+            Draw(SimultaneousFlag) => "Draw by simultaneous flags".to_owned(),
+            Draw(ThreefoldRepetition) => "Draw by threefold repetition".to_owned(),
+        }
     }
 
     fn game_status_for_board(&self, board_idx: BughouseBoard) -> BughouseGameStatus {
