@@ -32,9 +32,9 @@ pub enum BughouseServerEvent {
         players: Vec<(PlayerInGame, BughouseBoard)>,
         time: GameInstant,                // for re-connection
         turn_log: Vec<TurnRecord>,        // for re-connection
+        preturn: Option<TurnInput>,       // for re-connection
         game_status: BughouseGameStatus,  // for re-connection
         scores: Scores,
-        // TODO: Send your pending pre-turn, if any
     },
     // Improvement potential: unite `TurnsMade` and `GameOver` into a single event "something happened".
     // This would make reconnection more consistent with normal game flow.

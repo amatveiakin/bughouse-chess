@@ -345,7 +345,7 @@ impl ClientState {
                 contest.my_team = me.fixed_team;
                 contest.players = players;
             },
-            GameStarted{ starting_position, players, time, turn_log, game_status, scores } => {
+            GameStarted{ starting_position, players, time, turn_log, preturn, game_status, scores } => {
                 let player_map = BughouseGame::make_player_map(
                     players.iter().map(|(p, board_idx)| (Rc::new(p.clone()), *board_idx))
                 );
@@ -378,6 +378,15 @@ impl ClientState {
                 });
                 for turn in turn_log {
                     self.apply_remote_turn(turn, false)?;
+                }
+                if let Some(preturn) = preturn {
+                    let now = Instant::now();
+                    let game_now = GameInstant::from_pair_game_maybe_active(time_pair, now);
+                    // Safe to unwrap: we just created the `game_state`.
+                    let alt_game = self.alt_game_mut().unwrap();
+                    // Safe to unwrap: this is a preturn made by this very client before reconnection.
+                    let mode = alt_game.try_local_turn(preturn, game_now).unwrap();
+                    assert_eq!(mode, TurnMode::Preturn);
                 }
                 self.update_game_status(game_status, time)?;
                 self.update_scores(scores)?;

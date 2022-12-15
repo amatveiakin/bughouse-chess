@@ -525,7 +525,7 @@ impl Contest {
             // LobbyUpdated should precede GameStarted, because this is how the client gets their
             // team in FixedTeam mode.
             self.send_lobby_updated(ctx);
-            ctx.clients[client_id].send(self.make_game_start_event(now));
+            ctx.clients[client_id].send(self.make_game_start_event(now, Some(player_id)));
             let chalkboard = game_state.chalkboard.clone();
             ctx.clients[client_id].send(BughouseServerEvent::ChalkboardUpdated{ chalkboard });
             Ok(())
@@ -815,7 +815,7 @@ impl Contest {
             chalkboard: Chalkboard::new(),
             players_with_boards,
         });
-        self.broadcast(ctx, &self.make_game_start_event(now));
+        self.broadcast(ctx, &self.make_game_start_event(now, None));
         self.send_lobby_updated(ctx);  // update readiness flags
     }
 
@@ -839,15 +839,18 @@ impl Contest {
         }
     }
 
-    fn make_game_start_event(&self, now: Instant) -> BughouseServerEvent {
+    // Creates a game start/reconnect event. `player_id` is needed only if reconnecting.
+    fn make_game_start_event(&self, now: Instant, player_id: Option<PlayerId>) -> BughouseServerEvent {
         let Some(game_state) = &self.game_state else {
             panic!("Expected ContestState::Game");
         };
+        let player_bughouse_id = player_id.and_then(|id| game_state.game.find_player(&self.players[id].name));
         BughouseServerEvent::GameStarted {
             starting_position: game_state.game.starting_position().clone(),
             players: game_state.players_with_boards.clone(),
             time: current_game_time(game_state, now),
             turn_log: game_state.game.turn_log().iter().map(|t| t.trim_for_sending()).collect(),
+            preturn: player_bughouse_id.and_then(|id| game_state.preturns.get(&id)).cloned(),
             game_status: game_state.game.status(),
             scores: self.scores.clone(),
         }
