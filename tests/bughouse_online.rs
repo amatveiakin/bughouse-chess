@@ -33,6 +33,10 @@ fn default_bughouse_rules() -> BughouseRules {
     }
 }
 
+fn player_in_game(name: &str, id: BughousePlayerId) -> PlayerInGame {
+    PlayerInGame{ name: name.to_owned(), id }
+}
+
 
 struct Server {
     clients: Arc<Mutex<server::Clients>>,
@@ -185,10 +189,10 @@ impl World {
         self.process_all_events();
 
         self.server.state.TEST_override_board_assignment(contest.clone(), vec! [
-            ("p1".to_owned(), seating!(White A)),
-            ("p2".to_owned(), seating!(Black B)),
-            ("p3".to_owned(), seating!(Black A)),
-            ("p4".to_owned(), seating!(White B)),
+            player_in_game("p1", seating!(White A)),
+            player_in_game("p2", seating!(Black B)),
+            player_in_game("p3", seating!(Black A)),
+            player_in_game("p4", seating!(White B)),
         ]);
 
         self.join_and_set_team(cl2, &contest, "p2", Team::Red);
@@ -283,10 +287,10 @@ fn play_online_misc() {
     world.process_all_events();
 
     world.server.state.TEST_override_board_assignment(contest.clone(), vec! [
-        ("p1".to_owned(), seating!(White A)),
-        ("p2".to_owned(), seating!(Black B)),
-        ("p3".to_owned(), seating!(Black A)),
-        ("p4".to_owned(), seating!(White B)),
+        player_in_game("p1", seating!(White A)),
+        player_in_game("p2", seating!(Black B)),
+        player_in_game("p3", seating!(Black A)),
+        player_in_game("p4", seating!(White B)),
     ]);
 
     world.join_and_set_team(cl2, &contest, "p2", Team::Red);
@@ -679,10 +683,10 @@ fn five_players() {
     );
 
     world.server.state.TEST_override_board_assignment(contest.clone(), vec! [
-        ("p1".to_owned(), seating!(White A)),
-        ("p2".to_owned(), seating!(Black B)),
-        ("p3".to_owned(), seating!(Black A)),
-        ("p4".to_owned(), seating!(White B)),
+        player_in_game("p1", seating!(White A)),
+        player_in_game("p2", seating!(Black B)),
+        player_in_game("p3", seating!(Black A)),
+        player_in_game("p4", seating!(White B)),
     ]);
 
     world[cl2].join(&contest, "p2");
@@ -715,16 +719,16 @@ fn two_contests() {
     world.process_all_events();
 
     world.server.state.TEST_override_board_assignment(contest1.clone(), vec! [
-        ("p1".to_owned(), seating!(White A)),
-        ("p2".to_owned(), seating!(Black B)),
-        ("p3".to_owned(), seating!(Black A)),
-        ("p4".to_owned(), seating!(White B)),
+        player_in_game("p1", seating!(White A)),
+        player_in_game("p2", seating!(Black B)),
+        player_in_game("p3", seating!(Black A)),
+        player_in_game("p4", seating!(White B)),
     ]);
     world.server.state.TEST_override_board_assignment(contest2.clone(), vec! [
-        ("p5".to_owned(), seating!(White A)),
-        ("p6".to_owned(), seating!(Black B)),
-        ("p7".to_owned(), seating!(Black A)),
-        ("p8".to_owned(), seating!(White B)),
+        player_in_game("p5", seating!(White A)),
+        player_in_game("p6", seating!(Black B)),
+        player_in_game("p7", seating!(Black A)),
+        player_in_game("p8", seating!(White B)),
     ]);
 
     world.join_and_set_team(cl2, &contest1, "p2", Team::Red);

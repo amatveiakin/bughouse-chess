@@ -11,7 +11,7 @@ use crate::TurnFacts;
 use crate::board::{Board, Reserve, Turn, TurnInput, TurnExpanded, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
 use crate::clock::GameInstant;
 use crate::force::Force;
-use crate::player::{PlayerInGame, Team};
+use crate::player::Team;
 use crate::rules::{ChessRules, BughouseRules};
 use crate::starter::{EffectiveStartingPosition, generate_starting_position};
 
@@ -53,20 +53,20 @@ pub struct ChessGame {
 }
 
 impl ChessGame {
-    pub fn new(rules: ChessRules, players: EnumMap<Force, Rc<PlayerInGame>>) -> Self {
+    pub fn new(rules: ChessRules, player_names: EnumMap<Force, String>) -> Self {
         let starting_position = generate_starting_position(rules.starting_position);
-        Self::new_with_starting_position(rules, starting_position, players)
+        Self::new_with_starting_position(rules, starting_position, player_names)
     }
 
     pub fn new_with_starting_position(
         rules: ChessRules,
         starting_position: EffectiveStartingPosition,
-        players: EnumMap<Force, Rc<PlayerInGame>>
+        player_names: EnumMap<Force, String>
     ) -> Self {
         let board = Board::new(
             Rc::new(rules),
             None,
-            players,
+            player_names,
             &starting_position,
         );
         ChessGame{ starting_position, board }
@@ -138,6 +138,13 @@ pub fn get_bughouse_force(team: Team, board_idx: BughouseBoard) -> Force {
 pub struct BughousePlayerId {
     pub board_idx: BughouseBoard,
     pub force: Force,
+}
+
+// Player in an active game.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PlayerInGame {
+    pub name: String,
+    pub id: BughousePlayerId,
 }
 
 // Describes the player with whose eyes the game is viewed. This is not really an ID in that
@@ -221,7 +228,7 @@ impl BughouseGame {
     pub fn new(
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
-        players: EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>>
+        players: &[PlayerInGame]
     ) -> Self {
         let starting_position = generate_starting_position(chess_rules.starting_position);
         Self::new_with_starting_position(chess_rules, bughouse_rules, starting_position, players)
@@ -231,21 +238,22 @@ impl BughouseGame {
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
         starting_position: EffectiveStartingPosition,
-        players: EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>>
+        players: &[PlayerInGame],
     ) -> Self {
         let chess_rules = Rc::new(chess_rules);
         let bughouse_rules = Rc::new(bughouse_rules);
+        let player_map = make_player_map(players);
         let boards = enum_map!{
             BughouseBoard::A => Board::new(
                 Rc::clone(&chess_rules),
                 Some(Rc::clone(&bughouse_rules)),
-                players[BughouseBoard::A].clone(),
+                player_map[BughouseBoard::A].clone(),
                 &starting_position
             ),
             BughouseBoard::B => Board::new(
                 Rc::clone(&chess_rules),
                 Some(Rc::clone(&bughouse_rules)),
-                players[BughouseBoard::B].clone(),
+                player_map[BughouseBoard::B].clone(),
                 &starting_position
             ),
         };
@@ -255,21 +263,6 @@ impl BughouseGame {
             status: BughouseGameStatus::Active,
             turn_log: Vec::new(),
         }
-    }
-
-    pub fn make_player_map(players: impl Iterator<Item = (Rc<PlayerInGame>, BughouseBoard)>)
-        -> EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>>
-    {
-        let mut player_map: EnumMap<BughouseBoard, EnumMap<Force, Option<Rc<PlayerInGame>>>> =
-            enum_map!{ _ => enum_map!{ _ => None } };
-        for (p, board_idx) in players {
-            let player_ref = &mut player_map[board_idx][get_bughouse_force(p.team, board_idx)];
-            assert!(player_ref.is_none());
-            *player_ref = Some(p);
-        }
-        player_map.map(|_, board_players| {
-            board_players.map(|_, p| { p.unwrap() })
-        })
     }
 
     pub fn starting_position(&self) -> &EffectiveStartingPosition { &self.starting_position }
@@ -282,17 +275,22 @@ impl BughouseGame {
     pub fn reserve(&self, player_id: BughousePlayerId) -> &Reserve {
         self.boards[player_id.board_idx].reserve(player_id.force)
     }
-    pub fn players(&self) -> Vec<Rc<PlayerInGame>> {
-        self.boards.values().flat_map(|(board)| board.players().values().cloned()).collect()
-    }
     pub fn turn_log(&self) -> &Vec<TurnRecordExpanded> { &self.turn_log }
     pub fn last_turn_record(&self) -> Option<&TurnRecordExpanded> { self.turn_log.last() }
     pub fn status(&self) -> BughouseGameStatus { self.status }
 
+    pub fn players(&self) -> Vec<PlayerInGame> {
+        self.boards.iter().flat_map(|(board_idx, board)|
+            board.player_names().iter().map(move |(force, name)| PlayerInGame {
+                name: name.to_owned(),
+                id: BughousePlayerId{ board_idx, force }
+            })
+        ).collect()
+    }
     pub fn find_player(&self, player_name: &str) -> Option<BughousePlayerId> {
         for (board_idx, board) in self.boards.iter() {
-            for (force, player) in board.players() {
-                if player.name == player_name {
+            for (force, name) in board.player_names() {
+                if name == player_name {
                     return Some(BughousePlayerId{ board_idx, force });
                 }
             }
@@ -397,7 +395,7 @@ impl BughouseGame {
         let make_team_string = |team| {
             // Note. Not using `self.players()` because the order there is not specified.
             BughouseBoard::iter()
-                .map(|board_idx| &self.board(board_idx).player(get_bughouse_force(team, board_idx)).name)
+                .map(|board_idx| self.board(board_idx).player_name(get_bughouse_force(team, board_idx)))
                 .join(" & ")
         };
         match self.status() {
@@ -418,6 +416,19 @@ impl BughouseGame {
             ChessGameStatus::Draw(reason) => BughouseGameStatus::Draw(reason),
         }
     }
+}
+
+fn make_player_map(players: &[PlayerInGame]) -> EnumMap<BughouseBoard, EnumMap<Force, String>> {
+    let mut player_map: EnumMap<BughouseBoard, EnumMap<Force, Option<String>>> =
+        enum_map!{ _ => enum_map!{ _ => None } };
+    for p in players {
+        let player_ref = &mut player_map[p.id.board_idx][p.id.force];
+        assert!(player_ref.is_none());
+        *player_ref = Some(p.name.clone());
+    }
+    player_map.map(|_, board_players| {
+        board_players.map(|_, p| { p.unwrap() })
+    })
 }
 
 fn make_turn_expanded(turn: Turn, algebraic: String, facts: TurnFacts) -> TurnExpanded {

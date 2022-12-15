@@ -36,15 +36,15 @@ fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, usize
     (clock_str, clock_str_len)
 }
 
-fn render_player(player: &PlayerInGame) -> (String, usize) {
-    (player.name.clone(), player.name.len())
+fn render_player(player_name: &str) -> (String, usize) {
+    (player_name.to_owned(), player_name.len())
 }
 
 fn render_header(
-    clock: &Clock, player: &PlayerInGame, force: Force, now: GameInstant, view_board: DisplayBoard
+    clock: &Clock, player_name: &str, force: Force, now: GameInstant, view_board: DisplayBoard
 ) -> String {
     let (clock_str, clock_str_len) = render_clock(clock, force, now);
-    let (player_str, player_str_len) = render_player(player);
+    let (player_str, player_str_len) = render_player(player_name);
     let space = String::from(' ').repeat(BOARD_WIDTH - clock_str_len - player_str_len);
     match view_board {
         DisplayBoard::Primary => format!("{}{}{}\n", clock_str, space, player_str),
@@ -73,11 +73,11 @@ fn render_bughouse_board(
     let orientation = get_board_orientation(view_board, perspective);
     format!(
         "{}\n{}{}{}\n{}",
-        render_header(board.clock(), board.player(Black), Black, now, view_board),
+        render_header(board.clock(), board.player_name(Black), Black, now, view_board),
         render_reserve(board.reserve(Black), Black),
         render_grid(board.grid(), orientation),
         render_reserve(board.reserve(White), White),
-        render_header(board.clock(), board.player(White), White, now, view_board),
+        render_header(board.clock(), board.player_name(White), White, now, view_board),
     )
 }
 

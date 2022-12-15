@@ -1,8 +1,6 @@
 // Rust-upgrade (https://github.com/rust-lang/rust/issues/46379):
 //   remove `#[allow(dead_code)]` before public functions.
 
-use std::rc::Rc;
-
 use enum_map::{EnumMap, enum_map};
 
 use bughouse_chess::*;
@@ -81,23 +79,33 @@ macro_rules! seating {
 }
 
 #[allow(dead_code)]
-pub fn sample_chess_players() -> EnumMap<Force, Rc<PlayerInGame>> {
+pub fn sample_chess_players() -> EnumMap<Force, String> {
     enum_map! {
-        Force::White => Rc::new(PlayerInGame{ name: "Alice".to_owned(), team: Team::Red }),
-        Force::Black => Rc::new(PlayerInGame{ name: "Bob".to_owned(), team: Team::Blue }),
+        Force::White => "Alice".to_owned(),
+        Force::Black => "Bob".to_owned(),
     }
 }
 
 #[allow(dead_code)]
-pub fn sample_bughouse_players() -> EnumMap<BughouseBoard, EnumMap<Force, Rc<PlayerInGame>>> {
-    enum_map! {
-        BughouseBoard::A => enum_map! {
-            Force::White => Rc::new(PlayerInGame{ name: "Alice".to_owned(), team: Team::Red }),
-            Force::Black => Rc::new(PlayerInGame{ name: "Bob".to_owned(), team: Team::Blue }),
+pub fn sample_bughouse_players() -> Vec<PlayerInGame> {
+    use Force::*;
+    use BughouseBoard::*;
+    vec! [
+        PlayerInGame {
+            name: "Alice".to_owned(),
+            id: BughousePlayerId{ force: White, board_idx: A }
         },
-        BughouseBoard::B => enum_map! {
-            Force::White => Rc::new(PlayerInGame{ name: "Charlie".to_owned(), team: Team::Blue }),
-            Force::Black => Rc::new(PlayerInGame{ name: "Dave".to_owned(), team: Team::Red }),
-        }
-    }
+        PlayerInGame {
+            name: "Bob".to_owned(),
+            id: BughousePlayerId{ force: Black, board_idx: A }
+        },
+        PlayerInGame {
+            name: "Charlie".to_owned(),
+            id: BughousePlayerId{ force: White, board_idx: B }
+        },
+        PlayerInGame {
+            name: "Dave".to_owned(),
+            id: BughousePlayerId{ force: Black, board_idx: B }
+        },
+    ]
 }

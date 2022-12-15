@@ -27,11 +27,3 @@ pub struct Player {
     pub is_online: bool,
     pub is_ready: bool,
 }
-
-// Player in an active game. Always has a team.
-// TODO: Is the team required here at all?
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PlayerInGame {
-    pub name: String,
-    pub team: Team,
-}

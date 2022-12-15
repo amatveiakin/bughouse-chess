@@ -15,7 +15,6 @@ use crate::clock::{GameInstant, Clock};
 use crate::force::Force;
 use crate::grid::{Grid, GridForRepetitionDraw};
 use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, PieceForRepetitionDraw, CastleDirection};
-use crate::player::PlayerInGame;
 use crate::rules::{DropAggression, ChessRules, BughouseRules};
 use crate::util::{sort_two, as_single_char};
 use crate::starter::{EffectiveStartingPosition, starting_piece_row, generate_starting_grid};
@@ -527,7 +526,7 @@ impl Reachability {
 pub struct Board {
     chess_rules: Rc<ChessRules>,
     bughouse_rules: Option<Rc<BughouseRules>>,
-    players: EnumMap<Force, Rc<PlayerInGame>>,
+    player_names: EnumMap<Force, String>,
     status: ChessGameStatus,
     grid: Grid,
     // Tracks castling availability based on which pieces have moved. Castling is
@@ -547,7 +546,7 @@ impl Board {
     pub fn new(
         chess_rules: Rc<ChessRules>,
         bughouse_rules: Option<Rc<BughouseRules>>,
-        players: EnumMap<Force, Rc<PlayerInGame>>,
+        players: EnumMap<Force, String>,
         starting_position: &EffectiveStartingPosition,
     ) -> Board {
         let time_control = chess_rules.time_control.clone();
@@ -555,7 +554,7 @@ impl Board {
         let mut board = Board {
             chess_rules,
             bughouse_rules,
-            players,
+            player_names: players,
             status: ChessGameStatus::Active,
             grid: generate_starting_grid(starting_position),
             castling_rights: enum_map!{ _ => castling_rights },
@@ -572,8 +571,8 @@ impl Board {
 
     pub fn chess_rules(&self) -> &Rc<ChessRules> { &self.chess_rules }
     pub fn bughouse_rules(&self) -> &Option<Rc<BughouseRules>> { &self.bughouse_rules }
-    pub fn player(&self, force: Force) -> &PlayerInGame { &*self.players[force] }
-    pub fn players(&self) -> &EnumMap<Force, Rc<PlayerInGame>> { &self.players }
+    pub fn player_name(&self, force: Force) -> &str { &self.player_names[force] }
+    pub fn player_names(&self) -> &EnumMap<Force, String> { &self.player_names }
     pub fn status(&self) -> ChessGameStatus { self.status }
     pub fn grid(&self) -> &Grid { &self.grid }
     pub fn grid_mut(&mut self) -> &mut Grid { &mut self.grid }

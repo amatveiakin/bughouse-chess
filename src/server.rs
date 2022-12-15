@@ -4,7 +4,6 @@
 use std::collections::{HashSet, HashMap, hash_map};
 use std::iter;
 use std::ops;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 use std::time::Duration;
 
@@ -18,11 +17,12 @@ use strum::IntoEnumIterator;
 use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
-use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, BughouseGameStatus, BughouseGame};
+use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, PlayerInGame, BughouseGameStatus, BughouseGame};
+use crate::get_bughouse_force;
 use crate::heartbeat::{Heart, HeartbeatOutcome};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientErrorReport};
 use crate::pgn::{self, BughouseExportFormat};
-use crate::player::{Player, PlayerInGame, Team};
+use crate::player::{Player, Team};
 use crate::rules::{Teaming, ChessRules, BughouseRules};
 use crate::scores::Scores;
 use crate::server_hooks::{ServerHooks, NoopServerHooks};
@@ -44,14 +44,10 @@ pub struct GameState {
     game_start: Option<Instant>,
     preturns: HashMap<BughousePlayerId, TurnInput>,
     chalkboard: Chalkboard,
-    players_with_boards: Vec<(PlayerInGame, BughouseBoard)>, // TODO: Extract from `game`
 }
 
 impl GameState {
     pub fn game(&self) -> &BughouseGame { &self.game }
-    pub fn players_with_boards(&self) -> &Vec<(PlayerInGame, BughouseBoard)> {
-        &self.players_with_boards
-    }
 }
 
 
@@ -185,7 +181,7 @@ struct Contest {
     match_history: Vec<BughouseGame>,  // final game states
     game_state: Option<GameState>,  // active game or latest game
     last_activity: Instant,  // for GC
-    board_assignment_override: Option<Vec<(String, BughousePlayerId)>>,  // for tests
+    board_assignment_override: Option<Vec<PlayerInGame>>,  // for tests
 }
 
 struct Context<'a, 'b> {
@@ -242,9 +238,7 @@ impl ServerState {
     }
 
     #[allow(non_snake_case)]
-    pub fn TEST_override_board_assignment(
-        &mut self, contest_id: String, assignment: Vec<(String, BughousePlayerId)>
-    ) {
+    pub fn TEST_override_board_assignment(&mut self, contest_id: String, assignment: Vec<PlayerInGame>) {
         let contest_id = ContestId(contest_id);
         assert_eq!(assignment.len(), TOTAL_PLAYERS);
         self.core.contests.get_mut(&contest_id).unwrap().board_assignment_override = Some(assignment);
@@ -799,21 +793,16 @@ impl Contest {
 
     fn start_game(&mut self, ctx: &mut Context, now: Instant, previous_players: Option<Vec<String>>) {
         self.reset_readiness();
-        let players_with_boards = self.assign_boards(previous_players);
-        let player_map = BughouseGame::make_player_map(players_with_boards.iter().cloned());
+        let players = self.assign_boards(previous_players);
         let game = BughouseGame::new(
-            self.chess_rules.clone(), self.bughouse_rules.clone(), player_map
+            self.chess_rules.clone(), self.bughouse_rules.clone(), &players
         );
-        let players_with_boards = players_with_boards.into_iter().map(|(p, board_idx)| {
-            ((*p).clone(), board_idx)
-        }).collect();
         self.init_scores();
         self.game_state = Some(GameState {
             game,
             game_start: None,
             preturns: HashMap::new(),
             chalkboard: Chalkboard::new(),
-            players_with_boards,
         });
         self.broadcast(ctx, &self.make_game_start_event(now, None));
         self.send_lobby_updated(ctx);  // update readiness flags
@@ -847,7 +836,7 @@ impl Contest {
         let player_bughouse_id = player_id.and_then(|id| game_state.game.find_player(&self.players[id].name));
         BughouseServerEvent::GameStarted {
             starting_position: game_state.game.starting_position().clone(),
-            players: game_state.players_with_boards.clone(),
+            players: game_state.game.players(),
             time: current_game_time(game_state, now),
             turn_log: game_state.game.turn_log().iter().map(|t| t.trim_for_sending()).collect(),
             preturn: player_bughouse_id.and_then(|id| game_state.preturns.get(&id)).cloned(),
@@ -867,22 +856,16 @@ impl Contest {
         self.players.iter_mut().for_each(|p| p.is_ready = false);
     }
 
-    fn assign_boards(&self, previous_players: Option<Vec<String>>)
-        -> Vec<(Rc<PlayerInGame>, BughouseBoard)>
-    {
+    fn assign_boards(&self, previous_players: Option<Vec<String>>) -> Vec<PlayerInGame> {
         if let Some(assignment) = &self.board_assignment_override {
-            return assignment.iter().map(|(name, player_id)| {
-                if let Some(player) = self.players.iter().find(|p| &p.name == name) {
+            for player_assignment in assignment {
+                if let Some(player) = self.players.iter().find(|p| p.name == player_assignment.name) {
                     if let Some(team) = player.fixed_team {
-                        assert_eq!(team, player_id.team());
+                        assert_eq!(team, player_assignment.id.team());
                     }
                 }
-                let player_in_game = Rc::new(PlayerInGame {
-                    name: name.clone(),
-                    team: player_id.team(),
-                });
-                (player_in_game, player_id.board_idx)
-            }).collect()
+            }
+            return assignment.clone();
         }
 
         let mut rng = rand::thread_rng();
@@ -891,10 +874,7 @@ impl Contest {
             Teaming::FixedTeams => {
                 for p in self.players.iter() {
                     let team = p.fixed_team.unwrap();
-                    players_per_team[team].push(Rc::new(PlayerInGame {
-                        name: p.name.clone(),
-                        team,
-                    }));
+                    players_per_team[team].push(p.name.clone());
                 }
             },
             Teaming::IndividualMode => {
@@ -926,21 +906,20 @@ impl Contest {
                 current_players.shuffle(&mut rng);
                 for team in Team::iter() {
                     for _ in 0..TOTAL_PLAYERS_PER_TEAM {
-                        players_per_team[team].push(Rc::new(PlayerInGame {
-                            name: current_players.pop().unwrap().clone(),
-                            team,
-                        }));
+                        players_per_team[team].push(current_players.pop().unwrap().clone());
                     }
                 }
             },
         }
-        players_per_team.into_values().flat_map(|mut team_players| {
+        players_per_team.into_iter().flat_map(|(team, mut team_players)| {
             team_players.shuffle(&mut rng);
-            let [a, b] = <[Rc<PlayerInGame>; TOTAL_PLAYERS_PER_TEAM]>::try_from(team_players).unwrap();
-            vec![
-                (a, BughouseBoard::A),
-                (b, BughouseBoard::B),
-            ]
+            BughouseBoard::iter().zip_eq(team_players.into_iter()).map(move |(board_idx, name)| PlayerInGame {
+                name,
+                id: BughousePlayerId {
+                    board_idx,
+                    force: get_bughouse_force(team, board_idx)
+                }
+            })
         }).collect()
     }
 }
@@ -1007,7 +986,7 @@ fn update_score_on_game_over(game: &BughouseGame, scores: &mut Scores) {
         Teaming::IndividualMode => {
             assert!(scores.per_team.is_empty());
             for p in game.players() {
-                *scores.per_player.entry(p.name.clone()).or_insert(0) += team_scores[p.team];
+                *scores.per_player.entry(p.name.clone()).or_insert(0) += team_scores[p.id.team()];
             }
         }
     }

@@ -9,7 +9,7 @@ use crate::clock::TimeControl;
 use crate::fen;
 use crate::force::Force;
 use crate::game::{TurnRecordExpanded, BughousePlayerId, BughouseBoard, BughouseGameStatus, BughouseGame};
-use crate::player::{Team, PlayerInGame};
+use crate::player::Team;
 use crate::rules::StartingPosition;
 
 
@@ -84,11 +84,6 @@ fn make_termination_string(game: &BughouseGame) -> &'static str {
     }
 }
 
-// Dummy player object. Will not appear anywhere in the produced PGN.
-fn dummy_player(team: Team) -> Rc<PlayerInGame> {
-    Rc::new(PlayerInGame{ name: format!("{:?}", team), team })
-}
-
 fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
     use BughouseBoard::*;
     use Force::*;
@@ -100,7 +95,8 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
             let starting_board = Board::new(
                 Rc::clone(game.chess_rules()),
                 Some(Rc::clone(game.bughouse_rules())),
-                enum_map!{ White => dummy_player(Team::Red), Black => dummy_player(Team::Blue) },
+                // Dummy names will not appear anywhere in the produced PGN.
+                enum_map!{ White => "White".to_owned(), Black => "Black".to_owned() },
                 game.starting_position()
             );
             let one_board = fen::starting_position_to_shredder_fen(&starting_board);
@@ -127,10 +123,10 @@ r#"[Event "Friendly Bughouse Match"]
         now.format(format_description!("[year].[month].[day]")).unwrap(),
         now.format(format_description!("[hour]:[minute]:[second]")).unwrap(),
         round,
-        game.board(A).player(White).name,
-        game.board(A).player(Black).name,
-        game.board(B).player(White).name,
-        game.board(B).player(Black).name,
+        game.board(A).player_name(White),
+        game.board(A).player_name(Black),
+        game.board(B).player_name(White),
+        game.board(B).player_name(Black),
         time_control_to_string(&game.chess_rules().time_control),
         variant,
         starting_position_fen,

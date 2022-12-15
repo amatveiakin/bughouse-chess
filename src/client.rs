@@ -1,5 +1,4 @@
 use std::collections::{HashMap, VecDeque};
-use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -346,9 +345,6 @@ impl ClientState {
                 contest.players = players;
             },
             GameStarted{ starting_position, players, time, turn_log, preturn, game_status, scores } => {
-                let player_map = BughouseGame::make_player_map(
-                    players.iter().map(|(p, board_idx)| (Rc::new(p.clone()), *board_idx))
-                );
                 let time_pair = if turn_log.is_empty() {
                     assert!(time.elapsed_since_start().is_zero());
                     None
@@ -357,7 +353,7 @@ impl ClientState {
                 };
                 let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameStarted: no contest in progress"))?;
                 let game = BughouseGame::new_with_starting_position(
-                    contest.chess_rules.clone(), contest.bughouse_rules.clone(), starting_position, player_map
+                    contest.chess_rules.clone(), contest.bughouse_rules.clone(), starting_position, &players
                 );
                 let my_id = match game.find_player(&contest.my_name) {
                     Some(id) => BughouseParticipantId::Player(id),

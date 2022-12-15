@@ -573,7 +573,7 @@ impl WebClient {
                 let name_node = document.get_existing_element_by_id(
                     &player_name_node_id(display_board_idx, player_idx)
                 )?;
-                let player_name = &board.player(force).name;
+                let player_name = board.player_name(force);
                 let player = contest.players.iter().find(|p| p.name == *player_name).unwrap();
                 let player_string = if game.status() == BughouseGameStatus::Active {
                     player_string(&player)

@@ -227,19 +227,19 @@ fn players(game: &GameState) -> Option<(String, String, String, String)> {
     let mut red_b = None;
     let mut blue_a = None;
     let mut blue_b = None;
-    for (player, board) in game.players_with_boards().iter() {
-        match (player.team, board) {
+    for PlayerInGame{ name, id } in game.game().players().iter() {
+        match (id.team(), id.board_idx) {
             (Team::Red, BughouseBoard::A) => {
-                red_a = Some(player.name.clone());
+                red_a = Some(name.clone());
             }
             (Team::Red, BughouseBoard::B) => {
-                red_b = Some(player.name.clone());
+                red_b = Some(name.clone());
             }
             (Team::Blue, BughouseBoard::A) => {
-                blue_a = Some(player.name.clone());
+                blue_a = Some(name.clone());
             }
             (Team::Blue, BughouseBoard::B) => {
-                blue_b = Some(player.name.clone());
+                blue_b = Some(name.clone());
             }
         }
     }
