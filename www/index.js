@@ -352,7 +352,7 @@ function execute_command(input) {
                     break;
                 }
                 case 'sound': {
-                    // TODO: Save Storage to a local storage.
+                    // TODO: Save settings to a local storage.
                     const expected_args = ['on:off:0:1:...:100'];
                     const [value] = get_args(args, expected_args);
                     switch (value) {

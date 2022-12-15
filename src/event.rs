@@ -27,7 +27,8 @@ pub enum BughouseServerEvent {
     LobbyUpdated {
         players: Vec<Player>,
     },
-    GameStarted {  // TODO: Rename to take reconnection into account
+    // Improvement potential: Rename `GameStarted` to take reconnection into account.
+    GameStarted {
         starting_position: EffectiveStartingPosition,
         players: Vec<(PlayerInGame, BughouseBoard)>,
         time: GameInstant,                // for re-connection

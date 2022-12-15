@@ -1,6 +1,3 @@
-// TODO: Shrink WASM file size.
-// TODO: Consider: stop using websys at all, do all DOM manipulations in JS.
-
 extern crate console_error_panic_hook;
 extern crate enum_map;
 extern crate instant;
@@ -161,8 +158,9 @@ impl JsEventGameExportReady {
 
 #[wasm_bindgen]
 pub struct WebClient {
-    // TODO: Consider: in order to store additional information that is only relevant
-    //   during game phase, add a generic `UserData` parameter to `ContestState::Game`.
+    // Improvement potential: Consider: in order to store additional information that
+    //   is only relevant during game phase, add a generic `UserData` parameter to
+    //   `ContestState::Game`. Could move `chalk_canvas` there, for example.
     state: ClientState,
     server_rx: mpsc::Receiver<BughouseClientEvent>,
 }
@@ -818,12 +816,11 @@ fn update_lobby(contest: &Contest) -> JsResult<()> {
     };
     let contest_id = &contest.contest_id;
     info_string.set_text_content(Some(&format!("Contest {contest_id}\n{player_info}")));
-    // TODO: Reset boards, clock, etc.
     Ok(())
 }
 
 // Note. Each `id` should unambiguously correspond to a fixed board.
-// TODO: Separate highlight layers based on z-order: put drag highlight above the rest.
+// TODO: Separate layer for drag highlight, to put it above last turn highlight.
 fn set_square_highlight(id: &str, board_idx: DisplayBoard, coord: Option<DisplayCoord>) -> JsResult<()> {
     let document = web_document();
     if let Some(coord) = coord {
