@@ -1,10 +1,5 @@
 // TODO: Shrink WASM file size.
 // TODO: Consider: stop using websys at all, do all DOM manipulations in JS.
-// TODO: Some additional indication that it's your turn outside of clock area.
-//   Maybe even change background (add vignette) or something like that.
-//   Better yet: subtler change by default and throbbing vignette on low time
-//   like in action games!
-
 
 extern crate console_error_panic_hook;
 extern crate enum_map;
@@ -607,6 +602,11 @@ impl WebClient {
                 self.set_turn_highlights("pre", pre_turn_highlight, display_board_idx)?;
             }
         }
+        if is_clock_ticking(&game, my_id) {
+            document.body()?.class_list().add_1("active-player")?
+        } else {
+            document.body()?.class_list().remove_1("active-player")?
+        }
         self.repaint_chalk()?;
         if alt_game.status() != BughouseGameStatus::Active {
             // TODO: Print "victory / defeat" instead of team color.
@@ -958,6 +958,14 @@ fn render_starting() -> JsResult<()> {
     render_reserve(Black, Secondary, Bottom, draggable, piece_kind_sep, reserve_iter.clone())?;
     render_reserve(White, Secondary, Top, draggable, piece_kind_sep, reserve_iter.clone())?;
     Ok(())
+}
+
+// Similar to `BughouseGame.player_is_active`, but returns false before game started.
+fn is_clock_ticking(game: &BughouseGame, participant_id: BughouseParticipantId) -> bool {
+    let BughouseParticipantId::Player(player_id) = participant_id else {
+        return false;
+    };
+    game.board(player_id.board_idx).clock().active_force() == Some(player_id.force)
 }
 
 // TODO: Dedup against console client
