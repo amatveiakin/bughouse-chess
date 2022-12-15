@@ -442,14 +442,7 @@ impl WebClient {
             remove_all_children(&layer)?;
         }
         for (player_name, drawing) in chalkboard.all_drawings() {
-            let owner = if self.state.my_name() == Some(player_name) {
-                ParticipantRelation::Myself
-            } else {
-                alt_game.game_confirmed().find_player(player_name).map_or(
-                    ParticipantRelation::Other,
-                    |id| my_id.relation_to(BughouseParticipantId::Player(id))
-                )
-            };
+            let owner = self.state.relation_to(player_name);
             for board_idx in DisplayBoard::iter() {
                 for mark in drawing.board(get_board_index(board_idx, my_id)) {
                     self.render_chalk_mark(board_idx, owner, mark)?;
@@ -458,7 +451,7 @@ impl WebClient {
         }
         if let Some(canvas) = self.state.chalk_canvas() {
             if let Some((board_idx, mark)) = canvas.current_painting() {
-                self.render_chalk_mark(*board_idx, ParticipantRelation::Myself, mark)?;
+                self.render_chalk_mark(*board_idx, PlayerRelation::Myself, mark)?;
             }
         }
         Ok(())
@@ -661,9 +654,9 @@ impl WebClient {
     }
 
     fn render_chalk_mark(
-        &self, board_idx: DisplayBoard, owner: ParticipantRelation, mark: &ChalkMark
+        &self, board_idx: DisplayBoard, owner: PlayerRelation, mark: &ChalkMark
     ) -> JsResult<()> {
-        use ParticipantRelation::*;
+        use PlayerRelation::*;
         let Some(GameState{ alt_game, .. }) = self.state.game_state() else {
             return Ok(());
         };
@@ -1135,7 +1128,7 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
 fn generate_svg_markers() -> JsResult<()> {
     let document = web_document();
     let svg_defs = document.get_existing_element_by_id("svg-defs")?;
-    for relation in ParticipantRelation::iter() {
+    for relation in PlayerRelation::iter() {
         // These definition are identical, but having multiple copies allows us to color them
         // differently in css. Yep, that's the only way to have multiple arrowhear colors in SVG
         // (although it might be changed in SVG2):
@@ -1236,25 +1229,25 @@ fn chalk_drawing_layer_id(board_idx: DisplayBoard) -> String {
     format!("chalk-drawing-layer-{}", board_id(board_idx))
 }
 
-fn participant_relation_id(owner: ParticipantRelation) -> &'static str {
+fn participant_relation_id(owner: PlayerRelation) -> &'static str {
     match owner {
-        ParticipantRelation::Myself => "myself",
-        ParticipantRelation::Opponent => "opponent",
-        ParticipantRelation::Partner => "partner",
-        ParticipantRelation::Diagonal => "diagonal",
-        ParticipantRelation::Other => "other",
+        PlayerRelation::Myself => "myself",
+        PlayerRelation::Opponent => "opponent",
+        PlayerRelation::Partner => "partner",
+        PlayerRelation::Diagonal => "diagonal",
+        PlayerRelation::Other => "other",
     }
 }
 
-fn arrowhead_id(owner: ParticipantRelation) -> String {
+fn arrowhead_id(owner: PlayerRelation) -> String {
     format!("arrowhead-{}", participant_relation_id(owner))
 }
 
-fn chalk_line_color_class(owner: ParticipantRelation) -> String {
+fn chalk_line_color_class(owner: PlayerRelation) -> String {
     format!("chalk-line-{}", participant_relation_id(owner))
 }
 
-fn chalk_square_color_class(owner: ParticipantRelation) -> String {
+fn chalk_square_color_class(owner: PlayerRelation) -> String {
     format!("chalk-square-{}", participant_relation_id(owner))
 }
 

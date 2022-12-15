@@ -11,7 +11,7 @@ use crate::chalk::{Chalkboard, ChalkCanvas, ChalkDrawing, ChalkMark};
 use crate::clock::{GameInstant, WallGameTimePair};
 use crate::display::{DisplayBoard, get_board_index};
 use crate::force::Force;
-use crate::game::{TurnRecord, BughouseParticipantId, BughouseObserserId, BughouseBoard, BughouseGameStatus, BughouseGame};
+use crate::game::{TurnRecord, BughouseParticipantId, BughouseObserserId, PlayerRelation, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerformance};
 use crate::heartbeat::{Heart, HeartbeatOutcome};
 use crate::meter::{Meter, MeterBox, MeterStats};
@@ -180,6 +180,7 @@ impl ClientState {
     fn game_state_mut(&mut self) -> Option<&mut GameState> { self.contest_mut().and_then(|c| c.game_state.as_mut()) }
     // TODO: Reduce public mutability. This is used only for drag&drop, so limit the mutable API to that.
     pub fn alt_game_mut(&mut self) -> Option<&mut AlteredGame> { self.game_state_mut().map(|s| &mut s.alt_game) }
+
     pub fn my_id(&self) -> Option<BughouseParticipantId> { self.game_state().map(|s| s.alt_game.my_id()) }
     pub fn my_name(&self) -> Option<&str> {
         match &self.contest_state {
@@ -189,6 +190,22 @@ impl ClientState {
             ContestState::Connected(Contest{ my_name, .. }) => Some(&my_name),
         }
     }
+    pub fn relation_to(&self, name: &str) -> PlayerRelation {
+        if self.my_name() == Some(name) {
+            return PlayerRelation::Myself;
+        }
+        let Some(GameState{ alt_game, .. }) = self.game_state() else {
+            return PlayerRelation::Other;
+        };
+        let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() else {
+            return PlayerRelation::Other;
+        };
+        let Some(other_player_id) = alt_game.game_confirmed().find_player(name) else {
+            return PlayerRelation::Other;
+        };
+        my_player_id.relation_to(other_player_id)
+    }
+
     pub fn chalk_canvas(&self) -> Option<&ChalkCanvas> { self.game_state().map(|s| &s.chalk_canvas) }
     pub fn chalk_canvas_mut(&mut self) -> Option<&mut ChalkCanvas> { self.game_state_mut().map(|s| &mut s.chalk_canvas) }
 

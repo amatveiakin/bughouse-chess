@@ -148,6 +148,8 @@ pub struct BughouseObserserId {
     pub force: Force,
 }
 
+// Describes a participant who is either playing or observing the game. This is not really an
+// ID in that it's not unique: many observers can view the game through the same lens.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum BughouseParticipantId {
     Player(BughousePlayerId),
@@ -155,7 +157,7 @@ pub enum BughouseParticipantId {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
-pub enum ParticipantRelation {
+pub enum PlayerRelation {
     Myself,
     Opponent,
     Partner,
@@ -171,6 +173,17 @@ impl BughousePlayerId {
         BughousePlayerId {
             board_idx: self.board_idx,
             force: self.force.opponent(),
+        }
+    }
+
+    pub fn relation_to(self, other_player: BughousePlayerId) -> PlayerRelation {
+        let same_board = self.board_idx == other_player.board_idx;
+        let same_team = self.team() == other_player.team();
+        match (same_board, same_team) {
+            (true, true) => PlayerRelation::Myself,
+            (true, false) => PlayerRelation::Opponent,
+            (false, true) => PlayerRelation::Partner,
+            (false, false) => PlayerRelation::Diagonal,
         }
     }
 }
@@ -190,27 +203,6 @@ impl BughouseParticipantId {
         match self {
             Self::Player(id) => id.force,
             Self::Observer(id) => id.force,
-        }
-    }
-
-    pub fn relation_to(self, other_party: BughouseParticipantId) -> ParticipantRelation {
-        if self == other_party {
-            // Self is still self even if it's not a player.
-            return ParticipantRelation::Myself;
-        }
-        let BughouseParticipantId::Player(p1) = self else {
-            return ParticipantRelation::Other;
-        };
-        let BughouseParticipantId::Player(p2) = other_party else {
-            return ParticipantRelation::Other;
-        };
-        let same_board = p1.board_idx == p2.board_idx;
-        let same_team = p1.team() == p2.team();
-        match (same_board, same_team) {
-            (true, true) => ParticipantRelation::Myself,
-            (true, false) => ParticipantRelation::Opponent,
-            (false, true) => ParticipantRelation::Partner,
-            (false, false) => ParticipantRelation::Diagonal,
         }
     }
 }
