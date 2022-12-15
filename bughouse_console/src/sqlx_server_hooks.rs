@@ -87,6 +87,7 @@ where
     for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
 {
     fn create_tables(pool: &sqlx::Pool<DB>) -> Result<(), Box<dyn std::error::Error>> {
+        // TODO: Include contest_id in finished_games.
         async_std::task::block_on(
             sqlx::query(
                 "CREATE TABLE IF NOT EXISTS finished_games (
