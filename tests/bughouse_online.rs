@@ -14,7 +14,6 @@ use std::time::Duration;
 use itertools::Itertools;
 
 use bughouse_chess::*;
-use bughouse_chess::client::TurnCommandError::IllegalTurn;
 use common::*;
 
 
@@ -122,7 +121,7 @@ impl Client {
         self.state.refresh();
         (something_changed, Ok(()))
     }
-    fn make_turn(&mut self, turn: impl AutoTurnInput) -> Result<(), client::TurnCommandError> {
+    fn make_turn(&mut self, turn: impl AutoTurnInput) -> Result<(), TurnError> {
         self.state.make_turn(turn.to_turn_input())
     }
 }
@@ -305,7 +304,7 @@ fn play_online_misc() {
     world.process_all_events();
     assert!(world[cl1].state.game_state().is_some());
 
-    assert_eq!(world[cl1].make_turn("e5").unwrap_err(), IllegalTurn(TurnError::ImpossibleTrajectory));
+    assert_eq!(world[cl1].make_turn("e5").unwrap_err(), TurnError::ImpossibleTrajectory);
     world[cl1].make_turn("e4").unwrap();
     world.process_all_events();
 

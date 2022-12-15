@@ -231,15 +231,12 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                                 let turn_input = TurnInput::Algebraic(keyboard_input.clone());
                                 command_error = match client_state.make_turn(turn_input) {
                                     Ok(()) => None,
-                                    Err(TurnCommandError::IllegalTurn(TurnError::WrongTurnOrder)) => {
+                                    Err(TurnError::WrongTurnOrder) => {
                                         keep_input = true;
                                         None
                                     },
-                                    Err(TurnCommandError::IllegalTurn(err)) => {
+                                    Err(err) => {
                                         Some(format!("Illegal turn '{}': {:?}", keyboard_input, err))
-                                    },
-                                    Err(TurnCommandError::NoGameInProgress) => {
-                                        Some("Cannot make turn: no game in progress".to_owned())
                                     },
                                 }
                             }

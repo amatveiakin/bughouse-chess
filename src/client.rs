@@ -21,12 +21,6 @@ use crate::rules::{ChessRules, BughouseRules};
 use crate::scores::Scores;
 
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum TurnCommandError {
-    IllegalTurn(TurnError),
-    NoGameInProgress,  // TODO: Consider collapsing this into TurnError
-}
-
 #[derive(Clone, Copy, Debug)]
 pub enum SubjectiveGameResult {
     Victory,
@@ -265,14 +259,12 @@ impl ClientState {
         self.update_low_time_warnings(true);
     }
 
-    pub fn make_turn(&mut self, turn_input: TurnInput) -> Result<(), TurnCommandError> {
-        let game_state = self.game_state_mut().ok_or(TurnCommandError::NoGameInProgress)?;
+    pub fn make_turn(&mut self, turn_input: TurnInput) -> Result<(), TurnError> {
+        let game_state = self.game_state_mut().ok_or(TurnError::NoGameInProgress)?;
         let GameState{ ref mut alt_game, time_pair, ref mut awaiting_turn_confirmation_since, .. } = game_state;
         let now = Instant::now();
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
-        let mode = alt_game.try_local_turn(turn_input.clone(), game_now).map_err(|err| {
-            TurnCommandError::IllegalTurn(err)
-        })?;
+        let mode = alt_game.try_local_turn(turn_input.clone(), game_now)?;
         if mode == TurnMode::Normal {
             *awaiting_turn_confirmation_since = Some(now);
         }

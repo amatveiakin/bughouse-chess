@@ -484,6 +484,7 @@ pub enum TurnError {
     DropPosition,
     DropBlocked,
     DropAggression,
+    NoGameInProgress,
     GameOver,
 }
 
