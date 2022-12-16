@@ -520,6 +520,12 @@ impl WebClient {
         let game = alt_game.local_game();
         let my_id = alt_game.my_id();
         for (board_idx, board) in game.boards() {
+            let is_piece_draggable = |force| {
+                let BughouseParticipantId::Player(my_player_id) = my_id else {
+                    return false;
+                };
+                board_idx == my_player_id.board_idx && force == my_player_id.force
+            };
             let display_board_idx = get_display_board_index(board_idx, my_id);
             let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
             let piece_layer = document.get_existing_element_by_id(&piece_layer_id(display_board_idx))?;
@@ -545,11 +551,7 @@ impl WebClient {
                     node.set_attribute("y", &pos.y.to_string())?;
                     node.set_attribute("href", &filename)?;
                     node.set_attribute("data-bughouse-location", &coord.to_algebraic())?;
-                    let mut draggable = false;
-                    if let BughouseParticipantId::Player(my_player_id) = my_id {
-                        draggable = board_idx == my_player_id.board_idx && piece.force == my_player_id.force;
-                    }
-                    if draggable {
+                    if is_piece_draggable(piece.force) {
                         node.set_attribute("class", "draggable")?;
                     } else {
                         node.remove_attribute("class")?;
@@ -573,7 +575,8 @@ impl WebClient {
                     player_string_with_readiness(&player)
                 };
                 name_node.set_text_content(Some(&player_string));
-                update_reserve(board.reserve(force), force, display_board_idx, player_idx)?;
+                let is_draggable = is_piece_draggable(force);
+                update_reserve(board.reserve(force), force, display_board_idx, player_idx, is_draggable)?;
             }
             let latest_turn = game.turn_log().iter().rev()
                 .find(|record| record.player_id.board_idx == board_idx);
@@ -918,15 +921,14 @@ fn render_reserve(
     Ok(())
 }
 
-fn update_reserve(reserve: &Reserve, force: Force, board_idx: DisplayBoard, player_idx: DisplayPlayer)
-    -> JsResult<()>
-{
-    let is_me = (board_idx == DisplayBoard::Primary) && (player_idx == DisplayPlayer::Bottom);
+fn update_reserve(
+    reserve: &Reserve, force: Force, board_idx: DisplayBoard, player_idx: DisplayPlayer, is_draggable: bool
+) -> JsResult<()> {
     let piece_kind_sep = 1.0;
     let reserve_iter = reserve.iter()
         .filter(|(kind, _)| *kind != PieceKind::King)
         .map(|(piece_kind, &amount)| (piece_kind, amount));
-    render_reserve(force, board_idx, player_idx, is_me, piece_kind_sep, reserve_iter)
+    render_reserve(force, board_idx, player_idx, is_draggable, piece_kind_sep, reserve_iter)
 }
 
 fn render_starting() -> JsResult<()> {
