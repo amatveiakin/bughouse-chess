@@ -83,17 +83,17 @@ svg {
 body.observer #page {
   display: grid;
   grid-template-areas:
-    "   fill-a       fill-x  prim-rsrv-top   fill-y   scnd-rsrv-top  fill-w      fill-p    "
-    "prim-name-top   fill-x  prim-rsrv-top   fill-y   scnd-rsrv-top  fill-w   scnd-name-top"
-    "prim-clock-top  fill-x   prim-board     fill-y    scnd-board    fill-w  scnd-clock-top"
-    "   fill-b       fill-x   prim-board     fill-y    scnd-board    fill-w      fill-q    "
-    "   fill-b       fill-x   prim-board    scr-team   scnd-board    fill-w      fill-q    "
-    "   fill-b       fill-x   prim-board     fill-z    scnd-board    fill-w      fill-q    "
-    "prim-clock-bot  fill-x   prim-board     fill-z    scnd-board    fill-w  scnd-clock-bot"
-    "prim-name-bot   fill-x  prim-rsrv-bot   fill-z   scnd-rsrv-bot  fill-w   scnd-name-bot"
-    "   fill-c       fill-x  prim-rsrv-bot   fill-z   scnd-rsrv-bot  fill-w  scr-individual"
-    "   fill-c       fill-x      info        fill-z     command      fill-w  scr-individual"
-    "   fill-c       fill-x      info        fill-z      fill-m      fill-w  scr-individual"
+    "      .         .  prim-rsrv-top     .      scnd-rsrv-top  .        .       "
+    "prim-name-top   .  prim-rsrv-top     .      scnd-rsrv-top  .   scnd-name-top"
+    "prim-clock-top  .   prim-board       .       scnd-board    .  scnd-clock-top"
+    "      .         .   prim-board       .       scnd-board    .        .       "
+    "      .         .   prim-board    scr-team   scnd-board    .        .       "
+    "      .         .   prim-board       .       scnd-board    .        .       "
+    "prim-clock-bot  .   prim-board       .       scnd-board    .  scnd-clock-bot"
+    "prim-name-bot   .  prim-rsrv-bot     .      scnd-rsrv-bot  .   scnd-name-bot"
+    "      .         .  prim-rsrv-bot     .      scnd-rsrv-bot  .  scr-individual"
+    "      .         .      info          .        command      .  scr-individual"
+    "      .         .      info          .           .         .  scr-individual"
   ;
   grid-template-columns:
     minmax(3em, 1fr)
