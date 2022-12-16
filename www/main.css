@@ -563,7 +563,7 @@ dialog input:invalid:not(:placeholder-shown) {
   color: red;
 }
 
-#join-contest-id:not(:placeholder-shown) {
+#jc-contest-id:not(:placeholder-shown) {
   /* This is of course a purely visual change. Actual input should be uppercased in JS. */
   text-transform: uppercase;
 }
