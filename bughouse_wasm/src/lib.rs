@@ -598,6 +598,7 @@ impl WebClient {
                     .map(|record| &record.turn_expanded);
                 self.set_turn_highlights("pre", pre_turn_highlight, display_board_idx)?;
             }
+            update_turn_log(&game, board_idx, display_board_idx)?;
         }
         if is_clock_ticking(&game, my_id) {
             document.body()?.class_list().add_1("active-player")?
@@ -754,6 +755,9 @@ impl WebDocument {
         Ok(element)
     }
 
+    pub fn create_element(&self, local_name: &str) -> JsResult<web_sys::Element> {
+        self.0.create_element(local_name)
+    }
     pub fn create_svg_element(&self, local_name: &str) -> JsResult<web_sys::Element> {
         self.0.create_element_ns(Some("http://www.w3.org/2000/svg"), local_name)
     }
@@ -769,6 +773,16 @@ fn remove_all_children(node: &web_sys::Node) -> JsResult<()> {
     }
     Ok(())
 }
+
+fn is_scrolled_to_bottom(e: &web_sys::Element) -> bool {
+    let eps = 1;
+    e.scroll_top() >= e.scroll_height() - e.client_height() - eps
+}
+
+fn scroll_to_bottom(e: &web_sys::Element) {
+    e.set_scroll_top(e.scroll_height() - e.client_height());
+}
+
 
 #[wasm_bindgen]
 pub fn init_page() -> JsResult<()> {
@@ -1037,6 +1051,32 @@ fn render_grids(perspective: Perspective) -> JsResult<()> {
     Ok(())
 }
 
+fn update_turn_log(
+    game: &BughouseGame, board_idx: BughouseBoard, display_board_idx: DisplayBoard
+) -> JsResult<()> {
+    let document = web_document();
+    let log_container_node = document.get_existing_element_by_id(&turn_log_container_node_id(display_board_idx))?;
+    let log_node = document.get_existing_element_by_id(&turn_log_node_id(display_board_idx))?;
+    let was_at_bottom = is_scrolled_to_bottom(&log_container_node);
+    remove_all_children(&log_node)?;
+    for record in game.turn_log().iter() {
+        if record.player_id.board_idx == board_idx {
+            let force = force_id(record.player_id.force);
+            let node = document.create_element("div")?;
+            node.set_text_content(Some(&record.to_log_entry()));
+            node.set_attribute("class", &format!("turn-record turn-record-{force}"))?;
+            log_node.append_child(&node)?;
+        }
+    }
+    // Keep log scrolled to bottom if it's already there. It's also possible to snap scrolling
+    // with CSS `scroll-snap-type` (https://stackoverflow.com/a/60546366/3092679), but the snap
+    // range is too large (especially in Firefox), so it becomes very hard to browse the log.
+    if was_at_bottom {
+        scroll_to_bottom(&log_container_node);
+    }
+    Ok(())
+}
+
 fn setup_participation_mode(observer: bool) -> JsResult<()> {
     let body = web_document().body()?;
     if observer {
@@ -1179,6 +1219,13 @@ fn turn_highlights(turn_expanded: &TurnExpanded) -> Vec<(&'static str, Coord)> {
     highlights
 }
 
+fn force_id(force: Force) -> &'static str {
+    match force {
+        Force::White => "white",
+        Force::Black => "black",
+    }
+}
+
 fn board_id(idx: DisplayBoard) -> &'static str {
     match idx {
         DisplayBoard::Primary => "primary",
@@ -1219,6 +1266,14 @@ fn reserve_container_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> S
 
 fn reserve_node_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String {
     format!("reserve-group-{}-{}", board_id(board_idx), player_id(player_idx))
+}
+
+fn turn_log_container_node_id(board_idx: DisplayBoard) -> String {
+    format!("turn-log-container-{}", board_id(board_idx))
+}
+
+fn turn_log_node_id(board_idx: DisplayBoard) -> String {
+    format!("turn-log-{}", board_id(board_idx))
 }
 
 fn piece_layer_id(board_idx: DisplayBoard) -> String {

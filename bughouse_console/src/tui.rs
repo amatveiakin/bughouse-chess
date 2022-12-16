@@ -56,7 +56,7 @@ fn render_reserve(reserve: &Reserve, force: Force) -> String {
     let mut stacks = Vec::new();
     for (piece_kind, &amount) in reserve.iter() {
         if amount > 0 {
-            stacks.push(String::from(to_unicode_char(piece_kind, force)).repeat(amount.into()));
+            stacks.push(String::from(piece_to_pictogram(piece_kind, force)).repeat(amount.into()));
         }
     }
     format!(
@@ -115,7 +115,7 @@ fn render_grid(grid: &Grid, orientation: BoardOrientation) -> String {
                     let color_idx = (coord.row.to_zero_based() + coord.col.to_zero_based()) % 2;
                     colors[usize::from(color_idx)].apply_to(
                         format_square(match grid[coord] {
-                            Some(piece) => to_unicode_char(piece.kind, piece.force),
+                            Some(piece) => piece_to_pictogram(piece.kind, piece.force),
                             None => ' ',
                         })
                     ).to_string()
@@ -130,23 +130,4 @@ fn render_grid(grid: &Grid, orientation: BoardOrientation) -> String {
 
 fn format_square(ch: char) -> String {
     format!(" {} ", ch)
-}
-
-fn to_unicode_char(piece_kind: PieceKind, force: Force) -> char {
-    use self::PieceKind::*;
-    use self::Force::*;
-    match (force, piece_kind) {
-        (White, Pawn) => '♙',
-        (White, Knight) => '♘',
-        (White, Bishop) => '♗',
-        (White, Rook) => '♖',
-        (White, Queen) => '♕',
-        (White, King) => '♔',
-        (Black, Pawn) => '♟',
-        (Black, Knight) => '♞',
-        (Black, Bishop) => '♝',
-        (Black, Rook) => '♜',
-        (Black, Queen) => '♛',
-        (Black, King) => '♚',
-    }
 }

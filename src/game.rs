@@ -7,10 +7,10 @@ use itertools::Itertools;
 use serde::{Serialize, Deserialize};
 use strum::{EnumIter, IntoEnumIterator};
 
-use crate::TurnFacts;
-use crate::board::{Board, Reserve, Turn, TurnInput, TurnExpanded, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
+use crate::board::{Board, Reserve, Turn, TurnInput, TurnExpanded, TurnFacts, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
 use crate::clock::GameInstant;
 use crate::force::Force;
+use crate::piece::piece_to_pictogram;
 use crate::player::Team;
 use crate::rules::{ChessRules, BughouseRules};
 use crate::starter::{EffectiveStartingPosition, generate_starting_position};
@@ -41,6 +41,20 @@ impl TurnRecordExpanded {
             player_id: self.player_id,
             turn_algebraic: self.turn_expanded.algebraic.clone(),
             time: self.time,
+        }
+    }
+
+    pub fn to_log_entry(&self) -> String {
+        let algebraic = &self.turn_expanded.algebraic;
+        let s = if let Some(capture) = self.turn_expanded.capture {
+            let capture = piece_to_pictogram(capture.piece_kind, capture.force);
+            format!("{algebraic} ·{capture}")
+        } else {
+            format!("{algebraic}")
+        };
+        match self.mode {
+            TurnMode::Normal => s,
+            TurnMode::Preturn => format!("({s})"),
         }
     }
 }
@@ -351,7 +365,7 @@ impl BughouseGame {
         let board = &mut self.boards[board_idx];
         let player_id = BughousePlayerId{ board_idx, force: board.turn_owner(mode) };
         let turn = board.parse_turn_input(turn_input, mode)?;
-        let turn_algebraic = board.turn_to_algebraic(turn)?;
+        let turn_algebraic = board.turn_to_algebraic(turn, mode)?;
         let turn_facts = board.try_turn(turn, mode, now)?;
         let other_board = &mut self.boards[board_idx.other()];
         match mode {

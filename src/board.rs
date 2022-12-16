@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use enum_map::{EnumMap, enum_map};
-use itertools::Itertools;
+use itertools::{Itertools, iproduct};
 use serde::{Serialize, Deserialize};
 
 use crate::once_cell_regex;
@@ -1042,34 +1042,60 @@ impl Board {
 
     // Renders turn as algebraic notation, PGN-style, see
     //   http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
-    // Improvement potential. Omit `from` square when possible.
-    // Improvement potential. Allow to choose formatting style (e.g. "0-0" or "O-O").
-    pub fn turn_to_algebraic(&self, turn: Turn) -> Result<String, TurnError> {
-        let notation = self.turn_to_algebraic_impl(turn)?;
+    //
+    // TODO: Check and mate annotations.
+    // TODO: Formatting options:
+    //   - Short or long algebraic;
+    //   - Unicode: None / Just characters / Characters and pieces;
+    //   Allow to specify options when exporting PGN.
+    pub fn turn_to_algebraic(&self, turn: Turn, mode: TurnMode) -> Result<String, TurnError> {
+        let notation = self.turn_to_algebraic_impl(turn, mode)?;
         // Improvement potential. Remove when sufficiently tested.
-        if let Ok(turn_parsed) = self.algebraic_to_turn(&notation, TurnMode::Normal) {
+        if let Ok(turn_parsed) = self.algebraic_to_turn(&notation, mode) {
             assert_eq!(turn_parsed, turn, "{}", notation);
         }
         Ok(notation)
     }
 
-    fn turn_to_algebraic_impl(&self, turn: Turn) -> Result<String, TurnError> {
+    fn turn_to_algebraic_impl(&self, turn: Turn, mode: TurnMode) -> Result<String, TurnError> {
         match turn {
             Turn::Move(mv) => {
-                let piece = self.grid[mv.from].ok_or(TurnError::PieceMissing)?;
-                let capture = get_capture(&self.grid, mv.from, mv.to, self.en_passant_target);
-                let promotion = match mv.promote_to {
-                    Some(piece_kind) => format!("={}", piece_kind.to_full_algebraic()),
-                    None => "".to_owned(),
-                };
-                Ok(format!(
-                    "{}{}{}{}{}",
-                    piece.kind.to_algebraic_for_move(),
-                    mv.from.to_algebraic(),
-                    if capture.is_some() { "x" } else { "" },
-                    mv.to.to_algebraic(),
-                    promotion,
-                ))
+                let mut error = None;
+                for (&include_col, &include_row) in iproduct!(&[false, true], &[false, true]) {
+                    let piece = self.grid[mv.from].ok_or(TurnError::PieceMissing)?;
+                    let capture = get_capture(&self.grid, mv.from, mv.to, self.en_passant_target);
+                    let promotion = match mv.promote_to {
+                        Some(piece_kind) => format!("={}", piece_kind.to_full_algebraic()),
+                        None => "".to_owned(),
+                    };
+                    let mut from = String::new();
+                    if include_col {
+                        from.push(mv.from.col.to_algebraic())
+                    };
+                    if include_row {
+                        from.push(mv.from.row.to_algebraic())
+                    };
+                    let algebraic = format!(
+                        "{}{}{}{}{}",
+                        piece.kind.to_algebraic_for_move(),
+                        from,
+                        if capture.is_some() { "×" } else { "" },
+                        mv.to.to_algebraic(),
+                        promotion,
+                    );
+                    match self.algebraic_to_turn(&algebraic, mode) {
+                        Err(e) => {
+                            error = Some(e);
+                        },
+                        Ok(turn_parsed) => {
+                            assert_eq!(turn_parsed, turn);
+                            return Ok(algebraic);
+                        }
+                    }
+                }
+                let error = error.unwrap();
+                assert_ne!(error, TurnError::AmbiguousNotation);
+                Err(error)
             },
             Turn::Drop(drop) => {
                 Ok(format!("{}@{}", drop.piece_kind.to_full_algebraic(), drop.to.to_algebraic()))

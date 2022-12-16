@@ -1,6 +1,7 @@
 body {
   --sq-size-primary: min(5vw, 9vh);
   --sq-size-secondary: calc(var(--sq-size-primary) / 1.5);
+  --board-size-primary: calc(var(--sq-size-primary) * 8);
   --board-size-secondary: calc(var(--sq-size-secondary) * 8);
   --reserve-height-in-squares: 1.5;
 
@@ -10,10 +11,12 @@ body {
   --color-chalk-diagonal: #9a118b;
   --color-chalk-other: #404040;
   --color-chalk-other-light: #808080;
+  --color-scrollbar: #688526;
 }
 body.observer {
   --sq-size-primary: min(4.4vw, 7.8vh);
   --sq-size-secondary: var(--sq-size-primary);
+  --color-scrollbar: #71755e;
 }
 
 html, body {
@@ -48,33 +51,39 @@ svg {
 #page {
   display: grid;
   grid-template-areas:
-    "      .         .  prim-rsrv-top     .           .         .        .       "
-    "      .         .  prim-rsrv-top     .      scnd-rsrv-top  .        .       "
-    "prim-name-top   .  prim-rsrv-top     .      scnd-rsrv-top  .   scnd-name-top"
-    "prim-clock-top  .   prim-board       .       scnd-board    .  scnd-clock-top"
-    "      .         .   prim-board       .       scnd-board    .        .       "
-    "      .         .   prim-board    scr-team   scnd-board    .        .       "
-    "      .         .   prim-board       .       scnd-board    .        .       "
-    "      .         .   prim-board       .       scnd-board    .  scnd-clock-bot"
-    "      .         .   prim-board       .      scnd-rsrv-bot  .   scnd-name-bot"
-    "      .         .   prim-board       .      scnd-rsrv-bot  .        .       "
-    "      .         .   prim-board       .          info       .  scr-individual"
-    "prim-clock-bot  .   prim-board       .          info       .  scr-individual"
-    "prim-clock-bot  .   prim-board       .         command     .  scr-individual"
-    "prim-name-bot   .  prim-rsrv-bot     .           .         .  scr-individual"
-    "      .         .  prim-rsrv-bot     .           .         .  scr-individual"
+    ".        .         .  prim-rsrv-top     .           .         .        .         ."
+    ".        .         .  prim-rsrv-top     .      scnd-rsrv-top  .        .         ."
+    ".  prim-name-top   .  prim-rsrv-top     .      scnd-rsrv-top  .   scnd-name-top  ."
+    ".  prim-clock-top  .   prim-board       .       scnd-board    .  scnd-clock-top  ."
+    ".     prim-log     .   prim-board       .       scnd-board    .     scnd-log     ."
+    ".     prim-log     .   prim-board    scr-team   scnd-board    .     scnd-log     ."
+    ".     prim-log     .   prim-board       .       scnd-board    .     scnd-log     ."
+    ".     prim-log     .   prim-board       .       scnd-board    .  scnd-clock-bot  ."
+    ".     prim-log     .   prim-board       .      scnd-rsrv-bot  .   scnd-name-bot  ."
+    ".     prim-log     .   prim-board       .      scnd-rsrv-bot  .        .         ."
+    ".     prim-log     .   prim-board       .          info       .  scr-individual  ."
+    ".  prim-clock-bot  .   prim-board       .          info       .  scr-individual  ."
+    ".  prim-clock-bot  .   prim-board       .         command     .  scr-individual  ."
+    ".  prim-name-bot   .  prim-rsrv-bot     .           .         .  scr-individual  ."
+    ".        .         .  prim-rsrv-bot     .           .         .  scr-individual  ."
   ;
   grid-template-columns:
-    minmax(3em, 1fr)
+    1fr
+    auto
     calc(var(--sq-size-primary) * 0.4)
     auto
     calc(var(--sq-size-primary) * 1.2)
     auto
     calc(var(--sq-size-primary) * 0.4)
-    minmax(3em, 1fr)
+    auto
+    1fr
   ;
   grid-template-rows:
-    repeat(10, auto)
+    repeat(3, auto)
+    4.8em
+    repeat(3, auto)
+    4.5em
+    auto
     1fr
     repeat(4, auto)
   ;
@@ -83,29 +92,35 @@ svg {
 body.observer #page {
   display: grid;
   grid-template-areas:
-    "      .         .  prim-rsrv-top     .      scnd-rsrv-top  .        .       "
-    "prim-name-top   .  prim-rsrv-top     .      scnd-rsrv-top  .   scnd-name-top"
-    "prim-clock-top  .   prim-board       .       scnd-board    .  scnd-clock-top"
-    "      .         .   prim-board       .       scnd-board    .        .       "
-    "      .         .   prim-board    scr-team   scnd-board    .        .       "
-    "      .         .   prim-board       .       scnd-board    .        .       "
-    "prim-clock-bot  .   prim-board       .       scnd-board    .  scnd-clock-bot"
-    "prim-name-bot   .  prim-rsrv-bot     .      scnd-rsrv-bot  .   scnd-name-bot"
-    "      .         .  prim-rsrv-bot     .      scnd-rsrv-bot  .  scr-individual"
-    "      .         .      info          .        command      .  scr-individual"
-    "      .         .      info          .           .         .  scr-individual"
+    ".        .         .  prim-rsrv-top     .      scnd-rsrv-top  .        .         ."
+    ".  prim-name-top   .  prim-rsrv-top     .      scnd-rsrv-top  .   scnd-name-top  ."
+    ".  prim-clock-top  .   prim-board       .       scnd-board    .  scnd-clock-top  ."
+    ".     prim-log     .   prim-board       .       scnd-board    .     scnd-log     ."
+    ".     prim-log     .   prim-board    scr-team   scnd-board    .     scnd-log     ."
+    ".     prim-log     .   prim-board       .       scnd-board    .     scnd-log     ."
+    ".  prim-clock-bot  .   prim-board       .       scnd-board    .  scnd-clock-bot  ."
+    ".  prim-name-bot   .  prim-rsrv-bot     .      scnd-rsrv-bot  .   scnd-name-bot  ."
+    ".        .         .  prim-rsrv-bot     .      scnd-rsrv-bot  .  scr-individual  ."
+    ".        .         .      info          .        command      .  scr-individual  ."
+    ".        .         .      info          .           .         .  scr-individual  ."
   ;
   grid-template-columns:
-    minmax(3em, 1fr)
+    1fr
+    auto
     calc(var(--sq-size-primary) * 0.4)
     auto
     calc(var(--sq-size-primary) * 1.2)
     auto
     calc(var(--sq-size-primary) * 0.4)
-    minmax(3em, 1fr)
+    auto
+    1fr
   ;
   grid-template-rows:
-    repeat(10, auto)
+    repeat(2, auto)
+    5em
+    repeat(3, auto)
+    4.5em
+    repeat(3, auto)
     1fr
   ;
 }
@@ -117,6 +132,7 @@ body.observer #page {
 #player-name-primary-bottom { grid-area: prim-name-bot; }
 #clock-container-primary-top { grid-area: prim-clock-top; }
 #clock-container-primary-bottom { grid-area: prim-clock-bot; }
+#turn-log-container-primary { grid-area: prim-log; }
 
 #score-team { grid-area: scr-team; }
 #score-container-individual { grid-area: scr-individual; }
@@ -128,6 +144,7 @@ body.observer #page {
 #player-name-secondary-bottom { grid-area: scnd-name-bot; }
 #clock-container-secondary-top { grid-area: scnd-clock-top; }
 #clock-container-secondary-bottom { grid-area: scnd-clock-bot; }
+#turn-log-container-secondary { grid-area: scnd-log; }
 
 #info-string-container { grid-area: info; }
 #command-panel { grid-area: command; }
@@ -366,7 +383,6 @@ body.observer .clock-active.clock-low-time {
   outline-color: #dad26e;
 }
 
-
 #clock-container-primary-top,
 #clock-container-primary-bottom {
   text-align: right;
@@ -406,6 +422,39 @@ body.observer #info-string {
 }
 body.observer #command {
   background-color: #9a9a9a;
+}
+
+::-webkit-scrollbar {
+  width: max(2px, 0.3em);
+}
+::-webkit-scrollbar-track {
+  background: none;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-scrollbar);
+}
+.turn-log-container {
+  background-color: #ffffff10;
+  overflow-x: visible;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--color-scrollbar) #ffffff00;
+  scrollbar-width: thin;
+  box-shadow: 0.1em 0.1em 0.2em #00000080;
+}
+.turn-log {
+  height: 0;
+  white-space: pre;
+  color: #ffffffc0;
+}
+/* Put scrol bars on the left */
+#turn-log-container-primary { direction: rtl; }
+#turn-log-primary { direction: ltr; }
+.turn-record {
+  padding: 0.1em 0.6em;
+}
+.turn-record-black {
+  background-color: #00000040;
 }
 
 #command-panel {

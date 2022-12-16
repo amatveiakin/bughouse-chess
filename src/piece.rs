@@ -85,3 +85,22 @@ impl PieceKind {
         as_single_char(notation).and_then(Self::from_algebraic_char)
     }
 }
+
+pub fn piece_to_pictogram(piece_kind: PieceKind, force: Force) -> char {
+    use self::PieceKind::*;
+    use self::Force::*;
+    match (force, piece_kind) {
+        (White, Pawn) => '♙',
+        (White, Knight) => '♘',
+        (White, Bishop) => '♗',
+        (White, Rook) => '♖',
+        (White, Queen) => '♕',
+        (White, King) => '♔',
+        (Black, Pawn) => '♟',
+        (Black, Knight) => '♞',
+        (Black, Bishop) => '♝',
+        (Black, Rook) => '♜',
+        (Black, Queen) => '♛',
+        (Black, King) => '♚',
+    }
+}
