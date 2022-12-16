@@ -25,8 +25,11 @@ pub struct SqlxServerHooks<DB: sqlx::Database> {
 impl SqlxServerHooks<sqlx::Sqlite>
 {
     pub fn new(address: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let options = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(address)
+            .create_if_missing(true);
         let pool =
-            async_std::task::block_on(sqlx::SqlitePool::connect(&format!("{address}")))?;
+            async_std::task::block_on(sqlx::SqlitePool::connect_with(options))?;
         Self::create_tables(&pool)?;
         Ok(Self {
             invocation_id: uuid::Uuid::new_v4().to_string(),
