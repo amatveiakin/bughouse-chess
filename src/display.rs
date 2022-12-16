@@ -31,8 +31,8 @@ pub enum Perspective {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BoardOrientation {
-    Normal,
-    Rotated,
+    Normal,   // White at bottom
+    Rotated,  // Black at bottom
 }
 
 // These coords describe board squares, like `Coord`. Both `x` and `y` are integers
@@ -79,12 +79,25 @@ pub fn get_board_index(board: DisplayBoard, viewer: BughouseParticipantId) -> Bu
     }
 }
 
+pub fn get_display_board_index(board: BughouseBoard, viewer: BughouseParticipantId) -> DisplayBoard {
+    if viewer.visual_board_idx() == board { DisplayBoard::Primary } else { DisplayBoard::Secondary }
+}
+
 pub fn get_board_orientation(board: DisplayBoard, perspective: Perspective) -> BoardOrientation {
     use DisplayBoard::*;
     use Perspective::*;
     match (board, perspective) {
         (Primary, PlayAsWhite) | (Secondary, PlayAsBlack) => BoardOrientation::Normal,
         (Primary, PlayAsBlack) | (Secondary, PlayAsWhite) => BoardOrientation::Rotated,
+    }
+}
+
+pub fn get_display_player(force: Force, orientation: BoardOrientation) -> DisplayPlayer {
+    use Force::*;
+    use BoardOrientation::*;
+    match (orientation, force) {
+        (Normal, White) | (Rotated, Black) => DisplayPlayer::Bottom,
+        (Normal, Black) | (Rotated, White) => DisplayPlayer::Top,
     }
 }
 

@@ -519,11 +519,8 @@ impl WebClient {
         // TODO: Better readiness status display.
         let game = alt_game.local_game();
         let my_id = alt_game.my_id();
-        let my_display_board_idx = my_id.visual_board_idx();
-        let my_display_force = my_id.visual_force();
         for (board_idx, board) in game.boards() {
-            let is_primary = board_idx == my_display_board_idx;
-            let display_board_idx = if is_primary { DisplayBoard::Primary } else { DisplayBoard::Secondary };
+            let display_board_idx = get_display_board_index(board_idx, my_id);
             let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
             let piece_layer = document.get_existing_element_by_id(&piece_layer_id(display_board_idx))?;
             let grid = board.grid();
@@ -550,7 +547,7 @@ impl WebClient {
                     node.set_attribute("data-bughouse-location", &coord.to_algebraic())?;
                     let mut draggable = false;
                     if let BughouseParticipantId::Player(my_player_id) = my_id {
-                        draggable = is_primary && piece.force == my_player_id.force;
+                        draggable = board_idx == my_player_id.board_idx && piece.force == my_player_id.force;
                     }
                     if draggable {
                         node.set_attribute("class", "draggable")?;
@@ -563,13 +560,8 @@ impl WebClient {
                     }
                 }
             }
-            for player_idx in DisplayPlayer::iter() {
-                use DisplayPlayer::*;
-                use DisplayBoard::*;
-                let force = match (player_idx, display_board_idx) {
-                    (Bottom, Primary) | (Top, Secondary) => my_display_force,
-                    (Top, Primary) | (Bottom, Secondary) => my_display_force.opponent(),
-                };
+            for force in Force::iter() {
+                let player_idx = get_display_player(force, board_orientation);
                 let name_node = document.get_existing_element_by_id(
                     &player_name_node_id(display_board_idx, player_idx)
                 )?;
@@ -622,24 +614,13 @@ impl WebClient {
         let now = Instant::now();
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         let game = alt_game.local_game();
-        let my_id = alt_game.my_id();
-        let my_display_board_idx = my_id.visual_board_idx();
-        let my_display_force = my_id.visual_force();
         for (board_idx, board) in game.boards() {
-            let is_primary = board_idx == my_display_board_idx;
-            let display_board_idx = if is_primary { DisplayBoard::Primary } else { DisplayBoard::Secondary };
-            for player_idx in DisplayPlayer::iter() {
-                use DisplayPlayer::*;
-                use DisplayBoard::*;
-                let force = match (player_idx, display_board_idx) {
-                    (Bottom, Primary) | (Top, Secondary) => my_display_force,
-                    (Top, Primary) | (Bottom, Secondary) => my_display_force.opponent(),
-                };
-                let id_suffix = format!("{}-{}", board_id(display_board_idx), player_id(player_idx));
-                // TODO: Dedup against `update_state`. Everything except the two lines below
-                //   is copy-pasted from there.
-                let clock_node = document.get_existing_element_by_id(&format!("clock-{}", id_suffix))?;
-                update_clock(board.clock(), force, game_now, &clock_node)?;
+            let display_board_idx = get_display_board_index(board_idx, alt_game.my_id());
+            let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
+            for force in Force::iter() {
+                let player_idx = get_display_player(force, board_orientation);
+                let clock_node = document.get_existing_element_by_id(&clock_node_id(display_board_idx, player_idx))?;
+                render_clock(board.clock(), force, game_now, &clock_node)?;
             }
         }
         Ok(())
@@ -980,7 +961,7 @@ fn is_clock_ticking(game: &BughouseGame, participant_id: BughouseParticipantId) 
 }
 
 // TODO: Dedup against console client
-fn update_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_sys::Element)
+fn render_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_sys::Element)
     -> JsResult<()>
 {
     let is_active = clock.active_force() == Some(force);
@@ -1266,6 +1247,10 @@ fn reserve_container_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> S
 
 fn reserve_node_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String {
     format!("reserve-group-{}-{}", board_id(board_idx), player_id(player_idx))
+}
+
+fn clock_node_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String {
+    format!("clock-{}-{}", board_id(board_idx), player_id(player_idx))
 }
 
 fn turn_log_container_node_id(board_idx: DisplayBoard) -> String {
