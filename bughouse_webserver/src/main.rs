@@ -41,7 +41,7 @@ async fn main() -> Result<(), anyhow::Error> {
             SqlxApp::<sqlx::Sqlite>::register_handlers(&mut app);
             app.listen(args.bind_address).await?;
         }
-        (_, Some(db)) => {
+        (_, Some(_db)) => {
             // TODO: SQL needs to be adjusted. rowid column does not exist in postgresql.
             return Err(anyhow::Error::msg(
                 "Postgresql reader is not implemented yet.",
@@ -79,6 +79,7 @@ impl SqlxApp<sqlx::Sqlite> {
     }
 }
 
+#[allow(dead_code)]
 impl SqlxApp<sqlx::Postgres> {
     pub fn new(db_address: &str) -> Result<Self, anyhow::Error> {
         let options = sqlx::postgres::PgPoolOptions::new();
