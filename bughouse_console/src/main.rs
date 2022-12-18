@@ -27,6 +27,7 @@ pub mod tui;
 mod client_main;
 mod sqlx_server_hooks;
 mod server_main;
+mod stress_test;
 
 use std::io;
 
@@ -60,6 +61,12 @@ fn main() -> io::Result<()> {
                 .arg(arg!(<contest_id> "Contest ID"))
                 .arg(arg!(<player_name> "Player name"))
         )
+        .subcommand(
+            Command::new("stress-test")
+                .about("Stress test different game modes with random input. Can be used for testing or benchmarking.")
+                .arg(arg!(<target> "Internal class to test")
+                    .value_parser(["pure-game", "altered-game"]))
+        )
         .get_matches();
 
     match matches.subcommand() {
@@ -83,6 +90,11 @@ fn main() -> io::Result<()> {
                 server_address: sub_matches.get_one::<String>("server_address").unwrap().clone(),
                 contest_id: sub_matches.get_one::<String>("contest_id").unwrap().clone(),
                 player_name: sub_matches.get_one::<String>("player_name").unwrap().clone(),
+            })
+        },
+        Some(("stress-test", sub_matches)) => {
+            stress_test::run(stress_test::StressTestConfig {
+                target: sub_matches.get_one::<String>("target").unwrap().clone(),
             })
         },
         _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),

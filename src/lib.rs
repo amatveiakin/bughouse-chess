@@ -34,6 +34,7 @@ pub mod persistence;
 pub mod pgn;
 pub mod server;
 pub mod server_hooks;
+pub mod test_util;
 pub mod util;
 
 pub use altered_game::*;

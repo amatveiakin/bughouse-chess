@@ -1,8 +1,6 @@
 // Rust-upgrade (https://github.com/rust-lang/rust/issues/46379):
 //   remove `#[allow(dead_code)]` before public functions.
 
-use enum_map::{EnumMap, enum_map};
-
 use bughouse_chess::*;
 
 
@@ -76,36 +74,4 @@ macro_rules! seating {
             force: bughouse_chess::Force::$force,
         }
     };
-}
-
-#[allow(dead_code)]
-pub fn sample_chess_players() -> EnumMap<Force, String> {
-    enum_map! {
-        Force::White => "Alice".to_owned(),
-        Force::Black => "Bob".to_owned(),
-    }
-}
-
-#[allow(dead_code)]
-pub fn sample_bughouse_players() -> Vec<PlayerInGame> {
-    use Force::*;
-    use BughouseBoard::*;
-    vec! [
-        PlayerInGame {
-            name: "Alice".to_owned(),
-            id: BughousePlayerId{ force: White, board_idx: A }
-        },
-        PlayerInGame {
-            name: "Bob".to_owned(),
-            id: BughousePlayerId{ force: Black, board_idx: A }
-        },
-        PlayerInGame {
-            name: "Charlie".to_owned(),
-            id: BughousePlayerId{ force: White, board_idx: B }
-        },
-        PlayerInGame {
-            name: "Dave".to_owned(),
-            id: BughousePlayerId{ force: Black, board_idx: B }
-        },
-    ]
 }

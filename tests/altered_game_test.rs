@@ -2,6 +2,7 @@
 mod common;
 
 use bughouse_chess::*;
+use bughouse_chess::test_util::*;
 use common::*;
 use BughouseBoard::A;
 

@@ -1,3 +1,13 @@
+// Defines `AlteredGame` and auxiliary classes. `AlteredGame` is used for online multiplayer
+// and represents a game with local changes not (yet) confirmed by the server.
+//
+// The general philosophy is that server is trusted, but the user is not. `AlteredGame` may
+// (or may not) panic if server command doesn't make sense (e.g. invalid chess move), but it
+// shall not panic on bogus local turns and other invalid user actions.
+//
+// Only one preturn is allowed, but it's possible to have two unconfirmed local turns: one
+// normal and one preturn.
+
 use std::cmp;
 
 use crate::board::{Turn, TurnInput, TurnMove, TurnDrop, TurnMode, TurnError};
@@ -38,11 +48,7 @@ pub struct PieceDrag {
     pub dest: Option<Coord>,
 }
 
-// In online multiplayer: game with local changes not (yet) confirmed by the server.
-//
-// Only one preturn is allowed, but it's possible to have two unconfirmed local turns: one
-// normal and one preturn.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AlteredGame {
     // All local actions are assumed to be made on behalf of this player.
     my_id: BughouseParticipantId,
@@ -187,14 +193,20 @@ impl AlteredGame {
         if self.piece_drag.is_some() {
             return Err(PieceDragError::DragAlreadyStarted);
         }
+        let game = self.game_with_local_turns();
+        let board = game.board(my_player_id.board_idx);
         let (piece_kind, source) = match start {
             PieceDragStart::Board(coord) => {
-                let game = self.game_with_local_turns();
-                let board = game.board(my_player_id.board_idx);
                 let piece = board.grid()[coord].ok_or(PieceDragError::PieceNotFound)?;
+                if piece.force != my_player_id.force {
+                    return Err(PieceDragError::DragForbidden);
+                }
                 (piece.kind, PieceDragSource::Board(coord))
             },
             PieceDragStart::Reserve(piece_kind) => {
+                if board.reserve(my_player_id.force)[piece_kind] <= 0 {
+                    return Err(PieceDragError::PieceNotFound);
+                }
                 (piece_kind, PieceDragSource::Reserve)
             },
         };
@@ -221,7 +233,7 @@ impl AlteredGame {
 
     // Stop drag and returns turn on success. The client should then manually apply this
     // turn via `make_turn`.
-    pub fn drag_piece_drop(&mut self, dest_coord: Coord, promote_to: PieceKind)
+    pub fn drag_piece_drop(&mut self, dest: Coord, promote_to: PieceKind)
         -> Result<TurnInput, PieceDragError>
     {
         let BughouseParticipantId::Player(my_player_id) = self.my_id else {
@@ -238,19 +250,19 @@ impl AlteredGame {
             },
             PieceDragSource::Board(source_coord) => {
                 use PieceKind::*;
-                if source_coord == dest_coord {
+                if source_coord == dest {
                     return Err(PieceDragError::Cancelled);
                 }
                 let force = my_player_id.force;
                 let first_row = SubjectiveRow::from_one_based(1).to_row(force);
                 let last_row = SubjectiveRow::from_one_based(8).to_row(force);
-                let d_col = dest_coord.col - source_coord.col;
+                let d_col = dest.col - source_coord.col;
                 let is_castling =
                     piece_kind == King &&
                     (d_col.abs() >= 2) &&
-                    (source_coord.row == first_row && dest_coord.row == first_row)
+                    (source_coord.row == first_row && dest.row == first_row)
                 ;
-                let is_promotion = piece_kind == Pawn && dest_coord.row == last_row;
+                let is_promotion = piece_kind == Pawn && dest.row == last_row;
                 if is_castling {
                     use CastleDirection::*;
                     let dir = if d_col > 0 { HSide } else { ASide };
@@ -258,7 +270,7 @@ impl AlteredGame {
                 } else {
                     Ok(TurnInput::DragDrop(Turn::Move(TurnMove {
                         from: source_coord,
-                        to: dest_coord,
+                        to: dest,
                         promote_to: if is_promotion { Some(promote_to) } else { None },
                     })))
                 }
@@ -266,7 +278,7 @@ impl AlteredGame {
             PieceDragSource::Reserve => {
                 Ok(TurnInput::DragDrop(Turn::Drop(TurnDrop {
                     piece_kind,
-                    to: dest_coord
+                    to: dest
                 })))
             }
         }
@@ -279,7 +291,8 @@ impl AlteredGame {
         self.piece_drag = None;
         self.local_preturn.take().is_some()
     }
-    pub fn reset_local_changes(&mut self) {
+
+    fn reset_local_changes(&mut self) {
         self.local_turn = None;
         self.local_preturn = None;
         self.piece_drag = None;

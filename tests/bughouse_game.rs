@@ -1,7 +1,7 @@
 mod common;
 
 use bughouse_chess::*;
-use common::*;
+use bughouse_chess::test_util::*;
 
 
 fn bughouse_chess_com() -> BughouseGame {

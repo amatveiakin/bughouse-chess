@@ -449,6 +449,7 @@ dependencies = [
  "instant",
  "itertools",
  "log",
+ "rand 0.8.5",
  "scopeguard",
  "serde",
  "serde_json",

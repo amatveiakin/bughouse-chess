@@ -5,6 +5,7 @@ use std::time::Duration;
 use itertools::Itertools;
 
 use bughouse_chess::*;
+use bughouse_chess::test_util::*;
 use common::*;
 
 
