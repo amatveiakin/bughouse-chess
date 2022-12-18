@@ -1038,7 +1038,7 @@ fn update_turn_log(
     game: &BughouseGame, board_idx: BughouseBoard, display_board_idx: DisplayBoard
 ) -> JsResult<()> {
     let document = web_document();
-    let log_container_node = document.get_existing_element_by_id(&turn_log_container_node_id(display_board_idx))?;
+    let log_container_node = document.get_existing_element_by_id(&turn_log_scroll_area_node_id(display_board_idx))?;
     let log_node = document.get_existing_element_by_id(&turn_log_node_id(display_board_idx))?;
     let was_at_bottom = is_scrolled_to_bottom(&log_container_node);
     remove_all_children(&log_node)?;
@@ -1255,8 +1255,8 @@ fn clock_node_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String {
     format!("clock-{}-{}", board_id(board_idx), player_id(player_idx))
 }
 
-fn turn_log_container_node_id(board_idx: DisplayBoard) -> String {
-    format!("turn-log-container-{}", board_id(board_idx))
+fn turn_log_scroll_area_node_id(board_idx: DisplayBoard) -> String {
+    format!("turn-log-scroll-area-{}", board_id(board_idx))
 }
 
 fn turn_log_node_id(board_idx: DisplayBoard) -> String {

@@ -424,6 +424,12 @@ body.observer #command {
   background-color: #9a9a9a;
 }
 
+#turn-log-container-primary {
+  text-align: right;
+}
+#turn-log-container-secondary {
+  text-align: left;
+}
 ::-webkit-scrollbar {
   width: max(2px, 0.3em);
 }
@@ -433,28 +439,36 @@ body.observer #command {
 ::-webkit-scrollbar-thumb {
   background-color: var(--color-scrollbar);
 }
-.turn-log-container {
-  background-color: #ffffff10;
+.turn-log-scroll-area {
+  text-align: left;
+  font-size: 80%;
+  display: inline-block;
+  min-width: 7.8em;
+  height: 100%;
+  /* background-color: #ffffff0b; */
   overflow-x: visible;
   overflow-y: scroll;
   scrollbar-gutter: stable;
   scrollbar-color: var(--color-scrollbar) #ffffff00;
   scrollbar-width: thin;
-  box-shadow: 0.1em 0.1em 0.2em #00000080;
+  box-shadow: 0.05em 0.05em 0.2em #00000080;
 }
 .turn-log {
   height: 0;
   white-space: pre;
-  color: #ffffffc0;
+  color: #ffffffa0;
 }
 /* Put scrol bars on the left */
-#turn-log-container-primary { direction: rtl; }
+#turn-log-scroll-area-primary { direction: rtl; }
 #turn-log-primary { direction: ltr; }
 .turn-record {
-  padding: 0.1em 0.6em;
+  padding: 0.15em 0.6em;
+}
+.turn-record-white {
+  background-color: #ffffff0c;
 }
 .turn-record-black {
-  background-color: #00000040;
+  background-color: #0000001a;
 }
 
 #command-panel {
