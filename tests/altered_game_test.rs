@@ -19,13 +19,29 @@ const GAME_START: GameInstant = GameInstant::game_start();
 
 // Regression test: shouldn't panic if there's a drag depending on a local turn that was reverted.
 #[test]
-fn drag_depends_on_reverted_local_turn() {
+fn drag_depends_on_reverted_preturn() {
+    let mut alt_game = AlteredGame::new(as_player(seating!(Black A)), default_bughouse_game());
+    alt_game.apply_remote_turn_algebraic(seating!(White A), "e4", GAME_START).unwrap();
+    alt_game.apply_remote_turn_algebraic(seating!(Black A), "e6", GAME_START).unwrap();
+    alt_game.try_local_turn(drag_move!(E6 -> E5), GAME_START).unwrap();
+    alt_game.start_drag_piece(PieceDragStart::Board(Coord::E5)).unwrap();
+    alt_game.apply_remote_turn_algebraic(seating!(White A), "e5", GAME_START).unwrap();
+    assert_eq!(alt_game.drag_piece_drop(Coord::E4, PieceKind::Queen), Err(PieceDragError::DragNoLongerPossible));
+}
+
+// It is not allowed to have more than one preturn. However a player can start dragging a
+// piece while having a preturn and finish the drag after the preturn was upgraded to a
+// regular local turn (or resolved altogether).
+#[test]
+fn start_drag_with_a_preturn() {
     let mut alt_game = AlteredGame::new(as_player(seating!(White A)), default_bughouse_game());
-    alt_game.try_local_turn(drag_move!(E2 -> E4), GAME_START).unwrap();
+    alt_game.try_local_turn(drag_move!(E2 -> E3), GAME_START).unwrap();
+    alt_game.try_local_turn(drag_move!(E3 -> E4), GAME_START).unwrap();
     alt_game.start_drag_piece(PieceDragStart::Board(Coord::E4)).unwrap();
-    let _game = alt_game.local_game();
-    alt_game.set_status(BughouseGameStatus::Victory(Team::Red, VictoryReason::Resignation), GAME_START);
-    let _game = alt_game.local_game();  // the point of the test is to verify that it doesn't crash
+    alt_game.apply_remote_turn_algebraic(seating!(White A), "e3", GAME_START).unwrap();
+    alt_game.apply_remote_turn_algebraic(seating!(Black A), "Nc6", GAME_START).unwrap();
+    let drag_result = alt_game.drag_piece_drop(Coord::E5, PieceKind::Queen).unwrap();
+    assert_eq!(drag_result, drag_move!(E4 -> E5));
 }
 
 // Regression test: keep local preturn after getting an opponent's turn.

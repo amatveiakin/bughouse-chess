@@ -26,7 +26,7 @@ pub enum PieceDragError {
 
 #[derive(Clone, Copy, Debug)]
 pub enum PieceDragSource {
-    Defunct,  // in case dragged piece was captured by opponent
+    Defunct,  // dragged piece captured by opponent or depends on a cancelled preturn
     Board(Coord),
     Reserve,
 }
@@ -140,23 +140,20 @@ impl AlteredGame {
                         let turn_time = GameInstant::from_duration(t).set_measurement(original_time.measurement());
                         // A-a-and we are ready to reapply the preturn. As a normal turn now.
                         // Ignore any errors: it's normal for preturns to fail.
-                        _ = self.try_local_turn(turn_input, turn_time);
+                        _ = self.try_local_turn_ignore_drag(turn_input, turn_time);
                     }
                 }
             }
         }
 
-        if let Some(ref mut drag) = self.piece_drag {
-            let BughouseParticipantId::Player(my_player_id) = self.my_id else {
-                panic!("Only an active player can drag pieces");
+        let mut game = self.game_with_local_turns();
+        if self.apply_drag(&mut game).is_err() {
+            let Some(ref mut drag) = self.piece_drag else {
+                panic!("Got a drag failure with no drag in progress");
             };
-            if let PieceDragSource::Board(coord) = drag.source {
-                let board = self.game_confirmed.board(my_player_id.board_idx);
-                if board.grid()[coord].map(|piece| piece.force) != Some(my_player_id.force) {
-                    // Dragged piece was captured by opponent.
-                    drag.source = PieceDragSource::Defunct;
-                }
-            }
+            // Drag invalidated. Possible reasons: dragged piece was captured by opponent;
+            // dragged piece depended on a preturn that was cancelled.
+            drag.source = PieceDragSource::Defunct;
         }
         Ok(turn)
     }
@@ -166,51 +163,15 @@ impl AlteredGame {
     pub fn game_confirmed(&self) -> &BughouseGame { &self.game_confirmed }
 
     pub fn local_game(&self) -> BughouseGame {
-        let mut game = self.game_confirmed.clone();
-        if let Some((ref turn_input, turn_time)) = self.local_turn {
-            self.apply_local_turn(&mut game, turn_input, TurnMode::Normal, turn_time);
-        }
-        if let Some((ref turn_input, turn_time)) = self.local_preturn {
-            self.apply_local_turn(&mut game, turn_input, TurnMode::Preturn, turn_time);
-        }
-        if let Some(ref drag) = self.piece_drag {
-            let BughouseParticipantId::Player(my_player_id) = self.my_id else {
-                panic!("Only an active player can drag pieces");
-            };
-            let board = game.board_mut(my_player_id.board_idx);
-            match drag.source {
-                PieceDragSource::Defunct => {},
-                PieceDragSource::Board(coord) => {
-                    let piece = board.grid_mut()[coord].take().unwrap();
-                    assert_eq!(piece.force, my_player_id.force);
-                    assert_eq!(piece.kind, drag.piece_kind);
-                },
-                PieceDragSource::Reserve => {
-                    let reserve = board.reserve_mut(my_player_id.force);
-                    assert!(reserve[drag.piece_kind] > 0);
-                    reserve[drag.piece_kind] -= 1;
-                }
-            }
-        }
+        let mut game = self.game_with_local_turns();
+        self.apply_drag(&mut game).unwrap();
         game
     }
 
     pub fn try_local_turn(&mut self, turn_input: TurnInput, time: GameInstant)
         -> Result<TurnMode, TurnError>
     {
-        let BughouseParticipantId::Player(my_player_id) = self.my_id else {
-            return Err(TurnError::NotPlayer);
-        };
-        if self.local_preturn.is_some() {
-            return Err(TurnError::PreturnLimitReached);
-        }
-        let mut game = self.local_game();
-        let mode = game.turn_mode_for_player(my_player_id)?;
-        game.try_turn_by_player(my_player_id, &turn_input, mode, time)?;
-        match mode {
-            TurnMode::Normal => self.local_turn = Some((turn_input, time)),
-            TurnMode::Preturn => self.local_preturn = Some((turn_input, time)),
-        };
+        let mode = self.try_local_turn_ignore_drag(turn_input, time)?;
         self.piece_drag = None;
         Ok(mode)
     }
@@ -228,7 +189,7 @@ impl AlteredGame {
         }
         let (piece_kind, source) = match start {
             PieceDragStart::Board(coord) => {
-                let game = self.local_game();
+                let game = self.game_with_local_turns();
                 let board = game.board(my_player_id.board_idx);
                 let piece = board.grid()[coord].ok_or(PieceDragError::PieceNotFound)?;
                 (piece.kind, PieceDragSource::Board(coord))
@@ -258,7 +219,8 @@ impl AlteredGame {
         self.piece_drag = None;
     }
 
-    // Stop drag and returns algebraic turn on success.
+    // Stop drag and returns turn on success. The client should then manually apply this
+    // turn via `make_turn`.
     pub fn drag_piece_drop(&mut self, dest_coord: Coord, promote_to: PieceKind)
         -> Result<TurnInput, PieceDragError>
     {
@@ -311,12 +273,75 @@ impl AlteredGame {
     }
 
     pub fn cancel_preturn(&mut self) -> bool {
+        // Note: Abort drag just to be safe. In practice existing GUI doesn't allow to
+        // cancel preturn while dragging. If this is desired, a proper check needs to be
+        // done (like in `apply_remote_turn_algebraic`).
+        self.piece_drag = None;
         self.local_preturn.take().is_some()
     }
     pub fn reset_local_changes(&mut self) {
         self.local_turn = None;
         self.local_preturn = None;
         self.piece_drag = None;
+    }
+
+    fn game_with_local_turns(&self) -> BughouseGame {
+        let mut game = self.game_confirmed.clone();
+        if let Some((ref turn_input, turn_time)) = self.local_turn {
+            self.apply_local_turn(&mut game, turn_input, TurnMode::Normal, turn_time);
+        }
+        if let Some((ref turn_input, turn_time)) = self.local_preturn {
+            self.apply_local_turn(&mut game, turn_input, TurnMode::Preturn, turn_time);
+        }
+        game
+    }
+
+    fn apply_drag(&self, game: &mut BughouseGame) -> Result<(), String> {
+        let Some(ref drag) = self.piece_drag else {
+            return Ok(());
+        };
+        let BughouseParticipantId::Player(my_player_id) = self.my_id else {
+            panic!("Only an active player can drag pieces");
+        };
+        let board = game.board_mut(my_player_id.board_idx);
+        match drag.source {
+            PieceDragSource::Defunct => {},
+            PieceDragSource::Board(coord) => {
+                let piece = board.grid_mut()[coord].take().unwrap();  // note: `take` modifies the board
+                let expected = (my_player_id.force, drag.piece_kind);
+                let actual = (piece.force, piece.kind);
+                if expected != actual {
+                    return Err(format!("Drag piece mismatch. Expected {expected:?}, found {actual:?}"));
+                }
+            },
+            PieceDragSource::Reserve => {
+                let reserve = board.reserve_mut(my_player_id.force);
+                if reserve[drag.piece_kind] <= 0 {
+                    return Err(format!("Drag piece missing in reserve: {:?} {:?}", my_player_id.force, drag.piece_kind));
+                }
+                reserve[drag.piece_kind] -= 1;
+            }
+        }
+        Ok(())
+    }
+
+    fn try_local_turn_ignore_drag(&mut self, turn_input: TurnInput, time: GameInstant)
+        -> Result<TurnMode, TurnError>
+    {
+        let BughouseParticipantId::Player(my_player_id) = self.my_id else {
+            return Err(TurnError::NotPlayer);
+        };
+        if self.local_preturn.is_some() {
+            return Err(TurnError::PreturnLimitReached);
+        }
+        let mut game = self.game_with_local_turns();
+        let mode = game.turn_mode_for_player(my_player_id)?;
+        game.try_turn_by_player(my_player_id, &turn_input, mode, time)?;
+        match mode {
+            TurnMode::Normal => self.local_turn = Some((turn_input, time)),
+            TurnMode::Preturn => self.local_preturn = Some((turn_input, time)),
+        };
+        Ok(mode)
     }
 
     fn apply_local_turn(
