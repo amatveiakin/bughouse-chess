@@ -365,8 +365,13 @@ impl BughouseGame {
         let board = &mut self.boards[board_idx];
         let player_id = BughousePlayerId{ board_idx, force: board.turn_owner(mode) };
         let turn = board.parse_turn_input(turn_input, mode)?;
-        let turn_algebraic = board.turn_to_algebraic(turn, mode)?;
+        // `turn_to_algebraic` must be called before `try_turn`, because algebraic form depend
+        // on the current position.
+        let turn_algebraic = board.turn_to_algebraic(turn, mode);
         let turn_facts = board.try_turn(turn, mode, now)?;
+        // If `try_turn` succeeded, then the turn was valid. Thus conversion to algebraic must
+        // have succeeded as well, because there exists an algebraic form for any valid turn.
+        let turn_algebraic = turn_algebraic.unwrap();
         let other_board = &mut self.boards[board_idx.other()];
         match mode {
             TurnMode::Normal => { other_board.start_clock(now) }

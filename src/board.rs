@@ -1048,21 +1048,20 @@ impl Board {
     //   - Short or long algebraic;
     //   - Unicode: None / Just characters / Characters and pieces;
     //   Allow to specify options when exporting PGN.
-    pub fn turn_to_algebraic(&self, turn: Turn, mode: TurnMode) -> Result<String, TurnError> {
+    pub fn turn_to_algebraic(&self, turn: Turn, mode: TurnMode) -> Option<String> {
         let notation = self.turn_to_algebraic_impl(turn, mode)?;
         // Improvement potential. Remove when sufficiently tested.
         if let Ok(turn_parsed) = self.algebraic_to_turn(&notation, mode) {
             assert_eq!(turn_parsed, turn, "{}", notation);
         }
-        Ok(notation)
+        Some(notation)
     }
 
-    fn turn_to_algebraic_impl(&self, turn: Turn, mode: TurnMode) -> Result<String, TurnError> {
+    fn turn_to_algebraic_impl(&self, turn: Turn, mode: TurnMode) -> Option<String> {
         match turn {
             Turn::Move(mv) => {
-                let mut error = None;
                 for (&include_col, &include_row) in iproduct!(&[false, true], &[false, true]) {
-                    let piece = self.grid[mv.from].ok_or(TurnError::PieceMissing)?;
+                    let piece = self.grid[mv.from]?;
                     let capture = get_capture(&self.grid, mv.from, mv.to, self.en_passant_target);
                     let promotion = match mv.promote_to {
                         Some(piece_kind) => format!("={}", piece_kind.to_full_algebraic()),
@@ -1083,25 +1082,21 @@ impl Board {
                         mv.to.to_algebraic(),
                         promotion,
                     );
-                    match self.algebraic_to_turn(&algebraic, mode) {
-                        Err(e) => {
-                            error = Some(e);
-                        },
-                        Ok(turn_parsed) => {
-                            assert_eq!(turn_parsed, turn);
-                            return Ok(algebraic);
+                    if let Ok(turn_parsed) = self.algebraic_to_turn(&algebraic, mode) {
+                        // It's possible that we've got back a different turn if the original turn
+                        // was garbage, e.g. c2e4 -> e4 -> e2e4.
+                        if turn_parsed == turn {
+                            return Some(algebraic);
                         }
                     }
                 }
-                let error = error.unwrap();
-                assert_ne!(error, TurnError::AmbiguousNotation);
-                Err(error)
+                None
             },
             Turn::Drop(drop) => {
-                Ok(format!("{}@{}", drop.piece_kind.to_full_algebraic(), drop.to.to_algebraic()))
+                Some(format!("{}@{}", drop.piece_kind.to_full_algebraic(), drop.to.to_algebraic()))
             },
             Turn::Castle(dir) => {
-                Ok((match dir {
+                Some((match dir {
                     CastleDirection::ASide => "O-O-O",
                     CastleDirection::HSide => "O-O",
                 }).to_owned())
