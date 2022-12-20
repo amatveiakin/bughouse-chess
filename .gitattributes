@@ -1,0 +1,5 @@
+*.{cmd,CMD} text eol=crlf
+*.{bat,BAT} text eol=crlf
+
+*.sh text eol=lf
+Cargo.lock text eol=lf

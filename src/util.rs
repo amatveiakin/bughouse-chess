@@ -5,7 +5,8 @@ use itertools::Itertools;
 #[macro_export]
 macro_rules! my_git_version {
     () => {
-        $crate::util::git_version!(args = ["--tags", "--always", "--dirty=-modified"])
+        // TODO: Fix missing git version in Docker.
+        $crate::util::git_version!(args = ["--tags", "--always", "--dirty=-modified"], fallback = "unknown")
     };
 }
 

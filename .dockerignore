@@ -1,0 +1,6 @@
+.*
+*.db
+target
+bughouse_wasm/pkg
+www/dist
+www/node_modules

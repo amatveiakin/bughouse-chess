@@ -25,6 +25,32 @@ Folder structure:
 - `/www` — Web client based on the abovementioned WASM bindings.
 
 
+## Docker setup
+
+Build the container:
+
+```
+docker build -t bughouse-chess .
+```
+
+Run the container:
+
+```
+docker run -d -p 8080:8080 -p14361:14361 -p 14362:14362 bughouse-chess
+```
+
+Go to http://localhost:8080 for the game and to http://localhost:14362/dyn/stats
+or http://localhost:14362/dyn/games for stats.
+
+> **Note** Docker is the easiest way to set up the entire environment. It's
+> configured to make `docker build` / `docker run` development workflow somewhat
+> non-miserable (Cargo caches are kept and changes to things like HTML don't
+> trigger Rust builds at all). Still, [Local setup](#local-setup) below provides
+> way better speed and flexibility: you can keep the server running while
+> relaunching the client; update HTML, CSS and JS on the fly; or keep game
+> history across launches in a local SQLite DB.
+
+
 ## Local setup
 
 Run once:
@@ -33,11 +59,16 @@ Run once:
 cd www && npm install
 ```
 
-Build & run server:
+Build & run game engine server and webserver (in two separate terminals):
 
 ```
-cargo run --package bughouse_console -- server
+cargo run --package bughouse_console -- server --sqlite-db ~/bughouse.db
+cargo run --package bughouse_webserver --sqlite-db ~/bughouse.db
 ```
+
+Running the webserver is optional. It is only used to display game statistics
+and it's not required for the game itself. If you don't run the webserver,
+`--sqlite-db` can also be omitted.
 
 Run once in the beginning and every time after changing Rust code:
 
@@ -52,9 +83,10 @@ cd www && npm run start
 ```
 
 Go to http://localhost:8080/. The client would automatically connect to the
-local server.
+local server. If the webserver is running, the stats are at
+http://localhost:14362/dyn/stats and http://localhost:14362/dyn/games.
 
-Changes to css will apply immediately. Changes to html and js will
+Changes to CSS will apply immediately. Changes to HTML and JS will
 apply after a page refresh. Changes to Rust code must be recompiled via
 `wasm-pack` (see above).
 
