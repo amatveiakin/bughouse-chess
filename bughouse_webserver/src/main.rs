@@ -119,8 +119,8 @@ where
              WHERE game_start_time >= ?1 AND game_start_time < ?2
              ORDER BY game_start_time DESC",
         )
-        .bind(game_start_time_range.start.unix_timestamp())
-        .bind(game_start_time_range.end.unix_timestamp())
+        .bind(game_start_time_range.start)
+        .bind(game_start_time_range.end)
         .fetch_all(&self.pool)
         .await?;
         let (oks, errs): (Vec<_>, _) = rows
