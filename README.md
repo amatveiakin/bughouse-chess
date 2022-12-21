@@ -92,7 +92,7 @@ Run the engine server:
 ```
 export RUST_BACKTRACE=1
 export RUST_LOG=INFO
-cargo run -r --package bughouse_console -- server --sqlite_db <DB>
+cargo run -r --package bughouse_console -- server --sqlite-db <DB>
 ```
 
 Run the webserver:

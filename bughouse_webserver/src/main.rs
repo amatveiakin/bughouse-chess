@@ -33,7 +33,7 @@ async fn main() -> Result<(), anyhow::Error> {
         (None, None) => return Err(anyhow::Error::msg("Database address was not specified.")),
         (Some(_), Some(_)) => {
             return Err(anyhow::Error::msg(
-                "Both sqlite_db and postgres_db were specified.",
+                "Both sqlite-db and postgres-db were specified.",
             ))
         }
         (Some(db), _) => {

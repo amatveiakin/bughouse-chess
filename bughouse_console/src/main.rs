@@ -51,8 +51,8 @@ fn main() -> io::Result<()> {
         .subcommand(
             Command::new("server")
                 .about("Run as server")
-                .arg(arg!(--sqlite_db [DB] "Path to an sqlite database file"))
-                .arg(arg!(--postgres_db [DB] "Address of a postgres database"))
+                .arg(arg!(--"sqlite-db" [DB] "Path to an sqlite database file"))
+                .arg(arg!(--"postgres-db" [DB] "Address of a postgres database"))
         )
         .subcommand(
             Command::new("client")
@@ -72,8 +72,8 @@ fn main() -> io::Result<()> {
     match matches.subcommand() {
         Some(("server", sub_matches)) => {
             let database_options = match (
-                sub_matches.get_one::<String>("sqlite_db"),
-                sub_matches.get_one::<String>("postgres_db"),
+                sub_matches.get_one::<String>("sqlite-db"),
+                sub_matches.get_one::<String>("postgres-db"),
             ) {
                 (None, None) => DatabaseOptions::NoDatabase,
                 (Some(_), Some(_)) => panic!("Sqlite and postgres can not be specified simultanously."),
