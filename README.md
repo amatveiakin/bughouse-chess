@@ -80,10 +80,10 @@ Enable request redirection. Add this to `/etc/apache2/sites-available/<site>`:
 <VirtualHost *:443>
     ProxyPreserveHost On
     ProxyRequests Off
-    ProxyPass /dyn http://localhost:38618/dyn
-    ProxyPassReverse /dyn http://localhost:38618/dyn
-    ProxyPass /ws ws://localhost:38617 keepalive=On
-    ProxyPassReverse /ws ws://localhost:38617
+    ProxyPass /dyn http://localhost:14362/dyn
+    ProxyPassReverse /dyn http://localhost:14362/dyn
+    ProxyPass /ws ws://localhost:14361 keepalive=On
+    ProxyPassReverse /ws ws://localhost:14361
 </VirtualHost>
 ```
 

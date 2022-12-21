@@ -15,7 +15,7 @@ use bughouse_chess::persistence::*;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(long, default_value = "0.0.0.0:38618")]
+    #[arg(long, default_value = "0.0.0.0:14362")]
     bind_address: String,
 
     #[arg(long)]
