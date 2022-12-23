@@ -103,12 +103,16 @@ sudo cp dist/* /var/www/<site>
 Install Apache modules:
 
 ```
-sudo a2enmod headers proxy proxy_http proxy_wstunnel
+sudo a2enmod proxy proxy_http proxy_wstunnel headers deflate
 ```
 
-Enable request redirection and set `Cache-Control` to `no-cache` in order to
-make sure that the clients are always up-to-date. Add this to
-`/etc/apache2/sites-available/<site>`:
+Configure Apache:
+- Enable request redirection to make game server and statistics server available
+- (Optional) Set `Cache-Control` to `no-cache` to make sure that the clients are
+  always up-to-date.
+- (Optional) Enable GZIP compression.
+
+Add this to `/etc/apache2/sites-available/<site>`:
 
 ```
 <VirtualHost *:443>
@@ -120,6 +124,22 @@ make sure that the clients are always up-to-date. Add this to
     ProxyPassReverse /ws ws://localhost:14361
 
     Header Set Cache-Control "no-cache"
+
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/wasm
+    AddOutputFilterByType DEFLATE application/xhtml+xml
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE font/opentype
+    AddOutputFilterByType DEFLATE font/otf
+    AddOutputFilterByType DEFLATE font/ttf
+    AddOutputFilterByType DEFLATE font/woff
+    AddOutputFilterByType DEFLATE font/woff2
+    AddOutputFilterByType DEFLATE image/svg+xml
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE text/javascript
+    AddOutputFilterByType DEFLATE text/plain
 </VirtualHost>
 ```
 
