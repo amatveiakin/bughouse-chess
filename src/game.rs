@@ -227,6 +227,11 @@ impl BughouseParticipantId {
             Self::Observer(id) => id.force,
         }
     }
+    // To be used for rendering purposes only. If actions are to be taken on behalf of a team, use
+    // `let BughouseParticipantId::Player(...) = ...` to check that this is an actual player.
+    pub fn visual_team(self) -> Team {
+        get_bughouse_team(self.visual_board_idx(), self.visual_force())
+    }
 }
 
 

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use serde::{Serialize, Deserialize};
+use strum::IntoEnumIterator;
 
 use crate::coord::Coord;
 use crate::display::{Perspective, DisplayBoard, FCoord, DisplayFCoord, display_to_fcoord, get_board_orientation};
@@ -80,9 +81,19 @@ impl Chalkboard {
         self.player_drawings.entry(player).or_insert_with(|| ChalkDrawing::new())
             .board_mut(board_idx).pop();
     }
-    pub fn clear_drawing(&mut self, player: String, board_idx: BughouseBoard) {
-        self.player_drawings.entry(player).or_insert_with(|| ChalkDrawing::new())
-            .board_mut(board_idx).clear();
+    pub fn clear_drawing(&mut self, player: String, board_idx: BughouseBoard) -> bool {
+        let board = &mut self.player_drawings.entry(player).or_insert_with(|| ChalkDrawing::new())
+            .board_mut(board_idx);
+        let had_content = !board.is_empty();
+        board.clear();
+        had_content
+    }
+    pub fn clear_drawings_by_player(&mut self, player: String) -> bool {
+        let mut had_content = false;
+        for board_idx in BughouseBoard::iter() {
+            had_content |= self.clear_drawing(player.clone(), board_idx);
+        }
+        had_content
     }
     pub fn set_drawing(&mut self, player: String, drawing: ChalkDrawing) {
         self.player_drawings.insert(player, drawing);

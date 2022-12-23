@@ -9,6 +9,31 @@ pub enum Team {
     Blue,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, Serialize, Deserialize)]
+pub enum Faction {
+    // Play for this team for an entire contest. Used only in FixedTeam mode.
+    Fixed(Team),
+
+    // Play for a random team.
+    //   - In FixedTeams mode: Used only in lobby. Will be converted to `Fixed` when the
+    //     contest starts.
+    //   - In Individual move: Used always. A player can still become an observer in any
+    //     given game if there are more than four players.
+    Random,
+
+    // Always an observer. Never plays.
+    Observer,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Participant {
+    pub name: String,      // fixed for the entire contest
+    pub faction: Faction,  // fixed for the entire contest
+    pub is_online: bool,
+    pub is_ready: bool,
+}
+
+
 impl Team {
     pub fn opponent(self) -> Self {
         match self {
@@ -18,12 +43,12 @@ impl Team {
     }
 }
 
-
-// Player while in lobby. May or may not have an assigned team yet.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Player {
-    pub name: String,
-    pub fixed_team: Option<Team>,
-    pub is_online: bool,
-    pub is_ready: bool,
+impl Faction {
+    pub fn is_player(self) -> bool {
+        match self {
+            Faction::Fixed(_) => true,
+            Faction::Random => true,
+            Faction::Observer => false,
+        }
+    }
 }

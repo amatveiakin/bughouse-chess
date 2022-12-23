@@ -16,7 +16,7 @@ use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerfo
 use crate::heartbeat::{Heart, HeartbeatOutcome};
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::BughouseExportFormat;
-use crate::player::{Player, Team};
+use crate::player::{Participant, Faction};
 use crate::rules::{ChessRules, BughouseRules};
 use crate::scores::Scores;
 
@@ -71,12 +71,12 @@ pub struct GameState {
 pub struct Contest {
     pub contest_id: String,
     pub my_name: String,
-    pub my_team: Option<Team>,
+    pub my_faction: Faction,
     // Rules applied in every game of the contest.
     pub chess_rules: ChessRules,
     pub bughouse_rules: BughouseRules,
     // All players including those not participating in the current game.
-    pub players: Vec<Player>,
+    pub participants: Vec<Participant>,
     // Scores from the past matches.
     pub scores: Scores,
     // Whether this client is ready to start a new game.
@@ -220,10 +220,10 @@ impl ClientState {
         });
         self.contest_state = ContestState::Joining{ contest_id, my_name };
     }
-    pub fn set_team(&mut self, team: Team) {
+    pub fn set_faction(&mut self, faction: Faction) {
         if let Some(contest) = self.contest_mut() {
-            contest.my_team = Some(team);
-            self.connection.send(BughouseClientEvent::SetTeam{ team });
+            contest.my_faction = faction;
+            self.connection.send(BughouseClientEvent::SetFaction{ faction });
         }
     }
     pub fn resign(&mut self) {
@@ -292,7 +292,7 @@ impl ClientState {
     pub fn clear_chalk_drawing(&mut self, display_board: DisplayBoard) {
         self.update_chalk_board(
             display_board,
-            |chalkboard, my_name, board_idx| chalkboard.clear_drawing(my_name, board_idx)
+            |chalkboard, my_name, board_idx| { chalkboard.clear_drawing(my_name, board_idx); }
         );
     }
 
@@ -319,27 +319,31 @@ impl ClientState {
                     _ => return Err(cannot_apply_event!("Cannot apply ContestWelcome: not expecting a new contest")),
                 };
                 self.notable_event_queue.push_back(NotableEvent::ContestStarted(contest_id.clone()));
+                // `Observer` is a safe faction default that wouldn't allow us to try acting as
+                // a player if we are in fact an observer. We'll get the real faction afterwards
+                // in a `LobbyUpdated` event.
+                let my_faction = Faction::Observer;
                 self.contest_state = ContestState::Connected(Contest {
                     contest_id,
                     my_name,
-                    my_team: None,
+                    my_faction,
                     chess_rules,
                     bughouse_rules,
-                    players: Vec::new(),
+                    participants: Vec::new(),
                     scores: Scores::new(),
                     is_ready: false,
                     game_state: None,
                 });
             },
-            LobbyUpdated{ players } => {
+            LobbyUpdated{ participants } => {
                 let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply LobbyUpdated: no contest in progress"))?;
                 // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
                 //   (e.g. is_ready from another player) arrived before is_ready update from this
                 //   client reached the server. Same for `my_team`.
-                let me = players.iter().find(|p| p.name == contest.my_name).unwrap();
+                let me = participants.iter().find(|p| p.name == contest.my_name).unwrap();
                 contest.is_ready = me.is_ready;
-                contest.my_team = me.fixed_team;
-                contest.players = players;
+                contest.my_faction = me.faction;
+                contest.participants = participants;
             },
             GameStarted{ starting_position, players, time, turn_log, preturn, game_status, scores } => {
                 let time_pair = if turn_log.is_empty() {

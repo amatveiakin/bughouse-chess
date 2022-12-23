@@ -252,17 +252,19 @@ impl WebClient {
     pub fn join(&mut self, contest_id: String, my_name: String) {
         self.state.join(contest_id, my_name);
     }
-    pub fn set_team(&mut self, team: &str) -> JsResult<()> {
-        let team = match team {
-            "red" => Team::Red,
-            "blue" => Team::Blue,
+    pub fn set_faction(&mut self, faction: &str) -> JsResult<()> {
+        let faction = match faction {
+            "red" => Faction::Fixed(Team::Red),
+            "blue" => Faction::Fixed(Team::Blue),
+            "random" => Faction::Random,
+            "observer" => Faction::Observer,
             _ => {
                 let info_string = web_document().get_existing_element_by_id("info-string")?;
-                info_string.set_text_content(Some(r#"Supported teams are "red" and "blue""#));
+                info_string.set_text_content(Some(r#"Supported teams are "red", "blue", "random" and "observer""#));
                 return Ok(());
             }
         };
-        self.state.set_team(team);
+        self.state.set_faction(faction);
         Ok(())
     }
     pub fn resign(&mut self) {
@@ -518,7 +520,7 @@ impl WebClient {
         let Some(contest) = self.state.contest() else {
             return Ok(());
         };
-        update_scores(&contest.scores, contest.bughouse_rules.teaming, contest.my_team)?;
+        update_observers(&contest.participants)?;
         let Some(GameState{ ref alt_game, .. }) = contest.game_state else {
             update_lobby(&contest)?;
             return Ok(());
@@ -526,6 +528,7 @@ impl WebClient {
         // TODO: Better readiness status display.
         let game = alt_game.local_game();
         let my_id = alt_game.my_id();
+        update_scores(&contest.scores, contest.bughouse_rules.teaming, my_id)?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |force| {
                 let BughouseParticipantId::Player(my_player_id) = my_id else {
@@ -575,12 +578,9 @@ impl WebClient {
                     &player_name_node_id(display_board_idx, player_idx)
                 )?;
                 let player_name = board.player_name(force);
-                let player = contest.players.iter().find(|p| p.name == *player_name).unwrap();
-                let player_string = if game.status() == BughouseGameStatus::Active {
-                    player_string(&player)
-                } else {
-                    player_string_with_readiness(&player)
-                };
+                let player = contest.participants.iter().find(|p| p.name == *player_name).unwrap();
+                let show_readiness = game.status() != BughouseGameStatus::Active;
+                let player_string = participant_string(&player, show_readiness);
                 name_node.set_text_content(Some(&player_string));
                 let is_draggable = is_piece_draggable(force);
                 update_reserve(board.reserve(force), force, display_board_idx, player_idx, is_draggable)?;
@@ -790,37 +790,28 @@ pub fn git_version() -> String {
 
 fn update_lobby(contest: &Contest) -> JsResult<()> {
     let info_string = web_document().get_existing_element_by_id("info-string")?;
-    // TODO: Show teams for the new game in individual mode.
-    let player_info = match contest.bughouse_rules.teaming {
-        Teaming::FixedTeams => {
-            // TODO: Allow observers in fixed teams mode; rename "teamless"/"unassigned" to "observer".
-            let mut teamless = vec![];
-            let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
-            for p in &contest.players {
-                let s = format!("{}\n", player_string_with_readiness(p));
-                if let Some(fixed_team) = p.fixed_team {
-                    teams[fixed_team].push(s);
-                } else {
-                    teamless.push(s);
-                }
-            }
-            format!(
-                "{}{}red:\n{}blue:\n{}",
-                if teamless.is_empty() { "" } else { "unassigned:\n" },
-                teamless.join(""),
-                teams[Team::Red].join(""),
-                teams[Team::Blue].join(""),
-            )
-        },
-        Teaming::IndividualMode => {
-            contest.players.iter().map(|p| {
-                assert!(p.fixed_team.is_none());
-                player_string_with_readiness(p)
-            }).join("\n")
-        },
-    };
+    // TODO: Show teams for the upcoming game in individual mode.
+    let mut factions: EnumMap<Faction, Vec<String>> = enum_map!{ _ => vec![] };
+    for p in &contest.participants {
+        let show_readiness = true;
+        factions[p.faction].push(format!("  {}\n", participant_string(p, show_readiness)));
+    }
+    let participant_info = factions.iter().filter_map(|(faction, participants)| {
+        let title = match (faction, contest.bughouse_rules.teaming) {
+            (Faction::Fixed(Team::Red), Teaming::FixedTeams) => "Team red",
+            (Faction::Fixed(Team::Blue), Teaming::FixedTeams) => "Team blue",
+            (Faction::Fixed(_), Teaming::IndividualMode) => {
+                assert!(participants.is_empty());
+                return None;
+            },
+            (Faction::Random, Teaming::FixedTeams) => "Random team",
+            (Faction::Random, Teaming::IndividualMode) => "Player",
+            (Faction::Observer, _) => "Observer",
+        };
+        Some(format!("{}:\n{}", title, participants.iter().join("")))
+    }).join("");
     let contest_id = &contest.contest_id;
-    info_string.set_text_content(Some(&format!("Contest {contest_id}\n{player_info}")));
+    info_string.set_text_content(Some(&format!("Contest {contest_id}\n{participant_info}")));
     Ok(())
 }
 
@@ -858,19 +849,22 @@ fn reset_square_highlight(id: &str) -> JsResult<()> {
 }
 
 // Improvement potential: Find a better icon for connection problems.
-// Improvement potential: Add a tooltip explaining the meaning of the icon.
-fn player_string(p: &Player) -> String {
-    let icon = if p.is_online { "" } else { "⚠️ " };
-    format!("{}{}", icon, p.name)
+// Improvement potential: Add a tooltip explaining the meaning of the icons.
+fn participant_prefix(p: &Participant, show_readiness: bool) -> &'static str {
+    if p.faction == Faction::Observer {
+        return "👀 "
+    }
+    if !p.is_online {
+        return "⚠️ ";
+    }
+    if show_readiness {
+        return if p.is_ready { "☑ " } else { "☐ " };
+    }
+    ""
 }
 
-fn player_string_with_readiness(p: &Player) -> String {
-    let icon = if p.is_online {
-        if p.is_ready { "☑ " } else { "☐ " }
-    } else {
-        "⚠️ "
-    };
-    format!("{}{}", icon, p.name)
+fn participant_string(p: &Participant, show_readiness: bool) -> String {
+    format!("{}{}", participant_prefix(p, show_readiness), p.name)
 }
 
 // Renders reserve.
@@ -1001,19 +995,15 @@ fn render_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_
     Ok(())
 }
 
-fn update_scores(scores: &Scores, teaming: Teaming, my_team: Option<Team>) -> JsResult<()> {
+fn update_scores(scores: &Scores, teaming: Teaming, my_id: BughouseParticipantId) -> JsResult<()> {
     let normalize = |score: u32| (score as f64) / 2.0;
     let team_node = web_document().get_existing_element_by_id("score-team")?;
     let individual_node = web_document().get_existing_element_by_id("score-individual")?;
     match teaming {
         Teaming::FixedTeams => {
+            // TODO: Display "0:0" score before the first game.
             assert!(scores.per_player.is_empty());
-            let my_team = my_team.unwrap_or_else(|| {
-                // A player may be without a team only before the contest first game begun.
-                assert!(scores.per_team.values().all(|&v| v == 0));
-                // Return a team at random to show zeros in the desired format.
-                Team::Red
-            });
+            let my_team = my_id.visual_team();
             team_node.set_text_content(Some(&format!(
                 "{}\n⎯\n{}",
                 normalize(*scores.per_team.get(&my_team.opponent()).unwrap_or(&0)),
@@ -1031,6 +1021,16 @@ fn update_scores(scores: &Scores, teaming: Teaming, my_team: Option<Team>) -> Js
             individual_node.set_text_content(Some(&score_vec.join("\n")));
         }
     }
+    Ok(())
+}
+
+fn update_observers(participants: &[Participant]) -> JsResult<()> {
+    let observers_node = web_document().get_existing_element_by_id("observers")?;
+    let text = participants.iter()
+        .filter(|p| p.faction == Faction::Observer)
+        .map(|p| participant_string(p, false))
+        .join("\n");
+    observers_node.set_text_content(Some(&text));
     Ok(())
 }
 

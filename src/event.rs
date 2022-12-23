@@ -9,7 +9,7 @@ use crate::contest::ContestCreationOptions;
 use crate::game::{TurnRecord, BughouseGameStatus, PlayerInGame};
 use crate::meter::MeterStats;
 use crate::pgn::BughouseExportFormat;
-use crate::player::{Player, Team};
+use crate::player::{Participant, Faction};
 use crate::rules::{ChessRules, BughouseRules};
 use crate::scores::Scores;
 use crate::starter::EffectiveStartingPosition;
@@ -26,7 +26,7 @@ pub enum BughouseServerEvent {
         bughouse_rules: BughouseRules,
     },
     LobbyUpdated {
-        players: Vec<Player>,
+        participants: Vec<Participant>,
     },
     // Improvement potential: Rename `GameStarted` to take reconnection into account.
     GameStarted {
@@ -89,8 +89,8 @@ pub enum BughouseClientEvent {
         contest_id: String,
         player_name: String,
     },
-    SetTeam {
-        team: Team,
+    SetFaction {
+        faction: Faction,
     },
     MakeTurn {
         turn_input: TurnInput,

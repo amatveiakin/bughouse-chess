@@ -347,8 +347,8 @@ function execute_command(input) {
             const args = input.slice(1).split(/\s+/);
             switch (args[0]) {
                 case 'team': {
-                    const [team] = get_args(args, ['blue:red']);
-                    wasm_client().set_team(team);
+                    const [faction] = get_args(args, ['red:blue:random:observer']);
+                    wasm_client().set_faction(faction);
                     break;
                 }
                 case 'sound': {

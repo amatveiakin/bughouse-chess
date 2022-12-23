@@ -60,7 +60,7 @@ svg {
     ".     prim-log     .   prim-board       .       scnd-board    .     scnd-log     ."
     ".     prim-log     .   prim-board       .       scnd-board    .  scnd-clock-bot  ."
     ".     prim-log     .   prim-board       .      scnd-rsrv-bot  .   scnd-name-bot  ."
-    ".     prim-log     .   prim-board       .      scnd-rsrv-bot  .        .         ."
+    ".     prim-log     .   prim-board       .      scnd-rsrv-bot  .  scr-individual  ."
     ".     prim-log     .   prim-board       .          info       .  scr-individual  ."
     ".  prim-clock-bot  .   prim-board       .          info       .  scr-individual  ."
     ".  prim-clock-bot  .   prim-board       .         command     .  scr-individual  ."
@@ -135,7 +135,7 @@ body.observer #page {
 #turn-log-container-primary { grid-area: prim-log; }
 
 #score-team { grid-area: scr-team; }
-#score-container-individual { grid-area: scr-individual; }
+#participant-container { grid-area: scr-individual; }
 
 #board-secondary { grid-area: scnd-board; }
 #reserve-secondary-top { grid-area: scnd-rsrv-top; }
@@ -319,21 +319,31 @@ body.observer .player-name {
   color: #b2b2b2;
 }
 #score-team,
-#score-individual {
+#score-individual,
+#observers {
   color: #7fb5a1;
 }
 #score-team {
   text-align: center;
   white-space: pre;
 }
-#score-container-individual {
+#participant-container {
+  display: flex;
+  flex-direction: column;
+}
+#score-individual-container {
   display: flex;
   flex-direction: row;
 }
 #score-individual {
   white-space: pre;
   border-top: 0.2em solid #7fb5a1;
+  margin-top: 1em;
   padding: 0.5em 0;
+}
+#observers {
+  white-space: pre;
+  font-size: 90%;
 }
 
 .clock {
@@ -401,7 +411,7 @@ body.observer .clock-active.clock-low-time {
 }
 #info-string {
   font-size: 90%;
-  white-space: pre-line;
+  white-space: pre-wrap;
   position: absolute;
   bottom: 0;
   left: 0;

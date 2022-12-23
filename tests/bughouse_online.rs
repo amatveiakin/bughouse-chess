@@ -174,7 +174,7 @@ impl World {
     ) {
         self[client_id].join(contest_id, player_name);
         self.process_events_for(client_id).unwrap();
-        self[client_id].state.set_team(team);
+        self[client_id].state.set_faction(Faction::Fixed(team));
     }
 
     fn new_client(&mut self) -> TestClientId {
@@ -191,7 +191,7 @@ impl World {
         let [cl1, cl2, cl3, cl4] = self.new_clients();
 
         let contest = self.new_contest(cl1, "p1");
-        self[cl1].state.set_team(Team::Red);
+        self[cl1].state.set_faction(Faction::Fixed(Team::Red));
         self.process_all_events();
 
         self.server.state.TEST_override_board_assignment(contest.clone(), vec! [
@@ -289,7 +289,7 @@ fn play_online_misc() {
     let [cl1, cl2, cl3, cl4] = world.new_clients();
 
     let contest = world.new_contest(cl1, "p1");
-    world[cl1].state.set_team(Team::Red);
+    world[cl1].state.set_faction(Faction::Fixed(Team::Red));
     world.process_all_events();
 
     world.server.state.TEST_override_board_assignment(contest.clone(), vec! [
@@ -524,7 +524,7 @@ fn reconnect_lobby() {
     let [cl1, cl2, cl3] = world.new_clients();
 
     let contest = world.new_contest(cl1, "p1");
-    world[cl1].state.set_team(Team::Red);
+    world[cl1].state.set_faction(Faction::Fixed(Team::Red));
     world.join_and_set_team(cl2, &contest, "p2", Team::Red);
     world.join_and_set_team(cl3, &contest, "p3", Team::Blue);
     world.process_all_events();
@@ -533,12 +533,12 @@ fn reconnect_lobby() {
     world[cl2].state.set_ready(true);
     world[cl3].state.set_ready(true);
     world.process_all_events();
-    assert_eq!(world[cl1].state.contest().unwrap().players.len(), 3);
+    assert_eq!(world[cl1].state.contest().unwrap().participants.len(), 3);
 
     world[cl2].state.leave();
     world[cl3].state.leave();
     world.process_all_events();
-    assert_eq!(world[cl1].state.contest().unwrap().players.len(), 1);
+    assert_eq!(world[cl1].state.contest().unwrap().participants.len(), 1);
 
     let cl4 = world.new_client();
     world.join_and_set_team(cl4, &contest, "p4", Team::Blue);
@@ -547,7 +547,7 @@ fn reconnect_lobby() {
     world.process_all_events();
     // Game should not start yet because some players have been removed.
     assert!(world[cl1].state.game_state().is_none());
-    assert_eq!(world[cl1].state.contest().unwrap().players.len(), 2);
+    assert_eq!(world[cl1].state.contest().unwrap().participants.len(), 2);
 
     // Cannot reconnect as an active player.
     let cl1_new = world.new_client();
@@ -586,11 +586,11 @@ fn reconnect_game_active() {
     // Show must go on - the game has started.
     assert!(world[cl1].state.game_state().is_some());
 
-    // Cannot connect as a different player even though somebody has left.
+    // Can connect mid-game as an observer.
     let cl5 = world.new_client();
     world[cl5].join(&contest, "p5");
-    assert!(matches!(world.process_events_for(cl5), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
+    assert_eq!(world[cl5].state.contest().unwrap().my_faction, Faction::Observer);
 
     // Cannot reconnect as an active player.
     let cl2_new = world.new_client();
@@ -718,10 +718,10 @@ fn two_contests() {
     let [cl1, cl2, cl3, cl4, cl5, cl6, cl7, cl8] = world.new_clients();
 
     let contest1 = world.new_contest(cl1, "p1");
-    world[cl1].state.set_team(Team::Red);
+    world[cl1].state.set_faction(Faction::Fixed(Team::Red));
     world.process_all_events();
     let contest2 = world.new_contest(cl5, "p5");
-    world[cl5].state.set_team(Team::Red);
+    world[cl5].state.set_faction(Faction::Fixed(Team::Red));
     world.process_all_events();
 
     world.server.state.TEST_override_board_assignment(contest1.clone(), vec! [

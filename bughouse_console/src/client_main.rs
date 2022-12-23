@@ -76,7 +76,6 @@ fn render(
                 );
             }
         } else {
-            let players = &contest.players;
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
             match contest.bughouse_rules.teaming {
                 Teaming::FixedTeams => {
@@ -101,8 +100,8 @@ fn render(
                     */
                 },
                 Teaming::IndividualMode => {
-                    for p in players {
-                        assert!(p.fixed_team.is_none());
+                    for p in &contest.participants {
+                        // TODO: Distinguish between players and observers.
                         writeln_raw(stdout, format!("  {} {}", "•", p.name))?;
                     }
                 },
