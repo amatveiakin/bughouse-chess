@@ -100,13 +100,15 @@ cd bughouse_wasm && wasm-pack build && cd ../www && npm run build
 sudo cp dist/* /var/www/<site>
 ```
 
-Install Apache proxy modules:
+Install Apache modules:
 
 ```
-sudo a2enmod proxy proxy_http proxy_wstunnel
+sudo a2enmod headers proxy proxy_http proxy_wstunnel
 ```
 
-Enable request redirection. Add this to `/etc/apache2/sites-available/<site>`:
+Enable request redirection and set `Cache-Control` to `no-cache` in order to
+make sure that the clients are always up-to-date. Add this to
+`/etc/apache2/sites-available/<site>`:
 
 ```
 <VirtualHost *:443>
@@ -116,6 +118,8 @@ Enable request redirection. Add this to `/etc/apache2/sites-available/<site>`:
     ProxyPassReverse /dyn http://localhost:14362/dyn
     ProxyPass /ws ws://localhost:14361 keepalive=On
     ProxyPassReverse /ws ws://localhost:14361
+
+    Header Set Cache-Control "no-cache"
 </VirtualHost>
 ```
 
