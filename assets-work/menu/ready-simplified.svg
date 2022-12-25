@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="10"
+   height="10"
+   viewBox="0 0 10 10"
+   version="1.1"
+   id="svg8"
+   sodipodi:docname="ready-.svg"
+   inkscape:version="1.0.1 (3bc2e813f5, 2020-09-07)">
+  <defs
+     id="defs2" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="31.678384"
+     inkscape:cx="5.380881"
+     inkscape:cy="4.1727087"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     inkscape:document-rotation="0"
+     showgrid="false"
+     units="px"
+     inkscape:window-width="1280"
+     inkscape:window-height="650"
+     inkscape:window-x="-6"
+     inkscape:window-y="-6"
+     inkscape:window-maximized="1" />
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <rect
+       style="fill:none;stroke:#aa6628;stroke-width:0.4;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       id="rect833"
+       width="6.8214617"
+       height="6.8214622"
+       x="1.5892692"
+       y="1.5892689"
+       ry="0.80252498" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.6;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none"
+       id="path835"
+       d="m 2.709561,4.5122919 c 0.4485028,0.8339431 0.7905735,1.8026437 1.1275222,2.6521436 0,0 0.1038835,0.1746166 0.192985,0.193073 0.093101,0.019291 0.270922,0.015018 0.3584346,-0.086292 C 5.7977495,5.26227 6.790862,2.777499 7.8933261,0.79319363 L 7.7826679,0.84283693 C 6.7062234,2.849886 5.6932692,5.0471417 4.5856085,6.8504341 4.2080204,7.4898828 4.3659627,6.9230289 4.1212491,7.0039093 3.6603713,6.1540468 3.3781129,5.1395962 3.1187998,4.2792776 Z"
+       sodipodi:nodetypes="cccccccccc" />
+  </g>
+</svg>

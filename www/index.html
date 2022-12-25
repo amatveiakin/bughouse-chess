@@ -10,30 +10,84 @@
   <body>
     <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
     <script src="./bootstrap.js" type="module"></script>
+
+    <!-- Note. Cannot use "display: none" because of a Firefox bug:
+         https://bugzilla.mozilla.org/show_bug.cgi?id=376027 -->
+    <svg width="0" height="0" style="position: absolute">
+      <defs id="svg-defs">
+        <radialGradient id="faction-red-gradient" cx="3.9267" cy="3.3585" r="3.4093" gradientTransform="matrix(-.1146 .84997 -1.0222 -.13782 7.776 .43219)" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#ffafaf" offset="0"/>
+          <stop stop-color="#cb0000" offset="1"/>
+        </radialGradient>
+        <symbol id="faction-red">
+          <circle cx="5" cy="5" r="3.5164" fill="url(#faction-red-gradient)"/>
+        </symbol>
+        <radialGradient id="faction-blue-gradient" cx="3.3836" cy=".70436" r="3.0134" gradientTransform="matrix(-.2759 3.7305 -1.4061 -.10399 5.8869 -15.657)" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#8080ff" offset="0"/>
+          <stop stop-color="#0000e8" offset="1"/>
+        </radialGradient>
+        <symbol id="faction-blue">
+          <rect transform="rotate(45)" x="3.963" y="-3.1081" width="6.2162" height="6.2162" fill="url(#faction-blue-gradient)"/>
+        </symbol>
+        <symbol id="faction-random">
+          <rect transform="matrix(.7061 .70811 -.25745 .96629 0 0)" x="2.7099" y="-.011564" width="4.3367" height="4.3367" fill="#dbdbdb" stroke="#000" stroke-linejoin="bevel" stroke-width=".237"/>
+          <rect transform="matrix(-.96629 .25745 -.70811 -.7061 0 0)" x="-4.3252" y="-7.0467" width="4.3367" height="4.3367" fill="#f4f4f4" stroke="#000" stroke-linejoin="bevel" stroke-width=".237"/>
+          <rect transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" x="7.0582" y="-11.395" width="4.3367" height="4.3367" fill="#c3c3c3" stroke="#000" stroke-linejoin="bevel" stroke-width=".237"/>
+          <circle transform="matrix(.7061 .70811 -.25745 .96629 0 0)" cx="4.8783" cy="2.1568" r=".39052"/>
+          <circle transform="matrix(-.96629 .25745 -.70811 -.7061 0 0)" cx="-3.2416" cy="-5.9631" r=".39052"/>
+          <circle transform="matrix(-.96629 .25745 -.70811 -.7061 0 0)" cx="-2.1568" cy="-4.8783" r=".39052"/>
+          <circle transform="matrix(-.96629 .25745 -.70811 -.7061 0 0)" cx="-1.072" cy="-3.7935" r=".39052"/>
+          <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="8.1418" cy="-10.311" r=".39052"/>
+          <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="10.311" cy="-10.311" r=".39052"/>
+          <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="9.2266" cy="-9.2266" r=".39052"/>
+          <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="8.1418" cy="-8.1418" r=".39052"/>
+          <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="10.311" cy="-8.1418" r=".39052"/>
+        </symbol>
+        <symbol id="faction-observer">
+          <ellipse cx="3.2668" cy="5" rx="1.9963" ry="3.2489" fill="#fff" stroke="#000" stroke-linejoin="bevel" stroke-width=".3"/>
+          <circle cx="2.573" cy="4.948" r=".83036"/>
+          <circle cx="2.7855" cy="4.5745" r=".32224" fill="#fff"/>
+          <ellipse cx="6.7332" cy="5" rx="1.9963" ry="3.2489" fill="#fff" stroke="#000" stroke-linejoin="bevel" stroke-width=".3"/>
+          <circle cx="6.0395" cy="4.948" r=".83036"/>
+          <circle cx="6.252" cy="4.5745" r=".32224" fill="#fff"/>
+        </symbol>
+
+        <symbol id="readiness-checkbox">
+          <rect
+            style="fill:none;stroke-width:0.4"
+            width="6.8" height="6.8" x="1.6" y="1.6" ry="0.8" />
+        </symbol>
+        <symbol id="readiness-checkmark">
+          <path
+            style="fill:none;stroke-width:0.6;stroke-linejoin:miter;stroke-miterlimit:4"
+            d="m 2.709561,4.5122919 c 0.4485028,0.8339431 0.7905735,1.8026437 1.1275222,2.6521436 0,0 0.1038835,0.1746166 0.192985,0.193073 0.093101,0.019291 0.270922,0.015018 0.3584346,-0.086292 C 5.7977495,5.26227 6.790862,2.777499 7.8933261,0.79319363 L 7.7826679,0.84283693 C 6.7062234,2.849886 5.6932692,5.0471417 4.5856085,6.8504341 4.2080204,7.4898828 4.3659627,6.9230289 4.1212491,7.0039093 3.6603713,6.1540468 3.3781129,5.1395962 3.1187998,4.2792776 Z"
+            sodipodi:nodetypes="cccccccccc" />
+        </symbol>
+
+        <filter id="icon-shadow">
+          <feDropShadow dx=0 dy=0 stdDeviation=0.5 flood-color="#c4dc5c" flood-opacity=1 />
+        </filter>
+        <filter id="board-shadow">
+          <feDropShadow dx=0.04 dy=0.04 stdDeviation=0.05 flood-color="#000000" flood-opacity=0.6 />
+        </filter>
+        <filter id="reserve-shadow">
+          <feDropShadow dx=0 dy=0 stdDeviation=0.1 flood-color="#8eab6d" flood-opacity=1 />
+        </filter>
+        <filter id="reserve-shadow-gray">
+          <feDropShadow dx=0 dy=0 stdDeviation=0.1 flood-color="#a2a2a2" flood-opacity=1 />
+        </filter>
+        <radialGradient id="drag-start-gradient">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity=0.5 />
+          <stop offset="30%" stop-color="#ffffff" stop-opacity=0 />
+        </radialGradient>
+        <radialGradient id="drag-over-gradient" r="75%">
+          <stop offset="70%" stop-color="#ffffff" stop-opacity=0 />
+          <stop offset="100%" stop-color="#ffffff" stop-opacity=0.7 />
+        </radialGradient>
+      </defs>
+    </svg>
+
     <div id="page">
-      <!-- Note. Cannot use "display: none" because of a Firefox bug:
-           https://bugzilla.mozilla.org/show_bug.cgi?id=376027 -->
-      <svg width="0" height="0" style="position: absolute">
-        <defs id="svg-defs">
-          <filter id="board-shadow">
-            <feDropShadow dx=0.04 dy=0.04 stdDeviation=0.05 flood-color="#000000" flood-opacity=0.6 />
-          </filter>
-          <filter id="reserve-shadow">
-            <feDropShadow dx=0 dy=0 stdDeviation=0.1 flood-color="#8eab6d" flood-opacity=1 />
-          </filter>
-          <filter id="reserve-shadow-gray">
-            <feDropShadow dx=0 dy=0 stdDeviation=0.1 flood-color="#a2a2a2" flood-opacity=1 />
-          </filter>
-          <radialGradient id="drag-start-gradient">
-            <stop offset="0%" stop-color="#ffffff" stop-opacity=0.5 />
-            <stop offset="30%" stop-color="#ffffff" stop-opacity=0 />
-          </radialGradient>
-          <radialGradient id="drag-over-gradient" r="75%">
-            <stop offset="70%" stop-color="#ffffff" stop-opacity=0 />
-            <stop offset="100%" stop-color="#ffffff" stop-opacity=0.7 />
-          </radialGradient>
-        </defs>
-      </svg>
 
       <svg id="board-primary" shape-rendering="crispEdges"></svg>
       <svg id="reserve-primary-top"></svg>
@@ -159,6 +213,7 @@
           <button id="cc-confirm-button">Create contest!</button>
         </div>
       </form>
+
       <form id="menu-join-contest-page" class="menu-page" action="javascript:;">
         <button type="button" id="jc-back-button" class="back-button" title="Go back">🡨</button>
         <div class="menu-page-body">
@@ -178,6 +233,11 @@
           <button id="jc-confirm-button">Join contest!</button>
         </div>
       </form>
+
+      <div id="menu-lobby-page" class="menu-page">
+        <div>Contest <span id="lobby-contest-id"></span></div>
+        <div id="lobby-participants"></div>
+      </div>
     </dialog>
   </body>
 </html>

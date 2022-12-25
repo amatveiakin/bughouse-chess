@@ -12,7 +12,6 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use chain_cmp::chmp;
-use enum_map::{EnumMap, enum_map};
 use instant::Instant;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
@@ -123,6 +122,9 @@ pub struct JsEventMyNoop {}  // in contrast to `null`, indicates that event list
 
 #[wasm_bindgen]
 pub struct JsEventContestStarted { contest_id: String }
+
+#[wasm_bindgen]
+pub struct JsEventGameStarted {}
 
 #[wasm_bindgen]
 pub struct JsEventVictory {}
@@ -274,6 +276,12 @@ impl WebClient {
         if let Some(is_ready) = self.state.is_ready() {
             self.state.set_ready(!is_ready);
         }
+    }
+    pub fn next_faction(&mut self) {
+        self.change_faction(|f| f + 1);
+    }
+    pub fn previous_faction(&mut self) {
+        self.change_faction(|f| f - 1);
     }
     pub fn leave(&mut self) {
         self.state.leave();
@@ -480,7 +488,7 @@ impl WebClient {
                 let is_observer = matches!(my_id, BughouseParticipantId::Observer(_));
                 render_grids(alt_game.perspective())?;
                 setup_participation_mode(is_observer)?;
-                Ok(JsEventMyNoop{}.into())
+                Ok(JsEventGameStarted{}.into())
             },
             Some(NotableEvent::GameOver(game_status)) => {
                 match game_status {
@@ -581,6 +589,7 @@ impl WebClient {
                 )?;
                 let player_name = board.player_name(force);
                 let player = contest.participants.iter().find(|p| p.name == *player_name).unwrap();
+                // TODO: Show teams for the upcoming game in individual mode.
                 let show_readiness = game.status() != BughouseGameStatus::Active;
                 let player_string = participant_string(&player, show_readiness);
                 name_node.set_text_content(Some(&player_string));
@@ -643,6 +652,18 @@ impl WebClient {
             .sorted_by_key(|(metric, _)| metric.as_str())
             .map(|(metric, stats)| format!("{metric}: {stats}"))
             .join("\n")
+    }
+
+    fn change_faction(&mut self, faction_modifier: impl Fn(i32) -> i32) {
+        let Some(contest) = self.state.contest() else {
+            return;
+        };
+        let allowed_factions = contest.bughouse_rules.teaming.allowed_factions();
+        let current = allowed_factions.iter().position(|&f| f == contest.my_faction).unwrap();
+        let new = faction_modifier(current.try_into().unwrap());
+        let new = new.rem_euclid(allowed_factions.len().try_into().unwrap());
+        let new: usize = new.try_into().unwrap();
+        self.state.set_faction(allowed_factions[new]);
     }
 
     fn render_chalk_mark(
@@ -791,29 +812,14 @@ pub fn git_version() -> String {
 }
 
 fn update_lobby(contest: &Contest) -> JsResult<()> {
-    let info_string = web_document().get_existing_element_by_id("info-string")?;
-    // TODO: Show teams for the upcoming game in individual mode.
-    let mut factions: EnumMap<Faction, Vec<String>> = enum_map!{ _ => vec![] };
+    let document = web_document();
+    let lobby_participants_node = document.get_existing_element_by_id("lobby-participants")?;
+    remove_all_children(&lobby_participants_node)?;
     for p in &contest.participants {
-        let show_readiness = true;
-        factions[p.faction].push(format!("  {}\n", participant_string(p, show_readiness)));
+        let is_me = p.name == contest.my_name;
+        add_lobby_participant_node(p, is_me, &lobby_participants_node)?;
     }
-    let participant_info = factions.iter().filter_map(|(faction, participants)| {
-        let title = match (faction, contest.bughouse_rules.teaming) {
-            (Faction::Fixed(Team::Red), Teaming::FixedTeams) => "Team red",
-            (Faction::Fixed(Team::Blue), Teaming::FixedTeams) => "Team blue",
-            (Faction::Fixed(_), Teaming::IndividualMode) => {
-                assert!(participants.is_empty());
-                return None;
-            },
-            (Faction::Random, Teaming::FixedTeams) => "Random team",
-            (Faction::Random, Teaming::IndividualMode) => "Player",
-            (Faction::Observer, _) => "Observer",
-        };
-        Some(format!("{}:\n{}", title, participants.iter().join("")))
-    }).join("");
-    let contest_id = &contest.contest_id;
-    info_string.set_text_content(Some(&format!("Contest {contest_id}\n{participant_info}")));
+    document.get_existing_element_by_id("lobby-contest-id")?.set_text_content(Some(&contest.contest_id));
     Ok(())
 }
 
@@ -867,6 +873,60 @@ fn participant_prefix(p: &Participant, show_readiness: bool) -> &'static str {
 
 fn participant_string(p: &Participant, show_readiness: bool) -> String {
     format!("{}{}", participant_prefix(p, show_readiness), p.name)
+}
+
+fn make_menu_icon(images: &[&str]) -> JsResult<web_sys::Element> {
+    let document = web_document();
+    let svg_node = document.create_svg_element("svg")?;
+    svg_node.set_attribute("viewBox", "0 0 10 10")?;
+    svg_node.set_attribute("class", "lobby-icon")?;
+    for img in images {
+        let use_node = document.create_svg_element("use")?;
+        use_node.set_attribute("href", &format!("#{img}"))?;
+        use_node.set_attribute("class", img)?;
+        svg_node.append_child(&use_node)?;
+    }
+    Ok(svg_node)
+}
+
+fn add_lobby_participant_node(p: &Participant, is_me: bool, parent: &web_sys::Element) -> JsResult<()> {
+    let document = web_document();
+    let add_relation_class = |node: &web_sys::Element| {
+        node.class_list().add_1(if is_me { "lobby-me" } else { "lobby-other" })
+    };
+    {
+        let name_node = document.create_element("div")?;
+        name_node.set_attribute("class", "lobby-name")?;
+        add_relation_class(&name_node)?;
+        name_node.set_text_content(Some(&p.name));
+        parent.append_child(&name_node)?;
+    }
+    {
+        let faction_node = match p.faction {
+            Faction::Fixed(Team::Red) => make_menu_icon(&["faction-red"])?,
+            Faction::Fixed(Team::Blue) => make_menu_icon(&["faction-blue"])?,
+            Faction::Random => make_menu_icon(&["faction-random"])?,
+            Faction::Observer => make_menu_icon(&["faction-observer"])?,
+        };
+        add_relation_class(&faction_node)?;
+        if is_me {
+            faction_node.set_id("my-faction");
+        }
+        parent.append_child(&faction_node)?;
+    }
+    {
+        // TODO: Remove readiness for observers.
+        let readiness_node = match p.is_ready {
+            false => make_menu_icon(&["readiness-checkbox"])?,
+            true => make_menu_icon(&["readiness-checkbox", "readiness-checkmark"])?,
+        };
+        add_relation_class(&readiness_node)?;
+        if is_me {
+            readiness_node.set_id("my-readiness");
+        }
+        parent.append_child(&readiness_node)?;
+    }
+    Ok(())
 }
 
 // Renders reserve.

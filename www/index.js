@@ -71,6 +71,7 @@ const menu_dialog = document.getElementById('menu-dialog');
 const menu_start_page = document.getElementById('menu-start-page');
 const menu_create_contest_page = document.getElementById('menu-create-contest-page');
 const menu_join_contest_page = document.getElementById('menu-join-contest-page');
+const menu_lobby_page = document.getElementById('menu-lobby-page');
 const menu_pages = document.getElementsByClassName('menu-page');
 
 const create_contest_button = document.getElementById('create-contest-button');
@@ -157,6 +158,7 @@ git_version.innerText = wasm.git_version();
 
 set_up_drag_and_drop();
 set_up_chalk_drawing();
+set_up_menu_pointers();
 
 let wasm_client_object = make_wasm_client();
 let wasm_client_panicked = false;
@@ -457,6 +459,8 @@ function process_notable_events() {
             const url = new URL(window.location);
             url.searchParams.set(SearchParams.contest_id, js_event.contest_id());
             window.history.pushState({}, '', url);
+        } else if (js_event_type == 'JsEventGameStarted') {
+            close_menu();
         } else if (js_event_type == 'JsEventVictory') {
             play_audio(Sound.victory);
         } else if (js_event_type == 'JsEventDefeat') {
@@ -544,9 +548,7 @@ function set_up_drag_and_drop() {
     svg.addEventListener('contextmenu', cancel_preturn);
     document.addEventListener('contextmenu', cancel_drag);
 
-    function is_main_pointer(event) {
-        return event.button == 0 || event.changedTouches?.length >= 1;
-    }
+    function is_main_pointer(event) { return event.button == 0 || event.changedTouches?.length >= 1; }
 
     function mouse_position_relative_to_board(event) {
         const ctm = svg.getScreenCTM();
@@ -703,6 +705,42 @@ function set_up_chalk_drawing() {
     }
 }
 
+function set_up_menu_pointers() {
+    function is_cycle_forward(event) { return event.button == 0 || event.changedTouches?.length >= 1; }
+    function is_cycle_backward(event) { return event.button == 2; }
+
+    function mouse_down(event) {
+        with_error_handling(function() {
+            const my_readiness = document.getElementById('my-readiness');
+            const my_faction = document.getElementById('my-faction');
+            if (my_readiness?.contains(event.target)) {
+                if (is_cycle_forward(event) || is_cycle_backward(event)) {
+                    wasm_client().toggle_ready();
+                }
+            } else if (my_faction?.contains(event.target)) {
+                if (is_cycle_forward(event)) {
+                    wasm_client().next_faction();
+                    update();
+                } else if (is_cycle_backward(event)) {
+                    wasm_client().previous_faction();
+                    update();
+                }
+            }
+        });
+    }
+
+    function context_menu(event) {
+        const lobby_participants = document.getElementById('lobby-participants');
+        if (lobby_participants?.contains(event.target)) {
+            event.preventDefault();
+        }
+    }
+
+    const menu = document.getElementById('menu-dialog');
+    menu.addEventListener('mousedown', mouse_down);
+    menu.addEventListener('contextmenu', context_menu);
+}
+
 function on_hide_menu_page(page) {
     if (page === menu_create_contest_page) {
         window.localStorage.setItem(Storage.player_name, cc_player_name.value);
@@ -838,7 +876,7 @@ function on_create_contest_confirm(event) {
             data.get('rated') == "on",
         );
         update();
-        close_menu();
+        show_menu_page(menu_lobby_page);
     });
 }
 
@@ -850,7 +888,7 @@ function on_join_contest_confirm(event) {
             data.get('player-name'),
         );
         update();
-        close_menu();
+        show_menu_page(menu_lobby_page);
     });
 }
 

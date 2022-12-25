@@ -592,6 +592,39 @@ dialog input:invalid:not(:placeholder-shown) {
   text-transform: uppercase;
 }
 
+#lobby-participants {
+  min-width: 10em;
+  margin-top: 0.8em;
+  font-size: 110%;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  column-gap: 0.5em;
+  row-gap: 0.5em;
+  align-items: center;
+  user-select: none;  /* prevent accidental name selection when choosing a team */
+}
+.lobby-icon {
+  width: 2em;
+  height: 2em;
+}
+.lobby-name.lobby-me {
+  font-size: 110%;
+  font-weight: bold;
+}
+.lobby-me .readiness-checkbox { stroke: #82a12f; }
+.lobby-me .readiness-checkmark { stroke: #5c9611; }
+.lobby-other .readiness-checkbox { stroke: #978e86; }
+.lobby-other .readiness-checkmark { stroke: #a49141; }
+.lobby-icon.lobby-me {
+  scale: 130%;
+}
+.lobby-icon.lobby-me > *:first-child {
+  filter: url(#icon-shadow);
+}
+.lobby-icon:not(.lobby-me) {
+  filter: saturate(0.9) contrast(0.7) brightness(1.1);
+}
+
 .icon-button {
   box-sizing: border-box;
   padding: 0;
