@@ -236,8 +236,6 @@ function with_error_handling(f) {
                     clearInterval(on_tick_interval_id);
                     on_tick_interval_id = null;
                 }
-            } else if (e.name === 'InvalidStateError' && socket.readyState == WebSocket.CONNECTING) {
-                info_string.innerText = 'Still connecting to the server... Please try again later.';
             } else {
                 console.log(log_time(), 'Unknown error: ', e);
                 const msg = `Unknown error: ${e}`;
@@ -437,6 +435,10 @@ function update() {
 }
 
 function process_outgoing_events() {
+    if (socket.readyState == WebSocket.CONNECTING) {
+        // Try again later when the socket is open.
+        return;
+    }
     let event;
     while ((event = wasm_client().next_outgoing_event())) {
         console.log(log_time(), 'sending: ', event);
@@ -449,7 +451,7 @@ function process_notable_events() {
     while ((js_event = wasm_client().next_notable_event())) {
         const js_event_type = js_event?.constructor?.name;
         if (js_event_type == 'JsEventMyNoop') {
-            // noop, but are events might be coming
+            // Noop, but other events might be coming.
         } else if (js_event_type == 'JsEventContestStarted') {
             const url = new URL(window.location);
             url.searchParams.set(SearchParams.contest_id, js_event.contest_id());
