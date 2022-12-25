@@ -11,6 +11,7 @@ use tide_jsx::*;
 use time::OffsetDateTime;
 
 use bughouse_chess::persistence::*;
+use bughouse_webserver::*;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -293,48 +294,19 @@ td, th {
             .finished_games(range_start..now)
             .await
             .map_err(anyhow::Error::from)?;
-        let mut player_stats = HashMap::<String, RawStats>::new();
-        let mut team_stats = HashMap::<[String; 2], RawStats>::new();
+
+        // TODO: initialize from a persisted state and only look at games played since the last
+        // committed game.
+        let mut all_stats = GroupStats::default();
 
         for (_, game) in games.into_iter() {
-            let red_team = sort([game.player_red_a, game.player_red_b]);
-            let blue_team = sort([game.player_blue_a, game.player_blue_b]);
-            match game.result.as_str() {
-                "DRAW" => {
-                    for p in red_team.iter().chain(blue_team.iter()).cloned() {
-                        player_stats.entry(p).or_default().draws += 1;
-                    }
-                    for team in [red_team, blue_team].iter() {
-                        team_stats.entry(team.clone()).or_default().draws += 1;
-                    }
-                }
-                "VICTORY_RED" => {
-                    for p in red_team.iter().cloned() {
-                        player_stats.entry(p).or_default().wins += 1;
-                    }
-                    for p in blue_team.iter().cloned() {
-                        player_stats.entry(p).or_default().losses += 1;
-                    }
-                    team_stats.entry(red_team).or_default().wins += 1;
-                    team_stats.entry(blue_team).or_default().losses += 1;
-                }
-                "VICTORY_BLUE" => {
-                    for p in red_team.iter().cloned() {
-                        player_stats.entry(p).or_default().losses += 1;
-                    }
-                    for p in blue_team.iter().cloned() {
-                        player_stats.entry(p).or_default().wins += 1;
-                    }
-                    team_stats.entry(red_team).or_default().losses += 1;
-                    team_stats.entry(blue_team).or_default().wins += 1;
-                }
-                _ => {}
-            }
+            all_stats.update(&game)?;
         }
 
-        let mut final_player_stats = process_stats(player_stats.into_iter());
+        let mut final_player_stats = process_stats(all_stats.per_player.into_iter());
         let mut final_team_stats = process_stats(
-            team_stats
+            all_stats
+                .per_team
                 .into_iter()
                 .map(|([t0, t1], s)| (format!("{}, {}", t0, t1), s)),
         );
@@ -349,6 +321,7 @@ td, th {
                         <tr>
                             <td>{s.name}</td>
                             <td>{format!("{:.3}", s.pointrate)}</td>
+                            <td>{format!("{:.3}", s.elo)}</td>
                             <td>{s.points}</td>
                             <td>{s.games}</td>
                             <td>{s.wins}</td>
@@ -373,6 +346,7 @@ td, th {
                 <tr>
                     <th>{"Player"}</th>
                     <th>{"Pointrate"}</th>
+                    <th>{"Rating"}</th>
                     <th>{"Points"}</th>
                     <th>{"Games"}</th>
                     <th>{"Wins"}</th>
@@ -386,6 +360,7 @@ td, th {
                 <tr>
                     <th>{"Team"}</th>
                     <th>{"Pointrate"}</th>
+                    <th>{"Rating"}</th>
                     <th>{"Points"}</th>
                     <th>{"Games"}</th>
                     <th>{"Wins"}</th>
@@ -404,13 +379,6 @@ td, th {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-struct RawStats {
-    draws: usize,
-    wins: usize,
-    losses: usize,
-}
-
 #[derive(Debug, Clone, Default)]
 struct FinalStats {
     name: String,
@@ -420,6 +388,7 @@ struct FinalStats {
     losses: usize,
     points: f64,
     pointrate: f64,
+    elo: f64,
 }
 
 fn process_stats<I: Iterator<Item = (String, RawStats)>>(raw_stats: I) -> Vec<FinalStats> {
@@ -435,6 +404,7 @@ fn process_stats<I: Iterator<Item = (String, RawStats)>>(raw_stats: I) -> Vec<Fi
                 wins: s.wins,
                 losses: s.losses,
                 pointrate: points / games as f64,
+                elo: s.elo,
             }
         })
         .collect()
@@ -453,13 +423,4 @@ fn format_timestamp_date_and_time(maybe_ts: Option<OffsetDateTime>) -> Option<(S
         ))
         .ok()?;
     Some((date, time))
-}
-
-fn sort<A, T>(mut array: A) -> A
-where
-    A: AsMut<[T]>,
-    T: Ord,
-{
-    array.as_mut().sort();
-    array
 }
