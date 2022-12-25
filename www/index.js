@@ -292,9 +292,10 @@ function make_socket() {
 function on_server_event(event) {
     with_error_handling(function() {
         console.log(log_time(), 'server: ', event);
-        wasm_client().process_server_event(event);
-        // TODO: Avoid full update on heartbeat.
-        update();
+        const update_needed = wasm_client().process_server_event(event);
+        if (update_needed) {
+            update();
+        }
     });
 }
 

@@ -458,11 +458,13 @@ impl WebClient {
         Ok(())
     }
 
-    pub fn process_server_event(&mut self, event: &str) -> JsResult<()> {
+    pub fn process_server_event(&mut self, event: &str) -> JsResult<bool> {
         let server_event = serde_json::from_str(event).unwrap();
+        let updated_needed = !matches!(server_event, BughouseServerEvent::Heartbeat);
         self.state.process_server_event(server_event).map_err(|err| {
             rust_error!("{:?}", err)
-        })
+        })?;
+        Ok(updated_needed)
     }
 
     pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
