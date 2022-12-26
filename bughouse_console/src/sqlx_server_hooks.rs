@@ -18,7 +18,6 @@ use bughouse_chess::*;
 
 pub struct SqlxServerHooks<DB: sqlx::Database> {
     invocation_id: String,
-    game_start_time: Option<time::OffsetDateTime>,
     pool: sqlx::Pool<DB>,
 }
 
@@ -33,7 +32,6 @@ impl SqlxServerHooks<sqlx::Sqlite>
         Self::create_tables(&pool)?;
         Ok(Self {
             invocation_id: uuid::Uuid::new_v4().to_string(),
-            game_start_time: None,
             pool,
         })
     }
@@ -47,7 +45,6 @@ impl SqlxServerHooks<sqlx::Postgres>
         Self::create_tables(&pool)?;
         Ok(Self {
             invocation_id: uuid::Uuid::new_v4().to_string(),
-            game_start_time: None,
             pool,
         })
     }
@@ -74,9 +71,6 @@ where
         maybe_game: Option<&GameState>,
         round: usize,
     ) {
-        if let BughouseServerEvent::GameStarted { .. } = event {
-            self.game_start_time = Some(time::OffsetDateTime::now_utc());
-        }
         self.record_game_finish(event, maybe_game, round);
     }
 }
@@ -250,7 +244,7 @@ where
         Some(GameResultRow {
             git_version: my_git_version!().to_owned(),
             invocation_id: self.invocation_id.to_string(),
-            game_start_time: self.game_start_time,
+            game_start_time: game.start_offset_time(),
             game_end_time: Some(time::OffsetDateTime::now_utc()),
             player_red_a: players.0,
             player_red_b: players.1,
