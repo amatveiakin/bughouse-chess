@@ -189,7 +189,7 @@ impl WebClient {
         starting_time: &str,
         drop_aggression: &str,
         pawn_drop_rows: &str,
-        rated: bool,
+        rating: &str,
     ) -> JsResult<()> {
         let teaming = match teaming {
             "fixed-teams" => Teaming::FixedTeams,
@@ -207,6 +207,11 @@ impl WebClient {
             "no-bughouse-mate" => DropAggression::NoBughouseMate,
             "mate-allowed" => DropAggression::MateAllowed,
             _ => return Err(format!("Invalid drop aggression: {drop_aggression}").into()),
+        };
+        let rated = match rating {
+            "rated" => true,
+            "unrated" => false,
+            _ => return Err(format!("Invalid rating: {rating}").into()),
         };
 
         let Some((Ok(starting_minutes), Ok(starting_seconds))) = starting_time

@@ -206,8 +206,11 @@
             placeholder="min-max" spellcheck="false" autocomplete="off" required
             value="2-6" pattern="1-[1-7]|2-[2-7]|3-[3-7]|4-[4-7]|5-[5-7]|6-[6-7]|7-[7-7]"
             title="Allowed pawn drop rows in “min-max” format. Rows are counted starting from the player, so “2-6” means White can drop from row 2 to row 6 and Black can drop from row 7 to row 3. &#013;Limitations: 1 ≤ min ≤ max ≤ 7" />
-          <input type="checkbox" id="cc-rated" name=rated checked=true/>
-          <label for="cc-rated">Rated</label>
+          <label for="cc-rating">Rating</label>
+          <select id="cc-rating" name="rating">
+            <option value="rated" selected>Rated</option>
+            <option value="unrated">Unrated</option>
+          </select>
         </div>
         <div class="dialog-button-container">
           <button id="cc-confirm-button">Create contest!</button>
