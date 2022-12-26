@@ -7,7 +7,7 @@ use sqlx::prelude::*;
 use tide::http::Mime;
 use tide::{Request, Response, StatusCode};
 use tide_jsx::*;
-use time::OffsetDateTime;
+use time::{OffsetDateTime, PrimitiveDateTime};
 
 use bughouse_chess::persistence::*;
 use bughouse_webserver::*;
@@ -41,14 +41,10 @@ async fn main() -> Result<(), anyhow::Error> {
             SqlxApp::<sqlx::Sqlite>::register_handlers(&mut app);
             app.listen(args.bind_address).await?;
         }
-        (_, Some(_db)) => {
-            // TODO: SQL needs to be adjusted. rowid column does not exist in postgresql.
-            return Err(anyhow::Error::msg(
-                "Postgresql reader is not implemented yet.",
-            ));
-            // let mut app = tide::with_state(SqlxApp::<sqlx::Postgres>::new(&db)?);
-            // SqlxApp::<sqlx::Postgres>::register_handlers(&mut app);
-            // app.listen(args.bind_address).await?;
+        (_, Some(db)) => {
+            let mut app = tide::with_state(SqlxApp::<sqlx::Postgres>::new(&db)?);
+            SqlxApp::<sqlx::Postgres>::register_handlers(&mut app);
+            app.listen(args.bind_address).await?;
         }
     }
     Ok(())
@@ -94,7 +90,8 @@ where
     for<'q> i64: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'q> String: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'q> bool: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
-    for<'q> OffsetDateTime: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
+    for<'q> OffsetDateTime: sqlx::Type<DB> + sqlx::Encode<'q, DB>,
+    for<'q> PrimitiveDateTime: sqlx::Type<DB> + sqlx::Decode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
     for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
     for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
@@ -141,8 +138,19 @@ where
                     GameResultRow {
                         git_version: row.try_get("git_version")?,
                         invocation_id: row.try_get("invocation_id")?,
-                        game_start_time: row.try_get("game_start_time")?,
-                        game_end_time: row.try_get("game_end_time")?,
+                        // Timestamps need to be re-coded because Postgres
+                        // TIMESTAMP datatype can only be decoded as
+                        // PrimitiveDateTime, while to get OffsetDateTime,
+                        // TIMESTAMPZ needs to be used which is not supported
+                        // in MySQL.
+                        // Encoding of timestamps doesn't have such issues:
+                        // the library converts to UTC and encodes.
+                        game_start_time: Option::map(
+                            row.try_get("game_start_time")?,
+                            PrimitiveDateTime::assume_utc),
+                        game_end_time: Option::map(
+                            row.try_get("game_end_time")?,
+                            PrimitiveDateTime::assume_utc),
                         player_red_a: row.try_get("player_red_a")?,
                         player_red_b: row.try_get("player_red_b")?,
                         player_blue_a: row.try_get("player_blue_a")?,
@@ -172,7 +180,7 @@ where
     }
 
     pub async fn pgn(&self, rowid: RowId) -> Result<String, anyhow::Error> {
-        sqlx::query("SELECT game_pgn from finished_games WHERE ROWID = ?")
+        sqlx::query("SELECT game_pgn from finished_games WHERE rowid = $1")
             .bind(rowid.id)
             .fetch_one(&self.pool)
             .await?
