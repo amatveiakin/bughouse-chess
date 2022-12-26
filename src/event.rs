@@ -5,12 +5,11 @@ use serde::{Serialize, Deserialize};
 use crate::board::TurnInput;
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
-use crate::contest::ContestCreationOptions;
 use crate::game::{TurnRecord, BughouseGameStatus, PlayerInGame};
 use crate::meter::MeterStats;
 use crate::pgn::BughouseExportFormat;
 use crate::player::{Participant, Faction};
-use crate::rules::{ChessRules, BughouseRules};
+use crate::rules::Rules;
 use crate::scores::Scores;
 use crate::starter::EffectiveStartingPosition;
 
@@ -22,8 +21,7 @@ pub enum BughouseServerEvent {
     },
     ContestWelcome {
         contest_id: String,
-        chess_rules: ChessRules,
-        bughouse_rules: BughouseRules,
+        rules: Rules,
     },
     LobbyUpdated {
         participants: Vec<Participant>,
@@ -83,7 +81,8 @@ pub enum BughouseClientErrorReport {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseClientEvent {
     NewContest {
-        options: ContestCreationOptions,
+        rules: Rules,
+        player_name: String,
     },
     Join {
         contest_id: String,

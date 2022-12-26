@@ -17,13 +17,12 @@ use strum::IntoEnumIterator;
 use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
-use crate::contest::ContestCreationOptions;
 use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, PlayerInGame, BughouseGameStatus, BughouseGame, get_bughouse_force};
 use crate::heartbeat::{Heart, HeartbeatOutcome};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientErrorReport};
 use crate::pgn::{self, BughouseExportFormat};
 use crate::player::{Participant, Team, Faction};
-use crate::rules::{Teaming, ChessRules, BughouseRules};
+use crate::rules::{Teaming, Rules};
 use crate::scores::Scores;
 use crate::server_hooks::{ServerHooks, NoopServerHooks};
 
@@ -191,9 +190,7 @@ impl ops::IndexMut<ClientId> for Clients {
 
 struct Contest {
     contest_id: ContestId,
-    chess_rules: ChessRules,
-    bughouse_rules: BughouseRules,
-    rated: bool,
+    rules: Rules,
     participants: Participants,
     scores: Scores,
     match_history: Vec<BughouseGame>,  // final game states
@@ -268,9 +265,7 @@ impl CoreServerState {
         CoreServerState{ contests: HashMap::new() }
     }
 
-    fn make_contest(
-        &mut self, now: Instant, options: ContestCreationOptions
-    ) -> ContestId {
+    fn make_contest(&mut self, now: Instant, rules: Rules) -> ContestId {
         // Exclude confusing characters:
         //   - 'O' and '0' (easy to confuse);
         //   - 'I' (looks like '1'; keep '1' because confusion in the other direction seems less likely).
@@ -300,9 +295,7 @@ impl CoreServerState {
         }
         let contest = Contest {
             contest_id: id.clone(),
-            chess_rules: options.chess_rules,
-            bughouse_rules: options.bughouse_rules,
-            rated: options.rated,
+            rules,
             participants: Participants::new(),
             scores: Scores::new(),
             match_history: Vec::new(),
@@ -362,10 +355,10 @@ impl CoreServerState {
         };
 
         let contest_id = match &event {
-            BughouseClientEvent::NewContest{ options } => {
+            BughouseClientEvent::NewContest{ rules, .. } => {
                 ctx.clients[client_id].contest_id = None;
                 ctx.clients[client_id].participant_id = None;
-                let contest_id = self.make_contest(now, options.clone());
+                let contest_id = self.make_contest(now, rules.clone());
                 info!("Contest {} created by client {}", contest_id.0, ctx.clients[client_id].logging_id);
                 Some(contest_id)
             },
@@ -465,9 +458,9 @@ impl Contest {
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, event: BughouseClientEvent
     ) {
         let result = match event {
-            BughouseClientEvent::NewContest{ options, .. } => {
+            BughouseClientEvent::NewContest{ player_name, .. } => {
                 // The contest was created earlier.
-                self.join_participant(ctx, client_id, now, options.player_name)
+                self.join_participant(ctx, client_id, now, player_name)
             },
             BughouseClientEvent::Join{ contest_id: _, player_name } => {
                 self.join_participant(ctx, client_id, now, player_name)
@@ -583,7 +576,7 @@ impl Contest {
         if self.game_state.is_some() {
             return Err("Cannot set faction: contest already started".to_owned());
         }
-        match (faction, self.bughouse_rules.teaming) {
+        match (faction, self.rules.bughouse_rules.teaming) {
             (Faction::Fixed(_), Teaming::FixedTeams) => {}
             (Faction::Fixed(_), Teaming::IndividualMode) => {
                 return Err("cannot set fixed team in individual mode".to_owned());
@@ -810,11 +803,11 @@ impl Contest {
 
         let num_players = self.participants.iter().filter(|p| p.faction.is_player()).count();
         let all_ready = self.participants.iter().filter(|p| p.faction.is_player()).all(|p| p.is_ready);
-        let num_players_ok = match self.bughouse_rules.teaming {
+        let num_players_ok = match self.rules.bughouse_rules.teaming {
             Teaming::FixedTeams => num_players == TOTAL_PLAYERS,
             Teaming::IndividualMode => num_players >= TOTAL_PLAYERS,
         };
-        let teams_ok = match self.bughouse_rules.teaming {
+        let teams_ok = match self.rules.bughouse_rules.teaming {
             Teaming::FixedTeams =>
                 self.participants.num_fixed_player_per_team().values().all(|&n| n <= TOTAL_PLAYERS_PER_TEAM),
             Teaming::IndividualMode => true,
@@ -836,7 +829,7 @@ impl Contest {
         self.randomize_fixed_teams();  // non-trivial only in the beginning of a contest
         let players = self.assign_boards(previous_players);
         let game = BughouseGame::new(
-            self.chess_rules.clone(), self.bughouse_rules.clone(), &players
+            self.rules.chess_rules.clone(), self.rules.bughouse_rules.clone(), &players
         );
         self.init_scores();
         self.game_state = Some(GameState {
@@ -845,14 +838,14 @@ impl Contest {
             game_start_offset_time: None,
             preturns: HashMap::new(),
             chalkboard: Chalkboard::new(),
-            rated: self.rated,
+            rated: self.rules.rated,
         });
         self.broadcast(ctx, &self.make_game_start_event(now, None));
         self.send_lobby_updated(ctx);  // update readiness flags
     }
 
     fn init_scores(&mut self) {
-        match self.bughouse_rules.teaming {
+        match self.rules.bughouse_rules.teaming {
             Teaming::FixedTeams => {},
             Teaming::IndividualMode => {
                 assert!(self.scores.per_team.is_empty());
@@ -868,8 +861,7 @@ impl Contest {
     fn make_contest_welcome_event(&self) -> BughouseServerEvent {
         BughouseServerEvent::ContestWelcome {
             contest_id: self.contest_id.0.clone(),
-            chess_rules: self.chess_rules.clone(),
-            bughouse_rules: self.bughouse_rules.clone(),
+            rules: self.rules.clone(),
         }
     }
 
@@ -910,7 +902,7 @@ impl Contest {
     // If we were to do this, then the first two players to join would get into the same
     // team with probability 1/2 (instead of 1/3).
     fn randomize_fixed_teams(&mut self) {
-        match self.bughouse_rules.teaming {
+        match self.rules.bughouse_rules.teaming {
             Teaming::FixedTeams => {},
             Teaming::IndividualMode => {
                 return;
@@ -948,7 +940,7 @@ impl Contest {
 
         let mut rng = rand::thread_rng();
         let mut players_per_team = enum_map!{ _ => vec![] };
-        match self.bughouse_rules.teaming {
+        match self.rules.bughouse_rules.teaming {
             Teaming::FixedTeams => {
                 for p in self.participants.iter() {
                     match p.faction {

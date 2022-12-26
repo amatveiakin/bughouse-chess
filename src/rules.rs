@@ -55,6 +55,13 @@ pub struct BughouseRules {
     pub drop_aggression: DropAggression,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Rules {
+    pub chess_rules: ChessRules,
+    pub bughouse_rules: BughouseRules,
+    pub rated: bool,
+}
+
 impl Teaming {
     pub fn allowed_factions(self) -> &'static [Faction] {
         match self {
@@ -81,5 +88,43 @@ impl BughouseRules {
             max_pawn_drop_row: SubjectiveRow::from_one_based(7),
             drop_aggression: DropAggression::MateAllowed,
         }
+    }
+}
+
+impl Rules {
+    // Try to keep in sync with "New contest" dialog.
+    pub fn to_human_readable(&self) -> String {
+        let teaming = match self.bughouse_rules.teaming {
+            Teaming::FixedTeams => "Fixed Teams",
+            Teaming::IndividualMode => "Individual mode",
+        };
+        let starting_position = match self.chess_rules.starting_position {
+            StartingPosition::Classic => "Classic",
+            StartingPosition::FischerRandom => "Fischer random",
+        };
+        let time_control = self.chess_rules.time_control.to_string();
+        let drop_aggression = match self.bughouse_rules.drop_aggression {
+            DropAggression::NoCheck => "No check",
+            DropAggression::NoChessMate => "No chess mate",
+            DropAggression::NoBughouseMate => "No bughouse mate",
+            DropAggression::MateAllowed => "Mate allowed",
+        };
+        let pawn_drop_rows = format!(
+            "{}-{}",
+            self.bughouse_rules.min_pawn_drop_row.to_one_based(),
+            self.bughouse_rules.max_pawn_drop_row.to_one_based()
+        );
+        let rating = match self.rated {
+            true => "Rated",
+            false => "Unrated",
+        };
+        format!(
+"Teaming: {teaming}
+Starting position: {starting_position}
+Time control: {time_control}
+Drop aggression: {drop_aggression}
+Pawn drop rows: {pawn_drop_rows}
+Rating: {rating}"
+        )
     }
 }

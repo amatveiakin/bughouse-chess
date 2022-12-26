@@ -1,3 +1,4 @@
+use std::fmt;
 use std::time::Duration;
 
 use enum_map::{EnumMap, enum_map};
@@ -13,6 +14,15 @@ pub struct TimeControl {
     pub starting_time: Duration,
     // Improvement potential. Support increment, delay, etc.
     //   Note that `Clock::total_time_elapsed` should be adjusted in this case.
+}
+
+impl fmt::Display for TimeControl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = self.starting_time.as_secs();
+        let minutes = s / 60;
+        let seconds = s % 60;
+        write!(f, "{minutes}:{seconds:02}")
+    }
 }
 
 

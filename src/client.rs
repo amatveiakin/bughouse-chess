@@ -8,7 +8,6 @@ use crate::altered_game::AlteredGame;
 use crate::board::{TurnError, TurnMode, TurnInput};
 use crate::chalk::{Chalkboard, ChalkCanvas, ChalkDrawing, ChalkMark};
 use crate::clock::{GameInstant, WallGameTimePair};
-use crate::contest::ContestCreationOptions;
 use crate::display::{DisplayBoard, get_board_index};
 use crate::force::Force;
 use crate::game::{TurnRecord, BughouseParticipantId, BughouseObserserId, PlayerRelation, BughouseBoard, BughouseGameStatus, BughouseGame};
@@ -17,7 +16,7 @@ use crate::heartbeat::{Heart, HeartbeatOutcome};
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::BughouseExportFormat;
 use crate::player::{Participant, Faction};
-use crate::rules::{ChessRules, BughouseRules};
+use crate::rules::Rules;
 use crate::scores::Scores;
 
 
@@ -73,8 +72,7 @@ pub struct Contest {
     pub my_name: String,
     pub my_faction: Faction,
     // Rules applied in every game of the contest.
-    pub chess_rules: ChessRules,
-    pub bughouse_rules: BughouseRules,
+    pub rules: Rules,
     // All players including those not participating in the current game.
     pub participants: Vec<Participant>,
     // Scores from the past matches.
@@ -209,9 +207,9 @@ impl ClientState {
 
     pub fn is_connection_ok(&self) -> bool { self.connection.heart.healthy() }
 
-    pub fn new_contest(&mut self, options: ContestCreationOptions) {
-        self.contest_state = ContestState::Creating{ my_name: options.player_name.clone() };
-        self.connection.send(BughouseClientEvent::NewContest{ options });
+    pub fn new_contest(&mut self, rules: Rules, my_name: String) {
+        self.contest_state = ContestState::Creating{ my_name: my_name.clone() };
+        self.connection.send(BughouseClientEvent::NewContest{ rules, player_name: my_name });
     }
     pub fn join(&mut self, contest_id: String, my_name: String) {
         self.connection.send(BughouseClientEvent::Join {
@@ -305,7 +303,7 @@ impl ClientState {
             Error{ message } => {
                 return Err(EventError::ServerReturnedError(format!("Got error from server: {}", message)))
             },
-            ContestWelcome{ contest_id, chess_rules, bughouse_rules } => {
+            ContestWelcome{ contest_id, rules } => {
                 let my_name = match &self.contest_state {
                     ContestState::Creating{ my_name } => {
                         my_name.clone()
@@ -327,8 +325,7 @@ impl ClientState {
                     contest_id,
                     my_name,
                     my_faction,
-                    chess_rules,
-                    bughouse_rules,
+                    rules,
                     participants: Vec::new(),
                     scores: Scores::new(),
                     is_ready: false,
@@ -354,7 +351,10 @@ impl ClientState {
                 };
                 let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameStarted: no contest in progress"))?;
                 let game = BughouseGame::new_with_starting_position(
-                    contest.chess_rules.clone(), contest.bughouse_rules.clone(), starting_position, &players
+                    contest.rules.chess_rules.clone(),
+                    contest.rules.bughouse_rules.clone(),
+                    starting_position,
+                    &players
                 );
                 let my_id = match game.find_player(&contest.my_name) {
                     Some(id) => BughouseParticipantId::Player(id),

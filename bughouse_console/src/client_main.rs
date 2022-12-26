@@ -77,7 +77,7 @@ fn render(
             }
         } else {
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-            match contest.bughouse_rules.teaming {
+            match contest.rules.bughouse_rules.teaming {
                 Teaming::FixedTeams => {
                     // TODO: Fix team mode in console client.
                     unimplemented!("Fixed team mode in console client is temporary not supported.");

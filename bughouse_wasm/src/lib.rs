@@ -246,13 +246,12 @@ impl WebClient {
             max_pawn_drop_row: SubjectiveRow::from_one_based(max_pawn_drop_row),
             drop_aggression,
         };
-        self.state.new_contest(
-            ContestCreationOptions {
-                chess_rules,
-                bughouse_rules,
-                player_name: player_name.to_owned(),
-                rated
-            });
+        let rules = Rules {
+            chess_rules,
+            bughouse_rules,
+            rated,
+        };
+        self.state.new_contest(rules, player_name.to_owned());
         Ok(())
     }
 
@@ -482,7 +481,11 @@ impl WebClient {
 
     pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
         match self.state.next_notable_event() {
-            Some(NotableEvent::ContestStarted(contest_id)) => Ok(JsEventContestStarted{ contest_id }.into()),
+            Some(NotableEvent::ContestStarted(contest_id)) => {
+                let rules_node = web_document().get_existing_element_by_id("lobby-rules")?;
+                rules_node.set_text_content(Some(&self.state.contest().unwrap().rules.to_human_readable()));
+                Ok(JsEventContestStarted{ contest_id }.into())
+            },
             Some(NotableEvent::GameStarted) => {
                 let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
                     return Err(rust_error!("No game in progress"));
@@ -543,7 +546,7 @@ impl WebClient {
         // TODO: Better readiness status display.
         let game = alt_game.local_game();
         let my_id = alt_game.my_id();
-        update_scores(&contest.scores, contest.bughouse_rules.teaming, my_id)?;
+        update_scores(&contest.scores, contest.rules.bughouse_rules.teaming, my_id)?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |force| {
                 let BughouseParticipantId::Player(my_player_id) = my_id else {
@@ -663,7 +666,7 @@ impl WebClient {
         let Some(contest) = self.state.contest() else {
             return;
         };
-        let allowed_factions = contest.bughouse_rules.teaming.allowed_factions();
+        let allowed_factions = contest.rules.bughouse_rules.teaming.allowed_factions();
         let current = allowed_factions.iter().position(|&f| f == contest.my_faction).unwrap();
         let new = faction_modifier(current.try_into().unwrap());
         let new = new.rem_euclid(allowed_factions.len().try_into().unwrap());

@@ -1,5 +1,4 @@
 // TODO: streaming support + APIs.
-use std::collections::HashMap;
 use std::ops::Range;
 
 use clap::Parser;

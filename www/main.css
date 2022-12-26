@@ -594,7 +594,6 @@ dialog input:invalid:not(:placeholder-shown) {
 
 #lobby-participants {
   min-width: 10em;
-  margin-top: 0.8em;
   font-size: 110%;
   display: grid;
   grid-template-columns: 1fr auto auto;
@@ -602,6 +601,16 @@ dialog input:invalid:not(:placeholder-shown) {
   row-gap: 0.5em;
   align-items: center;
   user-select: none;  /* prevent accidental name selection when choosing a team */
+}
+#lobby-contest {
+  font-size: 110%;
+}
+#lobby-contest-id {
+  font-weight: bold;
+}
+#lobby-rules {
+  white-space: pre;
+  margin: 0.8em 0;
 }
 .lobby-icon {
   width: 2em;
