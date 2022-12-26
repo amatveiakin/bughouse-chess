@@ -29,7 +29,7 @@ impl SqlxServerHooks<sqlx::Sqlite>
             .create_if_missing(true);
         let pool =
             async_std::task::block_on(sqlx::SqlitePool::connect_with(options))?;
-        Self::create_tables(&pool)?;
+        Self::create_tables(&pool, "")?;
         Ok(Self {
             invocation_id: uuid::Uuid::new_v4().to_string(),
             pool,
@@ -42,7 +42,7 @@ impl SqlxServerHooks<sqlx::Postgres>
     pub fn new(address: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let pool =
             async_std::task::block_on(sqlx::Pool::<sqlx::Postgres>::connect(&format!("{address}")))?;
-        Self::create_tables(&pool)?;
+        Self::create_tables(&pool, "rowid BIGSERIAL PRIMARY KEY,")?;
         Ok(Self {
             invocation_id: uuid::Uuid::new_v4().to_string(),
             pool,
@@ -85,22 +85,25 @@ where
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
     for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
 {
-    fn create_tables(pool: &sqlx::Pool<DB>) -> Result<(), Box<dyn std::error::Error>> {
+    fn create_tables(pool: &sqlx::Pool<DB>, rowid_column_definition: &str) -> Result<(), Box<dyn std::error::Error>> {
         // TODO: Include contest_id in finished_games.
         async_std::task::block_on(
             sqlx::query(
-                "CREATE TABLE IF NOT EXISTS finished_games (
-                git_version TEXT,
-                invocation_id TEXT,
-                game_start_time TIMESTAMP,
-                game_end_time TIMESTAMP,
-                player_red_a TEXT,
-                player_red_b TEXT,
-                player_blue_a TEXT,
-                player_blue_b TEXT,
-                result TEXT,
-                game_pgn TEXT,
-                rated BOOLEAN DEFAULT TRUE)",
+                format!(
+                    "CREATE TABLE IF NOT EXISTS finished_games (
+                    {rowid_column_definition}
+                    git_version TEXT,
+                    invocation_id TEXT,
+                    game_start_time TIMESTAMP,
+                    game_end_time TIMESTAMP,
+                    player_red_a TEXT,
+                    player_red_b TEXT,
+                    player_blue_a TEXT,
+                    player_blue_b TEXT,
+                    result TEXT,
+                    game_pgn TEXT,
+                    rated BOOLEAN DEFAULT TRUE)",
+                ).as_str()
             )
             .execute(pool),
         )?;
