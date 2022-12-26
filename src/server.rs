@@ -41,7 +41,11 @@ pub enum IncomingEvent {
 #[derive(Debug)]
 pub struct GameState {
     game: BughouseGame,
+    // We need both an Instant and an OffsetDateTime: the instant time is used
+    // for monotonic in-game time tracking, and the offset time is used for
+    // communication with outside world about absolute moments in time.
     game_start: Option<Instant>,
+    game_start_offset_time: Option<time::OffsetDateTime>,
     preturns: HashMap<BughousePlayerId, TurnInput>,
     chalkboard: Chalkboard,
     rated: bool,
@@ -50,6 +54,9 @@ pub struct GameState {
 impl GameState {
     pub fn game(&self) -> &BughouseGame { &self.game }
     pub fn rated(&self) -> bool { self.rated }
+    pub fn start_offset_time(&self) -> Option<time::OffsetDateTime> {
+        self.game_start_offset_time
+    }
 }
 
 
@@ -568,7 +575,12 @@ impl Contest {
     fn process_make_turn(
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, turn_input: TurnInput
     ) -> EventResult {
-        let Some(GameState{ ref mut game_start, ref mut game, ref mut preturns, .. }) = self.game_state else {
+        let Some(GameState{
+                ref mut game_start,
+                ref mut game_start_offset_time,
+                ref mut game,
+                ref mut preturns, ..
+            }) = self.game_state else {
             return Err("Cannot make turn: no game in progress".to_owned());
         };
         let Some(player_id) = ctx.clients[client_id].player_id else {
@@ -589,6 +601,7 @@ impl Contest {
                     Ok(turn_event) => {
                         if game_start.is_none() {
                             *game_start = Some(now);
+                            *game_start_offset_time = Some(time::OffsetDateTime::now_utc());
                         }
                         turns.push(turn_event);
                         let opponent_bughouse_id = player_bughouse_id.opponent();
@@ -805,6 +818,7 @@ impl Contest {
         self.game_state = Some(GameState {
             game,
             game_start: None,
+            game_start_offset_time: None,
             preturns: HashMap::new(),
             chalkboard: Chalkboard::new(),
             rated: self.rated,
