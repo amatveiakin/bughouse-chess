@@ -5,6 +5,7 @@ use serde::{Serialize, Deserialize};
 use crate::board::TurnInput;
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
+use crate::contest::ContestCreationOptions;
 use crate::game::{TurnRecord, BughouseGameStatus, PlayerInGame};
 use crate::meter::MeterStats;
 use crate::pgn::BughouseExportFormat;
@@ -82,9 +83,7 @@ pub enum BughouseClientErrorReport {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseClientEvent {
     NewContest {
-        chess_rules: ChessRules,
-        bughouse_rules: BughouseRules,
-        player_name: String,
+        options: ContestCreationOptions,
     },
     Join {
         contest_id: String,

@@ -832,6 +832,7 @@ function on_create_contest_confirm(event) {
             data.get('starting-time'),
             data.get('drop-aggression'),
             data.get('pawn-drop-rows'),
+            data.get('rated') == "on",
         );
         update();
         close_menu();

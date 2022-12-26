@@ -153,7 +153,13 @@ impl World {
         &mut self, client_id: TestClientId, player_name: &str,
         chess_rules: ChessRules, bughouse_rules: BughouseRules
     ) -> String {
-        self[client_id].state.new_contest(chess_rules, bughouse_rules, player_name.to_owned());
+        self[client_id].state.new_contest(
+            ContestCreationOptions {
+                chess_rules,
+                bughouse_rules,
+                player_name:
+                player_name.to_owned(),
+                rated: true });
         self.process_all_events();
         self[client_id].state.contest_id().unwrap().clone()
     }
