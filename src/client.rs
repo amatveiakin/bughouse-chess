@@ -8,6 +8,7 @@ use crate::altered_game::AlteredGame;
 use crate::board::{TurnError, TurnMode, TurnInput};
 use crate::chalk::{Chalkboard, ChalkCanvas, ChalkDrawing, ChalkMark};
 use crate::clock::{GameInstant, WallGameTimePair};
+use crate::contest::ContestCreationOptions;
 use crate::display::{DisplayBoard, get_board_index};
 use crate::force::Force;
 use crate::game::{TurnRecord, BughouseParticipantId, BughouseObserserId, PlayerRelation, BughouseBoard, BughouseGameStatus, BughouseGame};
@@ -208,13 +209,9 @@ impl ClientState {
 
     pub fn is_connection_ok(&self) -> bool { self.connection.heart.healthy() }
 
-    pub fn new_contest(&mut self, chess_rules: ChessRules, bughouse_rules: BughouseRules, my_name: String) {
-        self.connection.send(BughouseClientEvent::NewContest {
-            chess_rules,
-            bughouse_rules,
-            player_name: my_name.clone(),
-        });
-        self.contest_state = ContestState::Creating{ my_name };
+    pub fn new_contest(&mut self, options: ContestCreationOptions) {
+        self.contest_state = ContestState::Creating{ my_name: options.player_name.clone() };
+        self.connection.send(BughouseClientEvent::NewContest{ options });
     }
     pub fn join(&mut self, contest_id: String, my_name: String) {
         self.connection.send(BughouseClientEvent::Join {

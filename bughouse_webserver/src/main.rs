@@ -94,6 +94,7 @@ where
     DB: sqlx::Database,
     for<'q> i64: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'q> String: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
+    for<'q> bool: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'q> OffsetDateTime: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
     for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
@@ -103,6 +104,7 @@ where
     pub async fn finished_games(
         &self,
         game_start_time_range: Range<OffsetDateTime>,
+        only_rated: bool
     ) -> Result<Vec<(RowId, GameResultRow)>, anyhow::Error> {
         let rows = sqlx::query::<DB>(
             "SELECT
@@ -115,13 +117,18 @@ where
                 player_red_b,
                 player_blue_a,
                 player_blue_b,
-                result
+                result,
+                rated
              FROM finished_games
-             WHERE game_start_time >= ?1 AND game_start_time < ?2
+             WHERE
+                (game_start_time >= $1 AND game_start_time < $2)
+                AND
+                ($3 OR rated)
              ORDER BY game_start_time DESC",
         )
         .bind(game_start_time_range.start)
         .bind(game_start_time_range.end)
+        .bind(!only_rated)
         .fetch_all(&self.pool)
         .await?;
         let (oks, errs): (Vec<_>, _) = rows
@@ -143,6 +150,7 @@ where
                         player_blue_b: row.try_get("player_blue_b")?,
                         result: row.try_get("result")?,
                         game_pgn: String::new(),
+                        rated: row.try_get("rated")?,
                     },
                 ))
             })
@@ -182,6 +190,9 @@ td, th {
     padding-left: 10px;
     padding-right: 10px;
 }
+td.centered {
+    text-align: center;
+}
 ";
 
     fn register_handlers(app: &mut tide::Server<Self>) {
@@ -206,7 +217,7 @@ td, th {
     async fn handle_games(req: Request<Self>) -> tide::Result {
         let games = req
             .state()
-            .finished_games(OffsetDateTime::UNIX_EPOCH..OffsetDateTime::now_utc())
+            .finished_games(OffsetDateTime::UNIX_EPOCH..OffsetDateTime::now_utc(), /*only_rated=*/false)
             .await
             .map_err(anyhow::Error::from)?;
         let table_body = games
@@ -226,9 +237,15 @@ td, th {
                     "VICTORY_BLUE" => (blue_team, red_team, "".to_string()),
                     _ => ("".to_string(), "".to_string(), "".to_string()),
                 };
+                let rated_str = if game.rated {
+                    "✔️"
+                } else {
+                    "🛇"
+                };
                 rsx! {<tr>
                     <td>{start_date}</td>
-                    <td>{start_time}</td>
+                    <td class={"centered"}>{start_time}</td>
+                    <td class={"centered"}>{rated_str}</td>
                     <td>{winners}</td>
                     <td>{losers}</td>
                     <td>{drawers}</td>
@@ -249,6 +266,7 @@ td, th {
                 <tr>
                     <th>{"Date"}</th>
                     <th>{"Time (UTC)"}</th>
+                    <th>{"Rated"}</th>
                     <th>{"Winners"}</th>
                     <th>{"Losers"}</th>
                     <th>{"Drawers"}</th>
@@ -291,7 +309,7 @@ td, th {
         };
         let games = req
             .state()
-            .finished_games(range_start..now)
+            .finished_games(range_start..now, /*only_rated=*/true)
             .await
             .map_err(anyhow::Error::from)?;
 

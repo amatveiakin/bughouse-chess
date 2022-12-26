@@ -187,6 +187,7 @@ impl WebClient {
         starting_time: &str,
         drop_aggression: &str,
         pawn_drop_rows: &str,
+        rated: bool,
     ) -> JsResult<()> {
         let teaming = match teaming {
             "fixed-teams" => Teaming::FixedTeams,
@@ -238,7 +239,13 @@ impl WebClient {
             max_pawn_drop_row: SubjectiveRow::from_one_based(max_pawn_drop_row),
             drop_aggression,
         };
-        self.state.new_contest(chess_rules, bughouse_rules, player_name.to_owned());
+        self.state.new_contest(
+            ContestCreationOptions {
+                chess_rules,
+                bughouse_rules,
+                player_name: player_name.to_owned(),
+                rated
+            });
         Ok(())
     }
 

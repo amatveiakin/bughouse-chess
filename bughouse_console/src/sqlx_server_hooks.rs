@@ -59,6 +59,7 @@ where
     i64: Type<DB> + for<'q> Encode<'q, DB>,
     Option<i64>: Type<DB> + for<'q> Encode<'q, DB>,
     Option<OffsetDateTime>: Type<DB> + for<'q> Encode<'q, DB>,
+    bool: Type<DB> + for<'q> Encode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
     for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
 {
@@ -86,6 +87,7 @@ where
     i64: Type<DB> + for<'q> Encode<'q, DB>,
     Option<i64>: Type<DB> + for<'q> Encode<'q, DB>,
     Option<OffsetDateTime>: Type<DB> + for<'q> Encode<'q, DB>,
+    bool: Type<DB> + for<'q> Encode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
     for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
 {
@@ -103,7 +105,8 @@ where
                 player_blue_a TEXT,
                 player_blue_b TEXT,
                 result TEXT,
-                game_pgn TEXT)",
+                game_pgn TEXT,
+                rated BOOLEAN DEFAULT TRUE)",
             )
             .execute(pool),
         )?;
@@ -152,8 +155,9 @@ where
                 player_blue_a,
                 player_blue_b,
                 result,
-                game_pgn)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+                game_pgn,
+                rated)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
             )
             .bind(row.git_version)
             .bind(row.invocation_id)
@@ -165,6 +169,7 @@ where
             .bind(row.player_blue_b)
             .bind(row.result)
             .bind(row.game_pgn)
+            .bind(row.rated)
             .execute(&self.pool),
         );
         if let Err(e) = execute_result {
@@ -253,6 +258,7 @@ where
             player_blue_b: players.3,
             result,
             game_pgn: pgn::export_to_bpgn(pgn::BughouseExportFormat {}, game.game(), round),
+            rated: game.rated(),
         })
     }
 }

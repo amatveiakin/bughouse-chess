@@ -12,4 +12,5 @@ pub struct GameResultRow {
     pub player_blue_b: String,
     pub result: String,
     pub game_pgn: String,
+    pub rated: bool,
 }

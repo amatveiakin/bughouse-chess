@@ -18,7 +18,7 @@ use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, PlayerInGame, BughouseGameStatus, BughouseGame};
-use crate::get_bughouse_force;
+use crate::{get_bughouse_force, ContestCreationOptions};
 use crate::heartbeat::{Heart, HeartbeatOutcome};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientErrorReport};
 use crate::pgn::{self, BughouseExportFormat};
@@ -44,10 +44,12 @@ pub struct GameState {
     game_start: Option<Instant>,
     preturns: HashMap<BughousePlayerId, TurnInput>,
     chalkboard: Chalkboard,
+    rated: bool,
 }
 
 impl GameState {
     pub fn game(&self) -> &BughouseGame { &self.game }
+    pub fn rated(&self) -> bool { self.rated }
 }
 
 
@@ -176,6 +178,7 @@ struct Contest {
     contest_id: ContestId,
     chess_rules: ChessRules,
     bughouse_rules: BughouseRules,
+    rated: bool,
     players: Players,
     scores: Scores,
     match_history: Vec<BughouseGame>,  // final game states
@@ -251,7 +254,7 @@ impl CoreServerState {
     }
 
     fn make_contest(
-        &mut self, now: Instant, chess_rules: ChessRules, bughouse_rules: BughouseRules
+        &mut self, now: Instant, options: ContestCreationOptions
     ) -> ContestId {
         // Exclude confusing characters:
         //   - 'O' and '0' (easy to confuse);
@@ -282,8 +285,9 @@ impl CoreServerState {
         }
         let contest = Contest {
             contest_id: id.clone(),
-            chess_rules,
-            bughouse_rules,
+            chess_rules: options.chess_rules,
+            bughouse_rules: options.bughouse_rules,
+            rated: options.rated,
             players: Players::new(),
             scores: Scores::new(),
             match_history: Vec::new(),
@@ -343,10 +347,10 @@ impl CoreServerState {
         };
 
         let contest_id = match &event {
-            BughouseClientEvent::NewContest{ chess_rules, bughouse_rules, .. } => {
+            BughouseClientEvent::NewContest{ options } => {
                 ctx.clients[client_id].contest_id = None;
                 ctx.clients[client_id].player_id = None;
-                let contest_id = self.make_contest(now, chess_rules.clone(), bughouse_rules.clone());
+                let contest_id = self.make_contest(now, options.clone());
                 info!("Contest {} created by client {}", contest_id.0, ctx.clients[client_id].logging_id);
                 Some(contest_id)
             },
@@ -446,9 +450,9 @@ impl Contest {
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, event: BughouseClientEvent
     ) {
         let result = match event {
-            BughouseClientEvent::NewContest{ player_name, .. } => {
+            BughouseClientEvent::NewContest{ options, .. } => {
                 // The contest was created earlier.
-                self.join_player(ctx, client_id, now, player_name)
+                self.join_player(ctx, client_id, now, options.player_name)
             },
             BughouseClientEvent::Join{ contest_id: _, player_name } => {
                 self.join_player(ctx, client_id, now, player_name)
@@ -803,6 +807,7 @@ impl Contest {
             game_start: None,
             preturns: HashMap::new(),
             chalkboard: Chalkboard::new(),
+            rated: self.rated,
         });
         self.broadcast(ctx, &self.make_game_start_event(now, None));
         self.send_lobby_updated(ctx);  // update readiness flags
