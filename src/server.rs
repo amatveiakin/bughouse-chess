@@ -1,7 +1,7 @@
 // Improvement potential. Replace `game.find_player(&self.players[participant_id].name)`
 //   with a direct mapping (participant_id -> player_bughouse_id).
 
-use std::collections::{HashSet, HashMap, hash_map};
+use std::collections::{HashSet, HashMap, hash_map, BTreeMap};
 use std::iter;
 use std::ops;
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
@@ -63,16 +63,17 @@ impl GameState {
 struct ContestId(String);
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 struct ParticipantId(usize);
 
 struct Participants {
-    map: HashMap<ParticipantId, Participant>,
+    // Use an ordered map to show lobby players in joining order.
+    map: BTreeMap<ParticipantId, Participant>,
     next_id: usize,
 }
 
 impl Participants {
-    fn new() -> Self { Self{ map: HashMap::new(), next_id: 1 } }
+    fn new() -> Self { Self{ map: BTreeMap::new(), next_id: 1 } }
     fn iter(&self) -> impl Iterator<Item = &Participant> { self.map.values() }
     fn iter_mut(&mut self) -> impl Iterator<Item = &mut Participant> { self.map.values_mut() }
     fn find_by_name(&self, name: &str) -> Option<ParticipantId> {
