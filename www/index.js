@@ -393,10 +393,13 @@ function execute_command(input) {
                     get_args(args, []);
                     wasm_client().request_export();
                     break;
-                case 'perf':
+                case 'perf': {
                     get_args(args, []);
-                    info_string.innerText = wasm_client().meter_stats();
+                    const stats = wasm_client().meter_stats();
+                    console.log(stats);
+                    info_string.innerText = stats;
                     break;
+                }
                 default:
                     throw new InvalidCommand(`Command does not exist: /${args[0]}`);
             }
