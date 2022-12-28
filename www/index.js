@@ -646,7 +646,7 @@ function set_up_chalk_drawing() {
                 // Do not draw while a turn is being made.
             } else if (!wasm_client().is_chalk_active() && is_draw_button(event)) {
                 const coord = viewbox_mouse_position(event);
-                wasm_client().chalk_down(event.currentTarget.id, coord.x, coord.y, event.shiftKey);
+                wasm_client().chalk_down(event.currentTarget.id, coord.x, coord.y, event.ctrlKey);
             } else if (wasm_client().is_chalk_active() && is_cancel_button(event)) {
                 wasm_client().chalk_abort();
             }
