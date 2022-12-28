@@ -453,7 +453,7 @@ function process_notable_events() {
     let js_event;
     while ((js_event = wasm_client().next_notable_event())) {
         const js_event_type = js_event?.constructor?.name;
-        if (js_event_type == 'JsEventMyNoop') {
+        if (js_event_type == 'JsEventNoop') {
             // Noop, but other events might be coming.
         } else if (js_event_type == 'JsEventContestStarted') {
             const url = new URL(window.location);

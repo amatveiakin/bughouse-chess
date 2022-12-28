@@ -10,7 +10,7 @@ use crate::chalk::{Chalkboard, ChalkCanvas, ChalkDrawing, ChalkMark};
 use crate::clock::{GameInstant, WallGameTimePair};
 use crate::display::{DisplayBoard, get_board_index};
 use crate::force::Force;
-use crate::game::{TurnRecord, BughouseParticipantId, BughouseObserserId, PlayerRelation, BughouseBoard, BughouseGameStatus, BughouseGame};
+use crate::game::{TurnRecord, BughouseParticipantId, BughousePlayerId, BughouseObserserId, PlayerRelation, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerformance};
 use crate::heartbeat::{Heart, HeartbeatOutcome};
 use crate::meter::{Meter, MeterBox, MeterStats};
@@ -32,8 +32,7 @@ pub enum NotableEvent {
     ContestStarted(String),  // contains ContestID
     GameStarted,
     GameOver(SubjectiveGameResult),
-    MyTurnMade,
-    OpponentTurnMade,
+    TurnMade(BughousePlayerId),
     MyReserveRestocked,
     LowTime,
     GameExportReady(String),
@@ -256,6 +255,9 @@ impl ClientState {
     pub fn make_turn(&mut self, turn_input: TurnInput) -> Result<(), TurnError> {
         let game_state = self.game_state_mut().ok_or(TurnError::NoGameInProgress)?;
         let GameState{ ref mut alt_game, time_pair, ref mut awaiting_turn_confirmation_since, .. } = game_state;
+        let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() else {
+            return Err(TurnError::NotPlayer);
+        };
         let now = Instant::now();
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         let mode = alt_game.try_local_turn(turn_input.clone(), game_now)?;
@@ -263,7 +265,7 @@ impl ClientState {
             *awaiting_turn_confirmation_since = Some(now);
         }
         self.connection.send(BughouseClientEvent::MakeTurn{ turn_input });
-        self.notable_event_queue.push_back(NotableEvent::MyTurnMade);
+        self.notable_event_queue.push_back(NotableEvent::TurnMade(my_player_id));
         Ok(())
     }
 
@@ -439,15 +441,14 @@ impl ClientState {
         if alt_game.status() != BughouseGameStatus::Active {
             return Err(cannot_apply_event!("Cannot make turn {}: game over", turn_algebraic));
         }
+        let is_my_turn = alt_game.my_id() == BughouseParticipantId::Player(player_id);
         let now = Instant::now();
-        if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
-            if player_id == my_player_id {
-                // It's normal that the client is not awaiting confirmation, because preturns are not confirmed.
-                if let Some(t0) = awaiting_turn_confirmation_since {
-                    let d = now.duration_since(*t0);
-                    self.turn_confirmed_meter.record_duration(d);
-                    *awaiting_turn_confirmation_since = None;
-                }
+        if is_my_turn {
+            // It's normal that the client is not awaiting confirmation, because preturns are not confirmed.
+            if let Some(t0) = awaiting_turn_confirmation_since {
+                let d = now.duration_since(*t0);
+                self.turn_confirmed_meter.record_duration(d);
+                *awaiting_turn_confirmation_since = None;
             }
         }
         if time_pair.is_none() {
@@ -463,10 +464,10 @@ impl ClientState {
         })?;
         let new_reserve_size = my_reserve_size(alt_game);
         if generate_notable_events {
-            if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
-                if player_id == my_player_id.opponent() {
-                    self.notable_event_queue.push_back(NotableEvent::OpponentTurnMade);
-                }
+            if !is_my_turn {
+                // The `TurnMade` event fires when a turn is seen by the user, not when it's
+                // confirmed by the server.
+                self.notable_event_queue.push_back(NotableEvent::TurnMade(player_id));
             }
             if new_reserve_size > old_reserve_size {
                 self.notable_event_queue.push_back(NotableEvent::MyReserveRestocked);

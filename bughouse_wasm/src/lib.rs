@@ -118,7 +118,7 @@ impl JsMeter {
 }
 
 #[wasm_bindgen]
-pub struct JsEventMyNoop {}  // in contrast to `null`, indicates that event list is not over
+pub struct JsEventNoop {}  // in contrast to `null`, indicates that event list is not over
 
 #[wasm_bindgen]
 pub struct JsEventContestStarted { contest_id: String }
@@ -496,6 +496,9 @@ impl WebClient {
                 let is_observer = matches!(my_id, BughouseParticipantId::Observer(_));
                 render_grids(alt_game.perspective())?;
                 setup_participation_mode(is_observer)?;
+                for display_board_idx in DisplayBoard::iter() {
+                    scroll_log_to_bottom(display_board_idx)?;
+                }
                 Ok(JsEventGameStarted{}.into())
             },
             Some(NotableEvent::GameOver(game_status)) => {
@@ -505,8 +508,19 @@ impl WebClient {
                     SubjectiveGameResult::Draw => Ok(JsEventDraw{}.into()),
                 }
             },
-            Some(NotableEvent::MyTurnMade) => Ok(JsEventTurnMade{}.into()),
-            Some(NotableEvent::OpponentTurnMade) => Ok(JsEventTurnMade{}.into()),
+            Some(NotableEvent::TurnMade(player_id)) => {
+                let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
+                    return Err(rust_error!("No game in progress"));
+                };
+                let display_board_idx = get_display_board_index(player_id.board_idx, alt_game.my_id());
+                scroll_log_to_bottom(display_board_idx)?;
+                if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
+                    if player_id.board_idx == my_player_id.board_idx {
+                        return Ok(JsEventTurnMade{}.into());
+                    }
+                }
+                Ok(JsEventNoop{}.into())
+            }
             Some(NotableEvent::MyReserveRestocked) => Ok(JsEventMyReserveRestocked{}.into()),
             Some(NotableEvent::LowTime) => Ok(JsEventLowTime{}.into()),
             Some(NotableEvent::GameExportReady(content)) => Ok(JsEventGameExportReady{ content }.into()),
@@ -796,13 +810,16 @@ fn remove_all_children(node: &web_sys::Node) -> JsResult<()> {
     Ok(())
 }
 
-fn is_scrolled_to_bottom(e: &web_sys::Element) -> bool {
-    let eps = 1;
-    e.scroll_top() >= e.scroll_height() - e.client_height() - eps
+fn scroll_to_bottom(e: &web_sys::Element) {
+    // Do not try to compute the real scroll position, as it is very slow!
+    // See the comment in `update_turn_log`.
+    e.set_scroll_top(1_000_000_000);
 }
 
-fn scroll_to_bottom(e: &web_sys::Element) {
-    e.set_scroll_top(e.scroll_height() - e.client_height());
+fn scroll_log_to_bottom(board_idx: DisplayBoard) -> JsResult<()> {
+    let e = web_document().get_existing_element_by_id(&turn_log_scroll_area_node_id(board_idx))?;
+    scroll_to_bottom(&e);
+    Ok(())
 }
 
 
@@ -1115,9 +1132,7 @@ fn update_turn_log(
     game: &BughouseGame, board_idx: BughouseBoard, display_board_idx: DisplayBoard
 ) -> JsResult<()> {
     let document = web_document();
-    let log_container_node = document.get_existing_element_by_id(&turn_log_scroll_area_node_id(display_board_idx))?;
     let log_node = document.get_existing_element_by_id(&turn_log_node_id(display_board_idx))?;
-    let was_at_bottom = is_scrolled_to_bottom(&log_container_node);
     remove_all_children(&log_node)?;
     for record in game.turn_log().iter() {
         if record.player_id.board_idx == board_idx {
@@ -1128,12 +1143,19 @@ fn update_turn_log(
             log_node.append_child(&node)?;
         }
     }
-    // Keep log scrolled to bottom if it's already there. It's also possible to snap scrolling
-    // with CSS `scroll-snap-type` (https://stackoverflow.com/a/60546366/3092679), but the snap
-    // range is too large (especially in Firefox), so it becomes very hard to browse the log.
-    if was_at_bottom {
-        scroll_to_bottom(&log_container_node);
-    }
+    // Note. The log will be scrolled to bottom whenever a turn is made on a given board (see
+    // `NotableEvent::TurnMade` handler). Another strategy would've been to keep the log scrolled
+    // to bottom if it was already there. I found two ways of doing this, but unfortunately none
+    // of them works well:
+    //   - This could done in JS, using this code to find if an element is at bottom:
+    //        e.scroll_top() >= e.scroll_height() - e.client_height() - 1
+    //     (as https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollHeight#determine_if_an_element_has_been_totally_scrolled suggests)
+    //     But the test is very slow. It made the entire `update_state` an order of magnitued slower,
+    //     increasing update time from 1-10 ms to 10-100 ms.
+    //   - This could be done in CSS, via `scroll-snap-type`:
+    //       https://stackoverflow.com/a/60546366/3092679
+    //     but the snap range is too large (especially in Firefox), so it becomes very hard to browse
+    //     the log.
     Ok(())
 }
 
