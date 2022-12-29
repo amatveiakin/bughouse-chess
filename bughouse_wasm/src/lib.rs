@@ -127,13 +127,7 @@ pub struct JsEventContestStarted { contest_id: String }
 pub struct JsEventGameStarted {}
 
 #[wasm_bindgen]
-pub struct JsEventVictory {}
-
-#[wasm_bindgen]
-pub struct JsEventDefeat {}
-
-#[wasm_bindgen]
-pub struct JsEventDraw {}
+pub struct JsEventGameOver { result: String }
 
 #[wasm_bindgen]
 pub struct JsEventTurnMade {}
@@ -150,6 +144,11 @@ pub struct JsEventGameExportReady { content: String }
 #[wasm_bindgen]
 impl JsEventContestStarted {
     pub fn contest_id(&self) -> String { self.contest_id.clone() }
+}
+
+#[wasm_bindgen]
+impl JsEventGameOver {
+    pub fn result(&self) -> String { self.result.clone() }
 }
 
 #[wasm_bindgen]
@@ -179,6 +178,18 @@ impl WebClient {
 
     pub fn meter(&mut self, name: String) -> JsMeter {
         JsMeter::new(self.state.meter(name))
+    }
+
+    pub fn game_status(&self) -> String {
+        if let Some(game_state) = self.state.game_state() {
+            if game_state.alt_game.status() == BughouseGameStatus::Active {
+                "active"
+            } else {
+                "over"
+            }
+        } else {
+            "none"
+        }.to_owned()
     }
 
     pub fn new_contest(
@@ -502,11 +513,12 @@ impl WebClient {
                 Ok(JsEventGameStarted{}.into())
             },
             Some(NotableEvent::GameOver(game_status)) => {
-                match game_status {
-                    SubjectiveGameResult::Victory => Ok(JsEventVictory{}.into()),
-                    SubjectiveGameResult::Defeat => Ok(JsEventDefeat{}.into()),
-                    SubjectiveGameResult::Draw => Ok(JsEventDraw{}.into()),
-                }
+                let result = match game_status {
+                    SubjectiveGameResult::Victory => "victory",
+                    SubjectiveGameResult::Defeat => "defeat",
+                    SubjectiveGameResult::Draw => "draw",
+                }.to_owned();
+                Ok(JsEventGameOver{ result }.into())
             },
             Some(NotableEvent::TurnMade(player_id)) => {
                 let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {

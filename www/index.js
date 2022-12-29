@@ -45,6 +45,15 @@ class Timer {
     }
 }
 
+class MyButton {
+    static CANCEL = Symbol();
+    static OK = Symbol();
+    constructor(label, action) {
+        this.label = label;
+        this.action = action;
+    }
+}
+
 function log_time() {
     if (typeof log_time.start == 'undefined') {
         log_time.start = performance.now();
@@ -83,6 +92,9 @@ const jc_player_name = document.getElementById('jc-player-name');
 const jc_contest_id = document.getElementById('jc-contest-id');
 
 const ready_button = document.getElementById('ready-button');
+const resign_button = document.getElementById('resign-button');
+const export_button = document.getElementById('export-button');
+const volume_button = document.getElementById('volume-button');
 
 const svg_defs = document.getElementById('svg-defs');
 
@@ -170,10 +182,15 @@ let socket = make_socket();
 // premove back.
 const audio_min_interval_ms = 70;
 const audio_max_queue_size = 5;
+const max_volume = 3;
+const volume_to_js = {
+    1: 0.25,
+    2: 0.5,
+    3: 1.0,
+};
 let audio_last_played = 0;
 let audio_queue = [];
-let audio_volume = 1.0;
-let audio_muted = false;
+let audio_volume = 0;
 
 let drag_element = null;
 
@@ -186,6 +203,10 @@ const command_input = document.getElementById('command');
 command_input.addEventListener('keydown', on_command_keydown);
 
 ready_button.addEventListener('click', function() { execute_command('/ready'); });
+resign_button.addEventListener('click', request_resign);
+export_button.addEventListener('click', function() { execute_command('/save'); });
+volume_button.addEventListener('click', next_volume);
+
 menu_dialog.addEventListener('cancel', function(event) { event.preventDefault(); });
 create_contest_button.addEventListener('click', on_create_contest_submenu);
 join_contest_button.addEventListener('click', on_join_contest_submenu);
@@ -193,6 +214,9 @@ cc_back_button.addEventListener('click', show_start_page);
 jc_back_button.addEventListener('click', show_start_page);
 menu_create_contest_page.addEventListener('submit', on_create_contest_confirm);
 menu_join_contest_page.addEventListener('submit', on_join_contest_confirm);
+
+// TODO: Make sounds louder and set volume to 2 by default.
+set_volume(max_volume);
 
 let on_tick_interval_id = setInterval(on_tick, 100);
 
@@ -353,23 +377,13 @@ function execute_command(input) {
                     break;
                 }
                 case 'sound': {
-                    // TODO: Save settings to a local storage.
-                    const expected_args = ['on:off:0:1:...:100'];
+                    const expected_args = ['0:1:2:3'];
                     const [value] = get_args(args, expected_args);
-                    switch (value) {
-                        case 'on': { audio_muted = false; break; }
-                        case 'off': { audio_muted = true; break; }
-                        default: {
-                            // Improvement potential: Stricter integer parse.
-                            let volume = parseInt(value);
-                            if (isNaN(volume) || volume < 0 || volume > 100) {
-                                throw usage_error(args, expected_args);
-                            }
-                            audio_muted = false;
-                            audio_volume = volume / 100.0;
-                            break;
-                        }
+                    let volume = parseInt(value);
+                    if (isNaN(volume) || volume < 0 || volume > max_volume) {
+                        throw usage_error(args, expected_args);
                     }
+                    set_volume(volume);
                     info_string.innerText = 'Applied';
                     break;
                 }
@@ -437,6 +451,7 @@ function update() {
         timer.meter(Meter.process_notable_events);
         update_drag_state();
         timer.meter(Meter.update_drag_state);
+        update_buttons();
     });
 }
 
@@ -464,12 +479,14 @@ function process_notable_events() {
             window.history.pushState({}, '', url);
         } else if (js_event_type == 'JsEventGameStarted') {
             close_menu();
-        } else if (js_event_type == 'JsEventVictory') {
-            play_audio(Sound.victory);
-        } else if (js_event_type == 'JsEventDefeat') {
-            play_audio(Sound.defeat);
-        } else if (js_event_type == 'JsEventDraw') {
-            play_audio(Sound.draw);
+        } else if (js_event_type == 'JsEventGameOver') {
+            const sound_map = {
+                'victory': Sound.victory,
+                'defeat': Sound.defeat,
+                'draw': Sound.draw,
+            };
+            const sound = sound_map[js_event.result()];
+            play_audio(sound);
         } else if (js_event_type == 'JsEventTurnMade') {
             play_audio(Sound.turn);
         } else if (js_event_type == 'JsEventMyReserveRestocked') {
@@ -504,6 +521,36 @@ function update_drag_state() {
             break;
         default:
             console.error(`Unknown drag_state: ${drag_state}`);
+    }
+}
+
+function update_buttons() {
+    const game_status = wasm_client().game_status();
+    switch (game_status) {
+        case 'active':
+            resign_button.style.display = null;
+            ready_button.style.display = 'none';
+            break;
+        case 'over':
+            resign_button.style.display = 'none';
+            ready_button.style.display = null;
+            break;
+        case 'none':
+            resign_button.style.display = 'none';
+            ready_button.style.display = 'none';
+            break;
+        default:
+            throw new Error(`Unknown game status: ${game_status}`);
+    }
+}
+
+async function request_resign() {
+    const ret = await simple_dialog('Are you sure you want to resign?', [
+        new MyButton('Keep playing', MyButton.CANCEL),
+        new MyButton('🏳️ Resign', MyButton.OK),
+    ]);
+    if (ret == MyButton.OK) {
+        execute_command('/resign');
     }
 }
 
@@ -792,6 +839,35 @@ function init_menu() {
     }
 }
 
+function simple_dialog(message, buttons) {
+    return new Promise(resolve => {
+        const dialog = document.createElement('dialog');
+        document.body.appendChild(dialog);
+        const message_node = document.createElement('div');
+        message_node.className = 'simple-dialog-message';
+        message_node.textContent = message;
+        const button_box = document.createElement('div');
+        button_box.className = 'simple-dialog-button-box';
+        for (const button of buttons) {
+            const button_node = document.createElement('button');
+            button_node.type = 'button';
+            button_node.textContent = button.label;
+            const action = button.action;
+            button_node.addEventListener('click', (event) => {
+                dialog.close();
+                resolve(action);
+            });
+            dialog.addEventListener('cancel', (event) => {
+                resolve(MyButton.CANCEL);
+            });
+            button_box.appendChild(button_node);
+        }
+        dialog.appendChild(message_node);
+        dialog.appendChild(button_box);
+        dialog.showModal();
+    });
+}
+
 function make_piece_image(symbol_id) {
     const SVG_NS = 'http://www.w3.org/2000/svg';
     const symbol = document.createElementNS(SVG_NS, 'symbol');
@@ -895,6 +971,26 @@ function on_join_contest_confirm(event) {
     });
 }
 
+function set_volume(volume) {
+    // TODO: Save settings to a local storage.
+    audio_volume = volume;
+    if (volume == 0) {
+        document.getElementById('volume-mute').style.display = null;
+        for (let v = 1; v <= max_volume; ++v) {
+            document.getElementById(`volume-${v}`).style.display = 'none';
+        }
+    } else {
+        document.getElementById('volume-mute').style.display = 'none';
+        for (let v = 1; v <= max_volume; ++v) {
+            document.getElementById(`volume-${v}`).style.display = (v > volume) ? 'none' : null;
+        }
+    }
+}
+
+function next_volume() {
+    set_volume((audio_volume + 1) % (max_volume + 1));
+}
+
 function play_audio(audio) {
     if (audio_queue.length >= audio_max_queue_size) {
         return;
@@ -921,10 +1017,10 @@ function play_audio_delayed() {
 function play_audio_impl() {
     console.assert(audio_queue.length > 0);
     let audio = audio_queue.shift();
-    if (!audio_muted) {
+    if (audio_volume > 0) {
         // Clone node to allow playing overlapping instances of the same sound.
         let auto_clone = audio.cloneNode();
-        auto_clone.volume = audio_volume;
+        auto_clone.volume = volume_to_js[audio_volume];
         auto_clone.play();
     }
     audio_last_played = performance.now();

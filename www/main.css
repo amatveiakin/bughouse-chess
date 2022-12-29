@@ -64,8 +64,8 @@ svg {
     ".     prim-log     .   prim-board       .          info       .  scr-individual  ."
     ".  prim-clock-bot  .   prim-board       .          info       .  scr-individual  ."
     ".  prim-clock-bot  .   prim-board       .         command     .  scr-individual  ."
-    ".  prim-name-bot   .  prim-rsrv-bot     .           .         .  scr-individual  ."
-    ".        .         .  prim-rsrv-bot     .           .         .  scr-individual  ."
+    ".  prim-name-bot   .  prim-rsrv-bot     .      button-panel   .  scr-individual  ."
+    ".        .         .  prim-rsrv-bot     .      button-panel   .  scr-individual  ."
   ;
   grid-template-columns:
     1fr
@@ -102,6 +102,7 @@ body.observer #page {
     ".  prim-name-bot   .  prim-rsrv-bot     .      scnd-rsrv-bot  .   scnd-name-bot  ."
     ".        .         .  prim-rsrv-bot     .      scnd-rsrv-bot  .  scr-individual  ."
     ".        .         .      info          .        command      .  scr-individual  ."
+    ".        .         .      info          .      button-panel   .  scr-individual  ."
     ".        .         .      info          .           .         .  scr-individual  ."
   ;
   grid-template-columns:
@@ -147,7 +148,8 @@ body.observer #page {
 #turn-log-container-secondary { grid-area: scnd-log; }
 
 #info-string-container { grid-area: info; }
-#command-panel { grid-area: command; }
+#command { grid-area: command; }
+#button-panel { grid-area: button-panel; }
 
 .board-shadow {
   fill: #808080;
@@ -481,11 +483,20 @@ body.observer #command {
   background-color: #0000001a;
 }
 
-#command-panel {
+#command {
   width: max(var(--board-size-secondary), 6em);
+}
+#button-panel {
+  margin-top: 1em;
   display: flex;
   flex-direction: row;
-  gap: calc(var(--sq-size-primary) * 0.1);
+  gap: 0.2em;
+  justify-content: space-between;
+}
+.button-subpanel {
+  display: flex;
+  flex-direction: row;
+  gap: 0.2em;
 }
 
 #project-info {
@@ -531,9 +542,9 @@ dialog button {
   display: inline-block;
   padding: 0.5em 1em;
   margin: 0.4em 0em;
-  width: 14em;
+  min-width: 8em;
   border: 0;
-  font-size: 1.3em;
+  font-size: 1.2em;
   text-align: center;
   color: #101010;
   text-shadow: 0.05em 0.05em 0.05em #eaac73;
@@ -554,11 +565,16 @@ dialog button:active {
               inset 2px 2px 3px rgba(0, 0, 0, .6);
 }
 
+.big-button {
+  width: 14em;
+  font-size: 1.3em;
+}
 .back-button {
   padding: 0;
   margin: 0.8em 0em;
   height: 2em;
   width: 2em;
+  min-width: unset;
   font-size: 1em;
   text-shadow: none;
   border-radius: 0.3em;
@@ -634,14 +650,25 @@ dialog input:invalid:not(:placeholder-shown) {
   filter: saturate(0.9) contrast(0.7) brightness(1.1);
 }
 
+.simple-dialog-message {
+  font-size: 110%;
+}
+.simple-dialog-button-box {
+  margin-left: 4em;
+  margin-top: 0.5em;
+  display: flex;
+  flex-direction: row;
+  gap: 0.6em;
+}
+
 .icon-button {
   box-sizing: border-box;
   padding: 0;
   border: none;
-  border-radius: calc(var(--sq-size-primary) * 0.1);  /* for hover hightlight */
+  border-radius: calc(var(--sq-size-primary) * 0.2);  /* for hover hightlight */
   background-color: transparent;
-  width: calc(var(--sq-size-primary) * 0.4);
-  height: calc(var(--sq-size-primary) * 0.4);
+  width: calc(var(--sq-size-primary) * 0.6);
+  height: calc(var(--sq-size-primary) * 0.6);
   cursor: pointer;
 }
 .icon-button:hover {
