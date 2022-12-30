@@ -96,10 +96,7 @@ fn process_game(result: &str, prior_stats: GameStats) -> GameStats {
             .rating
             .unwrap_or_else(default_weng_lin),
         &red_outcome,
-        &WengLinConfig {
-            //beta: 240.0, // To mimic general ELO rating values, 80% win rate ~ +240 ELO
-            ..Default::default()
-        },
+        &WengLinConfig::default(),
     );
     let (red_players_rating, blue_players_rating) = weng_lin_two_teams(
         &prior_stats
@@ -109,10 +106,7 @@ fn process_game(result: &str, prior_stats: GameStats) -> GameStats {
             .blue_players
             .map(|p| p.rating.unwrap_or_else(default_weng_lin)),
         &red_outcome,
-        &WengLinConfig {
-            beta: 240.0, // To mimic general ELO rating values, 80% win rate ~ +240 ELO
-            ..Default::default()
-        },
+        &WengLinConfig::default(),
     );
     GameStats {
         red_team: prior_stats.red_team.update(
