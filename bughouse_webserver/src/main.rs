@@ -348,6 +348,7 @@ td.centered {
                             <td>{format!("{:.3}", s.pointrate)}</td>
                             <td>{s.elo.map_or("".to_owned(), |e| format!("{:.3}", e))}</td>
                             <td>{s.rating.map_or("".to_owned(), |r| format!("{:.3}", r))}</td>
+                            <td>{s.rating_uncertainty.map_or("".to_owned(), |r| format!("{:.3}", r))}</td>
                             <td>{s.points}</td>
                             <td>{s.games}</td>
                             <td>{s.wins}</td>
@@ -367,6 +368,7 @@ td.centered {
                             <td>{s.name}</td>
                             <td>{format!("{:.3}", s.pointrate)}</td>
                             <td>{s.rating.map_or("".to_owned(), |r| format!("{:.3}", r))}</td>
+                            <td>{s.rating_uncertainty.map_or("".to_owned(), |r| format!("{:.3}", r))}</td>
                             <td>{s.points}</td>
                             <td>{s.games}</td>
                             <td>{s.wins}</td>
@@ -392,6 +394,7 @@ td.centered {
                     <th>{"Player"}</th>
                     <th>{"Pointrate"}</th>
                     <th><a href={"https://docs.rs/skillratings/latest/skillratings/weng_lin/fn.weng_lin_two_teams.html"}>{"Rating"}</a></th>
+                    <th>{"σ"}</th>
                     <th>{"Points"}</th>
                     <th>{"Games"}</th>
                     <th>{"Wins"}</th>
@@ -407,6 +410,7 @@ td.centered {
                     <th>{"Pointrate"}</th>
                     <th>{"Elo"}</th>
                     <th><a href={"https://docs.rs/skillratings/latest/skillratings/weng_lin/fn.weng_lin.html"}>{"Rating"}</a></th>
+                    <th>{"σ"}</th>
                     <th>{"Points"}</th>
                     <th>{"Games"}</th>
                     <th>{"Wins"}</th>
@@ -436,6 +440,7 @@ struct FinalStats {
     pointrate: f64,
     elo: Option<f64>,
     rating: Option<f64>,
+    rating_uncertainty: Option<f64>,
 }
 
 fn process_stats<I: Iterator<Item = (String, RawStats)>>(raw_stats: I) -> Vec<FinalStats> {
@@ -453,6 +458,7 @@ fn process_stats<I: Iterator<Item = (String, RawStats)>>(raw_stats: I) -> Vec<Fi
                 pointrate: points / games as f64,
                 elo: s.elo.map(|e| e.rating),
                 rating: s.rating.map(|r| r.rating),
+                rating_uncertainty: s.rating.map(|r| r.uncertainty),
             }
         })
         .collect()
