@@ -489,6 +489,7 @@ dependencies = [
  "femme",
  "humantime",
  "log",
+ "skillratings",
  "sqlx",
  "tide",
  "tide-jsx",
@@ -2254,6 +2255,12 @@ checksum = "38aabbeafa6f6dead8cebf246fe9fae1f9215c8d29b3a69f93bd62a9e4a3dcd6"
 dependencies = [
  "event-listener",
 ]
+
+[[package]]
+name = "skillratings"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38541f265806f325c2dbc3744dce4fc8ae1fba3b1e8cfa2b3b1c6e9eda9832ff"
 
 [[package]]
 name = "slab"

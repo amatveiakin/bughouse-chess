@@ -338,7 +338,7 @@ td.centered {
         final_player_stats.sort_unstable_by(|a, b| b.pointrate.total_cmp(&a.pointrate));
         final_team_stats.sort_unstable_by(|a, b| b.pointrate.total_cmp(&a.pointrate));
 
-        let leaderboard = |final_stats: Vec<FinalStats>| {
+        let team_leaderboard = |final_stats: Vec<FinalStats>| {
             final_stats
                 .into_iter()
                 .map(|s| {
@@ -346,7 +346,27 @@ td.centered {
                         <tr>
                             <td>{s.name}</td>
                             <td>{format!("{:.3}", s.pointrate)}</td>
-                            <td>{format!("{:.3}", s.elo)}</td>
+                            <td>{s.elo.map_or("".to_owned(), |e| format!("{:.3}", e))}</td>
+                            <td>{s.rating.map_or("".to_owned(), |r| format!("{:.3}", r))}</td>
+                            <td>{s.points}</td>
+                            <td>{s.games}</td>
+                            <td>{s.wins}</td>
+                            <td>{s.losses}</td>
+                            <td>{s.draws}</td>
+                        </tr>
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        let player_leaderboard = |final_stats: Vec<FinalStats>| {
+            final_stats
+                .into_iter()
+                .map(|s| {
+                    rsx! {
+                        <tr>
+                            <td>{s.name}</td>
+                            <td>{format!("{:.3}", s.pointrate)}</td>
+                            <td>{s.rating.map_or("".to_owned(), |r| format!("{:.3}", r))}</td>
                             <td>{s.points}</td>
                             <td>{s.games}</td>
                             <td>{s.wins}</td>
@@ -371,28 +391,29 @@ td.centered {
                 <tr>
                     <th>{"Player"}</th>
                     <th>{"Pointrate"}</th>
-                    <th>{"Rating"}</th>
+                    <th><a href={"https://docs.rs/skillratings/latest/skillratings/weng_lin/fn.weng_lin_two_teams.html"}>{"Rating"}</a></th>
                     <th>{"Points"}</th>
                     <th>{"Games"}</th>
                     <th>{"Wins"}</th>
                     <th>{"Losses"}</th>
                     <th>{"Draws"}</th>
                 </tr>
-                {leaderboard(final_player_stats)}
+                {player_leaderboard(final_player_stats)}
               </table>
               <table>
                 <p>{"Team Leaderboard"}</p>
                 <tr>
                     <th>{"Team"}</th>
                     <th>{"Pointrate"}</th>
-                    <th>{"Rating"}</th>
+                    <th>{"Elo"}</th>
+                    <th><a href={"https://docs.rs/skillratings/latest/skillratings/weng_lin/fn.weng_lin.html"}>{"Rating"}</a></th>
                     <th>{"Points"}</th>
                     <th>{"Games"}</th>
                     <th>{"Wins"}</th>
                     <th>{"Losses"}</th>
                     <th>{"Draws"}</th>
                 </tr>
-                {leaderboard(final_team_stats)}
+                {team_leaderboard(final_team_stats)}
               </table>
             </body>
             </html>
@@ -413,7 +434,8 @@ struct FinalStats {
     losses: usize,
     points: f64,
     pointrate: f64,
-    elo: f64,
+    elo: Option<f64>,
+    rating: Option<f64>,
 }
 
 fn process_stats<I: Iterator<Item = (String, RawStats)>>(raw_stats: I) -> Vec<FinalStats> {
@@ -429,7 +451,8 @@ fn process_stats<I: Iterator<Item = (String, RawStats)>>(raw_stats: I) -> Vec<Fi
                 wins: s.wins,
                 losses: s.losses,
                 pointrate: points / games as f64,
-                elo: s.elo,
+                elo: s.elo.map(|e| e.rating),
+                rating: s.rating.map(|r| r.rating),
             }
         })
         .collect()
