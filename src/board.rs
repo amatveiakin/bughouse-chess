@@ -1060,7 +1060,11 @@ impl Board {
     fn turn_to_algebraic_impl(&self, turn: Turn, mode: TurnMode) -> Option<String> {
         match turn {
             Turn::Move(mv) => {
-                for (&include_col, &include_row) in iproduct!(&[false, true], &[false, true]) {
+                let col_row_options = match mode {
+                    TurnMode::Normal => iproduct!(&[false, true], &[false, true]),
+                    TurnMode::Preturn => iproduct!(&[true], &[true]),
+                };
+                for (&include_col, &include_row) in col_row_options {
                     let piece = self.grid[mv.from]?;
                     let capture = get_capture(&self.grid, mv.from, mv.to, self.en_passant_target);
                     let promotion = match mv.promote_to {
