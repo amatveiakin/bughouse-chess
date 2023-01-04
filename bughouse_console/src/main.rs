@@ -40,6 +40,7 @@ fn main() -> io::Result<()> {
     env_logger::Builder::new()
         .target(env_logger::Target::Stdout)
         .filter_level(log::LevelFilter::Info)
+        .filter_module("sqlx::query", log::LevelFilter::Warn)
         .parse_default_env()
         .init();
 
