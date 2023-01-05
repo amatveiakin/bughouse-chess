@@ -2,6 +2,7 @@
 //   with a direct mapping (participant_id -> player_bughouse_id).
 
 use std::collections::{HashSet, HashMap, hash_map, BTreeMap};
+use std::cmp;
 use std::iter;
 use std::ops;
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
@@ -437,7 +438,7 @@ impl Contest {
                     let game_now = GameInstant::from_now_game_active(game_start, now);
                     game.test_flag(game_now);
                     if game.status() != BughouseGameStatus::Active {
-                        update_score_on_game_over(game, &mut self.scores);
+                        update_state_on_game_over(game, &mut self.participants, &mut self.scores);
                         let ev = BughouseServerEvent::GameOver {
                             time: game_now,
                             game_status: game.status(),
@@ -530,6 +531,7 @@ impl Contest {
                 self.participants.add_participant(Participant {
                     name: player_name.clone(),
                     faction: Faction::Observer,
+                    games_played: 0,
                     is_online: true,
                     is_ready: false,
                 })
@@ -560,6 +562,7 @@ impl Contest {
             let participant_id = self.participants.add_participant(Participant {
                 name: player_name,
                 faction: Faction::Random,
+                games_played: 0,
                 is_online: true,
                 is_ready: false,
             });
@@ -608,13 +611,14 @@ impl Contest {
             return Err("Cannot make turn: player does not participate".to_owned());
         };
         let scores = &mut self.scores;
+        let participants = &mut self.participants;
         let mode = game.turn_mode_for_player(player_bughouse_id);
         match mode {
             Ok(TurnMode::Normal) => {
                 let mut turns = vec![];
                 let game_now = GameInstant::from_now_game_maybe_active(*game_start, now);
                 match apply_turn(
-                    game_now, player_bughouse_id, turn_input, game, scores
+                    game_now, player_bughouse_id, turn_input, game, participants, scores
                 ) {
                     Ok(turn_event) => {
                         if game_start.is_none() {
@@ -625,7 +629,7 @@ impl Contest {
                         let opponent_bughouse_id = player_bughouse_id.opponent();
                         if let Some(preturn) = preturns.remove(&opponent_bughouse_id) {
                             if let Ok(preturn_event) = apply_turn(
-                                game_now, opponent_bughouse_id, preturn, game, scores
+                                game_now, opponent_bughouse_id, preturn, game, participants, scores
                             ) {
                                 turns.push(preturn_event);
                             }
@@ -693,9 +697,10 @@ impl Contest {
             VictoryReason::Resignation
         );
         let scores = &mut self.scores;
+        let participants = &mut self.participants;
         let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
         game.set_status(status, game_now);
-        update_score_on_game_over(game, scores);
+        update_state_on_game_over(game, participants, scores);
         let ev = BughouseServerEvent::GameOver {
             time: game_now,
             game_status: status,
@@ -814,21 +819,19 @@ impl Contest {
             Teaming::IndividualMode => true,
         };
         if num_players_ok && teams_ok && all_ready {
-            let mut previous_players = None;
             if let Some(GameState{ ref game, .. }) = self.game_state {
                 assert!(game.status() != BughouseGameStatus::Active,
                     "Players must not be allowed to set is_ready flag while the game is active");
                 self.match_history.push(game.clone());
-                previous_players = Some(game.players().into_iter().map(|p| p.name.clone()).collect());
             }
-            self.start_game(ctx, now, previous_players);
+            self.start_game(ctx, now);
         }
     }
 
-    fn start_game(&mut self, ctx: &mut Context, now: Instant, previous_players: Option<Vec<String>>) {
+    fn start_game(&mut self, ctx: &mut Context, now: Instant) {
         self.reset_readiness();
         self.randomize_fixed_teams();  // non-trivial only in the beginning of a contest
-        let players = self.assign_boards(previous_players);
+        let players = self.assign_boards();
         let game = BughouseGame::new(
             self.rules.chess_rules.clone(), self.rules.bughouse_rules.clone(), &players
         );
@@ -927,7 +930,7 @@ impl Contest {
         assert!(num_fixed.values().all(|&n| n <= TOTAL_PLAYERS_PER_TEAM));
     }
 
-    fn assign_boards(&self, previous_players: Option<Vec<String>>) -> Vec<PlayerInGame> {
+    fn assign_boards(&self) -> Vec<PlayerInGame> {
         if let Some(assignment) = &self.board_assignment_override {
             for player_assignment in assignment {
                 if let Some(player) = self.participants.iter().find(|p| p.name == player_assignment.name) {
@@ -952,33 +955,16 @@ impl Contest {
                 }
             },
             Teaming::IndividualMode => {
-                // Improvement potential. Instead count the number of times each player participated
-                //   and prioritize those who did less than others.
-                let player_names: HashSet<String> = self.participants.iter().filter_map(|p| {
-                    match p.faction {
-                        Faction::Fixed(_) => panic!("Player {} has a fixed team in individual mode", p.name),
-                        Faction::Random => Some(p.name.clone()),
-                        Faction::Observer => None,
-                    }
-                }).collect();
-                let high_priority_players: Vec<String>;
-                let low_priority_players: Vec<String>;
-                if let Some(previous_players) = previous_players {
-                    let previous_player_names: HashSet<String> = previous_players.into_iter().collect();
-                    high_priority_players = player_names.difference(&previous_player_names).cloned().collect();
-                    low_priority_players = previous_player_names.into_iter().collect();
-                } else {
-                    high_priority_players = Vec::new();
-                    low_priority_players = player_names.into_iter().collect();
+                let players_buckets = self.participants.iter()
+                    .sorted_by_key(|p| p.games_played)
+                    .group_by(|p| p.games_played);
+                let mut current_players = Vec::<String>::new();
+                for (_, bucket) in players_buckets.into_iter() {
+                    let bucket = bucket.collect_vec();
+                    let seats_left = TOTAL_PLAYERS - current_players.len();
+                    let n = cmp::min(bucket.len(), seats_left);
+                    current_players.extend(bucket.choose_multiple(&mut rng, n).map(|p| p.name.clone()));
                 }
-                let num_high_priority_players = high_priority_players.len();
-                let mut current_players: Vec<String> = if num_high_priority_players >= TOTAL_PLAYERS {
-                    high_priority_players.choose_multiple(&mut rng, TOTAL_PLAYERS).cloned().collect()
-                } else {
-                    high_priority_players.into_iter().chain(
-                        low_priority_players.choose_multiple(&mut rng, TOTAL_PLAYERS - num_high_priority_players).cloned()
-                    ).collect()
-                };
                 current_players.shuffle(&mut rng);
                 for team in Team::iter() {
                     for _ in 0..TOTAL_PLAYERS_PER_TEAM {
@@ -1033,16 +1019,16 @@ fn current_game_time(game_state: &GameState, now: Instant) -> GameInstant {
 
 fn apply_turn(
     game_now: GameInstant, player_bughouse_id: BughousePlayerId, turn_input: TurnInput,
-    game: &mut BughouseGame, scores: &mut Scores,
+    game: &mut BughouseGame, participants: &mut Participants, scores: &mut Scores
 ) -> Result<TurnRecord, TurnError> {
     game.try_turn_by_player(player_bughouse_id, &turn_input, TurnMode::Normal, game_now)?;
     if game.status() != BughouseGameStatus::Active {
-        update_score_on_game_over(game, scores);
+        update_state_on_game_over(game, participants, scores);
     }
     Ok(game.last_turn_record().unwrap().trim_for_sending())
 }
 
-fn update_score_on_game_over(game: &BughouseGame, scores: &mut Scores) {
+fn update_state_on_game_over(game: &BughouseGame, participants: &mut Participants, scores: &mut Scores) {
     let team_scores = match game.status() {
         BughouseGameStatus::Active => panic!("It just so happens that the game here is only mostly over"),
         BughouseGameStatus::Victory(team, _) => {
@@ -1064,6 +1050,12 @@ fn update_score_on_game_over(game: &BughouseGame, scores: &mut Scores) {
             for p in game.players() {
                 *scores.per_player.entry(p.name.clone()).or_insert(0) += team_scores[p.id.team()];
             }
+        }
+    }
+    let player_names: HashSet<_> = game.players().into_iter().map(|p| p.name).collect();
+    for p in participants.iter_mut() {
+        if player_names.contains(&p.name) {
+            p.games_played += 1;
         }
     }
 }

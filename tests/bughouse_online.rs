@@ -6,6 +6,7 @@
 
 mod common;
 
+use std::collections::HashMap;
 use std::iter;
 use std::ops;
 use std::sync::{Arc, Mutex, mpsc};
@@ -756,4 +757,52 @@ fn two_contests() {
     assert!(world[cl2].local_game().board(BughouseBoard::A).grid()[Coord::C3].is_none());
     assert!(world[cl6].local_game().board(BughouseBoard::A).grid()[Coord::E4].is_none());
     assert!(world[cl6].local_game().board(BughouseBoard::A).grid()[Coord::C3].is(piece!(White Knight)));
+}
+
+#[test]
+fn seating_assignment_is_fair() {
+    let mut world = World::new();
+    let [cl1, cl2, cl3, cl4, cl5] = world.new_clients();
+
+    let contest = world.new_contest_with_rules(
+        cl1, "p1",
+        default_chess_rules(),
+        BughouseRules {
+            teaming: Teaming::IndividualMode,
+            .. default_bughouse_rules()
+        }
+    );
+    world[cl2].join(&contest, "p2");
+    world[cl3].join(&contest, "p3");
+    world[cl4].join(&contest, "p4");
+    world[cl5].join(&contest, "p5");
+    world.process_all_events();
+
+    let mut games_played = HashMap::new();
+    for _ in 0..100 {
+        for cl in [cl1, cl2, cl3, cl4, cl5].iter() {
+            world[*cl].state.set_ready(true);
+        }
+        world.process_all_events();
+        for cl in [cl1, cl2, cl3, cl4, cl5].iter() {
+            if !matches!(world[*cl].my_id(), BughouseParticipantId::Observer(_)) {
+                world[*cl].state.resign();
+                break;
+            }
+        }
+        world.process_all_events();
+        for p in world[cl1].local_game().players() {
+            *games_played.entry(p.name.clone()).or_default() += 1;
+        }
+    }
+    assert_eq!(
+        games_played,
+        HashMap::from([
+            ("p1".to_owned(), 80),
+            ("p2".to_owned(), 80),
+            ("p3".to_owned(), 80),
+            ("p4".to_owned(), 80),
+            ("p5".to_owned(), 80),
+        ])
+    );
 }

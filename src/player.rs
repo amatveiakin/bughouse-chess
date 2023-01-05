@@ -29,6 +29,7 @@ pub enum Faction {
 pub struct Participant {
     pub name: String,      // fixed for the entire contest
     pub faction: Faction,  // fixed for the entire contest
+    pub games_played: u32,
     pub is_online: bool,
     pub is_ready: bool,
 }
