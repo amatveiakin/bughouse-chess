@@ -956,6 +956,11 @@ impl Contest {
             },
             Teaming::IndividualMode => {
                 let players_buckets = self.participants.iter()
+                    .filter(|p| match p.faction {
+                        Faction::Fixed(_) => panic!("Player {} has a fixed team in individual mode", p.name),
+                        Faction::Random => true,
+                        Faction::Observer => false,
+                    })
                     .sorted_by_key(|p| p.games_played)
                     .group_by(|p| p.games_played);
                 let mut current_players = Vec::<String>::new();

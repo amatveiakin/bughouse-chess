@@ -762,7 +762,7 @@ fn two_contests() {
 #[test]
 fn seating_assignment_is_fair() {
     let mut world = World::new();
-    let [cl1, cl2, cl3, cl4, cl5] = world.new_clients();
+    let [cl1, cl2, cl3, cl4, cl5, cl6] = world.new_clients();
 
     let contest = world.new_contest_with_rules(
         cl1, "p1",
@@ -776,6 +776,10 @@ fn seating_assignment_is_fair() {
     world[cl3].join(&contest, "p3");
     world[cl4].join(&contest, "p4");
     world[cl5].join(&contest, "p5");
+    world[cl6].join(&contest, "p6");
+    world.process_all_events();
+
+    world[cl6].state.set_faction(Faction::Observer);
     world.process_all_events();
 
     let mut games_played = HashMap::new();
