@@ -11,7 +11,7 @@ body {
   --color-chalk-diagonal: #9a118b;
   --color-chalk-other: #404040;
   --color-chalk-other-light: #808080;
-  --color-scrollbar: #688526;
+  --color-scrollbar: #597121;
 }
 body.observer {
   --sq-size-primary: min(4.4vw, 7.8vh);
