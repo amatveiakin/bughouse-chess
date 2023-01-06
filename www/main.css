@@ -129,8 +129,8 @@ body.observer #page {
 #board-primary { grid-area: prim-board; }
 #reserve-primary-top { grid-area: prim-rsrv-top; }
 #reserve-primary-bottom { grid-area: prim-rsrv-bot; }
-#player-name-primary-top { grid-area: prim-name-top; }
-#player-name-primary-bottom { grid-area: prim-name-bot; }
+#player-name-container-primary-top { grid-area: prim-name-top; }
+#player-name-container-primary-bottom { grid-area: prim-name-bot; }
 #clock-container-primary-top { grid-area: prim-clock-top; }
 #clock-container-primary-bottom { grid-area: prim-clock-bot; }
 #turn-log-container-primary { grid-area: prim-log; }
@@ -141,8 +141,8 @@ body.observer #page {
 #board-secondary { grid-area: scnd-board; }
 #reserve-secondary-top { grid-area: scnd-rsrv-top; }
 #reserve-secondary-bottom { grid-area: scnd-rsrv-bot; }
-#player-name-secondary-top { grid-area: scnd-name-top; }
-#player-name-secondary-bottom { grid-area: scnd-name-bot; }
+#player-name-container-secondary-top { grid-area: scnd-name-top; }
+#player-name-container-secondary-bottom { grid-area: scnd-name-bot; }
 #clock-container-secondary-top { grid-area: scnd-clock-top; }
 #clock-container-secondary-bottom { grid-area: scnd-clock-bot; }
 #turn-log-container-secondary { grid-area: scnd-log; }
@@ -311,16 +311,16 @@ body.observer .reserve {
   filter: url(#reserve-shadow-gray);
 }
 
-#player-name-primary-top,
-#player-name-primary-bottom {
-  text-align: right;
-}
-#player-name-secondary-top,
-#player-name-secondary-bottom {
-  text-align: left;
+#player-name-container-primary-top,
+#player-name-container-primary-bottom {
+  /* Align right and put status emojis (like “⚠️” on the right).
+     TODO: Safer solution that wouldn't break if we allow emojis in player names. */
+  direction: rtl;
 }
 .player-name {
+  width: 0;
   font-size: 110%;
+  white-space: pre;
   color: #a4b984;
   padding: calc(var(--sq-size-primary) * 0.1) 0;
 }
@@ -337,6 +337,7 @@ body.observer .player-name {
   white-space: pre;
 }
 #participant-container {
+  width: 0;
   display: flex;
   flex-direction: column;
 }

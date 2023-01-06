@@ -88,12 +88,15 @@
     </svg>
 
     <div id="page">
-
       <svg id="board-primary" shape-rendering="crispEdges"></svg>
       <svg id="reserve-primary-top"></svg>
       <svg id="reserve-primary-bottom"></svg>
-      <div id="player-name-primary-top" class="player-name"></div>
-      <div id="player-name-primary-bottom" class="player-name"></div>
+      <div id="player-name-container-primary-top" class="player-name-container">
+        <div id="player-name-primary-top" class="player-name"></div>
+      </div>
+      <div id="player-name-container-primary-bottom" class="player-name-container">
+        <div id="player-name-primary-bottom" class="player-name"></div>
+      </div>
       <div id="clock-container-primary-top" class="clock-container">
         <div id="clock-primary-top" class="clock clock-inactive">-:--</div>
       </div>
@@ -117,8 +120,12 @@
       <svg id="board-secondary" shape-rendering="crispEdges"></svg>
       <svg id="reserve-secondary-top"></svg>
       <svg id="reserve-secondary-bottom"></svg>
-      <div id="player-name-secondary-top" class="player-name"></div>
-      <div id="player-name-secondary-bottom" class="player-name"></div>
+      <div id="player-name-container-secondary-top" class="player-name-container">
+        <div id="player-name-secondary-top" class="player-name"></div>
+      </div>
+      <div id="player-name-container-secondary-bottom" class="player-name-container">
+        <div id="player-name-secondary-bottom" class="player-name"></div>
+      </div>
       <div id="clock-container-secondary-top" class="clock-container">
         <div id="clock-secondary-top" class="clock clock-inactive">-:--</div>
       </div>
@@ -220,7 +227,7 @@
           <label for="cc-player-name">Player name</label>
           <input type="text" id="cc-player-name" name="player-name"
             placeholder="&nbsp;" spellcheck="false" required
-            maxlength="20" pattern="[\p{L}\p{N}_-]+"
+            maxlength="16" pattern="[\p{L}\p{N}_-]+"
             title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
           <label for="cc-teaming">Teaming</label>
           <select id="cc-teaming" name="teaming">
@@ -272,7 +279,7 @@
           <label for="jc-player-name">Player name</label>
           <input type="text" id="jc-player-name" name="player-name"
             placeholder="&nbsp;" spellcheck="false" required
-            maxlength="20" pattern="[\p{L}\p{N}_-]+"
+            maxlength="16" pattern="[\p{L}\p{N}_-]+"
             title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
         </div>
         <div class="dialog-button-container">

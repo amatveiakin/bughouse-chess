@@ -992,7 +992,7 @@ impl Contest {
 }
 
 fn is_valid_player_name(name: &str) -> bool {
-    const MAX_NAME_LENGTH: usize = 20;
+    const MAX_NAME_LENGTH: usize = 16;
     if name.is_empty() || name.chars().count() > MAX_NAME_LENGTH {
         false
     } else {
