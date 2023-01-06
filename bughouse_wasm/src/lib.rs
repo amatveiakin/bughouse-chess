@@ -19,6 +19,7 @@ use wasm_bindgen::prelude::*;
 
 use bughouse_chess::*;
 use bughouse_chess::client::*;
+use bughouse_chess::heartbeat::*;
 use bughouse_chess::meter::*;
 
 
@@ -178,6 +179,10 @@ impl WebClient {
 
     pub fn meter(&mut self, name: String) -> JsMeter {
         JsMeter::new(self.state.meter(name))
+    }
+
+    pub fn is_connection_ok(&self) -> bool {
+        self.state.connection_status() == ConnectionStatus::Healthy
     }
 
     pub fn game_status(&self) -> String {
@@ -548,13 +553,8 @@ impl WebClient {
         }
     }
 
-    pub fn refresh(&mut self) -> JsResult<()> {
+    pub fn refresh(&mut self) {
         self.state.refresh();
-        if !self.state.is_connection_ok() {
-            let info_string = web_document().get_existing_element_by_id("info-string")?;
-            info_string.set_text_content(Some("🔌 Connection problem!\nConsider reloading the page."));
-        }
-        Ok(())
     }
 
     pub fn update_state(&self) -> JsResult<()> {

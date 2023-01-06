@@ -151,6 +151,13 @@ body.observer #page {
 #command { grid-area: command; }
 #button-panel { grid-area: button-panel; }
 
+.centered {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
 .board-shadow {
   fill: #808080;
   stroke: none;
@@ -277,7 +284,7 @@ body.observer #page {
   height: calc(var(--sq-size-primary) * 8);
   user-select: none;
   touch-action: none;
-  z-index: 10;  /* show dragged pieces above other UI elements */
+  z-index: 20;  /* show dragged pieces above other UI elements */
 }
 #board-secondary {
   width: calc(var(--sq-size-secondary) * 8);
@@ -418,7 +425,7 @@ body.observer .clock-active.clock-low-time {
   bottom: 0;
   left: 0;
   /* Note: `z-index` and `background-color` are a "solution" for info-string text overflow. */
-  z-index: 1;
+  z-index: 10;
   background-color: #1c3a0c80;
 }
 body.observer #info-string {
@@ -509,6 +516,33 @@ body.observer #command {
 }
 #project-info a {
   color: #ffffff60;
+}
+
+#reconnecting {
+  font-size: 1.5em;
+  text-align: center;
+  text-shadow: #000000 0.05em 0.05em 0.05em, #000000 0 0 0.4em, #000000 0 0 0.4em;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.dot {
+  display: inline-block;
+  animation-name: bouncing;
+  animation-duration: 1000ms;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-out;
+}
+.dot:nth-child(2) {
+  animation-delay: 125ms;
+}
+.dot:nth-child(3) {
+  animation-delay: 250ms;
+}
+@keyframes bouncing {
+  0%  { transform: none; }
+  20% { transform: translateY(-.3em); }
+  40% { transform: none; }
 }
 
 dialog {
@@ -654,6 +688,7 @@ dialog input:invalid:not(:placeholder-shown) {
   font-size: 110%;
 }
 .simple-dialog-button-box {
+  float: right;
   margin-left: 4em;
   margin-top: 0.5em;
   display: flex;

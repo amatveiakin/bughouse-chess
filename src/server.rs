@@ -19,7 +19,7 @@ use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, PlayerInGame, BughouseGameStatus, BughouseGame, get_bughouse_force};
-use crate::heartbeat::{Heart, HeartbeatOutcome};
+use crate::heartbeat::{Heart, HeartbeatOutcome, ConnectionStatus};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientErrorReport};
 use crate::pgn::{self, BughouseExportFormat};
 use crate::player::{Participant, Team, Faction};
@@ -423,7 +423,7 @@ impl CoreServerState {
                     client.send(BughouseServerEvent::Heartbeat);
                     true
                 },
-                OtherPartyTemporatyLost => true,
+                OtherPartyTemporaryLost => true,
                 OtherPartyPermanentlyLost => false,
             }
         });
@@ -518,7 +518,7 @@ impl Contest {
                     |(&id, c)| if c.participant_id == Some(existing_participant_id) { Some(id) } else { None }
                 );
                 if let Some(existing_client_id) = existing_client_id {
-                    if ctx.clients[existing_client_id].heart.healthy() {
+                    if ctx.clients[existing_client_id].heart.status() == ConnectionStatus::Healthy {
                         return Err(format!(r#"Cannot join: client for player "{}" already connected"#, player_name))
                     } else {
                         ctx.clients.remove_client(existing_client_id);

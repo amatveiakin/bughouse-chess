@@ -75,6 +75,7 @@ const SearchParams = {
 
 const git_version = document.getElementById('git-version');
 const info_string = document.getElementById('info-string');
+const reconnecting_message = document.getElementById('reconnecting');
 
 const menu_dialog = document.getElementById('menu-dialog');
 const menu_start_page = document.getElementById('menu-start-page');
@@ -311,7 +312,15 @@ function make_socket() {
     socket.addEventListener('open', function(event) {
         loading_status.connected();
     });
-    // addEventListener('error', (event) => { })  // TODO: report socket errors
+    socket.addEventListener('close', (event) => {
+        // TODO: Report socket errors.
+        // TODO: Reconnect automatically,
+        //   OR at least keep a permanent overlay message after closing the dialog.
+        console.error('WebSocket closed: ', event);
+        simple_dialog('Connection lost. Please reload the page.', [
+            new MyButton('Hide', MyButton.CANCEL),
+        ]);
+    });
     return socket;
 }
 
@@ -435,6 +444,7 @@ function on_tick() {
         timer.meter(Meter.update_clock);
         process_notable_events();
         timer.meter(Meter.process_notable_events);
+        update_connection_status();
     });
 }
 
@@ -451,6 +461,7 @@ function update() {
         timer.meter(Meter.process_notable_events);
         update_drag_state();
         timer.meter(Meter.update_drag_state);
+        update_connection_status();
         update_buttons();
     });
 }
@@ -522,6 +533,11 @@ function update_drag_state() {
         default:
             console.error(`Unknown drag_state: ${drag_state}`);
     }
+}
+
+function update_connection_status() {
+    const show_reconnecting = !wasm_client().is_connection_ok();
+    reconnecting_message.style.display = show_reconnecting ? null : 'none';
 }
 
 function update_buttons() {

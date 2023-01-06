@@ -12,7 +12,7 @@ use crate::display::{DisplayBoard, get_board_index};
 use crate::force::Force;
 use crate::game::{TurnRecord, BughouseParticipantId, BughousePlayerId, BughouseObserserId, PlayerRelation, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerformance};
-use crate::heartbeat::{Heart, HeartbeatOutcome};
+use crate::heartbeat::{Heart, HeartbeatOutcome, ConnectionStatus};
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::BughouseExportFormat;
 use crate::player::{Participant, Faction};
@@ -204,7 +204,7 @@ impl ClientState {
     pub fn read_meter_stats(&self) -> HashMap<String, MeterStats> { self.meter_box.read_stats() }
     pub fn consume_meter_stats(&mut self) -> HashMap<String, MeterStats> { self.meter_box.consume_stats() }
 
-    pub fn is_connection_ok(&self) -> bool { self.connection.heart.healthy() }
+    pub fn connection_status(&self) -> ConnectionStatus { self.connection.heart.status() }
 
     pub fn new_contest(&mut self, rules: Rules, my_name: String) {
         self.contest_state = ContestState::Creating{ my_name: my_name.clone() };
@@ -571,7 +571,7 @@ impl ClientState {
             SendBeat => {
                 self.connection.send(BughouseClientEvent::Heartbeat);
             },
-            OtherPartyTemporatyLost => {},
+            OtherPartyTemporaryLost => {},
             OtherPartyPermanentlyLost => {},
         }
     }

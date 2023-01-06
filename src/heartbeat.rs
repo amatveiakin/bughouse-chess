@@ -9,6 +9,7 @@ pub const OTHER_PARTY_TEMPORARY_LOST_THRESHOLD: Duration = Duration::from_secs(3
 pub const OTHER_PARTY_PERMANENTLY_LOST_THRESHOLD: Duration = Duration::from_secs(60);
 
 #[must_use]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum HeartbeatOutcome {
     // Connection is healty.
     // Action. None required.
@@ -22,17 +23,25 @@ pub enum HeartbeatOutcome {
     // The other party hasn't responded for a short period of time.
     // Action. Report connection problems to the user. Keep the network channel open in case
     // the other party comes back.
-    OtherPartyTemporatyLost,
+    OtherPartyTemporaryLost,
 
     // The other party hasn't responded for a long time.
     // Action. Consider the other party irrevocably lost and act accordingly.
     OtherPartyPermanentlyLost,
 }
 
+#[must_use]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ConnectionStatus {
+    Healthy,
+    TemporaryLost,
+    PermanentlyLost,
+}
+
 pub struct Heart {
     latest_incoming: Instant,
     latest_outgoing: Instant,
-    healthy: bool,
+    status: ConnectionStatus,
 }
 
 impl Heart {
@@ -40,11 +49,11 @@ impl Heart {
         Heart {
             latest_incoming: now,
             latest_outgoing: now,
-            healthy: true,
+            status: ConnectionStatus::Healthy,
         }
     }
 
-    pub fn healthy(&self) -> bool { self.healthy }
+    pub fn status(&self) -> ConnectionStatus { self.status }
 
     pub fn register_incoming(&mut self, now: Instant) {
         self.latest_incoming = cmp::max(self.latest_incoming, now);
@@ -55,16 +64,16 @@ impl Heart {
 
     pub fn beat(&mut self, now: Instant) -> HeartbeatOutcome {
         if now.saturating_duration_since(self.latest_incoming) > OTHER_PARTY_PERMANENTLY_LOST_THRESHOLD {
-            self.healthy = false;
+            self.status = ConnectionStatus::PermanentlyLost;
             HeartbeatOutcome::OtherPartyPermanentlyLost
         } else if now.saturating_duration_since(self.latest_incoming) > OTHER_PARTY_TEMPORARY_LOST_THRESHOLD {
-            self.healthy = false;
-            HeartbeatOutcome::OtherPartyTemporatyLost
+            self.status = ConnectionStatus::TemporaryLost;
+            HeartbeatOutcome::OtherPartyTemporaryLost
         } else if now.saturating_duration_since(self.latest_outgoing) > OUTGOING_HEARTBEAT_INTERVAL {
-            self.healthy = true;
+            self.status = ConnectionStatus::Healthy;
             HeartbeatOutcome::SendBeat
         } else {
-            self.healthy = true;
+            self.status = ConnectionStatus::Healthy;
             HeartbeatOutcome::AllGood
         }
     }
