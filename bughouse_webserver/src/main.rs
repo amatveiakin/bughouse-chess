@@ -336,7 +336,7 @@ td.centered {
                 .map(|([t0, t1], s)| (format!("{}, {}", t0, t1), s)),
         );
         final_player_stats.sort_unstable_by(|a, b| b.pointrate.total_cmp(&a.pointrate));
-        final_team_stats.sort_unstable_by(|a, b| b.pointrate.total_cmp(&a.pointrate));
+        final_team_stats.sort_unstable_by(|a, b| b.elo.partial_cmp(&a.elo).unwrap());
 
         let team_leaderboard = |final_stats: Vec<FinalStats>| {
             final_stats
