@@ -99,8 +99,8 @@ where
 {
     pub async fn finished_games(
         &self,
-        game_start_time_range: Range<OffsetDateTime>,
-        only_rated: bool
+        game_end_time_range: Range<OffsetDateTime>,
+        only_rated: bool,
     ) -> Result<Vec<(RowId, GameResultRow)>, anyhow::Error> {
         let rows = sqlx::query::<DB>(
             "SELECT
@@ -117,13 +117,13 @@ where
                 rated
              FROM finished_games
              WHERE
-                (game_start_time >= $1 AND game_start_time < $2)
+                (game_end_time >= $1 AND game_end_time < $2)
                 AND
-                ($3 OR rated)
-             ORDER BY game_start_time DESC",
+                ($3 OR (rated AND game_start_time IS NOT NULL))
+             ORDER BY game_end_time",
         )
-        .bind(game_start_time_range.start)
-        .bind(game_start_time_range.end)
+        .bind(game_end_time_range.start)
+        .bind(game_end_time_range.end)
         .bind(!only_rated)
         .fetch_all(&self.pool)
         .await?;
@@ -147,10 +147,12 @@ where
                         // the library converts to UTC and encodes.
                         game_start_time: Option::map(
                             row.try_get("game_start_time")?,
-                            PrimitiveDateTime::assume_utc),
+                            PrimitiveDateTime::assume_utc,
+                        ),
                         game_end_time: Option::map(
                             row.try_get("game_end_time")?,
-                            PrimitiveDateTime::assume_utc),
+                            PrimitiveDateTime::assume_utc,
+                        ),
                         player_red_a: row.try_get("player_red_a")?,
                         player_red_b: row.try_get("player_red_b")?,
                         player_blue_a: row.try_get("player_blue_a")?,
@@ -208,6 +210,7 @@ td.centered {
         app.at("/dyn/stats").get(|r| Self::handle_stats(r, None));
         app.at("/dyn/stats/:duration")
             .get(Self::handle_stats_with_duration);
+        app.at("/dyn/history").get(Self::handle_history);
 
         app.with(tide::log::LogMiddleware::new());
 
@@ -224,11 +227,15 @@ td.centered {
     async fn handle_games(req: Request<Self>) -> tide::Result {
         let games = req
             .state()
-            .finished_games(OffsetDateTime::UNIX_EPOCH..OffsetDateTime::now_utc(), /*only_rated=*/false)
+            .finished_games(
+                OffsetDateTime::UNIX_EPOCH..OffsetDateTime::now_utc(),
+                /*only_rated=*/ false,
+            )
             .await
             .map_err(anyhow::Error::from)?;
         let table_body = games
             .iter()
+            .rev()
             .map(|(rowid, game)| {
                 let (start_date, start_time) = format_timestamp_date_and_time(game.game_start_time)
                     .unwrap_or(("-".into(), "-".into()));
@@ -244,11 +251,7 @@ td.centered {
                     "VICTORY_BLUE" => (blue_team, red_team, "".to_string()),
                     _ => ("".to_string(), "".to_string(), "".to_string()),
                 };
-                let rated_str = if game.rated {
-                    "✔️"
-                } else {
-                    "🛇"
-                };
+                let rated_str = if game.rated { "✔️" } else { "🛇" };
                 rsx! {<tr>
                     <td>{start_date}</td>
                     <td class={"centered"}>{start_time}</td>
@@ -316,7 +319,7 @@ td.centered {
         };
         let games = req
             .state()
-            .finished_games(range_start..now, /*only_rated=*/true)
+            .finished_games(range_start..now, /*only_rated=*/ true)
             .await
             .map_err(anyhow::Error::from)?;
 
@@ -419,6 +422,39 @@ td.centered {
                 </tr>
                 {team_leaderboard(final_team_stats)}
               </table>
+            </body>
+            </html>
+        };
+        let mut resp = Response::new(StatusCode::Ok);
+        resp.set_content_type(Mime::from("text/html; charset=UTF-8"));
+        resp.set_body(h);
+        Ok(resp)
+    }
+
+    async fn handle_history(req: Request<Self>) -> tide::Result {
+        let now = OffsetDateTime::now_utc();
+        let games = req
+            .state()
+            .finished_games(OffsetDateTime::UNIX_EPOCH..now, /*only_rated=*/ true)
+            .await
+            .map_err(anyhow::Error::from)?;
+
+        // TODO: initialize from a persisted state and only look at games played since the last
+        // committed game.
+        let mut all_stats = GroupStats::<Vec<RawStats>>::default();
+
+        for (_, game) in games.into_iter() {
+            all_stats.update(&game)?;
+        }
+
+        let plotly_html = crate::history::players_rating_graph_html(&all_stats);
+        let h: String = html! {
+            <html>
+            <head>
+                {raw!(r#"<script src="https://cdn.plot.ly/plotly-2.16.1.min.js"></script>"#)}
+            </head>
+            <body>
+                {raw!(plotly_html.as_str())}
             </body>
             </html>
         };
