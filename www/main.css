@@ -507,6 +507,14 @@ body.observer #command {
   gap: 0.2em;
 }
 
+#connection-info {
+  position: absolute;
+  top: 0.5em;
+  right: 0.5em;
+  font-size: 60%;
+  color: #ffffff60;
+}
+
 #project-info {
   position: absolute;
   bottom: 0.5em;

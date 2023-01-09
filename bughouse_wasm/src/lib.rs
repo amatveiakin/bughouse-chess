@@ -181,8 +181,12 @@ impl WebClient {
         JsMeter::new(self.state.meter(name))
     }
 
+    pub fn seconds_since_latest_incoming(&self) -> f64 {
+        let now = Instant::now();
+        now.duration_since(self.state.heart().latest_incoming()).as_secs_f64()
+    }
     pub fn is_connection_ok(&self) -> bool {
-        self.state.connection_status() == ConnectionStatus::Healthy
+        self.state.heart().status() == ConnectionStatus::Healthy
     }
 
     pub fn game_status(&self) -> String {

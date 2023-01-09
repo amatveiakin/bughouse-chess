@@ -53,6 +53,8 @@ impl Heart {
         }
     }
 
+    pub fn latest_incoming(&self) -> Instant { self.latest_incoming }
+    pub fn latest_outgoing(&self) -> Instant { self.latest_outgoing }
     pub fn status(&self) -> ConnectionStatus { self.status }
 
     pub fn register_incoming(&mut self, now: Instant) {

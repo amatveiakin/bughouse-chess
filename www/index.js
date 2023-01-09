@@ -75,6 +75,7 @@ const SearchParams = {
 
 const git_version = document.getElementById('git-version');
 const info_string = document.getElementById('info-string');
+const connection_info = document.getElementById('connection-info');
 const reconnecting_message = document.getElementById('reconnecting');
 
 const menu_dialog = document.getElementById('menu-dialog');
@@ -538,6 +539,10 @@ function update_drag_state() {
 function update_connection_status() {
     const show_reconnecting = !wasm_client().is_connection_ok();
     reconnecting_message.style.display = show_reconnecting ? null : 'none';
+    const s = wasm_client().seconds_since_latest_incoming();
+    const ms = Math.round(s * 1000);
+    const ms_str = ms.toString().padStart(4, ' ');  // figure space (&numsp;)
+    connection_info.textContent = `Since last update: ${ms_str} ms`;
 }
 
 function update_buttons() {
