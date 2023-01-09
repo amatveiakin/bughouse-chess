@@ -87,12 +87,14 @@ fn make_termination_string(game: &BughouseGame) -> &'static str {
 fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
     use BughouseBoard::*;
     use Force::*;
+    // TODO: Save game start time instead.
     let now = time::OffsetDateTime::now_utc();
     let (variant, starting_position_fen) = match game.chess_rules().starting_position {
         StartingPosition::Classic =>
             ("Bughouse", String::new()),
         StartingPosition::FischerRandom => {
             let starting_board = Board::new(
+                Rc::clone(game.contest_rules()),
                 Rc::clone(game.chess_rules()),
                 Some(Rc::clone(game.bughouse_rules())),
                 // Dummy names will not appear anywhere in the produced PGN.
@@ -103,9 +105,10 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
             ("Bughouse Chess960", format!("[SetUp \"1\"]\n[FEN \"{one_board} | {one_board}\"]\n"))
         }
     };
+    let event = if game.contest_rules().rated { "Rated Bughouse Match" } else { "Unrated Bughouse Match" };
     // TODO: Save complete rules.
     format!(
-r#"[Event "Friendly Bughouse Match"]
+r#"[Event "{}"]
 [Site "bughouse.pro"]
 [UTCDate "{}"]
 [UTCTime "{}"]
@@ -120,6 +123,7 @@ r#"[Event "Friendly Bughouse Match"]
 [Termination "{}"]
 [Outcome "{}"]
 "#,
+        event,
         now.format(format_description!("[year].[month].[day]")).unwrap(),
         now.format(format_description!("[hour]:[minute]:[second]")).unwrap(),
         round,

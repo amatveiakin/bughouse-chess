@@ -155,9 +155,9 @@ impl World {
         chess_rules: ChessRules, bughouse_rules: BughouseRules
     ) -> String {
         let rules = Rules {
+            contest_rules: ContestRules::rated(),
             chess_rules,
             bughouse_rules,
-            rated: true
         };
         self[client_id].state.new_contest(rules, player_name.to_owned());
         self.process_all_events();

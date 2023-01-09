@@ -353,6 +353,7 @@ impl ClientState {
                 };
                 let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameStarted: no contest in progress"))?;
                 let game = BughouseGame::new_with_starting_position(
+                    contest.rules.contest_rules.clone(),
                     contest.rules.chess_rules.clone(),
                     contest.rules.bughouse_rules.clone(),
                     starting_position,

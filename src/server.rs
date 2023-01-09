@@ -48,12 +48,11 @@ pub struct GameState {
     game_start_offset_time: Option<time::OffsetDateTime>,
     preturns: HashMap<BughousePlayerId, TurnInput>,
     chalkboard: Chalkboard,
-    rated: bool,
 }
 
 impl GameState {
     pub fn game(&self) -> &BughouseGame { &self.game }
-    pub fn rated(&self) -> bool { self.rated }
+    pub fn rated(&self) -> bool { self.game.contest_rules().rated }
     pub fn start_offset_time(&self) -> Option<time::OffsetDateTime> {
         self.game_start_offset_time
     }
@@ -833,7 +832,10 @@ impl Contest {
         self.randomize_fixed_teams();  // non-trivial only in the beginning of a contest
         let players = self.assign_boards();
         let game = BughouseGame::new(
-            self.rules.chess_rules.clone(), self.rules.bughouse_rules.clone(), &players
+            self.rules.contest_rules.clone(),
+            self.rules.chess_rules.clone(),
+            self.rules.bughouse_rules.clone(),
+            &players
         );
         self.init_scores();
         self.game_state = Some(GameState {
@@ -842,7 +844,6 @@ impl Contest {
             game_start_offset_time: None,
             preturns: HashMap::new(),
             chalkboard: Chalkboard::new(),
-            rated: self.rules.rated,
         });
         self.broadcast(ctx, &self.make_game_start_event(now, None));
         self.send_lobby_updated(ctx);  // update readiness flags

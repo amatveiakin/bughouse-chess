@@ -12,7 +12,12 @@ fn as_player(player_id: BughousePlayerId) -> BughouseParticipantId {
 }
 
 fn default_bughouse_game() -> BughouseGame {
-    BughouseGame::new(ChessRules::classic_blitz(), BughouseRules::chess_com(), &sample_bughouse_players())
+    BughouseGame::new(
+        ContestRules::rated(),
+        ChessRules::classic_blitz(),
+        BughouseRules::chess_com(),
+        &sample_bughouse_players()
+    )
 }
 
 const GAME_START: GameInstant = GameInstant::game_start();

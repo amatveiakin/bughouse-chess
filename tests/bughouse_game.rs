@@ -5,7 +5,12 @@ use bughouse_chess::test_util::*;
 
 
 fn bughouse_chess_com() -> BughouseGame {
-    BughouseGame::new(ChessRules::classic_blitz(), BughouseRules::chess_com(), &sample_bughouse_players())
+    BughouseGame::new(
+        ContestRules::rated(),
+        ChessRules::classic_blitz(),
+        BughouseRules::chess_com(),
+        &sample_bughouse_players()
+    )
 }
 
 fn make_turn(game: &mut BughouseGame, board_idx: BughouseBoard, turn_notation: &str)

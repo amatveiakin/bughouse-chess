@@ -254,6 +254,9 @@ impl WebClient {
             return Err(format!("Invalid pawn drop rows: {pawn_drop_rows}").into());
         }
 
+        let contest_rules = ContestRules {
+            rated,
+        };
         let chess_rules = ChessRules {
             starting_position,
             time_control: TimeControl {
@@ -267,9 +270,9 @@ impl WebClient {
             drop_aggression,
         };
         let rules = Rules {
+            contest_rules,
             chess_rules,
             bughouse_rules,
-            rated,
         };
         self.state.new_contest(rules, player_name.to_owned());
         Ok(())

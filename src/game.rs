@@ -12,7 +12,7 @@ use crate::clock::GameInstant;
 use crate::force::Force;
 use crate::piece::piece_to_pictogram;
 use crate::player::Team;
-use crate::rules::{ChessRules, BughouseRules};
+use crate::rules::{ContestRules, ChessRules, BughouseRules};
 use crate::starter::{EffectiveStartingPosition, generate_starting_position};
 
 
@@ -67,17 +67,23 @@ pub struct ChessGame {
 }
 
 impl ChessGame {
-    pub fn new(rules: ChessRules, player_names: EnumMap<Force, String>) -> Self {
+    pub fn new(
+        contest_rules: ContestRules,
+        rules: ChessRules,
+        player_names: EnumMap<Force, String>
+    ) -> Self {
         let starting_position = generate_starting_position(rules.starting_position);
-        Self::new_with_starting_position(rules, starting_position, player_names)
+        Self::new_with_starting_position(contest_rules, rules, starting_position, player_names)
     }
 
     pub fn new_with_starting_position(
+        contest_rules: ContestRules,
         rules: ChessRules,
         starting_position: EffectiveStartingPosition,
         player_names: EnumMap<Force, String>
     ) -> Self {
         let board = Board::new(
+            Rc::new(contest_rules),
             Rc::new(rules),
             None,
             player_names,
@@ -245,24 +251,28 @@ pub struct BughouseGame {
 
 impl BughouseGame {
     pub fn new(
+        contest_rules: ContestRules,
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
         players: &[PlayerInGame]
     ) -> Self {
         let starting_position = generate_starting_position(chess_rules.starting_position);
-        Self::new_with_starting_position(chess_rules, bughouse_rules, starting_position, players)
+        Self::new_with_starting_position(contest_rules, chess_rules, bughouse_rules, starting_position, players)
     }
 
     pub fn new_with_starting_position(
+        contest_rules: ContestRules,
         chess_rules: ChessRules,
         bughouse_rules: BughouseRules,
         starting_position: EffectiveStartingPosition,
         players: &[PlayerInGame],
     ) -> Self {
+        let contest_rules = Rc::new(contest_rules);
         let chess_rules = Rc::new(chess_rules);
         let bughouse_rules = Rc::new(bughouse_rules);
         let player_map = make_player_map(players);
         let boards = player_map.map(|_, board_players| Board::new(
+            Rc::clone(&contest_rules),
             Rc::clone(&chess_rules),
             Some(Rc::clone(&bughouse_rules)),
             board_players,
@@ -277,6 +287,7 @@ impl BughouseGame {
     }
 
     pub fn starting_position(&self) -> &EffectiveStartingPosition { &self.starting_position }
+    pub fn contest_rules(&self) -> &Rc<ContestRules> { self.boards[BughouseBoard::A].contest_rules() }
     pub fn chess_rules(&self) -> &Rc<ChessRules> { self.boards[BughouseBoard::A].chess_rules() }
     pub fn bughouse_rules(&self) -> &Rc<BughouseRules> { self.boards[BughouseBoard::A].bughouse_rules().as_ref().unwrap() }
     // Improvement potential. Remove mutable access to the boards.

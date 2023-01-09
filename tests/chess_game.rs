@@ -10,7 +10,7 @@ use common::*;
 
 
 fn chess_classic() -> ChessGame {
-    ChessGame::new(ChessRules::classic_blitz(), sample_chess_players())
+    ChessGame::new(ContestRules::rated(), ChessRules::classic_blitz(), sample_chess_players())
 }
 
 fn chess960_from_short_fen(pieces: &str) -> ChessGame {
@@ -22,7 +22,7 @@ fn chess960_from_short_fen(pieces: &str) -> ChessGame {
         .map(|ch| PieceKind::from_algebraic_char(ch).unwrap())
         .collect_vec().try_into().unwrap();
     let starting_position = EffectiveStartingPosition::FischerRandom(pieces);
-    ChessGame::new_with_starting_position(rules, starting_position, sample_chess_players())
+    ChessGame::new_with_starting_position(ContestRules::rated(), rules, starting_position, sample_chess_players())
 }
 
 // Improvement potential: Allow whitespace after turn number.

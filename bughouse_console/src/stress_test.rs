@@ -66,7 +66,12 @@ thread_local! {
 }
 
 fn default_bughouse_game() -> BughouseGame {
-    BughouseGame::new(ChessRules::classic_blitz(), BughouseRules::chess_com(), &sample_bughouse_players())
+    BughouseGame::new(
+        ContestRules::rated(),
+        ChessRules::classic_blitz(),
+        BughouseRules::chess_com(),
+        &sample_bughouse_players()
+    )
 }
 
 fn random_coord(rng: &mut rand::rngs::ThreadRng) -> Coord {

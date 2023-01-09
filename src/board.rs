@@ -15,7 +15,7 @@ use crate::clock::{GameInstant, Clock};
 use crate::force::Force;
 use crate::grid::{Grid, GridForRepetitionDraw};
 use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, PieceForRepetitionDraw, CastleDirection};
-use crate::rules::{DropAggression, ChessRules, BughouseRules};
+use crate::rules::{DropAggression, ContestRules, ChessRules, BughouseRules};
 use crate::util::{sort_two, as_single_char};
 use crate::starter::{EffectiveStartingPosition, starting_piece_row, generate_starting_grid};
 
@@ -524,6 +524,7 @@ impl Reachability {
 // Improvement potential: Don't store players here since they don't affect game process.
 #[derive(Clone, Debug)]
 pub struct Board {
+    contest_rules: Rc<ContestRules>,
     chess_rules: Rc<ChessRules>,
     bughouse_rules: Option<Rc<BughouseRules>>,
     player_names: EnumMap<Force, String>,
@@ -544,6 +545,7 @@ pub struct Board {
 
 impl Board {
     pub fn new(
+        contest_rules: Rc<ContestRules>,
         chess_rules: Rc<ChessRules>,
         bughouse_rules: Option<Rc<BughouseRules>>,
         players: EnumMap<Force, String>,
@@ -552,6 +554,7 @@ impl Board {
         let time_control = chess_rules.time_control.clone();
         let castling_rights = initial_castling_rights(starting_position);
         let mut board = Board {
+            contest_rules,
             chess_rules,
             bughouse_rules,
             player_names: players,
@@ -569,6 +572,7 @@ impl Board {
         board
     }
 
+    pub fn contest_rules(&self) -> &Rc<ContestRules> { &self.contest_rules }
     pub fn chess_rules(&self) -> &Rc<ChessRules> { &self.chess_rules }
     pub fn bughouse_rules(&self) -> &Option<Rc<BughouseRules>> { &self.bughouse_rules }
     pub fn player_name(&self, force: Force) -> &str { &self.player_names[force] }

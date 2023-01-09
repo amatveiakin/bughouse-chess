@@ -40,6 +40,11 @@ pub enum Teaming {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ContestRules {
+    pub rated: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChessRules {
     pub starting_position: StartingPosition,
     pub time_control: TimeControl,
@@ -57,9 +62,9 @@ pub struct BughouseRules {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Rules {
+    pub contest_rules: ContestRules,
     pub chess_rules: ChessRules,
     pub bughouse_rules: BughouseRules,
-    pub rated: bool,
 }
 
 impl Teaming {
@@ -71,9 +76,17 @@ impl Teaming {
     }
 }
 
+impl ContestRules {
+    pub fn rated() -> Self {
+        Self {
+            rated: true,
+        }
+    }
+}
+
 impl ChessRules {
     pub fn classic_blitz() -> Self {
-        Self{
+        Self {
             starting_position: StartingPosition::Classic,
             time_control: TimeControl{ starting_time: Duration::from_secs(300) }
         }
@@ -82,7 +95,7 @@ impl ChessRules {
 
 impl BughouseRules {
     pub fn chess_com() -> Self {
-        Self{
+        Self {
             teaming: Teaming::FixedTeams,
             min_pawn_drop_row: SubjectiveRow::from_one_based(2),
             max_pawn_drop_row: SubjectiveRow::from_one_based(7),
@@ -114,7 +127,7 @@ impl Rules {
             self.bughouse_rules.min_pawn_drop_row.to_one_based(),
             self.bughouse_rules.max_pawn_drop_row.to_one_based()
         );
-        let rating = match self.rated {
+        let rating = match self.contest_rules.rated {
             true => "Rated",
             false => "Unrated",
         };
