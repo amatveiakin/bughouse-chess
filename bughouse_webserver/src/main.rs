@@ -447,14 +447,16 @@ td.centered {
             all_stats.update(&game)?;
         }
 
-        let plotly_html = crate::history::players_rating_graph_html(&all_stats);
+        let players_history_graph_html = crate::history::players_rating_graph_html(&all_stats);
+        let teams_history_graph_html = crate::history::teams_elo_graph_html(&all_stats);
         let h: String = html! {
             <html>
             <head>
                 {raw!(r#"<script src="https://cdn.plot.ly/plotly-2.16.1.min.js"></script>"#)}
             </head>
             <body>
-                {raw!(plotly_html.as_str())}
+                {raw!(players_history_graph_html.as_str())}
+                {raw!(teams_history_graph_html.as_str())}
             </body>
             </html>
         };
