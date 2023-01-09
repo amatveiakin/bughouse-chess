@@ -8,8 +8,11 @@ use skillratings::{
     weng_lin::{weng_lin, weng_lin_two_teams, WengLinConfig, WengLinRating},
     Outcomes,
 };
+use time::OffsetDateTime;
 
 use bughouse_chess::persistence::GameResultRow;
+
+pub mod history;
 
 type Rating = WengLinRating;
 
@@ -21,6 +24,7 @@ pub struct RawStats {
     pub draws: usize,
     pub elo: Option<EloRating>,
     pub rating: Option<Rating>,
+    pub last_update: Option<OffsetDateTime>,
 }
 
 impl RawStats {
@@ -29,6 +33,7 @@ impl RawStats {
         outcome: Outcomes,
         new_elo: Option<EloRating>,
         new_rating: Option<Rating>,
+        new_last_update: Option<OffsetDateTime>,
     ) -> Self {
         Self {
             wins: self.wins + (outcome == Outcomes::WIN) as usize,
@@ -36,6 +41,7 @@ impl RawStats {
             draws: self.draws + (outcome == Outcomes::DRAW) as usize,
             elo: new_elo,
             rating: new_rating,
+            last_update: new_last_update,
         }
     }
 }
@@ -48,14 +54,15 @@ impl Default for RawStats {
             draws: 0,
             elo: None,
             rating: None,
+            last_update: None,
         }
     }
 }
 
 #[derive(Default)]
-pub struct GroupStats {
-    pub per_player: HashMap<String, RawStats>,
-    pub per_team: HashMap<[String; 2], RawStats>,
+pub struct GroupStats<Stats> {
+    pub per_player: HashMap<String, Stats>,
+    pub per_team: HashMap<[String; 2], Stats>,
 }
 
 struct GameStats {
@@ -73,7 +80,11 @@ fn default_weng_lin() -> WengLinRating {
     WengLinRating::new()
 }
 
-fn process_game(result: &str, prior_stats: GameStats) -> GameStats {
+fn process_game(
+    result: &str,
+    prior_stats: GameStats,
+    game_end_time: Option<OffsetDateTime>,
+) -> GameStats {
     let (red_outcome, blue_outcome) = match result {
         "DRAW" => (Outcomes::DRAW, Outcomes::DRAW),
         "VICTORY_RED" => (Outcomes::WIN, Outcomes::LOSS),
@@ -113,43 +124,120 @@ fn process_game(result: &str, prior_stats: GameStats) -> GameStats {
             red_outcome,
             Some(red_team_elo),
             Some(red_team_rating),
+            game_end_time,
         ),
         blue_team: prior_stats.blue_team.update(
             blue_outcome,
             Some(blue_team_elo),
             Some(blue_team_rating),
+            game_end_time,
         ),
         red_players: [
-            prior_stats.red_players[0].update(red_outcome, None, Some(red_players_rating[0])),
-            prior_stats.red_players[1].update(red_outcome, None, Some(red_players_rating[1])),
+            prior_stats.red_players[0].update(
+                red_outcome,
+                None,
+                Some(red_players_rating[0]),
+                game_end_time,
+            ),
+            prior_stats.red_players[1].update(
+                red_outcome,
+                None,
+                Some(red_players_rating[1]),
+                game_end_time,
+            ),
         ],
         blue_players: [
-            prior_stats.blue_players[0].update(blue_outcome, None, Some(blue_players_rating[0])),
-            prior_stats.blue_players[1].update(blue_outcome, None, Some(blue_players_rating[1])),
+            prior_stats.blue_players[0].update(
+                blue_outcome,
+                None,
+                Some(blue_players_rating[0]),
+                game_end_time,
+            ),
+            prior_stats.blue_players[1].update(
+                blue_outcome,
+                None,
+                Some(blue_players_rating[1]),
+                game_end_time,
+            ),
         ],
     }
 }
 
-impl GroupStats {
+pub trait StatStore {
+    fn get_team(&self, team: &[String; 2]) -> RawStats;
+    fn get_player(&self, player: &String) -> RawStats;
+    fn update_team(&mut self, team: &[String; 2], stats: RawStats);
+    fn update_player(&mut self, player: &String, stats: RawStats);
+}
+
+impl StatStore for GroupStats<RawStats> {
+    fn get_team(&self, team: &[String; 2]) -> RawStats {
+        self.per_team.get(team).cloned().unwrap_or_default()
+    }
+    fn get_player(&self, player: &String) -> RawStats {
+        self.per_player.get(player).cloned().unwrap_or_default()
+    }
+    fn update_team(&mut self, team: &[String; 2], stats: RawStats) {
+        self.per_team.insert(team.clone(), stats);
+    }
+    fn update_player(&mut self, player: &String, stats: RawStats) {
+        self.per_player.insert(player.clone(), stats);
+    }
+}
+
+impl StatStore for GroupStats<Vec<RawStats>> {
+    fn get_team(&self, team: &[String; 2]) -> RawStats {
+        self.per_team
+            .get(team)
+            .and_then(|v| v.last())
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn get_player(&self, player: &String) -> RawStats {
+        self.per_player
+            .get(player)
+            .and_then(|v| v.last())
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn update_team(&mut self, team: &[String; 2], stats: RawStats) {
+        self.per_team.entry(team.clone()).or_default().push(stats)
+    }
+
+    fn update_player(&mut self, player: &String, stats: RawStats) {
+        self.per_player
+            .entry(player.clone())
+            .or_default()
+            .push(stats)
+    }
+}
+
+impl<Stats> GroupStats<Stats>
+where
+    Self: StatStore,
+{
     pub fn update(&mut self, game: &GameResultRow) -> anyhow::Result<()> {
         let red_team = sort([game.player_red_a.clone(), game.player_red_b.clone()]);
         let blue_team = sort([game.player_blue_a.clone(), game.player_blue_b.clone()]);
         let new_stats = process_game(
             game.result.as_str(),
             GameStats {
-                red_team: *self.per_team.entry(red_team.clone()).or_default(),
-                blue_team: *self.per_team.entry(blue_team.clone()).or_default(),
-                red_players: red_team.clone().map(|p| *self.per_player.entry(p).or_default()),
-                blue_players: blue_team.clone().map(|p| *self.per_player.entry(p).or_default()),
+                red_team: self.get_team(&red_team),
+                blue_team: self.get_team(&blue_team),
+                red_players: map_arr_ref(&red_team, |p| self.get_player(p)),
+                blue_players: map_arr_ref(&blue_team, |p| self.get_player(p)),
             },
+            game.game_end_time,
         );
-        *self.per_team.entry(red_team.clone()).or_default() = new_stats.red_team;
-        *self.per_team.entry(blue_team.clone()).or_default() = new_stats.blue_team;
+        self.update_team(&red_team, new_stats.red_team);
+        self.update_team(&blue_team, new_stats.blue_team);
         for i in 0..red_team.len() {
-            self.per_player.insert(red_team[i].clone(), new_stats.red_players[i]);
+            self.update_player(&red_team[i], new_stats.red_players[i]);
         }
         for i in 0..blue_team.len() {
-            self.per_player.insert(blue_team[i].clone(), new_stats.blue_players[i]);
+            self.update_player(&blue_team[i], new_stats.blue_players[i]);
         }
         Ok(())
     }
@@ -162,4 +250,10 @@ where
 {
     array.as_mut().sort();
     array
+}
+
+// Equivalent to input.each_ref().map(f)
+// each_ref is unstable
+pub fn map_arr_ref<T, V, F: Fn(&T) -> V>(input: &[T; 2], f: F) -> [V; 2] {
+    [f(&input[0]), f(&input[1])]
 }
