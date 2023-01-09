@@ -55,6 +55,8 @@ fn get_timestamp_for_plotly(stats: &RawStats) -> Option<String> {
 
 pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>) -> String {
     let mut plot = plotly::Plot::new();
+    let layout = plot.layout().clone().title("Player rating history".into());
+    plot.set_layout(layout);
     for (index, (player, stats_vec)) in stats.per_player.iter().enumerate() {
         // Drops points where the timestamp or rating can't be determined.
         let filtered_stats = stats_vec
@@ -66,7 +68,6 @@ pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>) -> String {
             .clone()
             .filter_map(get_timestamp_for_plotly)
             .collect::<Vec<_>>();
-        //let xs = filtered_stats.clone().enumerate().map(|(i, _)| i).collect::<Vec<_>>();
 
         let rating = filtered_stats
             .clone()
@@ -107,13 +108,62 @@ pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>) -> String {
         let rating_trace = plotly::Scatter::new(xs, rating)
             .name(player)
             .mode(plotly::common::Mode::LinesMarkers)
-            .line(plotly::common::Line::default().color(line_color))
+            .line(
+                plotly::common::Line::default()
+                    .color(line_color)
+                    .dash(line_dash_type),
+            )
             .marker(plotly::common::Marker::default().size(4))
             .legend_group(player);
 
         plot.add_trace(lower_rating_trace);
         plot.add_trace(upper_rating_trace);
         plot.add_trace(rating_trace);
+    }
+    plot.to_inline_html(None)
+}
+
+pub fn teams_elo_graph_html(stats: &GroupStats<Vec<RawStats>>) -> String {
+    let mut plot = plotly::Plot::new();
+    let layout = plot.layout().clone().title("Team Elo history".into());
+    plot.set_layout(layout);
+    for (index, (team, stats_vec)) in stats.per_team.iter().enumerate() {
+        // Drops points where the timestamp or rating can't be determined.
+        let filtered_stats = stats_vec
+            .iter()
+            .filter(|stat| stat.last_update.is_some() && stat.elo.is_some());
+
+        // filter_map is unnecessary here and below, but avoids unwraps.
+        let xs = filtered_stats
+            .clone()
+            .filter_map(get_timestamp_for_plotly)
+            .collect::<Vec<_>>();
+
+        let elo = filtered_stats
+            .clone()
+            .filter_map(|stat| stat.elo.map(|r| r.rating))
+            .collect::<Vec<_>>();
+
+        let team_str = format!("{}, {}", team[0], team[1]);
+
+        let Style {
+            line_color,
+            line_dash_type,
+            ..
+        } = style_for_index(index);
+
+        let elo_trace = plotly::Scatter::new(xs, elo)
+            .name(team_str.clone())
+            .mode(plotly::common::Mode::LinesMarkers)
+            .line(
+                plotly::common::Line::default()
+                    .color(line_color)
+                    .dash(line_dash_type),
+            )
+            .marker(plotly::common::Marker::default().size(4))
+            .legend_group(team_str);
+
+        plot.add_trace(elo_trace);
     }
     plot.to_inline_html(None)
 }
