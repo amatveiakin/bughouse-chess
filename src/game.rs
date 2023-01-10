@@ -7,7 +7,10 @@ use itertools::Itertools;
 use serde::{Serialize, Deserialize};
 use strum::{EnumIter, IntoEnumIterator};
 
-use crate::board::{Board, Reserve, Turn, TurnInput, TurnExpanded, TurnFacts, TurnMode, TurnError, ChessGameStatus, VictoryReason, DrawReason};
+use crate::board::{
+    Board, Reserve, Turn, TurnInput, TurnExpanded, TurnFacts, TurnMode, TurnError,
+    AlgebraicFormat, ChessGameStatus, VictoryReason, DrawReason
+};
 use crate::clock::GameInstant;
 use crate::force::Force;
 use crate::piece::piece_to_pictogram;
@@ -39,13 +42,13 @@ impl TurnRecordExpanded {
         assert_eq!(self.mode, TurnMode::Normal);
         TurnRecord {
             player_id: self.player_id,
-            turn_algebraic: self.turn_expanded.algebraic.clone(),
+            turn_algebraic: self.turn_expanded.algebraic_for_log.clone(),
             time: self.time,
         }
     }
 
     pub fn to_log_entry(&self) -> String {
-        let algebraic = &self.turn_expanded.algebraic;
+        let algebraic = &self.turn_expanded.algebraic_for_log;
         let s = if let Some(capture) = self.turn_expanded.capture {
             let capture = piece_to_pictogram(capture.piece_kind, capture.force);
             format!("{algebraic} ·{capture}")
@@ -286,6 +289,16 @@ impl BughouseGame {
         }
     }
 
+    pub fn clone_from_start(&self) -> Self {
+        Self::new_with_starting_position(
+            (**self.contest_rules()).clone(),
+            (**self.chess_rules()).clone(),
+            (**self.bughouse_rules()).clone(),
+            self.starting_position.clone(),
+            &self.players()
+        )
+    }
+
     pub fn starting_position(&self) -> &EffectiveStartingPosition { &self.starting_position }
     pub fn contest_rules(&self) -> &Rc<ContestRules> { self.boards[BughouseBoard::A].contest_rules() }
     pub fn chess_rules(&self) -> &Rc<ChessRules> { self.boards[BughouseBoard::A].chess_rules() }
@@ -383,7 +396,7 @@ impl BughouseGame {
         let turn = board.parse_turn_input(turn_input, mode)?;
         // `turn_to_algebraic` must be called before `try_turn`, because algebraic form depend
         // on the current position.
-        let turn_algebraic = board.turn_to_algebraic(turn, mode);
+        let turn_algebraic = board.turn_to_algebraic(turn, mode, AlgebraicFormat::for_log());
         let turn_facts = board.try_turn(turn, mode, now)?;
         // If `try_turn` succeeded, then the turn was valid. Thus conversion to algebraic must
         // have succeeded as well, because there exists an algebraic form for any valid turn.
@@ -396,7 +409,7 @@ impl BughouseGame {
         if let Some(capture) = turn_facts.capture {
             other_board.receive_capture(&capture);
         }
-        let turn_expanded = make_turn_expanded(turn, turn_algebraic.clone(), turn_facts);
+        let turn_expanded = make_turn_expanded(turn, turn_algebraic, turn_facts);
         self.turn_log.push(TurnRecordExpanded{ mode, player_id, turn_expanded, time: now });
         assert!(self.status == BughouseGameStatus::Active);
         self.set_status(self.game_status_for_board(board_idx), now);
@@ -477,7 +490,7 @@ fn make_turn_expanded(turn: Turn, algebraic: String, facts: TurnFacts) -> TurnEx
     }
     TurnExpanded {
         turn,
-        algebraic,
+        algebraic_for_log: algebraic,
         relocation,
         relocation_extra,
         drop,

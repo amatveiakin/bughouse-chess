@@ -810,3 +810,39 @@ fn seating_assignment_is_fair() {
         ])
     );
 }
+
+// Verify conformity to PGN standard.
+#[test]
+fn pgn_standard() {
+    let mut world = World::new();
+    let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
+
+    world[cl1].make_turn("e4").unwrap();  world.process_all_events();
+    world[cl3].make_turn("e5").unwrap();  world.process_all_events();
+    world[cl1].make_turn("Nf3").unwrap();  world.process_all_events();
+    world[cl3].make_turn("Nc6").unwrap();  world.process_all_events();
+    world[cl1].make_turn("g3").unwrap();  world.process_all_events();
+    world[cl3].make_turn("d5").unwrap();  world.process_all_events();
+    world[cl1].make_turn("Bg2").unwrap();  world.process_all_events();
+    world[cl3].make_turn("Qe7").unwrap();  world.process_all_events();
+    world[cl1].make_turn("Nxe5").unwrap();  world.process_all_events();
+    world[cl3].make_turn("xe4").unwrap();  world.process_all_events();
+    world[cl1].make_turn("0-0").unwrap();  world.process_all_events();
+
+    world[cl1].state.request_export(pgn::BughouseExportFormat{});
+    world.process_all_events();
+    while let Some(event) = world[cl1].state.next_notable_event() {
+        if let client::NotableEvent::GameExportReady(content) = event {
+            println!("Got PGN:\n{content}");
+            // Test: Uses short algebraic and includes capture notations.
+            assert!(content.contains(" Nx"));
+            // Test: Does not contain non-ASCII characters (like "×").
+            assert!(content.chars().all(|ch| ch.is_ascii()));
+            // Test: Castling is PGN-style (not FIDE-style).
+            assert!(content.contains("O-O"));
+            assert!(!content.contains("0-0"));
+            return;
+        }
+    }
+    panic!("Did not get the PGN");
+}

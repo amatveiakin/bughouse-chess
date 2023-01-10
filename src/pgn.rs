@@ -1,12 +1,10 @@
-use std::rc::Rc;
-
 use enum_map::enum_map;
 use serde::{Serialize, Deserialize};
 use time::macros::format_description;
 
-use crate::board::{Board, VictoryReason, DrawReason};
+use crate::board::{TurnInput, TurnMode, VictoryReason, DrawReason};
 use crate::clock::TimeControl;
-use crate::fen;
+use crate::{fen, AlgebraicFormat};
 use crate::force::Force;
 use crate::game::{TurnRecordExpanded, BughousePlayerId, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::player::Team;
@@ -84,7 +82,7 @@ fn make_termination_string(game: &BughouseGame) -> &'static str {
     }
 }
 
-fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
+fn make_bughouse_bpng_header(game: &BughouseGame, game_at_start: &BughouseGame, round: usize) -> String {
     use BughouseBoard::*;
     use Force::*;
     // TODO: Save game start time instead.
@@ -93,16 +91,9 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
         StartingPosition::Classic =>
             ("Bughouse", String::new()),
         StartingPosition::FischerRandom => {
-            let starting_board = Board::new(
-                Rc::clone(game.contest_rules()),
-                Rc::clone(game.chess_rules()),
-                Some(Rc::clone(game.bughouse_rules())),
-                // Dummy names will not appear anywhere in the produced PGN.
-                enum_map!{ White => "White".to_owned(), Black => "Black".to_owned() },
-                game.starting_position()
-            );
-            let one_board = fen::starting_position_to_shredder_fen(&starting_board);
-            ("Bughouse Chess960", format!("[SetUp \"1\"]\n[FEN \"{one_board} | {one_board}\"]\n"))
+            let a = fen::starting_position_to_shredder_fen(&game_at_start.board(BughouseBoard::A));
+            let b = fen::starting_position_to_shredder_fen(&game_at_start.board(BughouseBoard::B));
+            ("Bughouse Chess960", format!("[SetUp \"1\"]\n[FEN \"{a} | {b}\"]\n"))
         }
     };
     let event = if game.contest_rules().rated { "Rated Bughouse Match" } else { "Unrated Bughouse Match" };
@@ -163,12 +154,23 @@ fn player_notation(player_id: BughousePlayerId) -> &'static str {
 pub fn export_to_bpgn(_format: BughouseExportFormat, game: &BughouseGame, round: usize)
     -> String
 {
-    let header = make_bughouse_bpng_header(game, round);
+    let mut game_rerun = game.clone_from_start();
+    let header = make_bughouse_bpng_header(game, &game_rerun, round);
     let mut doc = TextDocument::new();
     let mut full_turn_idx = enum_map!{ _ => 1 };
     for turn_record in game.turn_log() {
-        let TurnRecordExpanded{ player_id, turn_expanded, .. } = turn_record;
-        let turn_algebraic = &turn_expanded.algebraic;
+        let TurnRecordExpanded{ player_id, turn_expanded, time, .. } = turn_record;
+        let turn_algebraic = game_rerun.board(player_id.board_idx).turn_to_algebraic(
+            turn_expanded.turn,
+            TurnMode::Normal,
+            AlgebraicFormat::for_pgn(),
+        ).unwrap();
+        game_rerun.try_turn_by_player(
+            *player_id,
+            &TurnInput::Explicit(turn_expanded.turn),
+            TurnMode::Normal,
+            *time,
+        ).unwrap();
         let turn_notation = format!(
             "{}{}. {}",
             full_turn_idx[player_id.board_idx],

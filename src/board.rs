@@ -20,6 +20,38 @@ use crate::util::{sort_two, as_single_char};
 use crate::starter::{EffectiveStartingPosition, starting_piece_row, generate_starting_grid};
 
 
+pub enum AlgebraicDetails {
+    ShortAlgebraic,  // omit starting row/col when unambiguous, e.g. "e4"
+    LongAlgebraic,   // always include starting rol/col, e.g. "e2e4"
+}
+
+pub enum AlgebraicCharset {
+    Ascii,
+    AuxiliaryUnicode,
+    // Improvement potential: An option to have unicode pieces, e.g. "♞c6"
+}
+
+pub struct AlgebraicFormat {
+    pub details: AlgebraicDetails,
+    pub charset: AlgebraicCharset,
+}
+
+impl AlgebraicFormat {
+    pub fn for_log() -> Self {
+        AlgebraicFormat {
+            details: AlgebraicDetails::ShortAlgebraic,
+            charset: AlgebraicCharset::AuxiliaryUnicode,
+        }
+    }
+
+    pub fn for_pgn() -> Self {
+        AlgebraicFormat {
+            details: AlgebraicDetails::ShortAlgebraic,
+            charset: AlgebraicCharset::Ascii,
+        }
+    }
+}
+
 fn iter_minmax<T: PartialOrd + Copy, I: Iterator<Item = T>>(iter: I) -> Option<(T, T)> {
     match iter.minmax() {
         itertools::MinMaxResult::NoElements => None,
@@ -413,7 +445,7 @@ pub enum TurnInput {
 #[derive(Clone, Debug)]
 pub struct TurnExpanded {
     pub turn: Turn,
-    pub algebraic: String,
+    pub algebraic_for_log: String,
     pub relocation: Option<(Coord, Coord)>,
     pub relocation_extra: Option<(Coord, Coord)>,
     pub drop: Option<Coord>,
@@ -1052,8 +1084,8 @@ impl Board {
     //   - Short or long algebraic;
     //   - Unicode: None / Just characters / Characters and pieces;
     //   Allow to specify options when exporting PGN.
-    pub fn turn_to_algebraic(&self, turn: Turn, mode: TurnMode) -> Option<String> {
-        let notation = self.turn_to_algebraic_impl(turn, mode)?;
+    pub fn turn_to_algebraic(&self, turn: Turn, mode: TurnMode, format: AlgebraicFormat) -> Option<String> {
+        let notation = self.turn_to_algebraic_impl(turn, mode, format)?;
         // Improvement potential. Remove when sufficiently tested.
         if let Ok(turn_parsed) = self.algebraic_to_turn(&notation, mode) {
             assert_eq!(turn_parsed, turn, "{}", notation);
@@ -1061,14 +1093,22 @@ impl Board {
         Some(notation)
     }
 
-    fn turn_to_algebraic_impl(&self, turn: Turn, mode: TurnMode) -> Option<String> {
+    fn turn_to_algebraic_impl(&self, turn: Turn, mode: TurnMode, format: AlgebraicFormat) -> Option<String> {
         match turn {
             Turn::Move(mv) => {
-                let col_row_options = match mode {
-                    TurnMode::Normal => iproduct!(&[false, true], &[false, true]),
-                    TurnMode::Preturn => iproduct!(&[true], &[true]),
+                let capture_notation = match format.charset {
+                    AlgebraicCharset::Ascii => "x",
+                    AlgebraicCharset::AuxiliaryUnicode => "×",
                 };
-                for (&include_col, &include_row) in col_row_options {
+                let details = match mode {
+                    TurnMode::Normal => format.details,
+                    TurnMode::Preturn => AlgebraicDetails::LongAlgebraic,
+                };
+                let include_col_row = match details {
+                    AlgebraicDetails::LongAlgebraic => iproduct!(&[true], &[true]),
+                    AlgebraicDetails::ShortAlgebraic => iproduct!(&[false, true], &[false, true]),
+                };
+                for (&include_col, &include_row) in include_col_row {
                     let piece = self.grid[mv.from]?;
                     let capture = get_capture(&self.grid, mv.from, mv.to, self.en_passant_target);
                     let promotion = match mv.promote_to {
@@ -1086,7 +1126,7 @@ impl Board {
                         "{}{}{}{}{}",
                         piece.kind.to_algebraic_for_move(),
                         from,
-                        if capture.is_some() { "×" } else { "" },
+                        if capture.is_some() { capture_notation } else { "" },
                         mv.to.to_algebraic(),
                         promotion,
                     );
