@@ -1,14 +1,10 @@
 // TODO: streaming support + APIs.
-use std::ops::Range;
-
 use clap::Parser;
-use log::error;
 use tide::http::Mime;
 use tide::{Request, Response, StatusCode};
 use tide_jsx::*;
-use time::{OffsetDateTime, PrimitiveDateTime};
+use time::OffsetDateTime;
 
-use bughouse_chess::persistence::*;
 use bughouse_webserver::*;
 
 #[derive(Parser, Debug)]
@@ -22,6 +18,9 @@ struct Args {
 
     #[arg(long)]
     postgres_db: Option<String>,
+
+    #[arg(long, default_value = "")]
+    static_content_url_prefix: String,
 }
 
 #[async_std::main]
@@ -37,13 +36,19 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         (Some(db), _) => {
             let db = database::SqlxDatabase::<sqlx::Sqlite>::new(&db)?;
-            let mut app = tide::with_state(DatabaseApp { db });
+            let mut app = tide::with_state(DatabaseApp {
+                db,
+                static_content_url_prefix: args.static_content_url_prefix,
+            });
             DatabaseApp::register_handlers(&mut app);
             app.listen(args.bind_address).await?;
         }
         (_, Some(db)) => {
             let db = database::SqlxDatabase::<sqlx::Postgres>::new(&db)?;
-            let mut app = tide::with_state(DatabaseApp { db });
+            let mut app = tide::with_state(DatabaseApp {
+                db,
+                static_content_url_prefix: args.static_content_url_prefix,
+            });
             DatabaseApp::register_handlers(&mut app);
             app.listen(args.bind_address).await?;
         }
@@ -53,12 +58,14 @@ async fn main() -> Result<(), anyhow::Error> {
 
 struct DatabaseApp<DB> {
     db: DB,
+    static_content_url_prefix: String,
 }
 
 impl<DB: Clone> Clone for DatabaseApp<DB> {
     fn clone(&self) -> Self {
         Self {
             db: self.db.clone(),
+            static_content_url_prefix: self.static_content_url_prefix.clone(),
         }
     }
 }
@@ -67,7 +74,8 @@ impl<DB> DatabaseApp<DB>
 where
     DB: Sync + Send + Clone + database::Database + 'static,
 {
-    const STYLESHEET: &str = "
+    // TODO: move to static content as well.
+    const STYLESHEET: &str = r#"
 table, th, td {
     border: 1px solid black;
     border-collapse: collapse;
@@ -79,7 +87,59 @@ td, th {
 td.centered {
     text-align: center;
 }
-";
+
+.dt-sorter:not(.asc, .desc)::after {
+    filter: grayscale(50%);
+    content: "⬍";
+    /* Black arrow converted to grey arrow. */
+    filter: invert() brightness(0.5);
+}
+.dt-sorter.asc::after {
+    content: "⬆";
+}
+.dt-sorter.desc::after {
+    content: "⬇";
+}
+
+/* Copied from jstable */
+.hidden {
+    display: none;
+}
+ .dt-pagination ul {
+	 margin: 0;
+	 padding-left: 0;
+}
+ .dt-pagination ul li {
+	 list-style: none;
+	 float: left;
+}
+ .dt-pagination a, .dt-pagination span {
+	 border: 1px solid transparent;
+	 float: left;
+	 margin-left: 2px;
+	 padding: 6px 12px;
+	 position: relative;
+	 text-decoration: none;
+	 color: inherit;
+}
+ .dt-pagination a:hover {
+	 background-color: #d9d9d9;
+}
+ .dt-pagination .active a, .dt-pagination .active a:focus, .dt-pagination .active a:hover {
+	 background-color: #d9d9d9;
+	 cursor: default;
+}
+ .dt-pagination .dt-ellipsis span {
+	 cursor: not-allowed;
+}
+ .dt-pagination .disabled a, .dt-pagination .disabled a:focus, .dt-pagination .disabled a:hover {
+	 cursor: not-allowed;
+	 opacity: 0.4;
+}
+ .dt-pagination .pager a {
+	 font-weight: bold;
+}
+"#;
 
     fn register_handlers(app: &mut tide::Server<Self>) {
         app.at("/dyn/games").get(Self::handle_games);
@@ -145,7 +205,7 @@ td.centered {
         let h: String = html! {
             <html>
                 <style>
-                    {Self::STYLESHEET}
+                    {raw!(Self::STYLESHEET)}
                 </style>
             <head>
             </head>
@@ -264,42 +324,78 @@ td.centered {
 
         let h: String = html! {
             <html>
+                <script type={"text/javascript"}
+                        src={req.state().static_content_url_prefix.clone() + "/jstable.js"}>
+                    {";"}
+                </script>
+                <script>
+                    {raw!(r##"
+                        function initJSTables() {
+                            new JSTable("#player-leaderboard-table", {
+                                'perPageSelect': [5, 10, 20, 100, 1000],
+                                'perPage': 10,
+                                'columns': [{
+                                    select: 1,
+                                    sortable: true,
+                                    sort: 'desc'
+                                }]
+                            });
+                            new JSTable("#team-leaderboard-table", {
+                                'perPageSelect': [5, 10, 20, 100, 1000],
+                                'perPage': 10,
+                                'columns': [{
+                                    select: 2,
+                                    sortable: true,
+                                    sort: 'desc'
+                                }]
+                            });
+                        }
+                    "##)}
+                </script>
                 <style>
-                    {Self::STYLESHEET}
+                    {raw!(Self::STYLESHEET)}
                 </style>
             <head>
             </head>
-            <body>
-              <table>
-                <p>{"Player Leaderboard"}</p>
-                <tr>
-                    <th>{"Player"}</th>
-                    <th>{"Pointrate"}</th>
-                    <th><a href={"https://docs.rs/skillratings/latest/skillratings/weng_lin/fn.weng_lin_two_teams.html"}>{"Rating"}</a></th>
-                    <th>{"σ"}</th>
-                    <th>{"Points"}</th>
-                    <th>{"Games"}</th>
-                    <th>{"Wins"}</th>
-                    <th>{"Losses"}</th>
-                    <th>{"Draws"}</th>
-                </tr>
-                {player_leaderboard(final_player_stats)}
+            <body onload={"initJSTables()"}>
+              <h2>{"Player Leaderboard"}</h2>
+              <table id={"player-leaderboard-table"}>
+                <thead>
+                    <tr>
+                        <th>{"Player"}</th>
+                        <th>{"Pointrate"}</th>
+                        <th><a href={"https://docs.rs/skillratings/latest/skillratings/weng_lin/fn.weng_lin_two_teams.html"}>{"Rating"}</a></th>
+                        <th>{"σ"}</th>
+                        <th>{"Points"}</th>
+                        <th>{"Games"}</th>
+                        <th>{"Wins"}</th>
+                        <th>{"Losses"}</th>
+                        <th>{"Draws"}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {player_leaderboard(final_player_stats)}
+                </tbody>
               </table>
-              <table>
-                <p>{"Team Leaderboard"}</p>
-                <tr>
-                    <th>{"Team"}</th>
-                    <th>{"Pointrate"}</th>
-                    <th>{"Elo"}</th>
-                    <th><a href={"https://docs.rs/skillratings/latest/skillratings/weng_lin/fn.weng_lin.html"}>{"Rating"}</a></th>
-                    <th>{"σ"}</th>
-                    <th>{"Points"}</th>
-                    <th>{"Games"}</th>
-                    <th>{"Wins"}</th>
-                    <th>{"Losses"}</th>
-                    <th>{"Draws"}</th>
-                </tr>
-                {team_leaderboard(final_team_stats)}
+              <h2>{"Team Leaderboard"}</h2>
+              <table id={"team-leaderboard-table"}>
+                <thead>
+                    <tr>
+                        <th>{"Team"}</th>
+                        <th>{"Pointrate"}</th>
+                        <th>{"Elo"}</th>
+                        <th><a href={"https://docs.rs/skillratings/latest/skillratings/weng_lin/fn.weng_lin.html"}>{"Rating"}</a></th>
+                        <th>{"σ"}</th>
+                        <th>{"Points"}</th>
+                        <th>{"Games"}</th>
+                        <th>{"Wins"}</th>
+                        <th>{"Losses"}</th>
+                        <th>{"Draws"}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {team_leaderboard(final_team_stats)}
+                </tbody>
               </table>
             </body>
             </html>
