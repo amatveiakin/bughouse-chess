@@ -5,33 +5,23 @@ use console::Style;
 use itertools::Itertools;
 
 use bughouse_chess::*;
-use bughouse_chess::util::div_ceil_u128;
 
 
 const BOARD_WIDTH: usize = (NUM_COLS as usize + 2) * 3;
 
 fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, usize) {
     // Improvement potential: Support longer time controls (with hours).
-    let is_active = clock.active_force() == Some(force);
-    let millis = clock.time_left(force, now).as_millis();
-    let sec = millis / 1000;
-    let separator = |s| if !is_active || millis % 1000 >= 500 { s } else { " " };
-    let mut clock_str = if sec >= 20 {
-        format!("{:02}{}{:02}", sec / 60, separator(":"), sec % 60)
-    } else {
-        format!(" {:02}{}{}", sec, separator("."), div_ceil_u128(millis, 100) % 10)
+    let ClockShowing{ is_active, show_separator, out_of_time, time_breakdown } = clock.showing_for(force, now);
+    let separator = |s| if show_separator { s } else { " " };
+    let mut clock_str = match time_breakdown {
+        TimeBreakdown::NormalTime{ minutes, seconds } => format!("{:02}{}{:02}", minutes, separator(":"), seconds),
+        TimeBreakdown::LowTime{ seconds, deciseconds } => format!(" {:02}{}{}", seconds, separator("."), deciseconds),
     };
     let clock_str_len = clock_str.len();
-    if is_active {
-        clock_str = Style::new().reverse().apply_to(clock_str).to_string();
-    } else if millis == 0 {
-        // Note. This will not apply to an active player, which is by design.
-        // When the game is over, all clocks stop, so no player is active.
-        // An active player can have zero time only in an online game client.
-        // In this case we shouldn't paint the clock red (which means defeat)
-        // before the server confirmed game result, because the game may have
-        // ended earlier on the other board.
+    if out_of_time {
         clock_str = Style::new().on_red().apply_to(clock_str).to_string();
+    } else if is_active {
+        clock_str = Style::new().reverse().apply_to(clock_str).to_string();
     }
     (clock_str, clock_str_len)
 }

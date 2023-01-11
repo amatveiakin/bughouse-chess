@@ -1069,31 +1069,22 @@ fn is_clock_ticking(game: &BughouseGame, participant_id: BughouseParticipantId) 
     game.board(player_id.board_idx).clock().active_force() == Some(player_id.force)
 }
 
-// TODO: Dedup against console client
 fn render_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_sys::Element)
     -> JsResult<()>
 {
-    let is_active = clock.active_force() == Some(force);
-    let millis = clock.time_left(force, now).as_millis();
-    let sec = millis / 1000;
-    let separator = |s| if !is_active || millis % 1000 >= 500 { s } else { " " };
-    let low_time = sec < 20;
-    let clock_str = if low_time {
-        format!("{:02}{}{}", sec, separator("."), util::div_ceil_u128(millis, 100) % 10)
-    } else {
-        format!("{:02}{}{:02}", sec / 60, separator(":"), sec % 60)
+    let ClockShowing{ is_active, show_separator, out_of_time, time_breakdown } = clock.showing_for(force, now);
+    let separator = |s| if show_separator { s } else { " " };
+    let clock_str = match time_breakdown {
+        TimeBreakdown::NormalTime{ minutes, seconds } => format!("{:02}{}{:02}", minutes, separator(":"), seconds),
+        TimeBreakdown::LowTime{ seconds, deciseconds } => format!("{:02}{}{}", seconds, separator("."), deciseconds),
     };
     clock_node.set_text_content(Some(&clock_str));
     let mut classes = vec!["clock"];
-    if !is_active && millis == 0 {
-        // Note. When the game is over, all clocks stop, so no player is active.
-        // An active player can have zero time only in an online game client.
-        // In this case we shouldn't signal flag defeat before the server confirmed
-        // game result, because the game may have ended earlier on the other board.
+    if out_of_time {
         classes.push("clock-flag");
     } else {
         classes.push(if is_active { "clock-active" } else { "clock-inactive" });
-        if low_time {
+        if matches!(time_breakdown, TimeBreakdown::LowTime{ .. }) {
             classes.push("clock-low-time");
         }
     }

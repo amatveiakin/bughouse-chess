@@ -7,6 +7,7 @@ use serde::{Serialize, Deserialize};
 use strum::IntoEnumIterator;
 
 use crate::force::Force;
+use crate::util::div_ceil_u128;
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -121,6 +122,26 @@ impl WallGameTimePair {
 }
 
 
+pub struct ClockShowing {
+    pub is_active: bool,
+    pub show_separator: bool,
+    pub out_of_time: bool,
+    pub time_breakdown: TimeBreakdown,
+}
+
+// Improvement potential: Support longer time controls (with hours).
+pub enum TimeBreakdown {
+    NormalTime {
+        minutes: u32,
+        seconds: u32,
+    },
+    LowTime {
+        seconds: u32,
+        deciseconds: u32,
+    },
+}
+
+
 #[derive(Clone, Debug)]
 pub struct Clock {
     turn_state: Option<(Force, GameInstant)>,  // force, start time
@@ -150,6 +171,37 @@ impl Clock {
         }
         ret
     }
+
+    pub fn showing_for(&self, force: Force, now: GameInstant) -> ClockShowing {
+        // Get duration in the highest possible precision. It's important to round the time up,
+        // so that we never show "0.00" for a player who has not lost by flag.
+        const NANOS_PER_SEC: u128 = 1_000_000_000;
+        const NANOS_PER_DECI: u128 = NANOS_PER_SEC / 10;
+        let is_active = self.active_force() == Some(force);
+        let nanos = self.time_left(force, now).as_nanos();
+        let s = nanos / NANOS_PER_SEC;
+        let show_separator = !is_active || nanos % NANOS_PER_SEC >= NANOS_PER_SEC / 2;
+
+        // Note. Never consider an active player to be out of time. On the server or in an
+        // offline client this never happens, because all clocks stop when the game is over.
+        // In an online client an active player can have zero time, but we shouldn't tell the
+        // user they've run out of time until the server confirms game result, because the
+        // game may have ended earlier on the other board.
+        let out_of_time = !is_active && nanos == 0;
+
+        let low_time = s < 20;
+        let time_breakdown = if low_time {
+            let seconds = s.try_into().unwrap();
+            let deciseconds = (div_ceil_u128(nanos, NANOS_PER_DECI) % 10).try_into().unwrap();
+            TimeBreakdown::LowTime{ seconds, deciseconds }
+        } else {
+            let minutes = (s / 60).try_into().unwrap();
+            let seconds = (s % 60).try_into().unwrap();
+            TimeBreakdown::NormalTime{ minutes, seconds }
+        };
+        ClockShowing{ is_active, show_separator, out_of_time, time_breakdown }
+    }
+
     pub fn total_time_elapsed(&self) -> Duration {
         // Note. This assumes no time increments, delays, etc.
         Force::iter().map(|force| self.control.starting_time - self.remaining_time[force]).sum()
