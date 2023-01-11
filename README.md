@@ -30,7 +30,7 @@ Folder structure:
 Build the container:
 
 ```
-docker build -t bughouse-chess .
+DOCKER_BUILDKIT=1 docker build -t bughouse-chess .
 ```
 
 Run the container:

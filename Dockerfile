@@ -13,7 +13,7 @@ WORKDIR bughouse-chess
 COPY www/package.json www/package-lock.json www/
 RUN cd www && npm install
 # Copy and build non-test Rust code.
-COPY Cargo.toml Cargo.lock .
+COPY Cargo.toml Cargo.lock ./
 COPY src src/
 COPY bughouse_webserver bughouse_webserver/
 COPY bughouse_console bughouse_console/
@@ -38,5 +38,5 @@ RUN \
 # Copy everything else last. Changes to "www/" shouldn't trigger Rust builds.
 COPY . .
 
-CMD ./docker_start.sh
+CMD bash ./docker_start.sh
 EXPOSE 8080 14361 14362
