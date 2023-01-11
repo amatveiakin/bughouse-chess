@@ -220,7 +220,7 @@ menu_join_contest_page.addEventListener('submit', on_join_contest_confirm);
 // TODO: Make sounds louder and set volume to 2 by default.
 set_volume(max_volume);
 
-let on_tick_interval_id = setInterval(on_tick, 100);
+let on_tick_interval_id = setInterval(on_tick, 50);
 
 
 function with_error_handling(f) {
