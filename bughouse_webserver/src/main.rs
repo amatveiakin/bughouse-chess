@@ -3,7 +3,6 @@ use std::ops::Range;
 
 use clap::Parser;
 use log::error;
-use sqlx::prelude::*;
 use tide::http::Mime;
 use tide::{Request, Response, StatusCode};
 use tide_jsx::*;
@@ -37,159 +36,37 @@ async fn main() -> Result<(), anyhow::Error> {
             ))
         }
         (Some(db), _) => {
-            let mut app = tide::with_state(SqlxApp::<sqlx::Sqlite>::new(&db)?);
-            SqlxApp::<sqlx::Sqlite>::register_handlers(&mut app);
+            let db = database::SqlxDatabase::<sqlx::Sqlite>::new(&db)?;
+            let mut app = tide::with_state(DatabaseApp { db });
+            DatabaseApp::register_handlers(&mut app);
             app.listen(args.bind_address).await?;
         }
         (_, Some(db)) => {
-            let mut app = tide::with_state(SqlxApp::<sqlx::Postgres>::new(&db)?);
-            SqlxApp::<sqlx::Postgres>::register_handlers(&mut app);
+            let db = database::SqlxDatabase::<sqlx::Postgres>::new(&db)?;
+            let mut app = tide::with_state(DatabaseApp { db });
+            DatabaseApp::register_handlers(&mut app);
             app.listen(args.bind_address).await?;
         }
     }
     Ok(())
 }
 
-#[derive(Copy, Clone, Debug)]
-struct RowId {
-    id: i64,
+struct DatabaseApp<DB> {
+    db: DB,
 }
 
-struct SqlxApp<DB: sqlx::Database> {
-    pool: sqlx::Pool<DB>,
-}
-
-impl<DB: sqlx::Database> Clone for SqlxApp<DB> {
+impl<DB: Clone> Clone for DatabaseApp<DB> {
     fn clone(&self) -> Self {
         Self {
-            pool: self.pool.clone(),
+            db: self.db.clone(),
         }
     }
 }
 
-impl SqlxApp<sqlx::Sqlite> {
-    pub fn new(db_address: &str) -> Result<Self, anyhow::Error> {
-        let options = sqlx::sqlite::SqlitePoolOptions::new();
-        let pool = async_std::task::block_on(options.connect(&format!("{db_address}")))?;
-        Ok(Self { pool })
-    }
-}
-
-#[allow(dead_code)]
-impl SqlxApp<sqlx::Postgres> {
-    pub fn new(db_address: &str) -> Result<Self, anyhow::Error> {
-        let options = sqlx::postgres::PgPoolOptions::new();
-        let pool = async_std::task::block_on(options.connect(&format!("{db_address}")))?;
-        Ok(Self { pool })
-    }
-}
-
-impl<DB> SqlxApp<DB>
+impl<DB> DatabaseApp<DB>
 where
-    DB: sqlx::Database,
-    for<'q> i64: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
-    for<'q> String: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
-    for<'q> bool: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
-    for<'q> OffsetDateTime: sqlx::Type<DB> + sqlx::Encode<'q, DB>,
-    for<'q> PrimitiveDateTime: sqlx::Type<DB> + sqlx::Decode<'q, DB>,
-    for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
-    for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
-    for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
-    usize: sqlx::ColumnIndex<DB::Row>,
+    DB: Sync + Send + Clone + database::Database + 'static,
 {
-    pub async fn finished_games(
-        &self,
-        game_end_time_range: Range<OffsetDateTime>,
-        only_rated: bool,
-    ) -> Result<Vec<(RowId, GameResultRow)>, anyhow::Error> {
-        let rows = sqlx::query::<DB>(
-            "SELECT
-                rowid,
-                git_version,
-                invocation_id,
-                game_start_time,
-                game_end_time,
-                player_red_a,
-                player_red_b,
-                player_blue_a,
-                player_blue_b,
-                result,
-                rated
-             FROM finished_games
-             WHERE
-                (game_end_time >= $1 AND game_end_time < $2)
-                AND
-                ($3 OR (rated AND game_start_time IS NOT NULL))
-             ORDER BY game_end_time",
-        )
-        .bind(game_end_time_range.start)
-        .bind(game_end_time_range.end)
-        .bind(!only_rated)
-        .fetch_all(&self.pool)
-        .await?;
-        let (oks, errs): (Vec<_>, _) = rows
-            .into_iter()
-            .map(|row| -> Result<_, anyhow::Error> {
-                Ok((
-                    RowId {
-                        // Turns out rowid is sensitive for sqlx.
-                        id: row.try_get("rowid")?,
-                    },
-                    GameResultRow {
-                        git_version: row.try_get("git_version")?,
-                        invocation_id: row.try_get("invocation_id")?,
-                        // Timestamps need to be re-coded because Postgres
-                        // TIMESTAMP datatype can only be decoded as
-                        // PrimitiveDateTime, while to get OffsetDateTime,
-                        // TIMESTAMPZ needs to be used which is not supported
-                        // in MySQL.
-                        // Encoding of timestamps doesn't have such issues:
-                        // the library converts to UTC and encodes.
-                        game_start_time: Option::map(
-                            row.try_get("game_start_time")?,
-                            PrimitiveDateTime::assume_utc,
-                        ),
-                        game_end_time: Option::map(
-                            row.try_get("game_end_time")?,
-                            PrimitiveDateTime::assume_utc,
-                        ),
-                        player_red_a: row.try_get("player_red_a")?,
-                        player_red_b: row.try_get("player_red_b")?,
-                        player_blue_a: row.try_get("player_blue_a")?,
-                        player_blue_b: row.try_get("player_blue_b")?,
-                        result: row.try_get("result")?,
-                        game_pgn: String::new(),
-                        rated: row.try_get("rated")?,
-                    },
-                ))
-            })
-            .partition(Result::is_ok);
-        if !errs.is_empty() {
-            error!(
-                "Failed to parse rows from the DB; sample errors: {:?}",
-                errs.iter()
-                    .take(5)
-                    .map(|x| x.as_ref().err().unwrap().to_string())
-                    .collect::<Vec<_>>()
-            );
-        }
-        if oks.is_empty() && !errs.is_empty() {
-            // None of the rows parsed, return the first error.
-            Err(errs.into_iter().next().unwrap().unwrap_err().into())
-        } else {
-            Ok(oks.into_iter().map(Result::unwrap).collect())
-        }
-    }
-
-    pub async fn pgn(&self, rowid: RowId) -> Result<String, anyhow::Error> {
-        sqlx::query("SELECT game_pgn from finished_games WHERE rowid = $1")
-            .bind(rowid.id)
-            .fetch_one(&self.pool)
-            .await?
-            .try_get("game_pgn")
-            .map_err(anyhow::Error::from)
-    }
-
     const STYLESHEET: &str = "
 table, th, td {
     border: 1px solid black;
@@ -206,7 +83,7 @@ td.centered {
 
     fn register_handlers(app: &mut tide::Server<Self>) {
         app.at("/dyn/games").get(Self::handle_games);
-        app.at("/dyn/pgn/:rowid").get(SqlxApp::hanle_pgn);
+        app.at("/dyn/pgn/:rowid").get(DatabaseApp::hanle_pgn);
         app.at("/dyn/stats").get(|r| Self::handle_stats(r, None));
         app.at("/dyn/stats/:duration")
             .get(Self::handle_stats_with_duration);
@@ -227,6 +104,7 @@ td.centered {
     async fn handle_games(req: Request<Self>) -> tide::Result {
         let games = req
             .state()
+            .db
             .finished_games(
                 OffsetDateTime::UNIX_EPOCH..OffsetDateTime::now_utc(),
                 /*only_rated=*/ false,
@@ -295,7 +173,7 @@ td.centered {
 
     async fn hanle_pgn(req: Request<Self>) -> tide::Result {
         let rowid = req.param("rowid")?.parse()?;
-        let p = req.state().pgn(RowId { id: rowid }).await?;
+        let p = req.state().db.pgn(database::RowId { id: rowid }).await?;
         let mut resp = Response::new(StatusCode::Ok);
         resp.insert_header(
             "Content-Disposition",
@@ -319,6 +197,7 @@ td.centered {
         };
         let games = req
             .state()
+            .db
             .finished_games(range_start..now, /*only_rated=*/ true)
             .await
             .map_err(anyhow::Error::from)?;
@@ -435,6 +314,7 @@ td.centered {
         let now = OffsetDateTime::now_utc();
         let games = req
             .state()
+            .db
             .finished_games(OffsetDateTime::UNIX_EPOCH..now, /*only_rated=*/ true)
             .await
             .map_err(anyhow::Error::from)?;
