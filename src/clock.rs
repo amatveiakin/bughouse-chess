@@ -179,7 +179,7 @@ impl Clock {
         const NANOS_PER_DECI: u128 = NANOS_PER_SEC / 10;
         let is_active = self.active_force() == Some(force);
         let nanos = self.time_left(force, now).as_nanos();
-        let s = nanos / NANOS_PER_SEC;
+        let s_floor = nanos / NANOS_PER_SEC;
         let show_separator = !is_active || nanos % NANOS_PER_SEC >= NANOS_PER_SEC / 2;
 
         // Note. Never consider an active player to be out of time. On the server or in an
@@ -189,14 +189,15 @@ impl Clock {
         // game may have ended earlier on the other board.
         let out_of_time = !is_active && nanos == 0;
 
-        let low_time = s < 20;
+        let low_time = s_floor < 20;
         let time_breakdown = if low_time {
-            let seconds = s.try_into().unwrap();
+            let seconds = s_floor.try_into().unwrap();
             let deciseconds = (div_ceil_u128(nanos, NANOS_PER_DECI) % 10).try_into().unwrap();
             TimeBreakdown::LowTime{ seconds, deciseconds }
         } else {
-            let minutes = (s / 60).try_into().unwrap();
-            let seconds = (s % 60).try_into().unwrap();
+            let s_ceil = (nanos + NANOS_PER_SEC - 1) / NANOS_PER_SEC;
+            let minutes = (s_ceil / 60).try_into().unwrap();
+            let seconds = (s_ceil % 60).try_into().unwrap();
             TimeBreakdown::NormalTime{ minutes, seconds }
         };
         ClockShowing{ is_active, show_separator, out_of_time, time_breakdown }
