@@ -132,8 +132,8 @@ pub fn shredder_fen_to_starting_grid(fen: &str) -> Result<Grid, String> {
                 col_idx += skip;
             } else {
                 let coord = Coord::new(
-                    Row::from_zero_based(row_idx.try_into().unwrap()),
-                    Col::from_zero_based(col_idx.try_into().unwrap())
+                    Row::from_zero_based(row_idx.try_into().unwrap()).unwrap(),
+                    Col::from_zero_based(col_idx.try_into().unwrap()).unwrap()
                 );
                 let (piece_kind, force) = notation_to_piece(ch).ok_or_else(
                     || format!("Illegal piece notation: '{ch}'")

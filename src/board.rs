@@ -69,7 +69,7 @@ fn direction_forward(force: Force) -> i8 {
 
 fn col_range_inclusive((col_min, col_max): (Col, Col)) -> impl Iterator<Item = Col> {
     assert!(col_min <= col_max);
-    (col_min.to_zero_based() ..= col_max.to_zero_based()).map(Col::from_zero_based)
+    (col_min.to_zero_based() ..= col_max.to_zero_based()).map(|v| Col::from_zero_based(v).unwrap())
 }
 
 fn find_king(grid: &Grid, force: Force) -> Option<Coord> {
@@ -84,7 +84,7 @@ fn find_king(grid: &Grid, force: Force) -> Option<Coord> {
 }
 
 fn should_promote(force: Force, piece_kind: PieceKind, to: Coord) -> bool {
-    let last_row = SubjectiveRow::from_one_based(8).to_row(force);
+    let last_row = SubjectiveRow::from_one_based(8).unwrap().to_row(force);
     piece_kind == PieceKind::Pawn && to.row == last_row
 }
 
@@ -104,7 +104,7 @@ fn get_capture(grid: &Grid, from: Coord, to: Coord, en_passant_target: Option<Co
         }
     } else if let Some(en_passant_target) = en_passant_target {
         if piece.kind == PieceKind::Pawn && to == en_passant_target {
-            let row = en_passant_target.row + direction_forward(piece.force.opponent());
+            let row = (en_passant_target.row + direction_forward(piece.force.opponent())).unwrap();
             return Some(Coord::new(row, en_passant_target.col));
         }
     }
@@ -119,7 +119,7 @@ fn get_en_passant_target(grid: &Grid, turn: Turn) -> Option<Coord> {
             (mv.to.row - mv.from.row).abs() == 2
         {
             let row_idx = (mv.to.row.to_zero_based() + mv.from.row.to_zero_based()) / 2;
-            let row = Row::from_zero_based(row_idx);
+            let row = Row::from_zero_based(row_idx).unwrap();
             return Some(Coord::new(row, mv.to.col));
         }
     }
@@ -272,12 +272,14 @@ fn proto_reachability_modulo_destination_square(grid: &Grid, from: Coord, to: Co
     let has_linear_passage = || {
         assert!(is_straight_move || is_diagonal_move);
         let direction = (d_row.signum(), d_col.signum());
-        let mut pos = from + direction;
+        // Safe to `unwrap`: guaranteed to stay within valid coordinates thanks to
+        // (is_straight_move || is_diagonal_move) test above.
+        let mut pos = (from + direction).unwrap();
         while pos != to {
             if grid[pos].is_some() {
                 return false;
             }
-            pos = pos + direction;
+            pos = (pos + direction).unwrap();
         }
         true
     };
@@ -288,7 +290,7 @@ fn proto_reachability_modulo_destination_square(grid: &Grid, from: Coord, to: Co
     match piece_kind {
         PieceKind::Pawn => {
             let dir_forward = direction_forward(force);
-            let second_row = SubjectiveRow::from_one_based(2).to_row(force);
+            let second_row = SubjectiveRow::from_one_based(2).unwrap().to_row(force);
             let valid_capturing_move = d_col.abs() == 1 && d_row == dir_forward;
             let valid_non_capturing_move = d_col == 0 && (
                 d_row == dir_forward ||
@@ -323,7 +325,7 @@ fn proto_reachability_modulo_destination_square(grid: &Grid, from: Coord, to: Co
 fn initial_castling_rights(starting_position: &EffectiveStartingPosition) -> CastlingRights {
     let row = starting_piece_row(starting_position);
     let king_pos = row.iter().position(|&p| p == PieceKind::King).unwrap();
-    let king_col = Col::from_zero_based(king_pos.try_into().unwrap());
+    let king_col = Col::from_zero_based(king_pos.try_into().unwrap()).unwrap();
     let mut rights = enum_map!{ _ => None };
     for col in Col::all() {
         let piece = row[usize::from(col.to_zero_based())];
@@ -687,7 +689,7 @@ impl Board {
         let force = self.turn_owner(mode);
         match &turn {
             Turn::Move(mv) => {
-                let first_row = SubjectiveRow::from_one_based(1).to_row(force);
+                let first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
                 let piece = &mut self.grid[mv.from].unwrap();
                 if piece.kind == PieceKind::King {
                     self.castling_rights[force].clear();
@@ -696,7 +698,7 @@ impl Board {
                 } else if let Some(capture) = capture {
                     let opponent = force.opponent();
                     assert_eq!(capture.force, opponent);
-                    let opponent_first_row = SubjectiveRow::from_one_based(1).to_row(opponent);
+                    let opponent_first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(opponent);
                     if mv.to.row == opponent_first_row && capture.piece_kind == PieceKind::Rook {
                         remove_castling_right(&mut self.castling_rights[opponent], mv.to.col);
                     }
@@ -886,7 +888,7 @@ impl Board {
                 //      both when it's possible (the other rook is further away)
                 //      and impossible (the other rook is in the way).
 
-                let row = SubjectiveRow::from_one_based(1).to_row(force);
+                let row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
                 // King can be missing in case of pre-turns.
                 let king_from = find_king(&new_grid, force).ok_or(TurnError::CastlingPieceHasMoved)?;
                 if king_from.row != row {
@@ -960,7 +962,7 @@ impl Board {
                     }
                     if piece.kind == PieceKind::King {
                         if let Some(dst_piece) = self.grid[mv.to] {
-                            let first_row = SubjectiveRow::from_one_based(1).to_row(force);
+                            let first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
                             let maybe_is_special_castling =
                                 dst_piece.force == force &&
                                 dst_piece.kind == PieceKind::Rook &&
@@ -999,10 +1001,10 @@ impl Board {
         let h_castling_re = once_cell_regex!("^(0-0|O-O)$");
         if let Some(cap) = move_re.captures(notation) {
             let piece_kind = cap.get(1).map_or(PieceKind::Pawn, |m| PieceKind::from_algebraic(m.as_str()).unwrap());
-            let from_col = cap.get(2).map(|m| Col::from_algebraic(as_single_char(m.as_str()).unwrap()));
-            let from_row = cap.get(3).map(|m| Row::from_algebraic(as_single_char(m.as_str()).unwrap()));
+            let from_col = cap.get(2).map(|m| Col::from_algebraic(as_single_char(m.as_str()).unwrap()).unwrap());
+            let from_row = cap.get(3).map(|m| Row::from_algebraic(as_single_char(m.as_str()).unwrap()).unwrap());
             let capturing = cap.get(4).is_some();
-            let to = Coord::from_algebraic(cap.get(5).unwrap().as_str());
+            let to = Coord::from_algebraic(cap.get(5).unwrap().as_str()).unwrap();
             let promote_to = cap.get(6).map(|m| PieceKind::from_algebraic(m.as_str()).unwrap());
             let _mark = cap.get(7).map(|m| m.as_str());  // TODO: Test check/mate
             if promote_to.is_some() != should_promote(force, piece_kind, to) {
@@ -1066,7 +1068,7 @@ impl Board {
             }
         } else if let Some(cap) = drop_re.captures(notation) {
             let piece_kind = PieceKind::from_algebraic(cap.get(1).unwrap().as_str()).unwrap();
-            let to = Coord::from_algebraic(cap.get(2).unwrap().as_str());
+            let to = Coord::from_algebraic(cap.get(2).unwrap().as_str()).unwrap();
             return Ok(Turn::Drop(TurnDrop{ piece_kind, to }));
         } else if a_castling_re.is_match(notation) {
             return Ok(Turn::Castle(CastleDirection::ASide));

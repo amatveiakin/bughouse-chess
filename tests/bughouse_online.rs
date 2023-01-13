@@ -28,8 +28,8 @@ fn default_chess_rules() -> ChessRules {
 fn default_bughouse_rules() -> BughouseRules {
     BughouseRules {
         teaming: Teaming::FixedTeams,
-        min_pawn_drop_row: SubjectiveRow::from_one_based(2),
-        max_pawn_drop_row: SubjectiveRow::from_one_based(6),
+        min_pawn_drop_row: SubjectiveRow::from_one_based(2).unwrap(),
+        max_pawn_drop_row: SubjectiveRow::from_one_based(6).unwrap(),
         drop_aggression: DropAggression::NoChessMate,
     }
 }

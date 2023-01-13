@@ -265,8 +265,8 @@ impl WebClient {
         };
         let bughouse_rules = BughouseRules {
             teaming,
-            min_pawn_drop_row: SubjectiveRow::from_one_based(min_pawn_drop_row),
-            max_pawn_drop_row: SubjectiveRow::from_one_based(max_pawn_drop_row),
+            min_pawn_drop_row: SubjectiveRow::from_one_based(min_pawn_drop_row).unwrap(),
+            max_pawn_drop_row: SubjectiveRow::from_one_based(max_pawn_drop_row).unwrap(),
             drop_aggression,
         };
         let rules = Rules {
@@ -340,7 +340,7 @@ impl WebClient {
         let source = if let Some(piece) = source.strip_prefix("reserve-") {
             PieceDragStart::Reserve(PieceKind::from_algebraic(piece).unwrap())
         } else {
-            let coord = Coord::from_algebraic(source);
+            let coord = Coord::from_algebraic(source).unwrap();
             let board_orientation = get_board_orientation(DisplayBoard::Primary, alt_game.perspective());
             let display_coord = to_display_coord(coord, board_orientation);
             set_square_highlight("drag-start-highlight", DisplayBoard::Primary, Some(display_coord))?;
@@ -363,7 +363,7 @@ impl WebClient {
         if let Some(dest_display) = pos.to_square() {
             use PieceKind::*;
             let board_orientation = get_board_orientation(DisplayBoard::Primary, alt_game.perspective());
-            let dest_coord = from_display_coord(dest_display, board_orientation);
+            let dest_coord = from_display_coord(dest_display, board_orientation).unwrap();
             let promote_to = if alternative_promotion { Knight } else { Queen };
             match alt_game.drag_piece_drop(dest_coord, promote_to) {
                 Ok(turn) => {

@@ -95,13 +95,13 @@ fn render_grid(grid: &Grid, orientation: BoardOrientation) -> String {
             let col_header = y < 0 || y >= NUM_ROWS.into();
             let square = match (row_header, col_header) {
                 (true, true) => format_square(' '),
-                (true, false) => format_square(from_display_row(y.try_into().unwrap(), orientation).to_algebraic()),
-                (false, true) => format_square(from_display_col(x.try_into().unwrap(), orientation).to_algebraic()),
+                (true, false) => format_square(from_display_row(y.try_into().unwrap(), orientation).unwrap().to_algebraic()),
+                (false, true) => format_square(from_display_col(x.try_into().unwrap(), orientation).unwrap().to_algebraic()),
                 (false, false) => {
                     let coord = from_display_coord(DisplayCoord {
                         x: x.try_into().unwrap(),
                         y: y.try_into().unwrap()
-                    }, orientation);
+                    }, orientation).unwrap();
                     let color_idx = (coord.row.to_zero_based() + coord.col.to_zero_based()) % 2;
                     colors[usize::from(color_idx)].apply_to(
                         format_square(match grid[coord] {

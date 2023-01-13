@@ -13,19 +13,6 @@ pub const NUM_ROWS: u8 = 8;
 pub const NUM_COLS: u8 = 8;
 
 
-// Const equivalent of `a.checked_sub(b).unwrap()`.
-// See https://github.com/rust-lang/rust/issues/66753 for why `Option::unwrap` can't be const.
-//
-// Improvement potential. Construct Row/Col constants directly, make `from_algebraic` return
-//   `Option`s instead of panicing.
-const fn checked_sub_or_panic(a: u8, b: u8) -> u8 {
-    match a.checked_sub(b) {
-        Some(v) => v,
-        None => panic!("Integer overflow"),
-    }
-}
-
-
 // Row form a force's point of view
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct SubjectiveRow {
@@ -33,26 +20,25 @@ pub struct SubjectiveRow {
 }
 
 impl SubjectiveRow {
-    pub fn from_zero_based(idx: u8) -> Self {
-        assert!(idx < NUM_ROWS);
-        Self { idx }
+    pub const fn from_zero_based(idx: u8) -> Option<Self> {
+        if idx < NUM_ROWS { Some(Self{ idx }) } else { None }
     }
-    pub fn from_one_based(idx: u8) -> Self {
-        Self::from_zero_based((idx).checked_sub(1).unwrap())
+    pub fn from_one_based(idx: u8) -> Option<Self> {
+        (idx).checked_sub(1).and_then(|v| Self::from_zero_based(v))
     }
-    pub fn to_one_based(&self) -> u8 {
+    pub const fn to_one_based(&self) -> u8 {
         self.idx + 1
     }
     pub fn to_row(self, force: Force) -> Row {
         match force {
-            Force::White => Row::from_zero_based(self.idx),
-            Force::Black => Row::from_zero_based(NUM_ROWS - self.idx - 1),
+            Force::White => Row::from_zero_based(self.idx).unwrap(),
+            Force::Black => Row::from_zero_based(NUM_ROWS - self.idx - 1).unwrap(),
         }
     }
     pub fn from_row(row: Row, force: Force) -> Self {
         match force {
-            Force::White => Self::from_zero_based(row.idx),
-            Force::Black => Self::from_zero_based(NUM_ROWS - row.idx - 1),
+            Force::White => Self::from_zero_based(row.idx).unwrap(),
+            Force::Black => Self::from_zero_based(NUM_ROWS - row.idx - 1).unwrap(),
         }
     }
 }
@@ -64,22 +50,21 @@ pub struct Row {
 }
 
 impl Row {
-    pub const fn from_zero_based(idx: u8) -> Self {
-        assert!(idx < NUM_ROWS);
-        Self { idx }
+    pub const fn from_zero_based(idx: u8) -> Option<Self> {
+        if idx < NUM_ROWS { Some(Self{ idx }) } else { None }
     }
-    pub const fn from_algebraic(idx: char) -> Self {
-        Self::from_zero_based(checked_sub_or_panic(idx as u8, b'1'))
+    pub fn from_algebraic(idx: char) -> Option<Self> {
+        (idx as u8).checked_sub(b'1').and_then(|v| Self::from_zero_based(v))
     }
     pub const fn to_zero_based(self) -> u8 { self.idx }
     pub const fn to_algebraic(self) -> char { (self.idx + b'1') as char }
     pub fn all() -> impl DoubleEndedIterator<Item = Self> + Clone {
-        (0..NUM_ROWS).map(Self::from_zero_based)
+        (0..NUM_ROWS).map(|v| Self::from_zero_based(v).unwrap())
     }
 }
 
 impl ops::Add<i8> for Row {
-    type Output = Self;
+    type Output = Option<Self>;
     fn add(self, other: i8) -> Self::Output {
         Self::from_zero_based((self.to_zero_based() as i8 + other) as u8)
     }
@@ -99,22 +84,21 @@ pub struct Col {
 }
 
 impl Col {
-    pub const fn from_zero_based(idx: u8) -> Col {
-        assert!(idx < NUM_COLS);
-        Col { idx }
+    pub const fn from_zero_based(idx: u8) -> Option<Self> {
+        if idx < NUM_COLS { Some(Self{ idx }) } else { None }
     }
-    pub const fn from_algebraic(idx: char) -> Self {
-        Self::from_zero_based(checked_sub_or_panic(idx as u8, b'a'))
+    pub fn from_algebraic(idx: char) -> Option<Self> {
+        (idx as u8).checked_sub(b'a').and_then(|v| Self::from_zero_based(v))
     }
     pub const fn to_zero_based(self) -> u8 { self.idx }
     pub const fn to_algebraic(self) -> char { (self.idx + b'a') as char }
     pub fn all() -> impl DoubleEndedIterator<Item = Self> + Clone {
-        (0..NUM_COLS).map(Self::from_zero_based)
+        (0..NUM_COLS).map(|v| Self::from_zero_based(v).unwrap())
     }
 }
 
 impl ops::Add<i8> for Col {
-    type Output = Self;
+    type Output = Option<Self>;
     fn add(self, other: i8) -> Self::Output {
         Self::from_zero_based((self.to_zero_based() as i8 + other) as u8)
     }
@@ -138,9 +122,12 @@ impl Coord {
     pub const fn new(row: Row, col: Col) -> Self {
         Self{ row, col }
     }
-    pub fn from_algebraic(s: &str) -> Self {
-        let chars: [char; 2] = s.chars().collect_vec().try_into().unwrap();
-        Coord{ row: Row::from_algebraic(chars[1]), col: Col::from_algebraic(chars[0]) }
+    pub fn from_algebraic(s: &str) -> Option<Self> {
+        let (col, row) = s.chars().collect_tuple()?;
+        Some(Coord {
+            row: Row::from_algebraic(row)?,
+            col: Col::from_algebraic(col)?,
+        })
     }
     pub fn to_algebraic(&self) -> String {
         format!("{}{}", self.col.to_algebraic(), self.row.to_algebraic())
@@ -151,9 +138,12 @@ impl Coord {
 }
 
 impl ops::Add<(i8, i8)> for Coord {
-    type Output = Self;
+    type Output = Option<Self>;
     fn add(self, other: (i8, i8)) -> Self::Output {
-        Self{ row: self.row + other.0, col: self.col + other.1 }
+        Some(Self {
+            row: (self.row + other.0)?,
+            col: (self.col + other.1)?,
+        })
     }
 }
 
@@ -173,26 +163,26 @@ impl fmt::Debug for Coord {
 
 impl Row {
     #![allow(dead_code)]
-    pub const _1: Row = Row::from_algebraic('1');
-    pub const _2: Row = Row::from_algebraic('2');
-    pub const _3: Row = Row::from_algebraic('3');
-    pub const _4: Row = Row::from_algebraic('4');
-    pub const _5: Row = Row::from_algebraic('5');
-    pub const _6: Row = Row::from_algebraic('6');
-    pub const _7: Row = Row::from_algebraic('7');
-    pub const _8: Row = Row::from_algebraic('8');
+    pub const _1: Row = Row{ idx: 0 };
+    pub const _2: Row = Row{ idx: 1 };
+    pub const _3: Row = Row{ idx: 2 };
+    pub const _4: Row = Row{ idx: 3 };
+    pub const _5: Row = Row{ idx: 4 };
+    pub const _6: Row = Row{ idx: 5 };
+    pub const _7: Row = Row{ idx: 6 };
+    pub const _8: Row = Row{ idx: 7 };
 }
 
 impl Col {
     #![allow(dead_code)]
-    pub const A: Col = Col::from_algebraic('a');
-    pub const B: Col = Col::from_algebraic('b');
-    pub const C: Col = Col::from_algebraic('c');
-    pub const D: Col = Col::from_algebraic('d');
-    pub const E: Col = Col::from_algebraic('e');
-    pub const F: Col = Col::from_algebraic('f');
-    pub const G: Col = Col::from_algebraic('g');
-    pub const H: Col = Col::from_algebraic('h');
+    pub const A: Col = Col{ idx: 0 };
+    pub const B: Col = Col{ idx: 1 };
+    pub const C: Col = Col{ idx: 2 };
+    pub const D: Col = Col{ idx: 3 };
+    pub const E: Col = Col{ idx: 4 };
+    pub const F: Col = Col{ idx: 5 };
+    pub const G: Col = Col{ idx: 6 };
+    pub const H: Col = Col{ idx: 7 };
 }
 
 impl Coord {

@@ -254,8 +254,8 @@ impl AlteredGame {
                     return Err(PieceDragError::Cancelled);
                 }
                 let force = my_player_id.force;
-                let first_row = SubjectiveRow::from_one_based(1).to_row(force);
-                let last_row = SubjectiveRow::from_one_based(8).to_row(force);
+                let first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
+                let last_row = SubjectiveRow::from_one_based(8).unwrap().to_row(force);
                 let d_col = dest.col - source_coord.col;
                 let is_castling =
                     piece_kind == King &&

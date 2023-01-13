@@ -29,7 +29,7 @@ fn setup_black_pieces_mirrorlike(grid: &mut Grid) {
     for coord in Coord::all() {
         if let Some(piece) = grid[coord] {
             if piece.force == Force::White {
-                let mirror_row = Row::from_zero_based(NUM_ROWS - coord.row.to_zero_based() - 1);
+                let mirror_row = Row::from_zero_based(NUM_ROWS - coord.row.to_zero_based() - 1).unwrap();
                 let mirror_coord = Coord::new(mirror_row, coord.col);
                 assert!(grid[mirror_coord].is_none(), "{:?}", grid);
                 grid[mirror_coord] = Some(PieceOnBoard {
@@ -82,7 +82,7 @@ pub fn starting_piece_row(starting_position: &EffectiveStartingPosition) -> &[Pi
 pub fn generate_starting_grid(starting_position: &EffectiveStartingPosition) -> Grid {
     let mut grid = Grid::new();
     for (col, piece_kind) in starting_piece_row(starting_position).iter().enumerate() {
-        let coord = Coord::new(Row::_1, Col::from_zero_based(col.try_into().unwrap()));
+        let coord = Coord::new(Row::_1, Col::from_zero_based(col.try_into().unwrap()).unwrap());
         grid[coord] = Some(new_white(*piece_kind));
     }
     setup_white_pawns_on_2nd_row(&mut grid);

@@ -97,8 +97,8 @@ impl BughouseRules {
     pub fn chess_com() -> Self {
         Self {
             teaming: Teaming::FixedTeams,
-            min_pawn_drop_row: SubjectiveRow::from_one_based(2),
-            max_pawn_drop_row: SubjectiveRow::from_one_based(7),
+            min_pawn_drop_row: SubjectiveRow::from_one_based(2).unwrap(),
+            max_pawn_drop_row: SubjectiveRow::from_one_based(7).unwrap(),
             drop_aggression: DropAggression::MateAllowed,
         }
     }

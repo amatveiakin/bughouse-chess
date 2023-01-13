@@ -76,8 +76,8 @@ fn default_bughouse_game() -> BughouseGame {
 
 fn random_coord(rng: &mut rand::rngs::ThreadRng) -> Coord {
     Coord::new(
-        Row::from_zero_based(rng.gen_range(0..NUM_ROWS)),
-        Col::from_zero_based(rng.gen_range(0..NUM_COLS))
+        Row::from_zero_based(rng.gen_range(0..NUM_ROWS)).unwrap(),
+        Col::from_zero_based(rng.gen_range(0..NUM_COLS)).unwrap()
     )
 }
 

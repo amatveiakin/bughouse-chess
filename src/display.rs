@@ -121,25 +121,25 @@ pub fn to_display_fcoord(p: FCoord, orientation: BoardOrientation) -> DisplayFCo
     }
 }
 
-pub fn from_display_row(y: u8, orientation: BoardOrientation) -> Row {
+pub fn from_display_row(y: u8, orientation: BoardOrientation) -> Option<Row> {
     match orientation {
         BoardOrientation::Normal => Row::from_zero_based(NUM_ROWS - y - 1),
         BoardOrientation::Rotated => Row::from_zero_based(y),
     }
 }
 
-pub fn from_display_col(x: u8, orientation: BoardOrientation) -> Col {
+pub fn from_display_col(x: u8, orientation: BoardOrientation) -> Option<Col> {
     match orientation {
         BoardOrientation::Normal => Col::from_zero_based(x),
         BoardOrientation::Rotated => Col::from_zero_based(NUM_COLS - x - 1),
     }
 }
 
-pub fn from_display_coord(q: DisplayCoord, orientation: BoardOrientation) -> Coord {
-    Coord {
-        row: from_display_row(q.y, orientation),
-        col: from_display_col(q.x, orientation),
-    }
+pub fn from_display_coord(q: DisplayCoord, orientation: BoardOrientation) -> Option<Coord> {
+    Some(Coord {
+        row: from_display_row(q.y, orientation)?,
+        col: from_display_col(q.x, orientation)?,
+    })
 }
 
 pub fn display_to_fcoord(q: DisplayFCoord, orientation: BoardOrientation) -> FCoord {
@@ -153,8 +153,8 @@ impl FCoord {
     // Returns the closes valid board square.
     pub fn to_coord_snapped(&self) -> Coord {
         Coord::new(
-            Row::from_zero_based((self.y.clamp(0., (NUM_ROWS - 1) as f64)) as u8),
-            Col::from_zero_based((self.x.clamp(0., (NUM_COLS - 1) as f64)) as u8),
+            Row::from_zero_based((self.y.clamp(0., (NUM_ROWS - 1) as f64)) as u8).unwrap(),
+            Col::from_zero_based((self.x.clamp(0., (NUM_COLS - 1) as f64)) as u8).unwrap(),
         )
     }
 }
