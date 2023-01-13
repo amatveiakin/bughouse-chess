@@ -3,6 +3,7 @@
 #![allow(unused_parens)]
 
 use std::collections::HashMap;
+use std::mem;
 use std::rc::Rc;
 
 use enum_map::{EnumMap, enum_map};
@@ -14,7 +15,7 @@ use crate::coord::{SubjectiveRow, Row, Col, Coord};
 use crate::clock::{GameInstant, Clock};
 use crate::force::Force;
 use crate::grid::{Grid, GridForRepetitionDraw};
-use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard, PieceForRepetitionDraw, CastleDirection};
+use crate::piece::{PieceKind, PieceMovement, PieceOrigin, PieceOnBoard, PieceForRepetitionDraw, CastleDirection};
 use crate::rules::{DropAggression, ContestRules, ChessRules, BughouseRules};
 use crate::util::{sort_two, as_single_char};
 use crate::starter::{EffectiveStartingPosition, starting_piece_row, generate_starting_grid};
@@ -49,6 +50,22 @@ impl AlgebraicFormat {
             details: AlgebraicDetails::ShortAlgebraic,
             charset: AlgebraicCharset::Ascii,
         }
+    }
+}
+
+fn tuple_abs((a, b): (i8, i8)) -> (u8, u8) {
+    (a.abs().try_into().unwrap(), b.abs().try_into().unwrap())
+}
+
+fn apply_sign(value: u8, sign_source: i8) -> Option<i8> {
+    if (value == 0) != (sign_source == 0) {
+        // This is used by reachability computation to find in which direction to move.
+        // If "from" and "to" squares are in the same row, but the piece always changes row
+        // when moving, then there's obviously no chance to find a valid move. And vice versa.
+        // Same for cols.
+        None
+    } else {
+        Some((value as i8) * sign_source.signum())
     }
 }
 
@@ -258,30 +275,59 @@ fn proto_reachability_modulo_destination_square(grid: &Grid, from: Coord, to: Co
         },
     }
 
-    let (d_row, d_col) = to - from;
-    let is_straight_move = d_row == 0 || d_col == 0;
-    let is_diagonal_move = d_row.abs() == d_col.abs();
-    // Tests that squares between `from` (exclusive) and `to` (exclusive) are free.
-    let has_linear_passage = || {
-        assert!(is_straight_move || is_diagonal_move);
-        let direction = (d_row.signum(), d_col.signum());
-        // Safe to `unwrap`: guaranteed to stay within valid coordinates thanks to
-        // (is_straight_move || is_diagonal_move) test above.
-        let mut pos = (from + direction).unwrap();
-        while pos != to {
-            if grid[pos].is_some() {
-                return false;
-            }
-            pos = (pos + direction).unwrap();
-        }
-        true
-    };
-    let simple_linear_passage = || {
-        if has_linear_passage() { Ok } else { Blocked }
-    };
+    let mut ret = Impossible;
+    for &m in piece_kind.movements() {
+        let r = reachability_by_movement_modulo_destination_square(grid, from, to, force, m);
+        ret = combine_proto_reachability(ret, r);
+    }
+    ret
+}
 
-    match piece_kind {
-        PieceKind::Pawn => {
+fn reachability_by_movement_modulo_destination_square(
+    grid: &Grid, from: Coord, to: Coord, force: Force, movement: PieceMovement
+) -> ProtoReachability
+{
+    use ProtoReachability::*;
+    match movement {
+        PieceMovement::Leap{ shift } => {
+            if sort_two(tuple_abs(to - from)) == sort_two(shift) {
+                Ok
+            } else {
+                Impossible
+            }
+        },
+        PieceMovement::Ride{ shift, max_leaps } => {
+            let d = to - from;
+            let d_abs = tuple_abs(d);
+            let mut shift_sorted = sort_two(shift);
+            if d_abs.0 > d_abs.1 {
+                mem::swap(&mut shift_sorted.0, &mut shift_sorted.1);
+            }
+            let Some(shift_directed) = apply_sign(shift_sorted.0, d.0).zip(apply_sign(shift_sorted.1, d.1)) else {
+                return Impossible;
+            };
+            let mut pos_or = from + shift_directed;
+            let mut blocked = false;
+            let mut leaps: u8 = 1;
+            while let Some(p) = pos_or {
+                if p == to {
+                    return if blocked { Blocked } else { Ok };
+                }
+                if grid[p].is_some() {
+                    blocked = true;
+                }
+                leaps += 1;
+                if let Some(max_leaps) = max_leaps {
+                    if leaps > max_leaps {
+                        return Impossible;
+                    }
+                }
+                pos_or = p + shift_directed;
+            }
+            Impossible
+        },
+        PieceMovement::LikePawn => {
+            let (d_row, d_col) = to - from;
             let dir_forward = direction_forward(force);
             let second_row = SubjectiveRow::from_one_based(2).unwrap().to_row(force);
             let valid_capturing_move = d_col.abs() == 1 && d_row == dir_forward;
@@ -289,29 +335,33 @@ fn proto_reachability_modulo_destination_square(grid: &Grid, from: Coord, to: Co
                 d_row == dir_forward ||
                 (from.row == second_row && d_row == dir_forward * 2)
             );
+            let is_path_free = || {
+                match d_row.abs() {
+                    1 => true,
+                    2 => grid[(from + (dir_forward, 0)).unwrap()].is_none(),
+                    _ => panic!("Unexpected pawn move distance: {d_row}"),
+                }
+            };
             match (valid_capturing_move, valid_non_capturing_move) {
                 (true, true) => panic!("A pawn move cannot be both capturing and non-capturing"),
                 (true, false) => OkIfCapturing,
-                // TODO: Test that linear passage is verified for pawns too.
-                (false, true) => if has_linear_passage() { OkIfNonCapturing } else { Blocked },
+                // TODO: Test that `is_path_free()` is verified for.
+                (false, true) => if is_path_free() { OkIfNonCapturing } else { Blocked },
                 (false, false) => Impossible,
             }
-        },
-        PieceKind::Knight => {
-            if sort_two((d_row.abs(), d_col.abs())) == (1, 2) { Ok } else { Impossible }
-        },
-        PieceKind::Bishop => {
-            if is_diagonal_move { simple_linear_passage() } else { Impossible }
-        },
-        PieceKind::Rook => {
-            if is_straight_move { simple_linear_passage() } else { Impossible }
-        },
-        PieceKind::Queen => {
-            if is_straight_move || is_diagonal_move { simple_linear_passage() } else { Impossible }
-        },
-        PieceKind::King => {
-            if d_row.abs() <= 1 && d_col.abs() <= 1 { Ok } else { Impossible }
-        },
+        }
+    }
+}
+
+fn combine_proto_reachability(a: ProtoReachability, b: ProtoReachability) -> ProtoReachability {
+    use ProtoReachability::*;
+    match (a, b) {
+        (Impossible, r) | (r, Impossible) => r,
+        (Blocked, r) | (r, Blocked) => r,
+        (OkIfCapturing, OkIfCapturing) => OkIfCapturing,
+        (OkIfNonCapturing, OkIfNonCapturing) => OkIfNonCapturing,
+        (OkIfCapturing, OkIfNonCapturing) | (OkIfNonCapturing, OkIfCapturing) => Ok,
+        (Ok, _) | (_, Ok) => Ok,
     }
 }
 
