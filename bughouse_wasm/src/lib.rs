@@ -342,8 +342,17 @@ impl WebClient {
         } else {
             let coord = Coord::from_algebraic(source).unwrap();
             let board_orientation = get_board_orientation(DisplayBoard::Primary, alt_game.perspective());
-            let display_coord = to_display_coord(coord, board_orientation);
-            set_square_highlight("drag-start-highlight", DisplayBoard::Primary, Some(display_coord))?;
+            set_square_highlight(
+                None, "drag-start-highlight", SquareHighlightLayer::Drag,
+                DisplayBoard::Primary, Some(to_display_coord(coord, board_orientation))
+            )?;
+            let board_idx = get_board_index(DisplayBoard::Primary, alt_game.my_id());
+            for dest in alt_game.local_game().board(board_idx).legal_move_destinations(coord) {
+                set_square_highlight(
+                    None, "legal-move-highlight", SquareHighlightLayer::Drag,
+                    DisplayBoard::Primary, Some(to_display_coord(dest, board_orientation))
+                )?;
+            }
             PieceDragStart::Board(coord)
         };
         alt_game.start_drag_piece(source).map_err(|err| rust_error!("Drag&drop error: {:?}", err))?;
@@ -351,7 +360,10 @@ impl WebClient {
     }
     pub fn drag_piece(&mut self, x: f64, y: f64) -> JsResult<()> {
         let pos = DisplayFCoord{ x, y };
-        set_square_highlight("drag-over-highlight", DisplayBoard::Primary, pos.to_square())
+        set_square_highlight(
+            Some("drag-over-highlight"), "drag-over-highlight", SquareHighlightLayer::Drag,
+            DisplayBoard::Primary, pos.to_square()
+        )
     }
     pub fn drag_piece_drop(&mut self, x: f64, y: f64, alternative_promotion: bool)
         -> JsResult<()>
@@ -394,9 +406,7 @@ impl WebClient {
     // also in any case where a drag could become obsolete (e.g. dragged piece was captured
     // or it's position was reverted after the game finished).
     pub fn reset_drag_highlights(&self) -> JsResult<()> {
-        reset_square_highlight("drag-start-highlight")?;
-        reset_square_highlight("drag-over-highlight")?;
-        Ok(())
+        clear_square_highlight_layer(SquareHighlightLayer::Drag)
     }
     pub fn drag_state(&self) -> String {
         (if let Some(GameState{ ref alt_game, .. }) = self.state.game_state() {
@@ -643,14 +653,13 @@ impl WebClient {
                 let latest_turn_highlight = latest_turn
                     .filter(|record| BughouseParticipantId::Player(record.player_id) != my_id)
                     .map(|record| &record.turn_expanded);
-                let hightlight_id = format!("latest-{}", board_id(display_board_idx));
-                self.set_turn_highlights(&hightlight_id, latest_turn_highlight, display_board_idx)?;
+                self.set_turn_highlights(TurnHighlight::LatestTurn, latest_turn_highlight, display_board_idx)?;
             }
             if display_board_idx == DisplayBoard::Primary {
                 let pre_turn_highlight = latest_turn
                     .filter(|record| record.mode == TurnMode::Preturn)
                     .map(|record| &record.turn_expanded);
-                self.set_turn_highlights("pre", pre_turn_highlight, display_board_idx)?;
+                self.set_turn_highlights(TurnHighlight::Preturn, pre_turn_highlight, display_board_idx)?;
             }
             update_turn_log(&game, board_idx, display_board_idx)?;
         }
@@ -766,10 +775,16 @@ impl WebClient {
         Ok(())
     }
 
-    fn set_turn_highlights(&self, id_prefix: &str, turn: Option<&TurnExpanded>, board_idx: DisplayBoard)
-        -> JsResult<()>
+    fn set_turn_highlights(
+        &self, highlight: TurnHighlight, turn: Option<&TurnExpanded>, board_idx: DisplayBoard
+    ) -> JsResult<()>
     {
+        let (id_prefix, class_prefix) = match highlight {
+            TurnHighlight::LatestTurn => (format!("latest-{}", board_id(board_idx)), "latest"),
+            TurnHighlight::Preturn => ("pre".to_owned(), "pre"),
+        };
         // Optimization potential: do not reset highlights that stay in place.
+        //   ... or replace with a single clear_square_highlight_layer and remove all IDs.
         reset_square_highlight(&format!("{}-turn-from", id_prefix))?;
         reset_square_highlight(&format!("{}-turn-to", id_prefix))?;
         reset_square_highlight(&format!("{}-turn-from-extra", id_prefix))?;
@@ -781,13 +796,29 @@ impl WebClient {
         };
         let board_orientation = get_board_orientation(board_idx, alt_game.perspective());
         if let Some(turn) = turn {
-            for (id_suffix, coord) in turn_highlights(turn) {
-                let id = format!("{}-{}", id_prefix, id_suffix);
-                set_square_highlight(&id, board_idx, Some(to_display_coord(coord, board_orientation)))?;
+            for (suffix, coord) in turn_highlights(turn) {
+                let id = format!("{}-{}", id_prefix, suffix);
+                let class = format!("{}-{}", class_prefix, suffix);
+                set_square_highlight(
+                    Some(&id), &class, SquareHighlightLayer::Turn,
+                    board_idx, Some(to_display_coord(coord, board_orientation))
+                )?;
             }
         }
         Ok(())
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SquareHighlightLayer {
+    Turn,  // last turn, preturn
+    Drag,  // drag start, drag hover, legal moves
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum TurnHighlight {
+    Preturn,
+    LatestTurn,
 }
 
 struct WebDocument(web_sys::Document);
@@ -867,16 +898,22 @@ fn update_lobby(contest: &Contest) -> JsResult<()> {
     Ok(())
 }
 
-// Note. Each `id` should unambiguously correspond to a fixed board.
-// TODO: Separate layer for drag highlight, to put it above last turn highlight.
-fn set_square_highlight(id: &str, board_idx: DisplayBoard, coord: Option<DisplayCoord>) -> JsResult<()> {
+// Note. If present, `id` must be unique across both boards.
+fn set_square_highlight(
+    id: Option<&str>, class: &str, layer: SquareHighlightLayer, board_idx: DisplayBoard, coord: Option<DisplayCoord>
+) -> JsResult<()> {
     let document = web_document();
     if let Some(coord) = coord {
-        let node = document.get_element_by_id(id);
-        let highlight_layer = document.get_existing_element_by_id(&square_highlight_layer_id(board_idx))?;
+        let node = id.and_then(|id| document.get_element_by_id(id));
+        let highlight_layer = document.get_existing_element_by_id(
+            &square_highlight_layer_id(layer, board_idx)
+        )?;
         let node = node.ok_or(JsValue::UNDEFINED).or_else(|_| -> JsResult<web_sys::Element> {
             let node = document.create_svg_element("rect")?;
-            node.set_attribute("id", id)?;
+            if let Some(id) = id {
+                node.set_attribute("id", id)?;
+            }
+            node.set_attribute("class", class)?;
             node.set_attribute("width", "1")?;
             node.set_attribute("height", "1")?;
             highlight_layer.append_child(&node)?;
@@ -886,6 +923,9 @@ fn set_square_highlight(id: &str, board_idx: DisplayBoard, coord: Option<Display
         node.set_attribute("x", &pos.x.to_string())?;
         node.set_attribute("y", &pos.y.to_string())?;
     } else {
+        let Some(id) = id else {
+            return Err(rust_error!(r#"Cannot reset square highlight without ID; class is "{class}""#));
+        };
         reset_square_highlight(id)?;
     }
     Ok(())
@@ -896,6 +936,15 @@ fn reset_square_highlight(id: &str) -> JsResult<()> {
     let node = document.get_element_by_id(id);
     if let Some(node) = node {
         node.remove();
+    }
+    Ok(())
+}
+
+fn clear_square_highlight_layer(layer: SquareHighlightLayer) -> JsResult<()> {
+    let document = web_document();
+    for board_idx in DisplayBoard::iter() {
+        let layer = document.get_existing_element_by_id(&square_highlight_layer_id(layer, board_idx))?;
+        remove_all_children(&layer)?;
     }
     Ok(())
 }
@@ -1242,9 +1291,12 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
         Ok(())
     };
 
-    add_layer(square_highlight_layer_id(board_idx))?;
+    add_layer(square_highlight_layer_id(SquareHighlightLayer::Turn, board_idx))?;
     add_layer(chalk_highlight_layer_id(board_idx))?;
     add_layer(piece_layer_id(board_idx))?;
+    // Place drag highlight layer above pieces to allow legal move highlight for captures.
+    // Note that the dragged piece will still be above the highlight.
+    add_layer(square_highlight_layer_id(SquareHighlightLayer::Drag, board_idx))?;
     add_layer(chalk_drawing_layer_id(board_idx))?;
 
     let border = make_board_rect(&document)?;
@@ -1376,8 +1428,12 @@ fn piece_layer_id(board_idx: DisplayBoard) -> String {
     format!("piece-layer-{}", board_id(board_idx))
 }
 
-fn square_highlight_layer_id(board_idx: DisplayBoard) -> String {
-    format!("square-highlight-layer-{}", board_id(board_idx))
+fn square_highlight_layer_id(layer: SquareHighlightLayer, board_idx: DisplayBoard) -> String {
+    let layer_id = match layer {
+        SquareHighlightLayer::Drag => "drag",
+        SquareHighlightLayer::Turn => "turn",
+    };
+    format!("{}-highlight-layer-{}", layer_id, board_id(board_idx))
 }
 
 fn chalk_highlight_layer_id(board_idx: DisplayBoard) -> String {

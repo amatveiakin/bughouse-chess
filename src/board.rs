@@ -126,21 +126,14 @@ fn get_en_passant_target(grid: &Grid, turn: Turn) -> Option<Coord> {
     None
 }
 
-// Generates move candidates to test whether a player can escape a mate via normal
-// chess (not bughouse) moves.
-// Simplifications:
-//   - Does not generate castles since castling cannot be done while checked.
-//   - Pawnes are not promoted.
-//   - Drops are not generated (this is done separately in `is_bughouse_mate_to`).
-fn generate_moves_for_mate_test(grid: &Grid, from: Coord, en_passant_target: Option<Coord>)
-    -> Vec<TurnMove>
-{
+// See Board::legal_move_destinations for limitations.
+fn legal_move_destinations(grid: &Grid, from: Coord, en_passant_target: Option<Coord>) -> Vec<Coord> {
     // Improvement potential: Don't iterate over all squares.
     let mut moves = Vec::new();
     for to in Coord::all() {
         let capture_or = get_capture(grid, from, to, en_passant_target);
         if reachability(grid, from, to, capture_or.is_some()).ok() {
-            moves.push(TurnMove{ from, to, promote_to: None });
+            moves.push(to);
         }
     }
     moves
@@ -158,16 +151,16 @@ fn is_chess_mate_to(grid: &mut Grid, king_pos: Coord, en_passant_target: Option<
         return false;
     }
     let force = king_force(grid, king_pos);
-    for pos in Coord::all() {
-        if let Some(piece) = grid[pos] {
+    for from in Coord::all() {
+        if let Some(piece) = grid[from] {
             if piece.force == force {
-                for mv in generate_moves_for_mate_test(grid, pos, en_passant_target) {
-                    let capture_or = get_capture(grid, mv.from, mv.to, en_passant_target);
+                for to in legal_move_destinations(grid, from, en_passant_target) {
+                    let capture_or = get_capture(grid, from, to, en_passant_target);
                     // Zero out capture separately because of en passant.
                     let mut grid = grid.maybe_scoped_set(capture_or.map(|pos| (pos, None)));
-                    let mut grid = grid.scoped_set(mv.from, None);
-                    let     grid = grid.scoped_set(mv.to, Some(piece));
-                    let new_king_pos = if piece.kind == PieceKind::King { mv.to } else { king_pos };
+                    let mut grid = grid.scoped_set(from, None);
+                    let     grid = grid.scoped_set(to, Some(piece));
+                    let new_king_pos = if piece.kind == PieceKind::King { to } else { king_pos };
                     if !is_check_to(&grid, new_king_pos) {
                         return false;
                     }
@@ -664,6 +657,18 @@ impl Board {
             TurnInput::DragDrop(turn) => self.parse_drag_drop_turn(*turn, mode)?,
             TurnInput::Algebraic(notation) => self.algebraic_to_turn(notation, mode)?,
         })
+    }
+
+    // Generates legal moves for a piece in a given square. Limitations:
+    //   - Generates only regular moves, not castlings or drops.
+    //   - Check and mate are not taken into account.
+    //   - Pawn promotions are not taken into account.
+    pub fn legal_move_destinations(&self, from: Coord) -> Vec<Coord> {
+        // TODO: What about preturns? Possibilities:
+        //   - Treat as a normal turn (this happens now),
+        //   - Include all possibilities,
+        //   - Return two separate lists: normal turn moves + preturn moves.
+        legal_move_destinations(&self.grid, from, self.en_passant_target)
     }
 
     fn log_position_for_repetition_draw(&mut self) {

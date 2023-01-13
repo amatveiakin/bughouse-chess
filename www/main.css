@@ -185,45 +185,44 @@ body.observer #page {
   font: normal 0.25px sans-serif;
 }
 
-#latest-primary-turn-from,
-#latest-primary-turn-from-extra,
-#latest-secondary-turn-from,
-#latest-secondary-turn-from-extra {
+.latest-turn-from,
+.latest-turn-from-extra {
   fill: #acbd38;
   opacity: 0.5;
 }
-#latest-primary-drop-to,
-#latest-primary-turn-to,
-#latest-primary-turn-to-extra,
-#latest-secondary-drop-to,
-#latest-secondary-turn-to,
-#latest-secondary-turn-to-extra {
+.latest-drop-to,
+.latest-turn-to,
+.latest-turn-to-extra {
   fill: #a7c000;
   opacity: 0.5;
 }
 
-#pre-turn-from,
-#pre-turn-from-extra {
+.pre-turn-from,
+.pre-turn-from-extra {
   fill: #7238bd;
   opacity: 0.5;
 }
-#pre-drop-to,
-#pre-turn-to,
-#pre-turn-to-extra {
+.pre-drop-to,
+.pre-turn-to,
+.pre-turn-to-extra {
   fill: #5800c0;
   opacity: 0.5;
 }
 
-#latest-primary-capture,
-#latest-secondary-capture {
+.latest-capture {
   fill: #4dcc7d;
   opacity: 0.5;
 }
 
-#drag-start-highlight {
+.legal-move-highlight {
+  /* Disable until there is an understanding whether we actually want this. */
+  /* fill: url(#legal-move-gradient); */
+  fill: none;
+}
+.drag-start-highlight {
   fill: url(#drag-start-gradient);
 }
-#drag-over-highlight {
+.drag-over-highlight {
   fill: url(#drag-over-gradient);
 }
 
