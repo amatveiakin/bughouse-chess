@@ -147,7 +147,10 @@ td.centered {
         app.at("/dyn/stats").get(|r| Self::handle_stats(r, None));
         app.at("/dyn/stats/:duration")
             .get(Self::handle_stats_with_duration);
-        app.at("/dyn/history").get(Self::handle_history);
+        app.at("/dyn/history")
+            .get(|req| Self::handle_history(req, history::XAxis::Timestamp));
+        app.at("/dyn/history/pergame")
+            .get(|req| Self::handle_history(req, history::XAxis::UpdateIndex));
 
         app.with(tide::log::LogMiddleware::new());
 
@@ -406,7 +409,7 @@ td.centered {
         Ok(resp)
     }
 
-    async fn handle_history(req: Request<Self>) -> tide::Result {
+    async fn handle_history(req: Request<Self>, x_axis: history::XAxis) -> tide::Result {
         let now = OffsetDateTime::now_utc();
         let games = req
             .state()
@@ -423,8 +426,9 @@ td.centered {
             all_stats.update(&game)?;
         }
 
-        let players_history_graph_html = crate::history::players_rating_graph_html(&all_stats);
-        let teams_history_graph_html = crate::history::teams_elo_graph_html(&all_stats);
+        let players_history_graph_html =
+            crate::history::players_rating_graph_html(&all_stats, x_axis);
+        let teams_history_graph_html = crate::history::teams_elo_graph_html(&all_stats, x_axis);
         let h: String = html! {
             <html>
             <head>

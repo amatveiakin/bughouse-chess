@@ -26,6 +26,10 @@ pub struct RawStats {
     pub elo: Option<EloRating>,
     pub rating: Option<Rating>,
     pub last_update: Option<OffsetDateTime>,
+    // The index of the event that resulted in this update.
+    // This does not neccessarily coincide with row id of
+    // the underlying tables.
+    pub update_index: usize,
 }
 
 impl RawStats {
@@ -35,6 +39,7 @@ impl RawStats {
         new_elo: Option<EloRating>,
         new_rating: Option<Rating>,
         new_last_update: Option<OffsetDateTime>,
+        new_update_index: usize,
     ) -> Self {
         Self {
             wins: self.wins + (outcome == Outcomes::WIN) as usize,
@@ -43,6 +48,7 @@ impl RawStats {
             elo: new_elo,
             rating: new_rating,
             last_update: new_last_update,
+            update_index: new_update_index,
         }
     }
 }
@@ -56,6 +62,7 @@ impl Default for RawStats {
             elo: None,
             rating: None,
             last_update: None,
+            update_index: 0,
         }
     }
 }
@@ -64,6 +71,7 @@ impl Default for RawStats {
 pub struct GroupStats<Stats> {
     pub per_player: HashMap<String, Stats>,
     pub per_team: HashMap<[String; 2], Stats>,
+    pub update_index: usize,
 }
 
 struct GameStats {
@@ -85,6 +93,7 @@ fn process_game(
     result: &str,
     prior_stats: GameStats,
     game_end_time: Option<OffsetDateTime>,
+    update_index: usize,
 ) -> GameStats {
     let (red_outcome, blue_outcome) = match result {
         "DRAW" => (Outcomes::DRAW, Outcomes::DRAW),
@@ -126,12 +135,14 @@ fn process_game(
             Some(red_team_elo),
             Some(red_team_rating),
             game_end_time,
+            update_index,
         ),
         blue_team: prior_stats.blue_team.update(
             blue_outcome,
             Some(blue_team_elo),
             Some(blue_team_rating),
             game_end_time,
+            update_index,
         ),
         red_players: [
             prior_stats.red_players[0].update(
@@ -139,12 +150,14 @@ fn process_game(
                 None,
                 Some(red_players_rating[0]),
                 game_end_time,
+                update_index,
             ),
             prior_stats.red_players[1].update(
                 red_outcome,
                 None,
                 Some(red_players_rating[1]),
                 game_end_time,
+                update_index,
             ),
         ],
         blue_players: [
@@ -153,12 +166,14 @@ fn process_game(
                 None,
                 Some(blue_players_rating[0]),
                 game_end_time,
+                update_index,
             ),
             prior_stats.blue_players[1].update(
                 blue_outcome,
                 None,
                 Some(blue_players_rating[1]),
                 game_end_time,
+                update_index,
             ),
         ],
     }
@@ -220,6 +235,7 @@ where
     Self: StatStore,
 {
     pub fn update(&mut self, game: &GameResultRow) -> anyhow::Result<()> {
+        self.update_index += 1;
         let red_team = sort([game.player_red_a.clone(), game.player_red_b.clone()]);
         let blue_team = sort([game.player_blue_a.clone(), game.player_blue_b.clone()]);
         let new_stats = process_game(
@@ -231,6 +247,7 @@ where
                 blue_players: map_arr_ref(&blue_team, |p| self.get_player(p)),
             },
             game.game_end_time,
+            self.update_index,
         );
         self.update_team(&red_team, new_stats.red_team);
         self.update_team(&blue_team, new_stats.blue_team);

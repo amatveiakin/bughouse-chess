@@ -53,7 +53,13 @@ fn get_timestamp_for_plotly(stats: &RawStats) -> Option<String> {
         .ok()
 }
 
-pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>) -> String {
+#[derive(Clone, Copy)]
+pub enum XAxis {
+    Timestamp,
+    UpdateIndex,
+}
+
+pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxis) -> String {
     let mut plot = plotly::Plot::new();
     let layout = plot.layout().clone().title("Player rating history".into());
     plot.set_layout(layout);
@@ -63,12 +69,9 @@ pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>) -> String {
             .iter()
             .filter(|stat| stat.last_update.is_some() && stat.rating.is_some());
 
-        // filter_map is unnecessary here and below, but avoids unwraps.
-        let xs = filtered_stats
-            .clone()
-            .filter_map(get_timestamp_for_plotly)
-            .collect::<Vec<_>>();
+        let xs = make_xs(filtered_stats.clone(), x_axis);
 
+        // filter_map is unnecessary here and below, but avoids unwraps.
         let rating = filtered_stats
             .clone()
             .filter_map(|stat| stat.rating.map(|r| r.rating))
@@ -123,7 +126,7 @@ pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>) -> String {
     plot.to_inline_html(None)
 }
 
-pub fn teams_elo_graph_html(stats: &GroupStats<Vec<RawStats>>) -> String {
+pub fn teams_elo_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxis) -> String {
     let mut plot = plotly::Plot::new();
     let layout = plot.layout().clone().title("Team Elo history".into());
     plot.set_layout(layout);
@@ -134,10 +137,7 @@ pub fn teams_elo_graph_html(stats: &GroupStats<Vec<RawStats>>) -> String {
             .filter(|stat| stat.last_update.is_some() && stat.elo.is_some());
 
         // filter_map is unnecessary here and below, but avoids unwraps.
-        let xs = filtered_stats
-            .clone()
-            .filter_map(get_timestamp_for_plotly)
-            .collect::<Vec<_>>();
+        let xs = make_xs(filtered_stats.clone(), x_axis);
 
         let elo = filtered_stats
             .clone()
@@ -166,4 +166,15 @@ pub fn teams_elo_graph_html(stats: &GroupStats<Vec<RawStats>>) -> String {
         plot.add_trace(elo_trace);
     }
     plot.to_inline_html(None)
+}
+
+fn make_xs<'a, I: Iterator<Item = &'a RawStats>>(stats: I, x_axis: XAxis) -> Vec<String> {
+    match x_axis {
+        XAxis::Timestamp => stats
+            .filter_map(get_timestamp_for_plotly)
+            .collect::<Vec<_>>(),
+        XAxis::UpdateIndex => stats
+            .map(|s| format!("{}", s.update_index))
+            .collect::<Vec<_>>(),
+    }
 }
