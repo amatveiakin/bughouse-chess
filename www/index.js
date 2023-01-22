@@ -537,12 +537,7 @@ function update_drag_state() {
 }
 
 function update_connection_status() {
-    const show_reconnecting = !wasm_client().is_connection_ok();
-    reconnecting_message.style.display = show_reconnecting ? null : 'none';
-    const s = wasm_client().seconds_since_latest_incoming();
-    const ms = Math.round(s * 1000);
-    const ms_str = ms.toString().padStart(4, ' ');  // figure space (&numsp;)
-    connection_info.textContent = `Since last update: ${ms_str} ms`;
+    // TODO: Fix and restore.
 }
 
 function update_buttons() {
