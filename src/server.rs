@@ -32,6 +32,8 @@ const TOTAL_PLAYERS: usize = 4;
 const TOTAL_PLAYERS_PER_TEAM: usize = 2;
 const CONTEST_GC_INACTIVITY_THRESHOLD: Duration = Duration::from_secs(3600 * 24);
 
+type Preturns = HashMap<BughousePlayerId, TurnInput>;
+
 #[derive(Debug)]
 pub enum IncomingEvent {
     Network(ClientId, BughouseClientEvent),
@@ -46,7 +48,7 @@ pub struct GameState {
     // communication with outside world about absolute moments in time.
     game_start: Option<Instant>,
     game_start_offset_time: Option<time::OffsetDateTime>,
-    preturns: HashMap<BughousePlayerId, TurnInput>,
+    preturns: Preturns,
     chalkboard: Chalkboard,
 }
 
@@ -431,13 +433,13 @@ impl CoreServerState {
 
 impl Contest {
     fn test_flags(&mut self, ctx: &mut Context, now: Instant) {
-        if let Some(GameState{ game_start, ref mut game, .. }) = self.game_state {
+        if let Some(GameState{ game_start, ref mut game, ref mut preturns, .. }) = self.game_state {
             if let Some(game_start) = game_start {
                 if game.status() == BughouseGameStatus::Active {
                     let game_now = GameInstant::from_now_game_active(game_start, now);
                     game.test_flag(game_now);
                     if game.status() != BughouseGameStatus::Active {
-                        update_state_on_game_over(game, &mut self.participants, &mut self.scores);
+                        update_state_on_game_over(game, preturns, &mut self.participants, &mut self.scores);
                         let ev = BughouseServerEvent::GameOver {
                             time: game_now,
                             game_status: game.status(),
@@ -617,7 +619,7 @@ impl Contest {
                 let mut turns = vec![];
                 let game_now = GameInstant::from_now_game_maybe_active(*game_start, now);
                 match apply_turn(
-                    game_now, player_bughouse_id, turn_input, game, participants, scores
+                    game_now, player_bughouse_id, turn_input, game, preturns, participants, scores
                 ) {
                     Ok(turn_event) => {
                         if game_start.is_none() {
@@ -628,7 +630,7 @@ impl Contest {
                         let opponent_bughouse_id = player_bughouse_id.opponent();
                         if let Some(preturn) = preturns.remove(&opponent_bughouse_id) {
                             if let Ok(preturn_event) = apply_turn(
-                                game_now, opponent_bughouse_id, preturn, game, participants, scores
+                                game_now, opponent_bughouse_id, preturn, game, preturns, participants, scores
                             ) {
                                 turns.push(preturn_event);
                             }
@@ -679,7 +681,7 @@ impl Contest {
     }
 
     fn process_resign(&mut self, ctx: &mut Context, client_id: ClientId, now: Instant) -> EventResult {
-        let Some(GameState{ ref mut game, game_start, .. }) = self.game_state else {
+        let Some(GameState{ ref mut game, ref mut preturns, game_start, .. }) = self.game_state else {
             return Err("Cannot resign: no game in progress".to_owned());
         };
         if game.status() != BughouseGameStatus::Active {
@@ -699,7 +701,7 @@ impl Contest {
         let participants = &mut self.participants;
         let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
         game.set_status(status, game_now);
-        update_state_on_game_over(game, participants, scores);
+        update_state_on_game_over(game, preturns, participants, scores);
         let ev = BughouseServerEvent::GameOver {
             time: game_now,
             game_status: status,
@@ -1025,16 +1027,19 @@ fn current_game_time(game_state: &GameState, now: Instant) -> GameInstant {
 
 fn apply_turn(
     game_now: GameInstant, player_bughouse_id: BughousePlayerId, turn_input: TurnInput,
-    game: &mut BughouseGame, participants: &mut Participants, scores: &mut Scores
+    game: &mut BughouseGame, preturns: &mut Preturns, participants: &mut Participants, scores: &mut Scores
 ) -> Result<TurnRecord, TurnError> {
     game.try_turn_by_player(player_bughouse_id, &turn_input, TurnMode::Normal, game_now)?;
     if game.status() != BughouseGameStatus::Active {
-        update_state_on_game_over(game, participants, scores);
+        update_state_on_game_over(game, preturns, participants, scores);
     }
     Ok(game.last_turn_record().unwrap().trim_for_sending())
 }
 
-fn update_state_on_game_over(game: &BughouseGame, participants: &mut Participants, scores: &mut Scores) {
+fn update_state_on_game_over(
+    game: &BughouseGame, preturns: &mut Preturns, participants: &mut Participants, scores: &mut Scores
+) {
+    preturns.clear();
     let team_scores = match game.status() {
         BughouseGameStatus::Active => panic!("It just so happens that the game here is only mostly over"),
         BughouseGameStatus::Victory(team, _) => {

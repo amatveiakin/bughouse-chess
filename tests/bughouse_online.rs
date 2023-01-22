@@ -462,10 +462,11 @@ fn preturn_auto_cancellation_on_resign() {
 }
 
 // Regression test: having preturn when game ends shouldn't panic.
+// Regression test: reconnecting to a finished game where the client had a preturn shouldn't panic.
 #[test]
 fn preturn_auto_cancellation_on_checkmate() {
     let mut world = World::new();
-    let (_, cl1, cl2, cl3, _cl4) = world.default_clients();
+    let (contest, cl1, cl2, cl3, _cl4) = world.default_clients();
 
     world[cl2].make_turn("e5").unwrap();
     world.process_all_events();
@@ -473,6 +474,12 @@ fn preturn_auto_cancellation_on_checkmate() {
 
     world.replay_white_checkmates_black(cl1, cl3);
     assert!(world[cl2].my_board().grid()[Coord::E5].is_none());
+    world[cl2].state.leave();
+    world.process_all_events();
+
+    let cl2_new = world.new_client();
+    world[cl2_new].join(&contest, "p2");
+    world.process_all_events();
 }
 
 #[test]
