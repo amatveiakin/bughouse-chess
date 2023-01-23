@@ -24,6 +24,7 @@ extern crate bughouse_chess;
 pub mod network;
 pub mod tui;
 
+mod async_server_main;
 mod client_main;
 mod sqlx_server_hooks;
 mod server_main;
@@ -56,6 +57,12 @@ fn main() -> io::Result<()> {
                 .arg(arg!(--"postgres-db" [DB] "Address of a postgres database"))
         )
         .subcommand(
+            Command::new("async-server")
+                .about("Run as server")
+                .arg(arg!(--"sqlite-db" [DB] "Path to an sqlite database file"))
+                .arg(arg!(--"postgres-db" [DB] "Address of a postgres database"))
+        )
+        .subcommand(
             Command::new("client")
                 .about("Run as client")
                 .arg(arg!(<server_address> "Server address"))
@@ -72,20 +79,17 @@ fn main() -> io::Result<()> {
 
     match matches.subcommand() {
         Some(("server", sub_matches)) => {
-            let database_options = match (
-                sub_matches.get_one::<String>("sqlite-db"),
-                sub_matches.get_one::<String>("postgres-db"),
-            ) {
-                (None, None) => DatabaseOptions::NoDatabase,
-                (Some(_), Some(_)) => panic!("Sqlite and postgres can not be specified simultanously."),
-                (Some(db), None) => DatabaseOptions::Sqlite(db.clone()),
-                (None, Some(db)) => DatabaseOptions::Postgres(db.clone()),
-            };
             server_main::run(server_main::ServerConfig {
-                database_options
+                database_options: database_options_from_args(sub_matches)
             });
             Ok(())
         },
+        Some(("async-server", sub_matches)) => {
+            async_server_main::run(server_main::ServerConfig {
+                database_options: database_options_from_args(sub_matches)
+            });
+            Ok(())
+        }
         Some(("client", sub_matches)) => {
             client_main::run(client_main::ClientConfig {
                 server_address: sub_matches.get_one::<String>("server_address").unwrap().clone(),
@@ -99,5 +103,17 @@ fn main() -> io::Result<()> {
             })
         },
         _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),
+    }
+}
+
+fn database_options_from_args(args: &clap::ArgMatches) -> DatabaseOptions {
+    match (
+        args.get_one::<String>("sqlite-db"),
+        args.get_one::<String>("postgres-db"),
+    ) {
+        (None, None) => DatabaseOptions::NoDatabase,
+        (Some(_), Some(_)) => panic!("Sqlite and postgres can not be specified simultanously."),
+        (Some(db), None) => DatabaseOptions::Sqlite(db.clone()),
+        (None, Some(db)) => DatabaseOptions::Postgres(db.clone()),
     }
 }
