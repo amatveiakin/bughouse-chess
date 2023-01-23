@@ -114,6 +114,10 @@ where
                 invocation_id TEXT,
                 user_agent TEXT,
                 time_zone TEXT,
+                ping_p50 INTEGER,
+                ping_p90 INTEGER,
+                ping_p99 INTEGER,
+                ping_n INTEGER,
                 turn_confirmation_p50 INTEGER,
                 turn_confirmation_p90 INTEGER,
                 turn_confirmation_p99 INTEGER,
@@ -176,6 +180,7 @@ where
 
     fn record_client_performance(&mut self, perf: &BughouseClientPerformance) {
         let stats = &perf.stats;
+        let ping = stats.get("ping");
         let turn_confirmation = stats.get("turn_confirmation");
         let process_outgoing_events = stats.get("process_outgoing_events");
         let process_notable_events = stats.get("process_notable_events");
@@ -189,6 +194,10 @@ where
                 invocation_id,
                 user_agent,
                 time_zone,
+                ping_p50,
+                ping_p90,
+                ping_p99,
+                ping_n,
                 turn_confirmation_p50,
                 turn_confirmation_p90,
                 turn_confirmation_p99,
@@ -202,11 +211,15 @@ where
                 update_state_n,
                 update_clock_p99,
                 update_drag_state_p99)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)")
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)")
                 .bind(my_git_version!().to_owned())
                 .bind(self.invocation_id.clone())
                 .bind(perf.user_agent.clone())
                 .bind(perf.time_zone.clone())
+                .bind(ping.map(|s| s.p50 as i64))
+                .bind(ping.map(|s| s.p90 as i64))
+                .bind(ping.map(|s| s.p99 as i64))
+                .bind(ping.map(|s| s.num_values as i64))
                 .bind(turn_confirmation.map(|s| s.p50 as i64))
                 .bind(turn_confirmation.map(|s| s.p90 as i64))
                 .bind(turn_confirmation.map(|s| s.p99 as i64))

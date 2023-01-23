@@ -19,9 +19,9 @@ use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
 use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, PlayerInGame, BughouseGameStatus, BughouseGame, get_bughouse_force};
-use crate::heartbeat::{Heart, HeartbeatOutcome, ConnectionStatus};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientErrorReport};
 use crate::pgn::{self, BughouseExportFormat};
+use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Participant, Team, Faction};
 use crate::rules::{Teaming, Rules};
 use crate::scores::Scores;
@@ -115,15 +115,12 @@ pub struct Client {
     contest_id: Option<ContestId>,
     participant_id: Option<ParticipantId>,
     logging_id: String,
-    heart: Heart,
+    connection_monitor: PassiveConnectionMonitor,
 }
 
 impl Client {
     fn send(&mut self, event: BughouseServerEvent) {
-        // Improvement potential: Propagate `now` from the caller.
-        let now = Instant::now();
         self.events_tx.send(event).unwrap();
-        self.heart.register_outgoing(now);
     }
     fn send_error(&mut self, message: String) {
         self.send(BughouseServerEvent::Error{ message });
@@ -147,7 +144,7 @@ impl Clients {
             contest_id: None,
             participant_id: None,
             logging_id,
-            heart: Heart::new(now),
+            connection_monitor: PassiveConnectionMonitor::new(now),
         };
         let id = ClientId(self.next_id);
         self.next_id += 1;
@@ -338,7 +335,7 @@ impl CoreServerState {
             return;
         }
 
-        ctx.clients[client_id].heart.register_incoming(now);
+        ctx.clients[client_id].connection_monitor.register_incoming(now);
 
         // First, process events that don't require a contest.
         match &event {
@@ -350,8 +347,8 @@ impl CoreServerState {
                 process_report_error(ctx, client_id, report);
                 return;
             },
-            BughouseClientEvent::Heartbeat => {
-                // This event is needed only for `heart.register_incoming` above.
+            BughouseClientEvent::Ping => {
+                process_ping(ctx, client_id);
                 return;
             },
             _ => {},
@@ -416,16 +413,11 @@ impl CoreServerState {
     }
 
     fn check_client_connections(&mut self, ctx: &mut Context, now: Instant) {
-        use HeartbeatOutcome::*;
+        use PassiveConnectionStatus::*;
         ctx.clients.map.retain(|_, client| {
-            match client.heart.beat(now) {
-                AllGood => true,
-                SendBeat => {
-                    client.send(BughouseServerEvent::Heartbeat);
-                    true
-                },
-                OtherPartyTemporaryLost => true,
-                OtherPartyPermanentlyLost => false,
+            match client.connection_monitor.status(now) {
+                Healthy | TemporaryLost => true,
+                PermanentlyLost => false,
             }
         });
     }
@@ -498,7 +490,7 @@ impl Contest {
             BughouseClientEvent::ReportError(..) => {
                 unreachable!("Contest-independent event must be processed separately");
             },
-            BughouseClientEvent::Heartbeat => {
+            BughouseClientEvent::Ping => {
                 unreachable!("Contest-independent event must be processed separately");
             },
         };
@@ -519,7 +511,7 @@ impl Contest {
                     |(&id, c)| if c.participant_id == Some(existing_participant_id) { Some(id) } else { None }
                 );
                 if let Some(existing_client_id) = existing_client_id {
-                    if ctx.clients[existing_client_id].heart.status() == ConnectionStatus::Healthy {
+                    if ctx.clients[existing_client_id].connection_monitor.status(now) == PassiveConnectionStatus::Healthy {
                         return Err(format!(r#"Cannot join: client for player "{}" already connected"#, player_name))
                     } else {
                         ctx.clients.remove_client(existing_client_id);
@@ -1085,4 +1077,8 @@ fn process_report_error(ctx: &Context, client_id: ClientId, report: &BughouseCli
             warn!("Client {logging_id} experienced unknown error:\n{message}");
         }
     }
+}
+
+fn process_ping(ctx: &mut Context, client_id: ClientId) {
+    ctx.clients[client_id].send(BughouseServerEvent::Pong);
 }

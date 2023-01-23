@@ -19,7 +19,6 @@ use wasm_bindgen::prelude::*;
 
 use bughouse_chess::*;
 use bughouse_chess::client::*;
-use bughouse_chess::heartbeat::*;
 use bughouse_chess::meter::*;
 
 
@@ -181,12 +180,8 @@ impl WebClient {
         JsMeter::new(self.state.meter(name))
     }
 
-    pub fn seconds_since_latest_incoming(&self) -> f64 {
-        let now = Instant::now();
-        now.duration_since(self.state.heart().latest_incoming()).as_secs_f64()
-    }
-    pub fn is_connection_ok(&self) -> bool {
-        self.state.heart().status() == ConnectionStatus::Healthy
+    pub fn current_turnaround_time(&self) -> Option<f64> {
+        self.state.current_turnaround_time().map(|t| t.as_secs_f64())
     }
 
     pub fn game_status(&self) -> String {
@@ -505,7 +500,7 @@ impl WebClient {
 
     pub fn process_server_event(&mut self, event: &str) -> JsResult<bool> {
         let server_event = serde_json::from_str(event).unwrap();
-        let updated_needed = !matches!(server_event, BughouseServerEvent::Heartbeat);
+        let updated_needed = !matches!(server_event, BughouseServerEvent::Pong);
         self.state.process_server_event(server_event).map_err(|err| {
             rust_error!("{:?}", err)
         })?;

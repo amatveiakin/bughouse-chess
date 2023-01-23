@@ -55,7 +55,7 @@ pub enum BughouseServerEvent {
     GameExportReady {
         content: String,
     },
-    Heartbeat,
+    Pong,
 }
 
 
@@ -108,5 +108,5 @@ pub enum BughouseClientEvent {
     },
     ReportPerformace(BughouseClientPerformance),
     ReportError(BughouseClientErrorReport),
-    Heartbeat,
+    Ping,
 }

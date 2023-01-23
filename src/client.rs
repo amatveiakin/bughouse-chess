@@ -12,9 +12,9 @@ use crate::display::{DisplayBoard, get_board_index};
 use crate::force::Force;
 use crate::game::{TurnRecord, BughouseParticipantId, BughousePlayerId, BughouseObserserId, PlayerRelation, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerformance};
-use crate::heartbeat::{Heart, HeartbeatOutcome};
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::BughouseExportFormat;
+use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Participant, Faction};
 use crate::rules::Rules;
 use crate::scores::Scores;
@@ -61,6 +61,7 @@ pub struct GameState {
     pub chalk_canvas: ChalkCanvas,
     // Index of the next warning in `LOW_TIME_WARNING_THRESHOLDS`.
     next_low_time_warning_idx: usize,
+    // TODO: Do we still need this now that we have ping?
     // Used to track how long it took the server to confirm a turn.
     awaiting_turn_confirmation_since: Option<Instant>,
 }
@@ -97,23 +98,19 @@ enum ContestState {
 
 struct Connection {
     events_tx: mpsc::Sender<BughouseClientEvent>,
-    heart: Heart,
+    health_monitor: ActiveConnectionMonitor,
 }
 
 impl Connection {
     fn new(events_tx: mpsc::Sender<BughouseClientEvent>) -> Self {
-        let now = Instant::now();
         Connection {
             events_tx,
-            heart: Heart::new(now),
+            health_monitor: ActiveConnectionMonitor::new(),
         }
     }
 
     fn send(&mut self, event: BughouseClientEvent) {
-        // Improvement potential: Propagate `now` from the caller.
-        let now = Instant::now();
         self.events_tx.send(event).unwrap();
-        self.heart.register_outgoing(now);
     }
 }
 
@@ -124,6 +121,7 @@ pub struct ClientState {
     contest_state: ContestState,
     notable_event_queue: VecDeque<NotableEvent>,
     meter_box: MeterBox,
+    ping_meter: Meter,
     turn_confirmed_meter: Meter,
 }
 
@@ -147,6 +145,7 @@ impl ClientState {
         user_agent: String, time_zone: String, events_tx: mpsc::Sender<BughouseClientEvent>
     ) -> Self {
         let mut meter_box = MeterBox::new();
+        let ping_meter = meter_box.meter("ping".to_owned());
         let turn_confirmed_meter = meter_box.meter("turn_confirmation".to_owned());
         ClientState {
             user_agent,
@@ -155,6 +154,7 @@ impl ClientState {
             contest_state: ContestState::NotConnected,
             notable_event_queue: VecDeque::new(),
             meter_box,
+            ping_meter,
             turn_confirmed_meter,
         }
     }
@@ -204,7 +204,10 @@ impl ClientState {
     pub fn read_meter_stats(&self) -> HashMap<String, MeterStats> { self.meter_box.read_stats() }
     pub fn consume_meter_stats(&mut self) -> HashMap<String, MeterStats> { self.meter_box.consume_stats() }
 
-    pub fn heart(&self) -> &Heart { &self.connection.heart }
+    pub fn current_turnaround_time(&self) -> Option<Duration> {
+        let now = Instant::now();
+        self.connection.health_monitor.current_turnaround_time(now)
+    }
 
     pub fn new_contest(&mut self, rules: Rules, my_name: String) {
         self.contest_state = ContestState::Creating{ my_name: my_name.clone() };
@@ -300,7 +303,6 @@ impl ClientState {
     pub fn process_server_event(&mut self, event: BughouseServerEvent) -> Result<(), EventError> {
         use BughouseServerEvent::*;
         let now = Instant::now();
-        self.connection.heart.register_incoming(now);
         match event {
             Error{ message } => {
                 return Err(EventError::ServerReturnedError(format!("Got error from server: {}", message)))
@@ -419,8 +421,10 @@ impl ClientState {
             GameExportReady{ content } => {
                 self.notable_event_queue.push_back(NotableEvent::GameExportReady(content));
             },
-            Heartbeat => {
-                // This event is needed only for `heart.register_incoming` above.
+            Pong => {
+                if let Some(ping_duration) = self.connection.health_monitor.register_pong(now) {
+                    self.ping_meter.record_duration(ping_duration);
+                }
             }
         }
         Ok(())
@@ -565,15 +569,11 @@ impl ClientState {
     }
 
     fn check_connection(&mut self) {
-        use HeartbeatOutcome::*;
+        use ActiveConnectionStatus::*;
         let now = Instant::now();
-        match self.connection.heart.beat(now) {
-            AllGood => {},
-            SendBeat => {
-                self.connection.send(BughouseClientEvent::Heartbeat);
-            },
-            OtherPartyTemporaryLost => {},
-            OtherPartyPermanentlyLost => {},
+        match self.connection.health_monitor.update(now) {
+            Noop => {},
+            SendPing => { self.connection.send(BughouseClientEvent::Ping); },
         }
     }
 
