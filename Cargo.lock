@@ -93,9 +93,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.66"
+version = "1.0.68"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "216261ddc8289130e551ddcd5ce8a064710c0d064a4d2895c67151c92b5443f6"
+checksum = "2cb2f989d18dd141ab8ae82f64d1a8cdd37e0840f73a406896cf5e99502fab61"
 
 [[package]]
 name = "arrayref"
@@ -363,6 +363,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-tungstenite"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e6acf7e4a267eecbb127ed696bb2d50572c22ba7f586a646321e1798d8336a1"
+dependencies = [
+ "futures-io",
+ "futures-util",
+ "log",
+ "pin-project-lite 0.2.9",
+ "tungstenite",
+]
+
+[[package]]
 name = "atoi"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -488,13 +501,19 @@ dependencies = [
 name = "bughouse_console"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-std",
+ "async-tungstenite",
  "bughouse_chess",
  "clap",
  "console",
  "crossterm",
  "enum-map",
  "env_logger",
+ "futures-io",
+ "futures-util",
+ "http",
+ "http-types",
  "instant",
  "itertools",
  "log",
@@ -503,6 +522,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "tide",
  "time 0.3.17",
  "tungstenite",
  "url",
@@ -1491,6 +1511,7 @@ dependencies = [
  "base64 0.13.1",
  "cookie",
  "futures-lite",
+ "http",
  "infer",
  "pin-project-lite 0.2.9",
  "rand 0.7.3",
