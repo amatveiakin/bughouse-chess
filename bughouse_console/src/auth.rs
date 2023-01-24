@@ -42,7 +42,10 @@ pub struct NewSessionQuery {
 
 impl NewSessionQuery {
     pub fn parse(self) -> (AuthorizationCode, CsrfToken) {
-        (AuthorizationCode::new(self.code), CsrfToken::new(self.state))
+        (
+            AuthorizationCode::new(self.code),
+            CsrfToken::new(self.state),
+        )
     }
 }
 

@@ -11,6 +11,7 @@ use async_tungstenite::WebSocketStream;
 use futures_io::{AsyncRead, AsyncWrite};
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use log::{error, info, warn};
+use rand::RngCore;
 use serde::Deserialize;
 use tungstenite::protocol;
 
@@ -23,8 +24,30 @@ use crate::server_main::{DatabaseOptions, ServerConfig};
 use crate::session::Session;
 use crate::sqlx_server_hooks::*;
 
-fn to_debug_string<T: std::fmt::Debug>(v: T) -> String {
-    format!("{v:?}")
+#[derive(Clone)]
+struct HttpServerState {
+    google_auth: Option<crate::auth::GoogleAuth>,
+    sessions_enabled: bool,
+}
+
+// Non-panicking version of tide::Request::session()
+fn get_session(req: &tide::Request<HttpServerState>) -> tide::Result<&tide::sessions::Session> {
+    if req.state().sessions_enabled {
+        Ok(req.session())
+    } else {
+        Err(tide::Error::from_str(500, "Sessions are not enabled."))
+    }
+}
+
+// Non-panicking version of tide::Request::session_mut()
+fn get_session_mut(
+    req: &mut tide::Request<HttpServerState>,
+) -> tide::Result<&mut tide::sessions::Session> {
+    if req.state().sessions_enabled {
+        Ok(req.session_mut())
+    } else {
+        Err(tide::Error::from_str(500, "Sessions are not enabled."))
+    }
 }
 
 async fn handle_connection<S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
@@ -95,7 +118,7 @@ async fn handle_connection<S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'st
                 }
             }
         }
-        async_std::task::block_on(done_tx.send(()));
+        async_std::task::block_on(done_tx.send(())).unwrap();
     });
     // This instead of just running the loop to completion or join() on the
     // thread for the same reason of not blocking the async executor thread.
@@ -136,17 +159,38 @@ pub fn run(config: ServerConfig) {
 
     const OAUTH_CSRF_COOKIE_NAME: &str = "oauth-csrf-state";
 
-    let mut app = tide::with_state(
-        crate::auth::GoogleAuth::new(crate::auth::Config {
-            callback_url: "http://localhost:14361/session".to_owned(),
-        })
-        .unwrap(),
-    );
+    let google_auth = match config.auth_options {
+        crate::server_main::AuthOptions::NoAuth => None,
+        crate::server_main::AuthOptions::GoogleAuthFromEnv {
+            session_handler_url,
+        } => Some(
+            crate::auth::GoogleAuth::new(crate::auth::Config {
+                callback_url: session_handler_url,
+            })
+            .unwrap(),
+        ),
+    };
 
-    app.with(tide::sessions::SessionMiddleware::new(
-        tide::sessions::CookieStore::new(),
-        b"we recommend you use std::env::var(\"TIDE_SECRET\").unwrap().as_bytes() instead of a fixed value"
-    ));
+    let mut app = tide::with_state(HttpServerState {
+        sessions_enabled: config.session_options != crate::server_main::SessionOptions::NoSessions,
+        google_auth,
+    });
+
+    if app.state().sessions_enabled {
+        let secret = match config.session_options {
+            crate::server_main::SessionOptions::NoSessions => unreachable!(),
+            crate::server_main::SessionOptions::WithNewRandomSecret => {
+                let mut result = vec![0u8; 32];
+                rand::thread_rng().fill_bytes(result.as_mut_slice());
+                result
+            }
+            crate::server_main::SessionOptions::WithSecret(secret) => secret,
+        };
+        app.with(tide::sessions::SessionMiddleware::new(
+            tide::sessions::CookieStore::new(),
+            secret.as_slice(),
+        ));
+    }
 
     app.with(tide::utils::After(|mut res: tide::Response| async {
         if let Some(err) = res.error() {
@@ -157,10 +201,10 @@ pub fn run(config: ServerConfig) {
         Ok(res)
     }));
 
-    app.at("/login").get(
-        |mut req: tide::Request<crate::auth::GoogleAuth>| async move {
-            let session = req.session();
-            let mut session_data = match session.get::<Session>("data") {
+    app.at("/login")
+        .get(|mut req: tide::Request<HttpServerState>| async move {
+            let session = get_session(&req)?;
+            match session.get::<Session>("data") {
                 Some(d) => {
                     if d.logged_in {
                         return Ok(format!(
@@ -173,8 +217,12 @@ pub fn run(config: ServerConfig) {
                 }
                 None => Session::default(),
             };
-            let (redirect_url, csrf_state) = req.state().start()?;
-            req.session_mut().insert("data", session_data);
+            let (redirect_url, csrf_state) = req
+                .state()
+                .google_auth
+                .as_ref()
+                .ok_or(tide::Error::from_str(500, "Google Auth is not enabled."))?
+                .start()?;
 
             let mut resp: tide::Response = req.into();
             resp.set_status(tide::StatusCode::TemporaryRedirect);
@@ -193,12 +241,11 @@ pub fn run(config: ServerConfig) {
             csrf_cookie.set_http_only(true);
             resp.insert_cookie(csrf_cookie);
             Ok(resp)
-        },
-    );
+        });
 
-    app.at("/session").get(
-        |mut req: tide::Request<crate::auth::GoogleAuth>| async move {
-            let session = req.session();
+    app.at("/session")
+        .get(|mut req: tide::Request<HttpServerState>| async move {
+            let session = get_session(&req)?;
             let mut session_data = match session.get::<Session>("data") {
                 Some(d) => {
                     if d.logged_in {
@@ -221,26 +268,31 @@ pub fn run(config: ServerConfig) {
             if oauth_csrf_state_cookie.value() != request_csrf_state.secret() {
                 return Err(tide::Error::from_str(403, "Non-matching CSRF token."));
             }
-            let user_info = req.state().user_info(auth_code).await?;
+            let user_info = req
+                .state()
+                .google_auth
+                .as_ref()
+                .ok_or(tide::Error::from_str(500, "Google auth is not enabled"))?
+                .user_info(auth_code)
+                .await?;
             session_data.user_info = user_info.clone();
-            req.session_mut().insert("data", session_data);
+            session_data.logged_in = true;
+            get_session_mut(&mut req)?.insert("data", session_data)?;
             Ok(format!(
                 "You are now logged in. UserInfo: \n{:?}",
                 user_info
             ))
-        },
-    );
+        });
 
     app.at("/logout")
-        .get(|mut req: tide::Request<_>| async move {
-            let session = req.session_mut();
-            session.remove("data");
+        .get(|mut req: tide::Request<HttpServerState>| async move {
+            get_session_mut(&mut req)?.remove("data");
             Ok("You are now logged out.")
         });
 
     app.at("/mysession")
         .get(|req: tide::Request<_>| async move {
-            let session = req.session();
+            let session = get_session(&req)?;
             Ok(format!("{:?}", session.get::<Session>("data")))
         });
 
@@ -257,7 +309,7 @@ pub fn run(config: ServerConfig) {
                 },
                 |x| Ok(x.to_owned()),
             )?;
-            let session = req.session().clone();
+            let session = get_session(&req)?.clone();
 
             // tide::Request -> http_types::Request -> http::Request<Body> -> http::Request<()>.
             let http_types_req: http_types::Request = req.into();
