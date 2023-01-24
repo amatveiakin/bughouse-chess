@@ -18,14 +18,35 @@ use bughouse_chess::server_hooks::ServerHooks;
 use crate::network::{self, CommunicationError};
 use crate::sqlx_server_hooks::*;
 
+#[derive(Debug)]
 pub enum DatabaseOptions {
     NoDatabase,
     Sqlite(String),
     Postgres(String),
 }
 
+#[derive(Debug)]
+pub enum AuthOptions {
+    NoAuth,
+    GoogleAuthFromEnv { session_handler_url: String },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum SessionOptions {
+    NoSessions,
+
+    // Sessions terminate on server termination.
+    WithNewRandomSecret,
+
+    // Allows for sessions that survive server restart.
+    WithSecret(Vec<u8>),
+}
+
+#[derive(Debug)]
 pub struct ServerConfig {
     pub database_options: DatabaseOptions,
+    pub auth_options: AuthOptions,
+    pub session_options: SessionOptions,
 }
 
 fn to_debug_string<T: std::fmt::Debug>(v: T) -> String {
