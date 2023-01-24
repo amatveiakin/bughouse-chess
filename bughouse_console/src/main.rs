@@ -24,10 +24,12 @@ extern crate bughouse_chess;
 pub mod network;
 pub mod tui;
 
+mod auth;
 mod async_server_main;
 mod client_main;
 mod sqlx_server_hooks;
 mod server_main;
+mod session;
 mod stress_test;
 
 use std::io;

@@ -11,6 +11,7 @@ use async_tungstenite::WebSocketStream;
 use futures_io::{AsyncRead, AsyncWrite};
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use log::{error, info, warn};
+use serde::Deserialize;
 use tungstenite::protocol;
 
 use bughouse_chess::server::*;
@@ -18,7 +19,8 @@ use bughouse_chess::server_hooks::ServerHooks;
 use bughouse_chess::*;
 
 use crate::network::{self, CommunicationError};
-use crate::server_main::{ServerConfig, DatabaseOptions};
+use crate::server_main::{DatabaseOptions, ServerConfig};
+use crate::session::Session;
 use crate::sqlx_server_hooks::*;
 
 fn to_debug_string<T: std::fmt::Debug>(v: T) -> String {
@@ -30,9 +32,10 @@ async fn handle_connection<S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'st
     mut stream: WebSocketStream<S>,
     tx: mpsc::SyncSender<IncomingEvent>,
     clients: Arc<Mutex<Clients>>,
+    session: Option<Session>,
 ) -> tide::Result<()> {
     let (mut stream_tx, mut stream_rx) = stream.split();
-    info!("Client connected: {}", peer_addr);
+    info!("Client connected: {}, session={:?}", peer_addr, session);
 
     let (client_tx, client_rx) = mpsc::channel();
     let client_id = clients
@@ -131,8 +134,117 @@ pub fn run(config: ServerConfig) {
         panic!("Unexpected end of events stream");
     });
 
-    let mut app = tide::new();
-    app.at("/").get(move |req: tide::Request<()>| {
+    const OAUTH_CSRF_COOKIE_NAME: &str = "oauth-csrf-state";
+
+    let mut app = tide::with_state(
+        crate::auth::GoogleAuth::new(crate::auth::Config {
+            callback_url: "http://localhost:14361/session".to_owned(),
+        })
+        .unwrap(),
+    );
+
+    app.with(tide::sessions::SessionMiddleware::new(
+        tide::sessions::CookieStore::new(),
+        b"we recommend you use std::env::var(\"TIDE_SECRET\").unwrap().as_bytes() instead of a fixed value"
+    ));
+
+    app.with(tide::utils::After(|mut res: tide::Response| async {
+        if let Some(err) = res.error() {
+            let msg = format!("Error: {:?}", err);
+            res.set_status(err.status());
+            res.set_body(msg);
+        }
+        Ok(res)
+    }));
+
+    app.at("/login").get(
+        |mut req: tide::Request<crate::auth::GoogleAuth>| async move {
+            let session = req.session();
+            let mut session_data = match session.get::<Session>("data") {
+                Some(d) => {
+                    if d.logged_in {
+                        return Ok(format!(
+                            "You are already logged in. UserInfo: \n{:?}",
+                            d.user_info
+                        )
+                        .into());
+                    }
+                    d
+                }
+                None => Session::default(),
+            };
+            let (redirect_url, csrf_state) = req.state().start()?;
+            req.session_mut().insert("data", session_data);
+
+            let mut resp: tide::Response = req.into();
+            resp.set_status(tide::StatusCode::TemporaryRedirect);
+            resp.insert_header(http_types::headers::LOCATION, redirect_url.as_str());
+
+            // Using a separate cookie for oauth csrf state because the session
+            // cookie has SameSite::Strict policy (and we want to keep that),
+            // which prevents browsers from setting the session cookie upon
+            // redirect.
+            // This will use the default, which is SameSite::Lax on most browsers,
+            // which should still be good enough.
+            let mut csrf_cookie = http_types::cookies::Cookie::new(
+                OAUTH_CSRF_COOKIE_NAME,
+                csrf_state.secret().to_owned(),
+            );
+            csrf_cookie.set_http_only(true);
+            resp.insert_cookie(csrf_cookie);
+            Ok(resp)
+        },
+    );
+
+    app.at("/session").get(
+        |mut req: tide::Request<crate::auth::GoogleAuth>| async move {
+            let session = req.session();
+            let mut session_data = match session.get::<Session>("data") {
+                Some(d) => {
+                    if d.logged_in {
+                        return Ok(format!(
+                            "You are already logged in. UserInfo: \n{:?}",
+                            d.user_info
+                        ));
+                    }
+                    d
+                }
+                None => Session::default(),
+            };
+            let (auth_code, request_csrf_state) =
+                req.query::<crate::auth::NewSessionQuery>()?.parse();
+            let Some(oauth_csrf_state_cookie) = req.cookie(OAUTH_CSRF_COOKIE_NAME) else {
+                return Err(tide::Error::from_str(
+                    403, "Missing CSRF token cookie.",
+                ));
+            };
+            if oauth_csrf_state_cookie.value() != request_csrf_state.secret() {
+                return Err(tide::Error::from_str(403, "Non-matching CSRF token."));
+            }
+            let user_info = req.state().user_info(auth_code).await?;
+            session_data.user_info = user_info.clone();
+            req.session_mut().insert("data", session_data);
+            Ok(format!(
+                "You are now logged in. UserInfo: \n{:?}",
+                user_info
+            ))
+        },
+    );
+
+    app.at("/logout")
+        .get(|mut req: tide::Request<_>| async move {
+            let session = req.session_mut();
+            session.remove("data");
+            Ok("You are now logged out.")
+        });
+
+    app.at("/mysession")
+        .get(|req: tide::Request<_>| async move {
+            let session = req.session();
+            Ok(format!("{:?}", session.get::<Session>("data")))
+        });
+
+    app.at("/").get(move |req: tide::Request<_>| {
         let mytx = tx.clone();
         let myclients = clients.clone();
         async move {
@@ -145,6 +257,8 @@ pub fn run(config: ServerConfig) {
                 },
                 |x| Ok(x.to_owned()),
             )?;
+            let session = req.session().clone();
+
             // tide::Request -> http_types::Request -> http::Request<Body> -> http::Request<()>.
             let http_types_req: http_types::Request = req.into();
             let http_req_with_body: http::Request<http_types::Body> = http_types_req.into();
@@ -153,10 +267,12 @@ pub fn run(config: ServerConfig) {
             let http_resp = tungstenite::handshake::server::create_response(&http_req)
                 .map_err(|e| tide::Error::new(400, e))?;
 
-            // And the reverse chain
+            // http::Response<()> -> http::Response<Body> -> http_types::Response
             let http_resp_with_body = http_resp.map(|_| http_types::Body::empty());
             let mut http_types_resp: http_types::Response = http_resp_with_body.into();
 
+            // http_types::Response is a magic thing that can give us the stream back
+            // once it's upgraded.
             let upgrade_receiver = http_types_resp.recv_upgrade().await;
 
             async_std::task::spawn(async move {
@@ -165,17 +281,18 @@ pub fn run(config: ServerConfig) {
                         WebSocketStream::from_raw_socket(stream, protocol::Role::Server, None)
                             .await;
                     if let Err(err) =
-                        handle_connection(peer_addr, stream, mytx, myclients).await
+                        handle_connection(peer_addr, stream, mytx, myclients, session.get("data"))
+                            .await
                     {
                         error!("{}", err);
                     }
                 } else {
-                    warn!("never received an upgrade!");
+                    error!("Never received an upgrade for client {}", peer_addr);
                 }
             });
             Ok(http_types_resp)
         }
     });
     async_std::task::block_on(async { app.listen(format!("0.0.0.0:{}", network::PORT)).await })
-        .expect("Failed to start the app");
+        .expect("Failed to start the tide server");
 }
