@@ -236,21 +236,71 @@
             placeholder="&nbsp;" spellcheck="false" required
             maxlength="16" pattern="[\p{L}\p{N}_-]+"
             title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
+          <div class="tooltip">
+            <div class="tooltip-text">
+              <p>
+                Player name. May contain letters, numbers, underscores and dashes. Case-sensitive.
+              </p>
+              <p>
+                Use the same player name every to get your game history tracked.<br>
+                🚧 Note. We are working on a proper account system that will make this requirement obsolete.
+                Stay tunned!
+              </p>
+            </div>
+          </div>
+
           <label for="cc-teaming">Teaming</label>
           <select id="cc-teaming" name="teaming">
             <option value="individual-mode">Individual mode</option>
             <option value="fixed-teams">Fixed teams</option>
           </select>
+          <div class="tooltip">
+            <div class="tooltip-text">
+              <p>
+                <i>Individual mode.</i>
+                Teams are randomized every round. There must be at least four players.
+                If there are five players or more, some players will be ramdomly selected to observe each round.
+              </p>
+              <p>
+                <i>Fixed teams.</i>
+                Teams are fixed. Opponents are randomized every round. There must be exactly four players.
+              </p>
+            </div>
+          </div>
+
           <label for="cc-starting-position">Starting position</label>
           <select id="cc-starting-position" name="starting-position">
             <option value="classic">Classic</option>
             <option value="fischer-random" selected>Fischer random</option>
           </select>
+          <div class="tooltip">
+            <div class="tooltip-text">
+              <p>
+                <i>Classic.</i>
+                Standard starting positon.
+              </p>
+              <p>
+                <i>Fischer random</i> (a.k.a. Chess960).
+                Pawns start as usual. Pieces start on the home ranks, but their
+                positions are randomized. Bishops are always of opposite colors. King always starts between
+                the rooks. Castling is allowed: A-side castling puts the kind and left rook on files C and&nbspD
+                respectively, H-side castling puts the kind and right rook on files G and&nbspF respectively.
+                All four players start with the same setup.
+              </p>
+            </div>
+          </div>
+
           <label for="cc-starting-time">Starting time</label>
           <input type="text" id="cc-starting-time" name="starting-time"
             placeholder="m:ss" spellcheck="false" autocomplete="off" required
             value="5:00" pattern="[0-9]+:[0-5][0-9]"
-            title="Starting time in “m:ss” format. Increments and delays are not allowed." />
+            title="Starting time in “m:ss” format." />
+            <div class="tooltip">
+              <div class="tooltip-text">
+                <p>Starting time in “m:ss” format. Increments and delays are not allowed.</p>
+              </div>
+            </div>
+
           <label for="cc-drop-aggression">Drop aggression</label>
           <select id="cc-drop-aggression" name="drop-aggression">
             <option value="no-check">No check</option>
@@ -258,16 +308,57 @@
             <option value="no-bughouse-mate">No bughouse mate</option>
             <option value="mate-allowed">Mate allowed</option>
           </select>
-          <label for="cc-pawn-drop-rows">Pawn drop rows</label>
+          <div class="tooltip">
+            <div class="tooltip-text">
+              <p>
+                <i>No check.</i>
+                Drop with a check is forbidden.
+              </p>
+              <p>
+                <i>No chess mate.</i>
+                Drop with a checkmate is forbidden, even if the opponent can escape the checkmate with
+                a drop of their own.
+              </p>
+              <p>
+                <i>No bughouse mate.</i>
+                Drop with a checkmate is forbidden, unless the opponent can escape the checkmate with
+                a drop of their own (even if their reserve is currently empty).
+              </p>
+              <p>
+                <i>Mate allowed.</i>
+                Drop with a checkmate is allowed.
+              </p>
+            </div>
+          </div>
+
+          <label for="cc-pawn-drop-rows">Pawn drop ranks</label>
           <input type="text" id="cc-pawn-drop-rows" name="pawn-drop-rows"
             placeholder="min-max" spellcheck="false" autocomplete="off" required
             value="2-6" pattern="1-[1-7]|2-[2-7]|3-[3-7]|4-[4-7]|5-[5-7]|6-[6-7]|7-[7-7]"
-            title="Allowed pawn drop rows in “min-max” format. Rows are counted starting from the player, so “2-6” means White can drop from row 2 to row 6 and Black can drop from row 7 to row 3. &#013;Limitations: 1 ≤ min ≤ max ≤ 7" />
+            title="Allowed pawn drop ranks in “min-max” format. Limitations: 1 ≤ min ≤ max ≤ 7" />
+          <div class="tooltip">
+            <div class="tooltip-text">
+              <p>
+                Allowed pawn drop ranks in “min-max” format. Ranks are counted starting from the player,
+                so “2-6” means White can drop from rank 2 to rank 6 and Black can drop from rank 7 to rank 3.
+              <p>
+              </p>
+                Limitations:<br> 1 ≤ min ≤ max ≤ 7
+              </p>
+            </div>
+          </div>
+
           <label for="cc-rating">Rating</label>
           <select id="cc-rating" name="rating">
             <option value="rated" selected>Rated</option>
             <option value="unrated">Unrated</option>
           </select>
+          <div class="tooltip">
+            <div class="tooltip-text">
+              <p>Whether the game is rated.</p>
+              <p>Unrated games are still recorded, but they do not affect either personal or team rating.</p>
+            </div>
+          </div>
         </div>
         <div class="dialog-button-container">
           <button id="cc-confirm-button" class="big-button">Create contest!</button>
@@ -282,12 +373,15 @@
             placeholder="&nbsp;" spellcheck="false" autocomplete="off" required
             maxlength="10" pattern="[a-zA-Z0-9]*"
             title="Contest ID consists of Latin letters and numbers" />
+          <div></div>
+
           <!-- `pattern` and `maxlength` must be in sync with join contest player name field and with `is_valid_player_name` -->
           <label for="jc-player-name">Player name</label>
           <input type="text" id="jc-player-name" name="player-name"
             placeholder="&nbsp;" spellcheck="false" required
             maxlength="16" pattern="[\p{L}\p{N}_-]+"
             title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
+          <div></div>
         </div>
         <div class="dialog-button-container">
           <button id="jc-confirm-button" class="big-button">Join contest!</button>

@@ -12,6 +12,7 @@ body {
   --color-chalk-other: #404040;
   --color-chalk-other-light: #808080;
   --color-scrollbar: #597121;
+  --color-dialog-tooltip: #c6bcad;
 }
 body.observer {
   --sq-size-primary: min(4.4vw, 7.8vh);
@@ -553,10 +554,66 @@ body.observer #command {
   40% { transform: none; }
 }
 
+.tooltip {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  margin-left: 0.5em;
+  width: 1.5em;
+}
+
+.tooltip .tooltip-text {
+  visibility: hidden;
+  text-align: initial;
+  font-size: 90%;
+  width: 15em;
+  background-color: var(--color-dialog-tooltip);
+  padding: 0 1em;
+  border-radius: 0.5em;
+  position: absolute;
+  z-index: 1;
+  top: 0%;
+  left: 100%;
+  margin-left: 1.8em;
+  opacity: 0;
+  transition: opacity .3s;
+  transform: translate(0, -50%) translate(0, 2em);
+}
+/* Tooltip arrow */
+.tooltip .tooltip-text::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  margin-top: -0.5em;
+  border-width: 0.5em;
+  border-style: solid;
+  border-color: transparent var(--color-dialog-tooltip) transparent transparent;
+}
+
+.tooltip::after {
+  font-size: 120%;
+  content: "ⓘ";
+}
+.tooltip:hover::after {
+  content: "📖";
+}
+.tooltip:hover {
+  cursor: help;
+}
+.tooltip:hover .tooltip-text {
+  font-weight: normal;
+  visibility: visible;
+  opacity: 1;
+}
+
 dialog {
   background-color: #dfceb4;
   font-size: max(1em, 8pt);
   padding: 0.6em 1em;
+  overflow: visible;  /* allow tooltips go outside of the page area */
 }
 
 dialog::backdrop {
@@ -565,7 +622,7 @@ dialog::backdrop {
 
 .menu-page-body {
   display: grid;
-  grid-template-columns: auto auto;
+  grid-template-columns: auto auto auto;
 }
 
 label {
