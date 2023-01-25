@@ -63,7 +63,8 @@ fn main() -> io::Result<()> {
                 .arg(arg!(--"sqlite-db" [DB] "Path to an sqlite database file"))
                 .arg(arg!(--"postgres-db" [DB] "Address of a postgres database"))
                 .arg(arg!(--"auth" [AUTH_OPTION] "Either NoAuth or Google. The latter enables authentication using Google OAuth2. Reads GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env variables"))
-                .arg(arg!(--"auth-callback-is-https" "Whether to upgrade the auth callback address to https"))
+                .arg(arg!(--"auth-callback-is-https" "Upgrade the auth callback address to https. This can be useful when the server is behind a https proxy such as Apache."))
+                .arg(arg!(--"enable-sessions" "Whether to enable the tide session middleware."))
         )
         .subcommand(
             Command::new("client")
@@ -97,10 +98,15 @@ fn main() -> io::Result<()> {
                 },
                 Some(a) => panic!("Unrecognized auth option {a}"),
             };
+            let session_options = if sub_matches.get_flag("enable-sessions") {
+                crate::server_main::SessionOptions::WithNewRandomSecret
+            } else {
+                crate::server_main::SessionOptions::NoSessions
+            };
             async_server_main::run(server_main::ServerConfig {
                 database_options: database_options_from_args(sub_matches),
                 auth_options,
-                session_options: server_main::SessionOptions::WithNewRandomSecret,
+                session_options,
             });
             Ok(())
         }

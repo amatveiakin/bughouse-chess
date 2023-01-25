@@ -25,7 +25,7 @@ pub enum DatabaseOptions {
     Postgres(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum AuthOptions {
     NoAuth,
     GoogleAuthFromEnv { callback_is_https: bool },
@@ -102,6 +102,12 @@ fn handle_connection(stream: TcpStream, clients: &Arc<Mutex<Clients>>, tx: mpsc:
 }
 
 pub fn run(config: ServerConfig) {
+    if config.auth_options != AuthOptions::NoAuth {
+        panic!("Auth is not supported by this server implementation.");
+    }
+    if config.session_options != SessionOptions::NoSessions {
+        panic!("Sessions are not supported by this server implementation.");
+    }
     let (tx, rx) = mpsc::channel();
     let tx_tick = tx.clone();
     thread::spawn(move || {
