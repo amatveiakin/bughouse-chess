@@ -18,7 +18,7 @@ use bughouse_chess::server::*;
 use bughouse_chess::server_hooks::ServerHooks;
 
 use crate::network::{self, CommunicationError};
-use crate::server_main::{DatabaseOptions, ServerConfig};
+use crate::server_main::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
 use crate::session::Session;
 use crate::sqlx_server_hooks::*;
 
@@ -125,6 +125,12 @@ async fn handle_connection<S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'st
 }
 
 pub fn run(config: ServerConfig) {
+    if config.auth_options != AuthOptions::NoAuth
+        && config.session_options == SessionOptions::NoSessions
+    {
+        panic!("Authentication is enabled while sessions are not.");
+    }
+
     // Allow some buffer of requests.
     // When this is full because ServerState::apply_event isn't coping with
     // the load, we start putting back pressure on client websockets.
@@ -161,27 +167,27 @@ pub fn run(config: ServerConfig) {
     const OAUTH_CSRF_COOKIE_NAME: &str = "oauth-csrf-state";
 
     let (google_auth, auth_callback_is_https) = match config.auth_options {
-        crate::server_main::AuthOptions::NoAuth => (None, false),
-        crate::server_main::AuthOptions::GoogleAuthFromEnv { callback_is_https } => (
+        AuthOptions::NoAuth => (None, false),
+        AuthOptions::GoogleAuthFromEnv { callback_is_https } => (
             Some(crate::auth::GoogleAuth::new().unwrap()),
             callback_is_https,
         ),
     };
 
     let mut app = tide::with_state(HttpServerState {
-        sessions_enabled: config.session_options != crate::server_main::SessionOptions::NoSessions,
+        sessions_enabled: config.session_options != SessionOptions::NoSessions,
         google_auth,
     });
 
     if app.state().sessions_enabled {
         let secret = match config.session_options {
-            crate::server_main::SessionOptions::NoSessions => unreachable!(),
-            crate::server_main::SessionOptions::WithNewRandomSecret => {
+            SessionOptions::NoSessions => unreachable!(),
+            SessionOptions::WithNewRandomSecret => {
                 let mut result = vec![0u8; 32];
                 rand::thread_rng().fill_bytes(result.as_mut_slice());
                 result
             }
-            crate::server_main::SessionOptions::WithSecret(secret) => secret,
+            SessionOptions::WithSecret(secret) => secret,
         };
         app.with(tide::sessions::SessionMiddleware::new(
             tide::sessions::CookieStore::new(),
@@ -200,20 +206,6 @@ pub fn run(config: ServerConfig) {
 
     app.at("/login")
         .get(move |req: tide::Request<HttpServerState>| async move {
-            let session = get_session(&req)?;
-            match session.get::<Session>("data") {
-                Some(d) => {
-                    if d.logged_in {
-                        return Ok(format!(
-                            "You are already logged in. UserInfo: \n{:?}",
-                            d.user_info
-                        )
-                        .into());
-                    }
-                    d
-                }
-                None => Session::default(),
-            };
             let mut callback_url = req.url().clone();
             callback_url.set_path("/session");
             if auth_callback_is_https {
@@ -327,7 +319,8 @@ pub fn run(config: ServerConfig) {
                 },
                 |x| Ok(x.to_owned()),
             )?;
-            let session = get_session(&req)?.clone();
+
+            let session_data = get_session(&req).ok().and_then(|s| s.get("data"));
 
             // tide::Request -> http_types::Request -> http::Request<Body> -> http::Request<()>.
             let http_types_req: http_types::Request = req.into();
@@ -351,8 +344,7 @@ pub fn run(config: ServerConfig) {
                         WebSocketStream::from_raw_socket(stream, protocol::Role::Server, None)
                             .await;
                     if let Err(err) =
-                        handle_connection(peer_addr, stream, mytx, myclients, session.get("data"))
-                            .await
+                        handle_connection(peer_addr, stream, mytx, myclients, session_data).await
                     {
                         error!("{}", err);
                     }
