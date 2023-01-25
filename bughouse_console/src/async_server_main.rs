@@ -22,11 +22,12 @@ use crate::server_main::{AuthOptions, DatabaseOptions, ServerConfig, SessionOpti
 use crate::session::Session;
 use crate::sqlx_server_hooks::*;
 
-#[derive(Clone)]
-struct HttpServerState {
+struct HttpServerStateImpl {
     google_auth: Option<crate::auth::GoogleAuth>,
     sessions_enabled: bool,
 }
+
+type HttpServerState = Arc<HttpServerStateImpl>;
 
 // Non-panicking version of tide::Request::session()
 fn get_session(req: &tide::Request<HttpServerState>) -> tide::Result<&tide::sessions::Session> {
@@ -174,10 +175,10 @@ pub fn run(config: ServerConfig) {
         ),
     };
 
-    let mut app = tide::with_state(HttpServerState {
+    let mut app = tide::with_state(Arc::new(HttpServerStateImpl {
         sessions_enabled: config.session_options != SessionOptions::NoSessions,
         google_auth,
-    });
+    }));
 
     if app.state().sessions_enabled {
         let secret = match config.session_options {
