@@ -253,19 +253,6 @@ pub fn run(config: ServerConfig) {
 
     app.at("/session")
         .get(move |mut req: tide::Request<HttpServerState>| async move {
-            let session = get_session(&req)?;
-            let mut session_data = match session.get::<Session>("data") {
-                Some(d) => {
-                    if d.logged_in {
-                        return Ok(format!(
-                            "You are already logged in. UserInfo: \n{:?}",
-                            d.user_info
-                        ));
-                    }
-                    d
-                }
-                None => Session::default(),
-            };
             let (auth_code, request_csrf_state) =
                 req.query::<crate::auth::NewSessionQuery>()?.parse();
             let Some(oauth_csrf_state_cookie) = req.cookie(OAUTH_CSRF_COOKIE_NAME) else {
@@ -296,9 +283,15 @@ pub fn run(config: ServerConfig) {
                 .ok_or(tide::Error::from_str(500, "Google auth is not enabled."))?
                 .user_info(callback_url_str, auth_code)
                 .await?;
-            session_data.user_info = user_info.clone();
-            session_data.logged_in = true;
-            get_session_mut(&mut req)?.insert("data", session_data)?;
+
+            get_session_mut(&mut req)?.insert(
+                "data",
+                Session {
+                    logged_in: true,
+                    user_info: user_info.clone(),
+                },
+            )?;
+
             Ok(format!(
                 "You are now logged in. UserInfo: \n{:?}",
                 user_info
@@ -313,8 +306,12 @@ pub fn run(config: ServerConfig) {
 
     app.at("/mysession")
         .get(|req: tide::Request<_>| async move {
-            let session = get_session(&req)?;
-            Ok(format!("{:?}", session.get::<Session>("data")))
+            match get_session(&req)?.get::<Session>("data") {
+                None => Ok("You are not logged in.".to_owned()),
+                Some(Session { user_info, .. }) => {
+                    Ok(format!("You are logged in. UserInfo: {user_info:?}"))
+                }
+            }
         });
 
     app.at("/").get(move |req: tide::Request<_>| {
