@@ -101,7 +101,7 @@ async fn handle_connection<S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'st
 
     // Still spawning an OS thread here because client_rx is a
     // synchronous receiver.
-    // Calling blocking functions (such as client_tx.recv()) within async context
+    // Calling blocking functions (such as client_rx.recv()) within async context
     // means completely blocking an executor thread, which quickly leads to
     // stavation and deadlocks because the number of async executor threads
     // is limited.
@@ -139,7 +139,7 @@ pub fn run(config: ServerConfig) {
         panic!("Authentication is enabled while sessions are not.");
     }
 
-    // Allow some buffer of requests.
+    // Limited buffer for data streaming from clients into the server.
     // When this is full because ServerState::apply_event isn't coping with
     // the load, we start putting back pressure on client websockets.
     let (tx, rx) = mpsc::sync_channel(100000);
@@ -173,6 +173,11 @@ pub fn run(config: ServerConfig) {
     });
 
     const OAUTH_CSRF_COOKIE_NAME: &str = "oauth-csrf-state";
+
+    const AUTH_LOGIN_URL_PATH: &str = "/auth/login";
+    const AUTH_SESSION_URL_PATH: &str = "/auth/session";
+    const AUTH_LOGOUT_URL_PATH: &str = "/auth/logout";
+    const AUTH_MYSESSION_URL_PATH: &str = "/auth/mysession";
 
     let (google_auth, auth_callback_is_https) = match config.auth_options {
         AuthOptions::NoAuth => (None, false),
@@ -212,10 +217,13 @@ pub fn run(config: ServerConfig) {
         Ok(res)
     }));
 
-    app.at("/login")
+    // Initiates authentication process (e.g. with OAuth).
+    // TODO: this page should probably display some privacy considerations
+    //   and link to OAuth providers instead of just redirecting.
+    app.at(AUTH_LOGIN_URL_PATH)
         .get(move |req: tide::Request<HttpServerState>| async move {
             let mut callback_url = req.url().clone();
-            callback_url.set_path("/session");
+            callback_url.set_path(AUTH_SESSION_URL_PATH);
             if auth_callback_is_https {
                 callback_url.set_scheme("https").map_err(|()| {
                     anyhow::Error::msg(format!(
@@ -254,7 +262,14 @@ pub fn run(config: ServerConfig) {
             Ok(resp)
         });
 
-    app.at("/session")
+    // The "callback" handler of the authentication process.
+    // TODO: send the user to either the main page or their desider location.
+    //   HTTP redirect doesn't work because the session cookies do
+    //   not survive it, hence, some JS needs to be served that sends back
+    //   in 3...2...1... or something similar.
+    //   To send to the "desired location", pass the desired URL as a parameter
+    //   into /login and propagate it to callback_url.
+    app.at(AUTH_SESSION_URL_PATH)
         .get(move |mut req: tide::Request<HttpServerState>| async move {
             let (auth_code, request_csrf_state) =
                 req.query::<crate::auth::NewSessionQuery>()?.parse();
@@ -281,6 +296,7 @@ pub fn run(config: ServerConfig) {
                 })?;
             }
             let callback_url_str = callback_url.as_str().trim_end_matches('?').to_owned();
+            println!("{callback_url_str}");
 
             let user_info = req
                 .state()
@@ -307,13 +323,13 @@ pub fn run(config: ServerConfig) {
             ))
         });
 
-    app.at("/logout")
+    app.at(AUTH_LOGOUT_URL_PATH)
         .get(|mut req: tide::Request<HttpServerState>| async move {
             get_session_mut(&mut req)?.remove("data");
             Ok("You are now logged out.")
         });
 
-    app.at("/mysession")
+    app.at(AUTH_MYSESSION_URL_PATH)
         .get(|req: tide::Request<_>| async move {
             match get_session(&req)?.get::<Session>("data") {
                 None => Ok("You are not logged in.".to_owned()),
