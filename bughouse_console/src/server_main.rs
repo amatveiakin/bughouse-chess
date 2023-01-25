@@ -28,7 +28,7 @@ pub enum DatabaseOptions {
 #[derive(Debug)]
 pub enum AuthOptions {
     NoAuth,
-    GoogleAuthFromEnv { session_handler_url: String },
+    GoogleAuthFromEnv { callback_is_https: bool },
 }
 
 #[derive(Debug, Eq, PartialEq)]

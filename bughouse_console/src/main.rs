@@ -24,8 +24,8 @@ extern crate bughouse_chess;
 pub mod network;
 pub mod tui;
 
-mod auth;
 mod async_server_main;
+mod auth;
 mod client_main;
 mod sqlx_server_hooks;
 mod server_main;
@@ -37,7 +37,6 @@ use std::io;
 use clap::{arg, Command};
 
 use server_main::DatabaseOptions;
-
 
 fn main() -> io::Result<()> {
     env_logger::Builder::new()
@@ -64,7 +63,7 @@ fn main() -> io::Result<()> {
                 .arg(arg!(--"sqlite-db" [DB] "Path to an sqlite database file"))
                 .arg(arg!(--"postgres-db" [DB] "Address of a postgres database"))
                 .arg(arg!(--"auth" [AUTH_OPTION] "Either NoAuth or Google. The latter enables authentication using Google OAuth2. Reads GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env variables"))
-                .arg(arg!(--"session-handler-url" [SESSION_URL] "URL of the session handler with can perform the last part of OAuth and create an authenticated session."))
+                .arg(arg!(--"auth-callback-is-https" "Whether to upgrade the auth callback address to https"))
         )
         .subcommand(
             Command::new("client")
@@ -93,15 +92,9 @@ fn main() -> io::Result<()> {
         Some(("async-server", sub_matches)) => {
             let auth_options = match sub_matches.get_one::<String>("auth").map(String::as_str) {
                 None | Some("NoAuth") => server_main::AuthOptions::NoAuth,
-                Some("Google") => {
-                    let session_handler_url = sub_matches
-                        .get_one::<String>("session-handler-url")
-                        .cloned()
-                        .unwrap_or("http://localhost:14361/session".to_owned());
-                    server_main::AuthOptions::GoogleAuthFromEnv {
-                        session_handler_url,
-                    }
-                }
+                Some("Google") => server_main::AuthOptions::GoogleAuthFromEnv {
+                    callback_is_https: sub_matches.get_flag("auth-callback-is-https"),
+                },
                 Some(a) => panic!("Unrecognized auth option {a}"),
             };
             async_server_main::run(server_main::ServerConfig {

@@ -9,15 +9,13 @@ use std::time::Duration;
 
 use async_tungstenite::WebSocketStream;
 use futures_io::{AsyncRead, AsyncWrite};
-use futures_util::{sink::SinkExt, stream::StreamExt};
+use futures_util::StreamExt;
 use log::{error, info, warn};
 use rand::RngCore;
-use serde::Deserialize;
 use tungstenite::protocol;
 
 use bughouse_chess::server::*;
 use bughouse_chess::server_hooks::ServerHooks;
-use bughouse_chess::*;
 
 use crate::network::{self, CommunicationError};
 use crate::server_main::{DatabaseOptions, ServerConfig};
@@ -52,7 +50,7 @@ fn get_session_mut(
 
 async fn handle_connection<S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
     peer_addr: String,
-    mut stream: WebSocketStream<S>,
+    stream: WebSocketStream<S>,
     tx: mpsc::SyncSender<IncomingEvent>,
     clients: Arc<Mutex<Clients>>,
     session: Option<Session>,
@@ -127,7 +125,10 @@ async fn handle_connection<S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'st
 }
 
 pub fn run(config: ServerConfig) {
-    let (tx, rx) = mpsc::sync_channel(1000);
+    // Allow some buffer of requests.
+    // When this is full because ServerState::apply_event isn't coping with
+    // the load, we start putting back pressure on client websockets.
+    let (tx, rx) = mpsc::sync_channel(100000);
     let tx_tick = tx.clone();
     thread::spawn(move || loop {
         thread::sleep(Duration::from_millis(100));
@@ -159,15 +160,11 @@ pub fn run(config: ServerConfig) {
 
     const OAUTH_CSRF_COOKIE_NAME: &str = "oauth-csrf-state";
 
-    let google_auth = match config.auth_options {
-        crate::server_main::AuthOptions::NoAuth => None,
-        crate::server_main::AuthOptions::GoogleAuthFromEnv {
-            session_handler_url,
-        } => Some(
-            crate::auth::GoogleAuth::new(crate::auth::Config {
-                callback_url: session_handler_url,
-            })
-            .unwrap(),
+    let (google_auth, auth_callback_is_https) = match config.auth_options {
+        crate::server_main::AuthOptions::NoAuth => (None, false),
+        crate::server_main::AuthOptions::GoogleAuthFromEnv { callback_is_https } => (
+            Some(crate::auth::GoogleAuth::new().unwrap()),
+            callback_is_https,
         ),
     };
 
@@ -202,7 +199,7 @@ pub fn run(config: ServerConfig) {
     }));
 
     app.at("/login")
-        .get(|mut req: tide::Request<HttpServerState>| async move {
+        .get(move |req: tide::Request<HttpServerState>| async move {
             let session = get_session(&req)?;
             match session.get::<Session>("data") {
                 Some(d) => {
@@ -217,12 +214,23 @@ pub fn run(config: ServerConfig) {
                 }
                 None => Session::default(),
             };
+            let mut callback_url = req.url().clone();
+            callback_url.set_path("/session");
+            if auth_callback_is_https {
+                callback_url.set_scheme("https").map_err(|()| {
+                    anyhow::Error::msg(format!(
+                        "Failed to change URL scheme '{}' to 'https' for redirection.",
+                        callback_url.scheme()
+                    ))
+                })?;
+            }
+            println!("{callback_url}");
             let (redirect_url, csrf_state) = req
                 .state()
                 .google_auth
                 .as_ref()
                 .ok_or(tide::Error::from_str(500, "Google Auth is not enabled."))?
-                .start()?;
+                .start(callback_url.into())?;
 
             let mut resp: tide::Response = req.into();
             resp.set_status(tide::StatusCode::TemporaryRedirect);
@@ -244,7 +252,7 @@ pub fn run(config: ServerConfig) {
         });
 
     app.at("/session")
-        .get(|mut req: tide::Request<HttpServerState>| async move {
+        .get(move |mut req: tide::Request<HttpServerState>| async move {
             let session = get_session(&req)?;
             let mut session_data = match session.get::<Session>("data") {
                 Some(d) => {
@@ -268,12 +276,25 @@ pub fn run(config: ServerConfig) {
             if oauth_csrf_state_cookie.value() != request_csrf_state.secret() {
                 return Err(tide::Error::from_str(403, "Non-matching CSRF token."));
             }
+
+            let mut callback_url = req.url().clone();
+            callback_url.set_query(Some(""));
+            if auth_callback_is_https {
+                callback_url.set_scheme("https").map_err(|()| {
+                    anyhow::Error::msg(format!(
+                        "Failed to change URL scheme '{}' to 'https' for redirection.",
+                        callback_url.scheme()
+                    ))
+                })?;
+            }
+            let callback_url_str = callback_url.as_str().trim_end_matches('?').to_owned();
+
             let user_info = req
                 .state()
                 .google_auth
                 .as_ref()
-                .ok_or(tide::Error::from_str(500, "Google auth is not enabled"))?
-                .user_info(auth_code)
+                .ok_or(tide::Error::from_str(500, "Google auth is not enabled."))?
+                .user_info(callback_url_str, auth_code)
                 .await?;
             session_data.user_info = user_info.clone();
             session_data.logged_in = true;
