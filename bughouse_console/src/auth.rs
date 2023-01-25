@@ -1,22 +1,16 @@
 use anyhow::Context;
-use oauth2::{basic::BasicClient, revocation::StandardRevocableToken, TokenResponse};
+use oauth2::{basic::BasicClient, TokenResponse};
 // Alternatively, this can be oauth2::curl::http_client or a custom.
 use oauth2::reqwest::async_http_client;
 use oauth2::{
-    url, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
-    RedirectUrl, RevocationUrl, Scope, TokenUrl,
+    url, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, RevocationUrl,
+    Scope, TokenUrl,
 };
 use serde::Deserialize;
 use std::env;
 use url::Url;
 
 use crate::session::UserInfo;
-
-pub struct Config {
-    // The URL where oauth proviver will redirect, passing the auth code
-    // as a parameter.
-    pub callback_url: String,
-}
 
 #[derive(Clone)]
 pub struct GoogleAuth {
@@ -50,7 +44,7 @@ impl NewSessionQuery {
 }
 
 impl GoogleAuth {
-    pub fn new(config: Config) -> anyhow::Result<Self> {
+    pub fn new() -> anyhow::Result<Self> {
         // See https://accounts.google.com/.well-known/openid-configuration
         let google_client_id = ClientId::new(
             env::var("GOOGLE_CLIENT_ID")
@@ -73,32 +67,35 @@ impl GoogleAuth {
         .set_revocation_uri(
             RevocationUrl::new("https://oauth2.googleapis.com/revoke".to_owned())
                 .context("Invalid revocation endpoint URL")?,
-        )
-        .set_redirect_uri(RedirectUrl::new(config.callback_url).context("Invalid redirect URL")?);
+        );
         Ok(Self { client })
     }
 
-    pub fn start(&self) -> anyhow::Result<(Url, CsrfToken)> {
+    pub fn start(&self, callback_url: String) -> anyhow::Result<(Url, CsrfToken)> {
         Ok(self
             .client
+            .clone()
+            .set_redirect_uri(RedirectUrl::new(callback_url)?)
             .authorize_url(CsrfToken::new_random)
             .add_scope(Scope::new("openid profile email".to_owned()))
             .url())
     }
 
-    pub async fn user_info(&self, code: AuthorizationCode) -> anyhow::Result<UserInfo> {
+    pub async fn user_info(&self, callback_url: String, code: AuthorizationCode) -> anyhow::Result<UserInfo> {
         let token_response = self
             .client
+            .clone()
+            .set_redirect_uri(RedirectUrl::new(callback_url)?)
             .exchange_code(code)
             .request_async(async_http_client)
-            .await?;
+            .await.context("exchanging auth code for auth token failed")?;
         let response = reqwest::get(format!(
             "https://www.googleapis.com/oauth2/v1/userinfo?access_token={}",
             token_response.access_token().secret()
         ))
-        .await?
+        .await.context("requesting user info failed")?
         .json::<GoogleUserInfo>()
-        .await?;
+        .await.context("getting user info JSON failed")?;
         Ok(UserInfo {
             email: Some(response.email),
             name: response.name,

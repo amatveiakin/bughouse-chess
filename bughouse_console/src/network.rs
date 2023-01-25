@@ -4,8 +4,6 @@
 use std::io;
 use std::net::TcpStream;
 
-use async_tungstenite::WebSocketStream;
-use futures_io::{AsyncRead, AsyncWrite};
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use serde::{de, Serialize};
 use tungstenite::{protocol::Role, Message, WebSocket};
@@ -54,7 +52,7 @@ where
 pub async fn write_obj_async<T, S>(socket: &mut S, obj: &T) -> Result<(), CommunicationError>
 where
     T: Serialize,
-    S: SinkExt<Message, Error=tungstenite::Error> + Unpin,
+    S: SinkExt<Message, Error = tungstenite::Error> + Unpin,
 {
     let serialized = serde_json::to_string(obj).map_err(|err| CommunicationError::Serde(err))?;
     socket
