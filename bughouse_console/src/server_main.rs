@@ -102,12 +102,10 @@ fn handle_connection(stream: TcpStream, clients: &Arc<Mutex<Clients>>, tx: mpsc:
 }
 
 pub fn run(config: ServerConfig) {
-    if config.auth_options != AuthOptions::NoAuth {
-        panic!("Auth is not supported by this server implementation.");
-    }
-    if config.session_options != SessionOptions::NoSessions {
-        panic!("Sessions are not supported by this server implementation.");
-    }
+    assert_eq!(config.auth_options, AuthOptions::NoAuth,
+        "Auth is not supported by this server implementation.");
+    assert_eq!(config.session_options, SessionOptions::NoSessions,
+        "Sessions are not supported by this server implementation.");
     let (tx, rx) = mpsc::channel();
     let tx_tick = tx.clone();
     thread::spawn(move || {

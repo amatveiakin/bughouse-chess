@@ -133,11 +133,11 @@ async fn handle_connection<S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'st
 }
 
 pub fn run(config: ServerConfig) {
-    if config.auth_options != AuthOptions::NoAuth
-        && config.session_options == SessionOptions::NoSessions
-    {
-        panic!("Authentication is enabled while sessions are not.");
-    }
+    assert!(
+        config.auth_options == AuthOptions::NoAuth
+            || config.session_options != SessionOptions::NoSessions,
+        "Authentication is enabled while sessions are not."
+    );
 
     // Limited buffer for data streaming from clients into the server.
     // When this is full because ServerState::apply_event isn't coping with
