@@ -581,10 +581,11 @@ impl WebClient {
             update_lobby(&contest)?;
             return Ok(());
         };
-        // TODO: Better readiness status display.
+        // Improvement potential: Better readiness status display.
+        let teaming = contest.rules.bughouse_rules.teaming;
         let game = alt_game.local_game();
         let my_id = alt_game.my_id();
-        update_scores(&contest.scores, contest.rules.bughouse_rules.teaming, my_id)?;
+        update_scores(&contest.scores, &contest.participants, game.status(), teaming, my_id)?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |force| {
                 let BughouseParticipantId::Player(my_player_id) = my_id else {
@@ -636,7 +637,7 @@ impl WebClient {
                 let player_name = board.player_name(force);
                 let player = contest.participants.iter().find(|p| p.name == *player_name).unwrap();
                 // TODO: Show teams for the upcoming game in individual mode.
-                let show_readiness = game.status() != BughouseGameStatus::Active;
+                let show_readiness = game.status() != BughouseGameStatus::Active && teaming == Teaming::FixedTeams;
                 let player_string = participant_string(&player, show_readiness);
                 name_node.set_text_content(Some(&player_string));
                 let is_draggable = is_piece_draggable(force);
@@ -1136,7 +1137,10 @@ fn render_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_
     Ok(())
 }
 
-fn update_scores(scores: &Scores, teaming: Teaming, my_id: BughouseParticipantId) -> JsResult<()> {
+fn update_scores(
+    scores: &Scores, participants: &[Participant], game_status: BughouseGameStatus,
+    teaming: Teaming, my_id: BughouseParticipantId
+) -> JsResult<()> {
     let normalize = |score: u32| (score as f64) / 2.0;
     let team_node = web_document().get_existing_element_by_id("score-team")?;
     let individual_node = web_document().get_existing_element_by_id("score-individual")?;
@@ -1154,12 +1158,20 @@ fn update_scores(scores: &Scores, teaming: Teaming, my_id: BughouseParticipantId
         },
         Teaming::IndividualMode => {
             assert!(scores.per_team.is_empty());
-            let mut score_vec: Vec<_> = scores.per_player.iter().map(|(player, score)| {
-                format!("{}: {}", player, normalize(*score))
-            }).collect();
-            score_vec.sort();
+            let show_readiness = game_status != BughouseGameStatus::Active;
+            let scores = scores.per_player.iter().map(|(name, score)| {
+                let participant = participants.iter().find(|p| p.name == *name).unwrap();
+                (
+                    name,
+                    format!("{}: {}", participant_string(participant, show_readiness), normalize(*score))
+                )
+            });
+            let scores = scores
+                .sorted_by_key(|(name, _)| name.clone())  // TODO: Can we do without `clone()`?
+                .map(|(_, display_string)| display_string)
+                .join("\n");
             team_node.set_text_content(None);
-            individual_node.set_text_content(Some(&score_vec.join("\n")));
+            individual_node.set_text_content(Some(&scores));
         }
     }
     Ok(())
