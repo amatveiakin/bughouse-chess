@@ -4,6 +4,7 @@ body {
   --board-size-primary: calc(var(--sq-size-primary) * 8);
   --board-size-secondary: calc(var(--sq-size-secondary) * 8);
   --reserve-height-in-squares: 1.5;
+  --rem: max(calc(var(--sq-size-primary) * 0.25), 6pt);
 
   --color-chalk-myself: #2b7b00;
   --color-chalk-partner: #048ea2;
@@ -11,18 +12,25 @@ body {
   --color-chalk-diagonal: #9a118b;
   --color-chalk-other: #404040;
   --color-chalk-other-light: #808080;
-  --color-scrollbar: #597121;
+  --color-main-scrollbar: #597121;
+
+  --color-dialog-background: #dfceb4;
+  --color-dialog-scrollbar: #aa9b24;
+  --color-dialog-scrollbar-background: #c7bc7c;
   --color-dialog-tooltip: #c6bcad;
 }
 body.observer {
   --sq-size-primary: min(4.4vw, 7.8vh);
   --sq-size-secondary: var(--sq-size-primary);
-  --color-scrollbar: #71755e;
+  --color-main-scrollbar: #71755e;
 }
 
 html, body {
   height: 100%;
   width: 100%;
+  font-family: Verdana, sans-serif;
+  /* TODO: Figure out why setting something to `1rem` doesn't behave exactly as `var(--rem)` */
+  font-size: var(--rem);
   overflow: hidden;  /* disable scroll bars */
 }
 html {
@@ -32,8 +40,6 @@ html {
 body {
   background-color: #1c3a0c;
   color: #e0e0e0;
-  font-family: Verdana, sans-serif;
-  font-size: max(calc(var(--sq-size-primary) * 0.25), 6pt);
   display: table-cell;
   vertical-align: middle;
 }
@@ -157,6 +163,29 @@ body.observer #page {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+}
+
+.align-left {
+  width: 100%;
+  text-align: left;
+}
+.align-right {
+  width: 100%;
+  text-align: right;
+}
+.align-center {
+  width: 100%;
+  text-align: center;
+}
+.flex-row {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  gap: 0.5em;
+}
+.flex-equisized {
+  flex-basis: 0;
+  flex-grow: 1;
 }
 
 .board-shadow {
@@ -444,20 +473,41 @@ body.observer #command {
   background-color: #9a9a9a;
 }
 
+dialog {
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--color-dialog-scrollbar) var(--color-dialog-scrollbar-background);
+  scrollbar-width: thin;
+}
+dialog ::-webkit-scrollbar {
+  width: max(2px, 0.3em);
+}
+dialog ::-webkit-scrollbar-track {
+  background: var(--color-dialog-scrollbar-background);
+}
+dialog ::-webkit-scrollbar-thumb {
+  background-color: var(--color-dialog-scrollbar);
+}
+
+#page {
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--color-main-scrollbar) #ffffff00;
+  scrollbar-width: thin;
+}
+#page ::-webkit-scrollbar {
+  width: max(2px, 0.3em);
+}
+#page ::-webkit-scrollbar-track {
+  background: none;
+}
+#page ::-webkit-scrollbar-thumb {
+  background-color: var(--color-main-scrollbar);
+}
+
 #turn-log-container-primary {
   text-align: right;
 }
 #turn-log-container-secondary {
   text-align: left;
-}
-::-webkit-scrollbar {
-  width: max(2px, 0.3em);
-}
-::-webkit-scrollbar-track {
-  background: none;
-}
-::-webkit-scrollbar-thumb {
-  background-color: var(--color-scrollbar);
 }
 .turn-log-scroll-area {
   text-align: left;
@@ -468,9 +518,6 @@ body.observer #command {
   /* background-color: #ffffff0b; */
   overflow-x: visible;
   overflow-y: scroll;
-  scrollbar-gutter: stable;
-  scrollbar-color: var(--color-scrollbar) #ffffff00;
-  scrollbar-width: thin;
   box-shadow: 0.05em 0.05em 0.2em #00000080;
 }
 .turn-log {
@@ -610,8 +657,8 @@ body.observer #command {
 }
 
 dialog {
-  background-color: #dfceb4;
-  font-size: max(1em, 8pt);
+  background-color: var(--color-dialog-background);
+  /* font-size: max(1em, 8pt); */
   padding: 0.6em 1em;
   overflow: visible;  /* allow tooltips go outside of the page area */
 }
@@ -632,23 +679,32 @@ label {
   padding-right: 1em;
 }
 
-.dialog-button-container {
-  width: 100%;
+dialog hr {
+  border: none;
+  border-top: 1px solid #ab8562;
+  overflow: visible;
   text-align: center;
+  height: 0;
+}
+dialog hr:after {
+  background: var(--color-dialog-background);
+  color: #785636;
+  content: '♞';
+  padding: 0 0.4em;
+  position: relative;
+  top: -0.85em;
 }
 
 dialog button {
   display: inline-block;
   padding: 0.5em 1em;
-  margin: 0.4em 0em;
-  min-width: 8em;
+  margin: 0.35em 0;
   border: 0;
-  font-size: 1.2em;
+  font-size: 1em;
   text-align: center;
   color: #101010;
-  text-shadow: 0.05em 0.05em 0.05em #eaac73;
   border-radius: 0.5em;
-  background-color: #e59f5f;
+  background-color: #eed5ae;
   background-image: linear-gradient(to top left,
                                     rgba(0, 0, 0, 0.1),
                                     rgba(0, 0, 0, 0.1) 30%,
@@ -657,7 +713,7 @@ dialog button {
               inset -2px -2px 3px rgba(0, 0, 0, .6);
 }
 dialog button:hover {
-  background-color: #eaac73;
+  background-color: #f3debd;
 }
 dialog button:active {
   box-shadow: inset -2px -2px 3px rgba(255, 255, 255, .6),
@@ -667,20 +723,17 @@ dialog button:active {
 .big-button {
   width: 14em;
   font-size: 1.3em;
+  text-shadow: 0.05em 0.05em 0.05em #eaac73;
+  background-color: #e59f5f;
+}
+.big-button:hover {
+  background-color: #eaac73;
 }
 .back-button {
   padding: 0;
-  margin: 0.8em 0em;
   height: 2em;
   width: 2em;
-  min-width: unset;
-  font-size: 1em;
-  text-shadow: none;
   border-radius: 0.3em;
-  background-color: #eed5ae;
-}
-.back-button:hover {
-  background-color: #f3debd;
 }
 
 dialog select, dialog input {
@@ -705,6 +758,16 @@ dialog input:invalid:not(:placeholder-shown) {
 #jc-contest-id:not(:placeholder-shown) {
   /* This is of course a purely visual change. Actual input should be uppercased in JS. */
   text-transform: uppercase;
+}
+
+#about-text {
+  overflow-y: scroll;
+  width: calc(min(40em, 80vw));
+  height: calc(min(40em, 70vh));
+  padding-right: 0.8em;
+}
+#about-text hr {
+  width: 50%;
 }
 
 #lobby-participants {

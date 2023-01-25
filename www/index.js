@@ -83,16 +83,19 @@ const menu_dialog = document.getElementById('menu-dialog');
 const menu_start_page = document.getElementById('menu-start-page');
 const menu_create_contest_page = document.getElementById('menu-create-contest-page');
 const menu_join_contest_page = document.getElementById('menu-join-contest-page');
+const menu_about_page = document.getElementById('menu-about-page');
 const menu_lobby_page = document.getElementById('menu-lobby-page');
 const menu_pages = document.getElementsByClassName('menu-page');
 
 const create_contest_button = document.getElementById('create-contest-button');
 const join_contest_button = document.getElementById('join-contest-button');
+const about_button = document.getElementById('about-button');
 const cc_back_button = document.getElementById('cc-back-button');
 const cc_player_name = document.getElementById('cc-player-name');
 const jc_back_button = document.getElementById('jc-back-button');
 const jc_player_name = document.getElementById('jc-player-name');
 const jc_contest_id = document.getElementById('jc-contest-id');
+const about_back_button = document.getElementById('about-back-button');
 
 const ready_button = document.getElementById('ready-button');
 const resign_button = document.getElementById('resign-button');
@@ -213,10 +216,17 @@ volume_button.addEventListener('click', next_volume);
 menu_dialog.addEventListener('cancel', function(event) { event.preventDefault(); });
 create_contest_button.addEventListener('click', on_create_contest_submenu);
 join_contest_button.addEventListener('click', on_join_contest_submenu);
+about_button.addEventListener('click', on_about);
+// Improvement potential: Add "page stack" concept, make all buttons with "back-button" class pop page.
 cc_back_button.addEventListener('click', show_start_page);
 jc_back_button.addEventListener('click', show_start_page);
+about_back_button.addEventListener('click', show_start_page);
 menu_create_contest_page.addEventListener('submit', on_create_contest_confirm);
 menu_join_contest_page.addEventListener('submit', on_join_contest_confirm);
+
+for (const button of document.querySelectorAll('[data-suburl]')) {
+    button.addEventListener('click', go_to_suburl);
+}
 
 // TODO: Make sounds louder and set volume to 2 by default.
 set_volume(max_volume);
@@ -951,6 +961,13 @@ function load_sounds(sound_map) {
     return ret;
 }
 
+function go_to_suburl(event) {
+    const suburl = event.target.getAttribute('data-suburl');
+    const url = new URL(window.location);
+    url.pathname = suburl;
+    window.open(url, '_blank').focus();
+}
+
 function on_create_contest_submenu(event) {
     show_menu_page(menu_create_contest_page);
     cc_player_name.value = window.localStorage.getItem(Storage.player_name);
@@ -961,6 +978,10 @@ function on_join_contest_submenu(event) {
     show_menu_page(menu_join_contest_page);
     jc_player_name.value = window.localStorage.getItem(Storage.player_name);
     jc_contest_id.focus();
+}
+
+function on_about(event) {
+    show_menu_page(menu_about_page);
 }
 
 function on_create_contest_confirm(event) {
