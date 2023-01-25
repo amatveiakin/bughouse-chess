@@ -12,6 +12,7 @@ use futures_io::{AsyncRead, AsyncWrite};
 use futures_util::StreamExt;
 use log::{error, info, warn};
 use rand::RngCore;
+use tide::StatusCode;
 use tungstenite::protocol;
 
 use bughouse_chess::server::*;
@@ -34,7 +35,10 @@ fn get_session(req: &tide::Request<HttpServerState>) -> tide::Result<&tide::sess
     if req.state().sessions_enabled {
         Ok(req.session())
     } else {
-        Err(tide::Error::from_str(500, "Sessions are not enabled."))
+        Err(tide::Error::from_str(
+            StatusCode::NotImplemented,
+            "Sessions are not enabled.",
+        ))
     }
 }
 
@@ -45,7 +49,10 @@ fn get_session_mut(
     if req.state().sessions_enabled {
         Ok(req.session_mut())
     } else {
-        Err(tide::Error::from_str(500, "Sessions are not enabled."))
+        Err(tide::Error::from_str(
+            StatusCode::NotImplemented,
+            "Sessions are not enabled.",
+        ))
     }
 }
 
@@ -198,7 +205,7 @@ pub fn run(config: ServerConfig) {
 
     app.with(tide::utils::After(|mut res: tide::Response| async {
         if let Some(err) = res.error() {
-            let msg = format!("Error: {:?}", err);
+            let msg = format!("Error: {:#?}", err);
             res.set_status(err.status());
             res.set_body(msg);
         }
@@ -222,11 +229,14 @@ pub fn run(config: ServerConfig) {
                 .state()
                 .google_auth
                 .as_ref()
-                .ok_or(tide::Error::from_str(500, "Google Auth is not enabled."))?
+                .ok_or(tide::Error::from_str(
+                    StatusCode::NotImplemented,
+                    "Google Auth is not enabled.",
+                ))?
                 .start(callback_url.into())?;
 
             let mut resp: tide::Response = req.into();
-            resp.set_status(tide::StatusCode::TemporaryRedirect);
+            resp.set_status(StatusCode::TemporaryRedirect);
             resp.insert_header(http_types::headers::LOCATION, redirect_url.as_str());
 
             // Using a separate cookie for oauth csrf state because the session
@@ -250,11 +260,14 @@ pub fn run(config: ServerConfig) {
                 req.query::<crate::auth::NewSessionQuery>()?.parse();
             let Some(oauth_csrf_state_cookie) = req.cookie(OAUTH_CSRF_COOKIE_NAME) else {
                 return Err(tide::Error::from_str(
-                    403, "Missing CSRF token cookie.",
+                    StatusCode::Forbidden, "Missing CSRF token cookie.",
                 ));
             };
             if oauth_csrf_state_cookie.value() != request_csrf_state.secret() {
-                return Err(tide::Error::from_str(403, "Non-matching CSRF token."));
+                return Err(tide::Error::from_str(
+                    StatusCode::Forbidden,
+                    "Non-matching CSRF token.",
+                ));
             }
 
             let mut callback_url = req.url().clone();
@@ -273,7 +286,10 @@ pub fn run(config: ServerConfig) {
                 .state()
                 .google_auth
                 .as_ref()
-                .ok_or(tide::Error::from_str(500, "Google auth is not enabled."))?
+                .ok_or(tide::Error::from_str(
+                    StatusCode::NotImplemented,
+                    "Google auth is not enabled.",
+                ))?
                 .user_info(callback_url_str, auth_code)
                 .await?;
 
@@ -313,9 +329,9 @@ pub fn run(config: ServerConfig) {
         async move {
             let peer_addr = req.peer_addr().map_or_else(
                 || {
-                    Err(tide::Error::new(
-                        403,
-                        anyhow::Error::msg("Peer address missing"),
+                    Err(tide::Error::from_str(
+                        StatusCode::Forbidden,
+                        "Peer address missing",
                     ))
                 },
                 |x| Ok(x.to_owned()),
@@ -329,7 +345,7 @@ pub fn run(config: ServerConfig) {
             let http_req = http_req_with_body.map(|_| ());
 
             let http_resp = tungstenite::handshake::server::create_response(&http_req)
-                .map_err(|e| tide::Error::new(400, e))?;
+                .map_err(|e| tide::Error::new(StatusCode::BadRequest, e))?;
 
             // http::Response<()> -> http::Response<Body> -> http_types::Response
             let http_resp_with_body = http_resp.map(|_| http_types::Body::empty());
