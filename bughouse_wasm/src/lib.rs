@@ -142,6 +142,9 @@ pub struct JsEventLowTime {}
 pub struct JsEventGameExportReady { content: String }
 
 #[wasm_bindgen]
+pub struct JsEventServerShutdown {}
+
+#[wasm_bindgen]
 impl JsEventContestStarted {
     pub fn contest_id(&self) -> String { self.contest_id.clone() }
 }
@@ -553,6 +556,7 @@ impl WebClient {
             Some(NotableEvent::MyReserveRestocked) => Ok(JsEventMyReserveRestocked{}.into()),
             Some(NotableEvent::LowTime) => Ok(JsEventLowTime{}.into()),
             Some(NotableEvent::GameExportReady(content)) => Ok(JsEventGameExportReady{ content }.into()),
+            Some(NotableEvent::ServerShutdown) => Ok(JsEventServerShutdown{}.into()),
             None => Ok(JsValue::NULL),
         }
     }

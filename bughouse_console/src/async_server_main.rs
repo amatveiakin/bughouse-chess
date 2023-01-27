@@ -185,12 +185,17 @@ pub fn run(config: ServerConfig) {
     // the load, we start putting back pressure on client websockets.
     let (tx, rx) = mpsc::sync_channel(100000);
     let tx_tick = tx.clone();
+    let tx_terminate = tx.clone();
+    let clients = Arc::new(Mutex::new(Clients::new()));
+    let clients_copy = Arc::clone(&clients);
+
+    ctrlc::set_handler(move || tx_terminate.send(IncomingEvent::Terminate).unwrap())
+        .expect("Error setting Ctrl-C handler");
+
     thread::spawn(move || loop {
         thread::sleep(Duration::from_millis(100));
         tx_tick.send(IncomingEvent::Tick).unwrap();
     });
-    let clients = Arc::new(Mutex::new(Clients::new()));
-    let clients_copy = Arc::clone(&clients);
 
     thread::spawn(move || {
         let hooks = match config.database_options {

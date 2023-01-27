@@ -775,6 +775,7 @@ dialog input:invalid:not(:placeholder-shown) {
 
 .simple-dialog-message {
   font-size: 110%;
+  max-width: 36em;
 }
 .simple-dialog-button-box {
   float: right;

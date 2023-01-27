@@ -146,8 +146,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     let std_panic_hook = panic::take_hook();
     panic::set_hook(Box::new(move |panic_info| {
         // TODO: Also report the error via `BughouseClientEvent::ReportError`.
-        _ = terminal::disable_raw_mode();
-        _ = execute!(io::stdout(), terminal::LeaveAlternateScreen);
+        restore_terminal();
         std_panic_hook(panic_info);
     }));
 
@@ -267,9 +266,19 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                 NotableEvent::GameExportReady(..) => {
                     // Improvement potential: Implement.
                 },
+                NotableEvent::ServerShutdown => {
+                    restore_terminal();
+                    println!("The server is shutting down for maintenance. Please come back later!");
+                    return Ok(());
+                },
             }
         }
         render(&mut stdout, app_start_time, &client_state, &keyboard_input, &command_error)?;
     }
     panic!("Unexpected end of events stream");
+}
+
+fn restore_terminal() {
+    _ = terminal::disable_raw_mode();
+    _ = execute!(io::stdout(), terminal::LeaveAlternateScreen);
 }

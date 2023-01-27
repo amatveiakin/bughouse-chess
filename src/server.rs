@@ -15,6 +15,7 @@ use log::{info, warn};
 use rand::{Rng, seq::SliceRandom};
 use strum::IntoEnumIterator;
 
+use crate::BughouseServerRejection;
 use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
@@ -30,14 +31,40 @@ use crate::server_hooks::{ServerHooks, NoopServerHooks};
 
 const TOTAL_PLAYERS: usize = 4;
 const TOTAL_PLAYERS_PER_TEAM: usize = 2;
+const DOUBLE_TERMINATION_ABORT_THRESHOLD: Duration = Duration::from_secs(1);
+const TERMINATION_WAITING_PERIOD: Duration = Duration::from_secs(60);
 const CONTEST_GC_INACTIVITY_THRESHOLD: Duration = Duration::from_secs(3600 * 24);
 
+macro_rules! unknown_error {
+    ($($arg:tt)*) => {
+        BughouseServerRejection::UnknownError(format!($($arg)*))
+    }
+}
+
 type Preturns = HashMap<BughousePlayerId, TurnInput>;
+
+#[derive(Clone, Copy, Debug)]
+enum Execution {
+    // The server runs normally.
+    Running,
+
+    // The server is in graceful shutdown mode. It will not allow to start new contests or
+    // new games within existing contests and it will automatically shut down when there are
+    // no more games running.
+    ShuttingDown {
+        // The moment shutdown was requested initially.
+        shutting_down_since: Instant,
+        // Last termination request (i.e. last time Ctrl+C was pressed). The server will abort
+        // upon two termination requests come within `DOUBLE_TERMINATION_ABORT_THRESHOLD` period.
+        last_termination_request: Instant,
+    },
+}
 
 #[derive(Debug)]
 pub enum IncomingEvent {
     Network(ClientId, BughouseClientEvent),
     Tick,
+    Terminate,
 }
 
 #[derive(Debug)]
@@ -73,6 +100,7 @@ struct ContestId(String);
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 struct ParticipantId(usize);
 
+#[derive(Debug)]
 struct Participants {
     // Use an ordered map to show lobby players in joining order.
     map: BTreeMap<ParticipantId, Participant>,
@@ -127,8 +155,8 @@ impl Client {
     fn send(&mut self, event: BughouseServerEvent) {
         self.events_tx.send(event).unwrap();
     }
-    fn send_error(&mut self, message: String) {
-        self.send(BughouseServerEvent::Error{ message });
+    fn send_rejection(&mut self, rejection: BughouseServerRejection) {
+        self.send(BughouseServerEvent::Rejection(rejection));
     }
 }
 
@@ -193,11 +221,13 @@ impl ops::IndexMut<ClientId> for Clients {
 }
 
 
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum ContestActivity {
     Present,
     Past(Instant),
 }
 
+#[derive(Debug)]
 struct Contest {
     contest_id: ContestId,
     contest_creation: Instant,
@@ -215,10 +245,11 @@ struct Context<'a, 'b> {
 }
 
 struct CoreServerState {
+    execution: Execution,
     contests: HashMap<ContestId, Contest>,
 }
 
-type EventResult = Result<(), String>;
+type EventResult = Result<(), BughouseServerRejection>;
 
 // Split state into two parts (core and context) in order to allow things like:
 //   let mut clients = self.clients.lock().unwrap();
@@ -254,6 +285,8 @@ impl ServerState {
         // global mutex may become a bottleneck.
         let mut clients = self.clients.lock().unwrap();
 
+        // Improvement potential. Consider adding commonly used things like `now` and `execution`
+        // to `Context`.
         let mut ctx = Context {
             clients: &mut clients,
             hooks: self.hooks.as_mut()
@@ -272,7 +305,10 @@ impl ServerState {
 
 impl CoreServerState {
     fn new() -> Self {
-        CoreServerState{ contests: HashMap::new() }
+        CoreServerState {
+            execution: Execution::Running,
+            contests: HashMap::new(),
+        }
     }
 
     fn make_contest(&mut self, now: Instant, rules: Rules) -> ContestId {
@@ -330,6 +366,7 @@ impl CoreServerState {
         match event {
             IncomingEvent::Network(client_id, event) => self.on_client_event(ctx, client_id, now, event),
             IncomingEvent::Tick => self.on_tick(ctx, now),
+            IncomingEvent::Terminate => self.on_terminate(ctx, now),
         }
     }
 
@@ -368,6 +405,10 @@ impl CoreServerState {
 
         let contest_id = match &event {
             BughouseClientEvent::NewContest{ rules, .. } => {
+                if !matches!(self.execution, Execution::Running) {
+                    ctx.clients[client_id].send_rejection(BughouseServerRejection::ShuttingDown);
+                    return;
+                }
                 ctx.clients[client_id].contest_id = None;
                 ctx.clients[client_id].participant_id = None;
                 let contest_id = self.make_contest(now, rules.clone());
@@ -386,7 +427,7 @@ impl CoreServerState {
 
         let Some(contest_id) = contest_id else {
             // We've already processed all events that do not depend on a contest.
-            ctx.clients[client_id].send_error("Cannot process event: no contest in progress".to_owned());
+            ctx.clients[client_id].send_rejection(unknown_error!("Cannot process event: no contest in progress"));
             return;
         };
 
@@ -395,15 +436,15 @@ impl CoreServerState {
             // to join with a bad contest_id. In other cases we are getting contest_id from
             // trusted internal sources, so the contest must exist as well.
             assert!(matches!(event, BughouseClientEvent::Join{ .. }));
-            ctx.clients[client_id].send_error(format!(r#"Cannot join "{}": no such contest"#, contest_id.0));
+            ctx.clients[client_id].send_rejection(unknown_error!(r#"Cannot join "{}": no such contest"#, contest_id.0));
             return;
         };
 
         // Test flags first. Thus we make sure that turns and other actions are
         // not allowed after the time is over.
         contest.test_flags(ctx, now);
-        contest.process_client_event(ctx, client_id, now, event);
-        contest.post_process(ctx, now);
+        contest.process_client_event(ctx, client_id, self.execution, now, event);
+        contest.post_process(ctx, self.execution, now);
     }
 
     fn on_tick(&mut self, ctx: &mut Context, now: Instant) {
@@ -411,12 +452,81 @@ impl CoreServerState {
         self.check_client_connections(ctx, now);
         for contest in self.contests.values_mut() {
             contest.test_flags(ctx, now);
-            contest.post_process(ctx, now);
+            contest.post_process(ctx, self.execution, now);
+        }
+        if !matches!(self.execution, Execution::Running) && self.num_active_contests(now) == 0 {
+            println!("No more active contests left. Shutting down.");
+            shutdown();
         }
     }
 
+    pub fn on_terminate(&mut self, ctx: &mut Context, now: Instant) {
+        const ABORT_INSTRUCTION: &str = "Press Ctrl+C twice within a second to abort immediately.";
+        let num_active_contests = self.num_active_contests(now);
+        match self.execution {
+            Execution::Running => {
+                if num_active_contests == 0 {
+                    println!("There are no active contests. Shutting down immediately!");
+                    shutdown();
+                } else {
+                    println!(
+                        concat!(
+                            "Shutdown requested!\n",
+                            "The server will not allow to start new contests or games. It will terminate as\n",
+                            "soon as there are no active contests. There are currently {} active contests.\n{}",
+                        ),
+                        num_active_contests,
+                        ABORT_INSTRUCTION,
+                    );
+                    self.execution = Execution::ShuttingDown {
+                        shutting_down_since: now,
+                        last_termination_request: now,
+                    };
+                    self.contests.values().for_each(|contest| {
+                        // Immediately notify clients who ate still in the lobby: they wouldn't be able
+                        // to do anything meaningful. Let other players finish their games.
+                        //
+                        // Improvement potential: Notify everybody immediately, let the clients decide
+                        // when it's appropriate to show the message to the user. Pros:
+                        //   - Server code well be simpler. There will be exactly two points when a
+                        //     shutdown notice should be sent: to all existing clients when termination
+                        //     is requested and to new clients as soon as they are connected (to the
+                        //     server, not to the contest).
+                        //   - Clients will get the relevant information sooner.
+                        if contest.game_state.is_none() {
+                            contest.broadcast(ctx, &BughouseServerEvent::Rejection(BughouseServerRejection::ShuttingDown));
+                        }
+                    });
+                }
+            },
+            Execution::ShuttingDown{ shutting_down_since, ref mut last_termination_request } => {
+                if now.duration_since(*last_termination_request) <= DOUBLE_TERMINATION_ABORT_THRESHOLD {
+                    println!("Aborting!");
+                    shutdown();
+                } else {
+                    let shutdown_duration_sec = now.duration_since(shutting_down_since).as_secs();
+                    println!(
+                        "Shutdown was requested {}s ago. Waiting for {} active contests to finish.\n{}",
+                        shutdown_duration_sec,
+                        num_active_contests,
+                        ABORT_INSTRUCTION,
+                    );
+                }
+                *last_termination_request = now;
+            },
+        }
+    }
+
+    fn num_active_contests(&self, now: Instant) -> usize {
+        self.contests.values().filter(|contest| {
+            match contest.latest_activity() {
+                ContestActivity::Present => true,
+                ContestActivity::Past(t) => now.duration_since(t) <= TERMINATION_WAITING_PERIOD
+            }
+        }).count()
+    }
+
     fn gc_old_contests(&mut self, now: Instant) {
-        // Improvement potential. O(1) time GC.
         // Improvement potential. GC unused contests (zero games and/or no players) sooner.
         self.contests.retain(|_, contest| {
             match contest.latest_activity() {
@@ -486,15 +596,15 @@ impl Contest {
     }
 
     fn process_client_event(
-        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, event: BughouseClientEvent
+        &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution, now: Instant, event: BughouseClientEvent
     ) {
         let result = match event {
             BughouseClientEvent::NewContest{ player_name, .. } => {
                 // The contest was created earlier.
-                self.join_participant(ctx, client_id, now, player_name)
+                self.join_participant(ctx, client_id, execution, now, player_name)
             },
             BughouseClientEvent::Join{ contest_id: _, player_name } => {
-                self.join_participant(ctx, client_id, now, player_name)
+                self.join_participant(ctx, client_id, execution, now, player_name)
             },
             BughouseClientEvent::SetFaction{ faction } => {
                 self.process_set_faction(ctx, client_id, faction)
@@ -531,12 +641,12 @@ impl Contest {
             },
         };
         if let Err(err) = result {
-            ctx.clients[client_id].send_error(err);
+            ctx.clients[client_id].send_rejection(err);
         }
     }
 
     fn join_participant(
-        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, player_name: String
+        &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution, now: Instant, player_name: String
     ) -> EventResult {
         assert!(ctx.clients[client_id].contest_id.is_none());
         assert!(ctx.clients[client_id].participant_id.is_none());
@@ -548,11 +658,15 @@ impl Contest {
                 );
                 if let Some(existing_client_id) = existing_client_id {
                     if ctx.clients[existing_client_id].connection_monitor.status(now) == PassiveConnectionStatus::Healthy {
-                        return Err(format!(r#"Cannot join: client for player "{}" already connected"#, player_name))
+                        return Err(unknown_error!(r#"Cannot join: client for player "{}" already connected"#, player_name))
                     } else {
                         ctx.clients.remove_client(existing_client_id);
                     }
-                };
+                } else {
+                    if !matches!(execution, Execution::Running) {
+                        return Err(BughouseServerRejection::ShuttingDown);
+                    }
+                }
             }
             let participant_id = existing_participant_id.unwrap_or_else(|| {
                 // Improvement potential. Allow joining mid-game in individual mode.
@@ -576,12 +690,15 @@ impl Contest {
             ctx.clients[client_id].send(BughouseServerEvent::ChalkboardUpdated{ chalkboard });
             Ok(())
         } else {
-            // TODO: Allow to kick players from the lobby when the old client is offline.
+            // TODO: Allow to kick players from the lobby when the old client is offline (even temporary).
             if self.participants.find_by_name(&player_name).is_some() {
-                return Err(format!("Cannot join: player \"{}\" already exists", player_name));
+                return Err(unknown_error!("Cannot join: player \"{}\" already exists", player_name));
             }
             if !is_valid_player_name(&player_name) {
-                return Err(format!("Invalid player name: \"{}\"", player_name))
+                return Err(unknown_error!("Invalid player name: \"{}\"", player_name))
+            }
+            if !matches!(execution, Execution::Running) {
+                return Err(BughouseServerRejection::ShuttingDown);
             }
             info!(
                 "Client {} join contest {} as {}",
@@ -604,15 +721,15 @@ impl Contest {
 
     fn process_set_faction(&mut self, ctx: &mut Context, client_id: ClientId, faction: Faction) -> EventResult {
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
-            return Err("Cannot set faction: not joined".to_owned());
+            return Err(unknown_error!("Cannot set faction: not joined"));
         };
         if self.game_state.is_some() {
-            return Err("Cannot set faction: contest already started".to_owned());
+            return Err(unknown_error!("Cannot set faction: contest already started"));
         }
         match (faction, self.rules.bughouse_rules.teaming) {
             (Faction::Fixed(_), Teaming::FixedTeams) => {}
             (Faction::Fixed(_), Teaming::IndividualMode) => {
-                return Err("cannot set fixed team in individual mode".to_owned());
+                return Err(unknown_error!("cannot set fixed team in individual mode"));
             },
             (Faction::Random, _) => {},
             (Faction::Observer, _) => {},
@@ -632,13 +749,13 @@ impl Contest {
                 ref mut game,
                 ref mut preturns, ..
             }) = self.game_state else {
-            return Err("Cannot make turn: no game in progress".to_owned());
+            return Err(unknown_error!("Cannot make turn: no game in progress"));
         };
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
-            return Err("Cannot make turn: not joined".to_owned());
+            return Err(unknown_error!("Cannot make turn: not joined"));
         };
         let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name) else {
-            return Err("Cannot make turn: player does not participate".to_owned());
+            return Err(unknown_error!("Cannot make turn: player does not participate"));
         };
         let scores = &mut self.scores;
         let participants = &mut self.participants;
@@ -667,7 +784,7 @@ impl Contest {
                         }
                     },
                     Err(error) => {
-                        return Err(format!("Impossible turn: {:?}", error));
+                        return Err(unknown_error!("Impossible turn: {:?}", error));
                     },
                 }
                 let ev = BughouseServerEvent::TurnsMade {
@@ -681,7 +798,7 @@ impl Contest {
             Ok(TurnMode::Preturn) => {
                 match preturns.entry(player_bughouse_id) {
                     hash_map::Entry::Occupied(_) => {
-                        Err("Only one premove is supported".to_owned())
+                        Err(unknown_error!("Only one premove is supported"))
                     },
                     hash_map::Entry::Vacant(entry) => {
                         entry.insert(turn_input);
@@ -690,20 +807,20 @@ impl Contest {
                 }
             },
             Err(error) => {
-                Err(format!("Impossible turn: {:?}", error))
+                Err(unknown_error!("Impossible turn: {:?}", error))
             },
         }
     }
 
     fn process_cancel_preturn(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
         let Some(GameState{ ref game, ref mut preturns, .. }) = self.game_state else {
-            return Err("Cannot cancel pre-turn: no game in progress".to_owned());
+            return Err(unknown_error!("Cannot cancel pre-turn: no game in progress"));
         };
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
-            return Err("Cannot cancel pre-turn: not joined".to_owned());
+            return Err(unknown_error!("Cannot cancel pre-turn: not joined"));
         };
         let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name) else {
-            return Err("Cannot cancel pre-turn: player does not participate".to_owned());
+            return Err(unknown_error!("Cannot cancel pre-turn: player does not participate"));
         };
         preturns.remove(&player_bughouse_id);
         Ok(())
@@ -711,16 +828,16 @@ impl Contest {
 
     fn process_resign(&mut self, ctx: &mut Context, client_id: ClientId, now: Instant) -> EventResult {
         let Some(GameState{ ref mut game, ref mut preturns, game_start, ref mut game_end, .. }) = self.game_state else {
-            return Err("Cannot resign: no game in progress".to_owned());
+            return Err(unknown_error!("Cannot resign: no game in progress"));
         };
         if game.status() != BughouseGameStatus::Active {
-            return Err("Cannot resign: game already over".to_owned());
+            return Err(unknown_error!("Cannot resign: game already over"));
         }
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
-            return Err("Cannot resign: not joined".to_owned());
+            return Err(unknown_error!("Cannot resign: not joined"));
         };
         let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name) else {
-            return Err("Cannot resign: player does not participate".to_owned());
+            return Err(unknown_error!("Cannot resign: player does not participate"));
         };
         let status = BughouseGameStatus::Victory(
             player_bughouse_id.team().opponent(),
@@ -742,11 +859,11 @@ impl Contest {
 
     fn process_set_ready(&mut self, ctx: &mut Context, client_id: ClientId, is_ready: bool) -> EventResult {
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
-            return Err("Cannot update readiness: not joined".to_owned());
+            return Err(unknown_error!("Cannot update readiness: not joined"));
         };
         if let Some(GameState{ ref game, .. }) = self.game_state {
             if game.status() == BughouseGameStatus::Active {
-                return Err("Cannot update readiness: game still in progress".to_owned());
+                return Err(unknown_error!("Cannot update readiness: game still in progress"));
             }
         }
         self.participants[participant_id].is_ready = is_ready;
@@ -769,13 +886,13 @@ impl Contest {
         &mut self, ctx: &mut Context, client_id: ClientId, drawing: ChalkDrawing
     ) -> EventResult {
         let Some(GameState{ ref mut chalkboard, ref game, .. }) = self.game_state else {
-            return Err("Cannot update chalk drawing: no game in progress".to_owned());
+            return Err(unknown_error!("Cannot update chalk drawing: no game in progress"));
         };
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
-            return Err("Cannot update chalk drawing: not joined".to_owned());
+            return Err(unknown_error!("Cannot update chalk drawing: not joined"));
         };
         if game.status() == BughouseGameStatus::Active {
-            return Err("Cannot update chalk drawing: can draw only after game is over".to_owned());
+            return Err(unknown_error!("Cannot update chalk drawing: can draw only after game is over"));
         }
         chalkboard.set_drawing(self.participants[participant_id].name.clone(), drawing);
         let chalkboard = chalkboard.clone();
@@ -787,7 +904,7 @@ impl Contest {
         &self, ctx: &mut Context, client_id: ClientId, format: BughouseExportFormat
     ) -> EventResult {
         let Some(GameState{ ref game, .. }) = self.game_state else {
-            return Err("Cannot export: no game in progress".to_owned());
+            return Err(unknown_error!("Cannot export: no game in progress"));
         };
         let all_games = self.match_history.iter().chain(iter::once(game));
         let content = all_games.enumerate().map(|(round, game)| {
@@ -797,7 +914,7 @@ impl Contest {
         Ok(())
     }
 
-    fn post_process(&mut self, ctx: &mut Context, now: Instant) {
+    fn post_process(&mut self, ctx: &mut Context, execution: Execution, now: Instant) {
         // Improvement potential: Collapse `send_lobby_updated` events generated during one event
         //   processing cycle. Right now there could up to three: one from the event (SetTeam/SetReady),
         //   one from here and one from `self.start_game`.
@@ -849,6 +966,11 @@ impl Contest {
             Teaming::IndividualMode => true,
         };
         if num_players_ok && teams_ok && all_ready {
+            if !matches!(execution, Execution::Running) {
+                self.broadcast(ctx, &BughouseServerEvent::Rejection(BughouseServerRejection::ShuttingDown));
+                self.reset_readiness();
+                return;
+            }
             if let Some(GameState{ ref game, .. }) = self.game_state {
                 assert!(game.status() != BughouseGameStatus::Active,
                     "Players must not be allowed to set is_ready flag while the game is active");
@@ -1124,4 +1246,12 @@ fn process_report_error(ctx: &Context, client_id: ClientId, report: &BughouseCli
 
 fn process_ping(ctx: &mut Context, client_id: ClientId) {
     ctx.clients[client_id].send(BughouseServerEvent::Pong);
+}
+
+fn shutdown() {
+    // Note. It may seem like a good idea to terminate the process "properly": join threads, call
+    // destructors, etc. But I think it's actually not. By aborting the process during the normal
+    // shutdown procedure we make sure that this path is tested and thus abnormal shutdown (panic
+    // or VM failure) does not lose data.
+    std::process::exit(0);
 }

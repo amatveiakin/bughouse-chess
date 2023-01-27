@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use instant::Instant;
 
+use crate::BughouseServerRejection;
 use crate::altered_game::AlteredGame;
 use crate::board::{TurnError, TurnMode, TurnInput};
 use crate::chalk::{Chalkboard, ChalkCanvas, ChalkDrawing, ChalkMark};
@@ -36,6 +37,7 @@ pub enum NotableEvent {
     MyReserveRestocked,
     LowTime,
     GameExportReady(String),
+    ServerShutdown,
 }
 
 // TODO: Does it make sense to have CannotApplyEvent instead of panic? Both can be caused by many
@@ -304,8 +306,15 @@ impl ClientState {
         use BughouseServerEvent::*;
         let now = Instant::now();
         match event {
-            Error{ message } => {
-                return Err(EventError::ServerReturnedError(format!("Got error from server: {}", message)))
+            Rejection(rejection) => {
+                match rejection {
+                    BughouseServerRejection::ShuttingDown => {
+                        self.notable_event_queue.push_back(NotableEvent::ServerShutdown)
+                    },
+                    BughouseServerRejection::UnknownError(message) => {
+                        return Err(EventError::ServerReturnedError(format!("Got error from server: {}", message)))
+                    },
+                }
             },
             ContestWelcome{ contest_id, rules } => {
                 let my_name = match &self.contest_state {

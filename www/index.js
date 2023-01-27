@@ -46,8 +46,8 @@ class Timer {
 }
 
 class MyButton {
-    static CANCEL = Symbol();
-    static OK = Symbol();
+    static HIDE = Symbol();  // `Escape` button will hide the dialog iff `HIDE` button exists
+    static DO = Symbol();
     constructor(label, action) {
         this.label = label;
         this.action = action;
@@ -327,9 +327,7 @@ function make_socket() {
         // TODO: Reconnect automatically,
         //   OR at least keep a permanent overlay message after closing the dialog.
         console.error('WebSocket closed: ', event);
-        simple_dialog('Connection lost. Please reload the page.', [
-            new MyButton('Hide', MyButton.CANCEL),
-        ]);
+        simple_dialog('Connection lost. Please reload the page.');
     });
     return socket;
 }
@@ -516,6 +514,12 @@ function process_notable_events() {
             play_audio(Sound.low_time);
         } else if (js_event_type == 'JsEventGameExportReady') {
             download(js_event.content(), 'game.pgn');
+        } else if (js_event_type == 'JsEventServerShutdown') {
+            simple_dialog(
+                "The server is shutting down for maintenance. " +
+                "We'll be back soon (usually within 15 minutes). " +
+                "Please come back later!"
+            );
         } else if (js_event_type != null) {
             throw 'Unexpected notable event: ' + js_event.toString();
         }
@@ -576,10 +580,10 @@ function update_buttons() {
 
 async function request_resign() {
     const ret = await simple_dialog('Are you sure you want to resign?', [
-        new MyButton('Keep playing', MyButton.CANCEL),
-        new MyButton('🏳️ Resign', MyButton.OK),
+        new MyButton('Keep playing', MyButton.HIDE),
+        new MyButton('🏳️ Resign', MyButton.DO),
     ]);
-    if (ret == MyButton.OK) {
+    if (ret == MyButton.DO) {
         execute_command('/resign');
     }
 }
@@ -869,6 +873,10 @@ function init_menu() {
     }
 }
 
+// Shows a dialog with a message and buttons.
+// If there is a button with `MyButton.HIDE` action, then `Escape` will close the dialog and
+// also return `MyButton.HIDE`. If there are no buttons with `MyButton.HIDE` action, then
+// `Escape` key will be ignored.
 function simple_dialog(message, buttons) {
     return new Promise(resolve => {
         const dialog = document.createElement('dialog');
@@ -878,20 +886,26 @@ function simple_dialog(message, buttons) {
         message_node.textContent = message;
         const button_box = document.createElement('div');
         button_box.className = 'simple-dialog-button-box';
-        for (const button of buttons) {
+        let can_cancel = false;
+        for (const button of (buttons || [])) {
             const button_node = document.createElement('button');
             button_node.type = 'button';
             button_node.textContent = button.label;
             const action = button.action;
+            can_cancel ||= (action == MyButton.HIDE);
             button_node.addEventListener('click', (event) => {
                 dialog.close();
                 resolve(action);
             });
-            dialog.addEventListener('cancel', (event) => {
-                resolve(MyButton.CANCEL);
-            });
             button_box.appendChild(button_node);
         }
+        dialog.addEventListener('cancel', (event) => {
+            if (can_cancel) {
+                resolve(MyButton.HIDE);
+            } else {
+                event.preventDefault();
+            }
+        });
         dialog.appendChild(message_node);
         dialog.appendChild(button_box);
         dialog.showModal();
