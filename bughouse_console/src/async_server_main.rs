@@ -142,8 +142,6 @@ fn check_origin<T>(req: &tide::Request<T>) -> tide::Result<()> {
     )?;
 
     // Derive the allowed origin from this request's URL.
-    // This means, for example, that if that websocket requests
-    // originating from a different website.
     // For this to work, both the websocket endpoint and originating
     // web page need to be hosted on the same host and port.
     // If that changes, we'll need to check the Origin header against
