@@ -39,6 +39,8 @@ pub enum SessionOptions {
     WithNewRandomSecret,
 
     // Allows for sessions that survive server restart.
+    // TODO: Support persistent sessions.
+    #[allow(dead_code)]
     WithSecret(Vec<u8>),
 }
 
