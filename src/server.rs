@@ -43,11 +43,16 @@ pub enum IncomingEvent {
 #[derive(Debug)]
 pub struct GameState {
     game: BughouseGame,
-    // We need both an Instant and an OffsetDateTime: the instant time is used
-    // for monotonic in-game time tracking, and the offset time is used for
-    // communication with outside world about absolute moments in time.
+    // `game_creation` is the time when seating and starting position were
+    // generated and presented to the users.
+    game_creation: Instant,
+    // `game_start` is the time when the clock started after a player made their
+    // first turn. We need both an Instant and an OffsetDateTime: the instant
+    // time is used for monotonic in-game time tracking, and the offset time is
+    // used for communication with outside world about absolute moments in time.
     game_start: Option<Instant>,
     game_start_offset_time: Option<time::OffsetDateTime>,
+    game_end: Option<Instant>,
     preturns: Preturns,
     chalkboard: Chalkboard,
 }
@@ -188,14 +193,19 @@ impl ops::IndexMut<ClientId> for Clients {
 }
 
 
+enum ContestActivity {
+    Present,
+    Past(Instant),
+}
+
 struct Contest {
     contest_id: ContestId,
+    contest_creation: Instant,
     rules: Rules,
     participants: Participants,
     scores: Scores,
     match_history: Vec<BughouseGame>,  // final game states
     game_state: Option<GameState>,  // active game or latest game
-    last_activity: Instant,  // for GC
     board_assignment_override: Option<Vec<PlayerInGame>>,  // for tests
 }
 
@@ -293,14 +303,16 @@ impl CoreServerState {
                 attempts_at_this_len = 0;
             }
         }
+        // TODO: Verify that time limit is not too large: the contest will not be GCed while the
+        //   clock's ticking even if all players left.
         let contest = Contest {
             contest_id: id.clone(),
+            contest_creation: now,
             rules,
             participants: Participants::new(),
             scores: Scores::new(),
             match_history: Vec::new(),
             game_state: None,
-            last_activity: now,
             board_assignment_override: None,
         };
         assert!(self.contests.insert(id.clone(), contest).is_none());
@@ -392,7 +404,6 @@ impl CoreServerState {
         contest.test_flags(ctx, now);
         contest.process_client_event(ctx, client_id, now, event);
         contest.post_process(ctx, now);
-        contest.last_activity = now;
     }
 
     fn on_tick(&mut self, ctx: &mut Context, now: Instant) {
@@ -408,7 +419,10 @@ impl CoreServerState {
         // Improvement potential. O(1) time GC.
         // Improvement potential. GC unused contests (zero games and/or no players) sooner.
         self.contests.retain(|_, contest| {
-            contest.last_activity.duration_since(now) <= CONTEST_GC_INACTIVITY_THRESHOLD
+            match contest.latest_activity() {
+                ContestActivity::Present => true,
+                ContestActivity::Past(t) => now.duration_since(t) <= CONTEST_GC_INACTIVITY_THRESHOLD
+            }
         });
     }
 
@@ -424,14 +438,36 @@ impl CoreServerState {
 }
 
 impl Contest {
+    fn latest_activity(&self) -> ContestActivity {
+        if let Some(GameState{ game_creation, game_start, game_end, .. }) = self.game_state {
+            if let Some(game_end) = game_end {
+                ContestActivity::Past(game_end)
+            } else if game_start.is_some() {
+                ContestActivity::Present
+            } else {
+                // Since `latest_activity` is used for things like contest GC, we do not want to
+                // count the period between game creation and game start as activity:
+                //   - In a normal case players will start the game soon, so the contest will not
+                //     be GCed;
+                //   - In a pathological case the contest could stay in this state indefinitely,
+                //     leading to an unrecoverable leak. The only safe time to consider a contest to
+                //     be active is when a game is when the game is active and the clock's ticking,
+                //     because this period is inherently time-bound.
+                ContestActivity::Past(game_creation)
+            }
+        } else {
+            ContestActivity::Past(self.contest_creation)
+        }
+    }
+
     fn test_flags(&mut self, ctx: &mut Context, now: Instant) {
-        if let Some(GameState{ game_start, ref mut game, ref mut preturns, .. }) = self.game_state {
+        if let Some(GameState{ game_start, ref mut game_end, ref mut game, ref mut preturns, .. }) = self.game_state {
             if let Some(game_start) = game_start {
                 if game.status() == BughouseGameStatus::Active {
                     let game_now = GameInstant::from_now_game_active(game_start, now);
                     game.test_flag(game_now);
                     if game.status() != BughouseGameStatus::Active {
-                        update_state_on_game_over(game, preturns, &mut self.participants, &mut self.scores);
+                        update_state_on_game_over(game, preturns, &mut self.participants, &mut self.scores, game_end, now);
                         let ev = BughouseServerEvent::GameOver {
                             time: game_now,
                             game_status: game.status(),
@@ -592,6 +628,7 @@ impl Contest {
         let Some(GameState{
                 ref mut game_start,
                 ref mut game_start_offset_time,
+                ref mut game_end,
                 ref mut game,
                 ref mut preturns, ..
             }) = self.game_state else {
@@ -611,7 +648,7 @@ impl Contest {
                 let mut turns = vec![];
                 let game_now = GameInstant::from_now_game_maybe_active(*game_start, now);
                 match apply_turn(
-                    game_now, player_bughouse_id, turn_input, game, preturns, participants, scores
+                    game_now, player_bughouse_id, turn_input, game, preturns, participants, scores, game_end, now
                 ) {
                     Ok(turn_event) => {
                         if game_start.is_none() {
@@ -622,7 +659,7 @@ impl Contest {
                         let opponent_bughouse_id = player_bughouse_id.opponent();
                         if let Some(preturn) = preturns.remove(&opponent_bughouse_id) {
                             if let Ok(preturn_event) = apply_turn(
-                                game_now, opponent_bughouse_id, preturn, game, preturns, participants, scores
+                                game_now, opponent_bughouse_id, preturn, game, preturns, participants, scores, game_end, now
                             ) {
                                 turns.push(preturn_event);
                             }
@@ -673,7 +710,7 @@ impl Contest {
     }
 
     fn process_resign(&mut self, ctx: &mut Context, client_id: ClientId, now: Instant) -> EventResult {
-        let Some(GameState{ ref mut game, ref mut preturns, game_start, .. }) = self.game_state else {
+        let Some(GameState{ ref mut game, ref mut preturns, game_start, ref mut game_end, .. }) = self.game_state else {
             return Err("Cannot resign: no game in progress".to_owned());
         };
         if game.status() != BughouseGameStatus::Active {
@@ -693,7 +730,7 @@ impl Contest {
         let participants = &mut self.participants;
         let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
         game.set_status(status, game_now);
-        update_state_on_game_over(game, preturns, participants, scores);
+        update_state_on_game_over(game, preturns, participants, scores, game_end, now);
         let ev = BughouseServerEvent::GameOver {
             time: game_now,
             game_status: status,
@@ -834,8 +871,10 @@ impl Contest {
         self.init_scores();
         self.game_state = Some(GameState {
             game,
+            game_creation: now,
             game_start: None,
             game_start_offset_time: None,
+            game_end: None,
             preturns: HashMap::new(),
             chalkboard: Chalkboard::new(),
         });
@@ -1019,18 +1058,22 @@ fn current_game_time(game_state: &GameState, now: Instant) -> GameInstant {
 
 fn apply_turn(
     game_now: GameInstant, player_bughouse_id: BughousePlayerId, turn_input: TurnInput,
-    game: &mut BughouseGame, preturns: &mut Preturns, participants: &mut Participants, scores: &mut Scores
+    game: &mut BughouseGame, preturns: &mut Preturns, participants: &mut Participants, scores: &mut Scores,
+    game_end: &mut Option<Instant>, now: Instant,
 ) -> Result<TurnRecord, TurnError> {
     game.try_turn_by_player(player_bughouse_id, &turn_input, TurnMode::Normal, game_now)?;
     if game.status() != BughouseGameStatus::Active {
-        update_state_on_game_over(game, preturns, participants, scores);
+        update_state_on_game_over(game, preturns, participants, scores, game_end, now);
     }
     Ok(game.last_turn_record().unwrap().trim_for_sending())
 }
 
 fn update_state_on_game_over(
-    game: &BughouseGame, preturns: &mut Preturns, participants: &mut Participants, scores: &mut Scores
+    game: &BughouseGame, preturns: &mut Preturns, participants: &mut Participants, scores: &mut Scores,
+    game_end: &mut Option<Instant>, now: Instant,
 ) {
+    assert!(game_end.is_none());
+    *game_end = Some(now);
     preturns.clear();
     let team_scores = match game.status() {
         BughouseGameStatus::Active => panic!("It just so happens that the game here is only mostly over"),
