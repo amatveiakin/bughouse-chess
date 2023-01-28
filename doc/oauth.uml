@@ -1,0 +1,24 @@
+@startuml
+title Bughouse oauth
+
+Browser->Server: GET bughouse.pro/auth/login
+note left of Server: Generates redirect URL using oauth2,\nasking for openid+email+profile scope
+Server->Browser: Redirects to accounts.google.com/...\nsets the CSRF cookie=<csrf_token>
+Browser->Google: Completes the login & consent form
+note left of Google: Verifies identity
+Google->Browser: Redirects to bughouse.pro/auth/session?code=<...>&state=<csrf_token>
+Browser->Server: GET bughouse.pro/auth/session?code=<...>&state=<csrf_token>
+note left of Server: Checks csrf token and\nexchanges code for access token
+Server->Google: Code
+note left of Google: Part of oauth2 API
+Google->Server: Access token
+Server->Google: GET userinfo?access_token=<...>
+note left of Google: Userinfo API
+Google->Server: userinfo {...}
+note left of Server: Starts a session with user info inside
+Server->Browser: "Login successful" + session cookie
+Browser->Server: Handshake + cookie on websocket endpoint
+note left of Server: Checks the cookie\nand Origin header
+Server->Browser: Websocket accepted
+note left of Server: Knows the identity behind\nthe websocket at this point
+@enduml
