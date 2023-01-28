@@ -659,11 +659,7 @@ impl WebClient {
             }
             update_turn_log(&game, board_idx, display_board_idx)?;
         }
-        if is_clock_ticking(&game, my_id) {
-            document.body()?.class_list().add_1("active-player")?
-        } else {
-            document.body()?.class_list().remove_1("active-player")?
-        }
+        document.body()?.class_list().toggle_with_force("active-player", is_clock_ticking(&game, my_id))?;
         self.repaint_chalk()?;
         if alt_game.status() != BughouseGameStatus::Active {
             // Safe to use `game_confirmed` here, because there could be no local status
@@ -1227,11 +1223,7 @@ fn update_turn_log(
 
 fn setup_participation_mode(observer: bool) -> JsResult<()> {
     let body = web_document().body()?;
-    if observer {
-        body.class_list().add_1("observer")?
-    } else {
-        body.class_list().remove_1("observer")?
-    }
+    body.class_list().toggle_with_force("observer", observer)?;
     Ok(())
 }
 
