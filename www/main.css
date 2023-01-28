@@ -158,13 +158,6 @@ body.observer #page {
 #command { grid-area: command; }
 #button-panel { grid-area: button-panel; }
 
-.centered {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-
 .align-left {
   width: 100%;
   text-align: left;
@@ -560,45 +553,13 @@ dialog ::-webkit-scrollbar-thumb {
   right: 0.5em;
   font-size: 60%;
   color: #ffffff60;
+  z-index: -10;
 }
-
-#project-info {
-  position: absolute;
-  bottom: 0.5em;
-  right: 0.5em;
-  text-align: right;
-  font-size: 60%;
-  color: #ffffff60;
-}
-#project-info a {
-  color: #ffffff60;
-}
-
-#reconnecting {
-  font-size: 1.5em;
-  text-align: center;
-  text-shadow: #000000 0.05em 0.05em 0.05em, #000000 0 0 0.4em, #000000 0 0 0.4em;
-  z-index: 30;
-  pointer-events: none;
-}
-
-.dot {
-  display: inline-block;
-  animation-name: bouncing;
-  animation-duration: 1000ms;
-  animation-iteration-count: infinite;
-  animation-timing-function: ease-out;
-}
-.dot:nth-child(2) {
-  animation-delay: 125ms;
-}
-.dot:nth-child(3) {
-  animation-delay: 250ms;
-}
-@keyframes bouncing {
-  0%  { transform: none; }
-  20% { transform: translateY(-.3em); }
-  40% { transform: none; }
+#connection-info.bad-connection {
+  font-weight: bold;
+  background-color: #ffd0d0c0;
+  border: 0.5em solid transparent;
+  color: #6e0000;
 }
 
 .tooltip {

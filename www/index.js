@@ -76,8 +76,6 @@ const SearchParams = {
 const git_version = document.getElementById('git-version');
 const info_string = document.getElementById('info-string');
 const connection_info = document.getElementById('connection-info');
-// TODO: Use or delete (together with HTML and CSS)
-// const reconnecting_message = document.getElementById('reconnecting');
 
 const menu_dialog = document.getElementById('menu-dialog');
 const menu_start_page = document.getElementById('menu-start-page');
@@ -553,6 +551,7 @@ function update_connection_status() {
     const ms = (s == null) ? '–––' : Math.round(s * 1000);
     const ms_str = ms.toString().padStart(4, FIGURE_SPACE);
     connection_info.textContent = `Ping: ${ms_str} ms`;
+    connection_info.classList.toggle('bad-connection', s >= 3.0);
 }
 
 function update_buttons() {
