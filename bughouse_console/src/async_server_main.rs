@@ -132,6 +132,49 @@ async fn handle_connection<S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'st
     Ok(())
 }
 
+fn check_origin<T>(req: &tide::Request<T>) -> tide::Result<()> {
+    let origin = req.header(http_types::headers::ORIGIN).map_or(
+        Err(tide::Error::from_str(
+            http_types::StatusCode::Forbidden,
+            "Failed to get Origin header of the websocket request.",
+        )),
+        |origins| Ok(origins.last().as_str()),
+    )?;
+
+    // Derive the allowed origin from this request's URL.
+    // This means, for example, that if that websocket requests
+    // originating from a different website.
+    // For this to work, both the websocket endpoint and originating
+    // web page need to be hosted on the same host and port.
+    // If that changes, we'll need to check the Origin header against
+    // an allow-list.
+    if req.url().origin().ascii_serialization() != origin {
+        if req.url().host() == Some(url::Host::Domain("localhost")) {
+            let host = req.header(http_types::headers::HOST).map_or(
+                Err(tide::Error::from_str(
+                    http_types::StatusCode::Forbidden,
+                    "Failed to get Host header of the localhost websocket request.",
+                )),
+                |origins| Ok(origins.last().as_str()),
+            )?;
+            if host == "localhost" || host.starts_with("localhost") {
+                return Ok(());
+            }
+            return Err(tide::Error::from_str(
+                http_types::StatusCode::Forbidden,
+                "Request to localhost from non-localhost origin.",
+            ));
+        }
+
+        return Err(tide::Error::from_str(
+            http_types::StatusCode::Forbidden,
+            "Origin header on the websocket request does not match
+                 the expected host",
+        ));
+    }
+    Ok(())
+}
+
 pub fn run(config: ServerConfig) {
     assert!(
         config.auth_options == AuthOptions::NoAuth
@@ -339,10 +382,17 @@ pub fn run(config: ServerConfig) {
             }
         });
 
-    app.at("/").get(move |req: tide::Request<_>| {
+    app.at("/").get(move |req: tide::Request<HttpServerState>| {
         let mytx = tx.clone();
         let myclients = clients.clone();
         async move {
+            if req.state().sessions_enabled {
+                // When the sessions are enabled, we might be using the session
+                // cookie for authentication.
+                // We should be checking request origin in that case to
+                // preven CSRF, to which websockets are inherently vulnerable.
+                check_origin(&req)?;
+            }
             let peer_addr = req.peer_addr().map_or_else(
                 || {
                     Err(tide::Error::from_str(
