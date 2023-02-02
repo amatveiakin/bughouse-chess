@@ -155,7 +155,7 @@ fn check_origin<T>(req: &tide::Request<T>) -> tide::Result<()> {
                 )),
                 |origins| Ok(origins.last().as_str()),
             )?;
-            if host == "localhost" || host.starts_with("localhost") {
+            if host == "localhost" || host.starts_with("localhost:") {
                 return Ok(());
             }
             return Err(tide::Error::from_str(
