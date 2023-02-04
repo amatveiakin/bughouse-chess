@@ -174,6 +174,7 @@ impl ClientState {
     // TODO: Reduce public mutability. This is used only for drag&drop, so limit the mutable API to that.
     pub fn alt_game_mut(&mut self) -> Option<&mut AlteredGame> { self.game_state_mut().map(|s| &mut s.alt_game) }
 
+    pub fn my_faction(&self) -> Option<Faction> { self.contest().map(|c| c.my_faction) }
     pub fn my_id(&self) -> Option<BughouseParticipantId> { self.game_state().map(|s| s.alt_game.my_id()) }
     pub fn my_name(&self) -> Option<&str> {
         match &self.contest_state {

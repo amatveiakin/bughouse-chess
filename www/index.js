@@ -559,19 +559,22 @@ function update_connection_status() {
 }
 
 function update_buttons() {
+    const SHOW = null;
+    const HIDE = 'none';
+    const observer_status = wasm_client().observer_status();
     const game_status = wasm_client().game_status();
     switch (game_status) {
         case 'active':
-            resign_button.style.display = null;
-            ready_button.style.display = 'none';
+            resign_button.style.display = (observer_status == 'no') ? SHOW : HIDE;
+            ready_button.style.display = HIDE;
             break;
         case 'over':
-            resign_button.style.display = 'none';
-            ready_button.style.display = null;
+            resign_button.style.display = HIDE;
+            ready_button.style.display = (observer_status == 'permanently') ? HIDE : SHOW;
             break;
         case 'none':
-            resign_button.style.display = 'none';
-            ready_button.style.display = 'none';
+            resign_button.style.display = HIDE;
+            ready_button.style.display = HIDE;
             break;
         default:
             throw new Error(`Unknown game status: ${game_status}`);

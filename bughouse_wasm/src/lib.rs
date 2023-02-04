@@ -187,6 +187,23 @@ impl WebClient {
         self.state.current_turnaround_time().map(|t| t.as_secs_f64())
     }
 
+    pub fn observer_status(&self) -> String {
+        let Some(my_faction) = self.state.my_faction() else {
+            return "no".to_owned();
+        };
+        match my_faction {
+            Faction::Observer => "permanently",
+            Faction::Fixed(_) | Faction::Random => {
+                let my_id = self.state.my_id();
+                if matches!(my_id, Some(BughouseParticipantId::Observer(_))) {
+                    "temporary"
+                } else {
+                    "no"
+                }
+            }
+        }.to_owned()
+    }
+
     pub fn game_status(&self) -> String {
         if let Some(game_state) = self.state.game_state() {
             if game_state.alt_game.status() == BughouseGameStatus::Active {
