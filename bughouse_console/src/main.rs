@@ -26,7 +26,9 @@ pub mod tui;
 
 mod async_server_main;
 mod auth;
+mod auth_handlers_tide;
 mod client_main;
+mod http_server_state;
 mod sqlx_server_hooks;
 mod server_main;
 mod session;
