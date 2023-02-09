@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use indoc::formatdoc;
 use serde::{Serialize, Deserialize};
 
 use crate::coord::SubjectiveRow;
@@ -131,13 +132,13 @@ impl Rules {
             true => "Rated",
             false => "Unrated",
         };
-        format!(
-"Teaming: {teaming}
-Starting position: {starting_position}
-Time control: {time_control}
-Drop aggression: {drop_aggression}
-Pawn drop rows: {pawn_drop_rows}
-Rating: {rating}"
-        )
+        formatdoc!("
+            Teaming: {teaming}
+            Starting position: {starting_position}
+            Time control: {time_control}
+            Drop aggression: {drop_aggression}
+            Pawn drop rows: {pawn_drop_rows}
+            Rating: {rating}
+        ")
     }
 }

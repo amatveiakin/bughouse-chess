@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 use std::time::Duration;
 
 use enum_map::{EnumMap, enum_map};
+use indoc::printdoc;
 use instant::Instant;
 use itertools::Itertools;
 use log::{info, warn};
@@ -473,15 +474,12 @@ impl CoreServerState {
                     println!("There are no active contests. Shutting down immediately!");
                     shutdown();
                 } else {
-                    println!(
-                        concat!(
-                            "Shutdown requested!\n",
-                            "The server will not allow to start new contests or games. It will terminate as\n",
-                            "soon as there are no active contests. There are currently {} active contests.\n{}",
-                        ),
-                        num_active_contests,
-                        ABORT_INSTRUCTION,
-                    );
+                    printdoc!("
+                        Shutdown requested!
+                        The server will not allow to start new contests or games. It will terminate as
+                        soon as there are no active contests. There are currently {num_active_contests} active contests.
+                        {ABORT_INSTRUCTION}
+                    ");
                     self.execution = Execution::ShuttingDown {
                         shutting_down_since: now,
                         last_termination_request: now,

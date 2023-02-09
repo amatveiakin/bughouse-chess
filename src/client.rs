@@ -316,14 +316,11 @@ impl ClientState {
                 match rejection {
                     BughouseServerRejection::PlayerAlreadyExists{ player_name } => {
                         // TODO: Fix the message ("browser tab" part) for the console client.
-                        return Err(EventError::IgnorableError(format!(
-                            concat!(
-                                "Cannot join: player {} already exists. If this is you, ",
-                                "make sure you are not connected to the same game in another browser tab. ",
-                                "If you still can't connect, please try again in a few seconds."
-                            ),
-                            player_name
-                        )));
+                        return Err(EventError::IgnorableError(format!("\
+                            Cannot join: player {player_name} already exists. If this is you, \
+                            make sure you are not connected to the same game in another browser tab. \
+                            If you still can't connect, please try again in a few seconds.\
+                        ")));
                     },
                     BughouseServerRejection::NoSuchContest{ contest_id } => {
                         return Err(EventError::IgnorableError(format!(
@@ -331,11 +328,11 @@ impl ClientState {
                         )));
                     },
                     BughouseServerRejection::ShuttingDown => {
-                        return Err(EventError::FatalError(concat!(
-                            "The server is shutting down for maintenance. ",
-                            "We'll be back soon (usually within 15 minutes). ",
-                            "Please come back later!",
-                        ).to_owned()));
+                        return Err(EventError::FatalError("\
+                            The server is shutting down for maintenance. \
+                            We'll be back soon (usually within 15 minutes). \
+                            Please come back later!\
+                        ".to_owned()));
                     },
                     BughouseServerRejection::UnknownError{ message } => {
                         return Err(internal_error!("Got error from server: {}", message));
