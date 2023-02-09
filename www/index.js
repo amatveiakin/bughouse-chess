@@ -388,11 +388,6 @@ function execute_command(input) {
         if (input.startsWith('/')) {
             const args = input.slice(1).split(/\s+/);
             switch (args[0]) {
-                case 'team': {
-                    const [faction] = get_args(args, ['red:blue:random:observer']);
-                    wasm_client().set_faction(faction);
-                    break;
-                }
                 case 'sound': {
                     const expected_args = ['0:1:2:3'];
                     const [value] = get_args(args, expected_args);
@@ -415,10 +410,6 @@ function execute_command(input) {
                 case 'ready':
                     get_args(args, []);
                     wasm_client().toggle_ready();
-                    break;
-                case 'leave':
-                    get_args(args, []);
-                    wasm_client().leave();
                     break;
                 case 'save':
                     get_args(args, []);

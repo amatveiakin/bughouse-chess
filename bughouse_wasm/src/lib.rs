@@ -296,21 +296,6 @@ impl WebClient {
     pub fn join(&mut self, contest_id: String, my_name: String) {
         self.state.join(contest_id, my_name);
     }
-    pub fn set_faction(&mut self, faction: &str) -> JsResult<()> {
-        let faction = match faction {
-            "red" => Faction::Fixed(Team::Red),
-            "blue" => Faction::Fixed(Team::Blue),
-            "random" => Faction::Random,
-            "observer" => Faction::Observer,
-            _ => {
-                let info_string = web_document().get_existing_element_by_id("info-string")?;
-                info_string.set_text_content(Some(r#"Supported teams are "red", "blue", "random" and "observer""#));
-                return Ok(());
-            }
-        };
-        self.state.set_faction(faction);
-        Ok(())
-    }
     pub fn resign(&mut self) {
         self.state.resign();
     }
@@ -324,9 +309,6 @@ impl WebClient {
     }
     pub fn previous_faction(&mut self) {
         self.change_faction(|f| f - 1);
-    }
-    pub fn leave(&mut self) {
-        self.state.leave();
     }
     pub fn request_export(&mut self) -> JsResult<()> {
         let format = pgn::BughouseExportFormat{};

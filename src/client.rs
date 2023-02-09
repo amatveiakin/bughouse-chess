@@ -239,6 +239,9 @@ impl ClientState {
         }
     }
     pub fn leave(&mut self) {
+        // TODO: Do we need this? On the one hand, it's not necessary: detecting connection closure
+        //   seems to work well on server. On the other hand, we cannot send it reliably from the web
+        //   client when the tab is closed (especially if it was in background at that moment).
         self.connection.send(BughouseClientEvent::Leave);
     }
     pub fn report_performance(&mut self) {
