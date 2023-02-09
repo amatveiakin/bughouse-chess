@@ -248,7 +248,7 @@ function with_error_handling(f) {
         } else if (e instanceof InvalidCommand) {
             info_string.innerText = e.msg;
         } else if (e?.constructor?.name == 'RustError') {
-            const msg = `Internal Rust error: ${e.message()}`;
+            const msg = `Internal Rust error: ${e.message}`;
             info_string.innerText = msg;
             if (socket.readyState == WebSocket.OPEN) {
                 socket.send(wasm.make_rust_error_event(e));
@@ -485,7 +485,7 @@ function process_notable_events() {
             // Noop, but other events might be coming.
         } else if (js_event_type == 'JsEventContestStarted') {
             const url = new URL(window.location);
-            url.searchParams.set(SearchParams.contest_id, js_event.contest_id());
+            url.searchParams.set(SearchParams.contest_id, js_event.contest_id);
             window.history.pushState({}, '', url);
         } else if (js_event_type == 'JsEventGameStarted') {
             close_menu();
@@ -495,7 +495,7 @@ function process_notable_events() {
                 'defeat': Sound.defeat,
                 'draw': Sound.draw,
             };
-            const sound = sound_map[js_event.result()];
+            const sound = sound_map[js_event.result];
             play_audio(sound);
         } else if (js_event_type == 'JsEventTurnMade') {
             play_audio(Sound.turn);
@@ -504,7 +504,7 @@ function process_notable_events() {
         } else if (js_event_type == 'JsEventLowTime') {
             play_audio(Sound.low_time);
         } else if (js_event_type == 'JsEventGameExportReady') {
-            download(js_event.content(), 'game.pgn');
+            download(js_event.content, 'game.pgn');
         } else if (js_event_type == 'JsEventServerShutdown') {
             simple_dialog(
                 "The server is shutting down for maintenance. " +

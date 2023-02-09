@@ -71,14 +71,8 @@ pub fn last_panic() -> String {
     LAST_PANIC.with(|cell| cell.borrow().clone())
 }
 
-#[wasm_bindgen]
-pub struct RustError {
-    message: String,
-}
-#[wasm_bindgen]
-impl RustError {
-    pub fn message(&self) -> String { self.message.clone() }
-}
+#[wasm_bindgen(getter_with_clone)]
+pub struct RustError { pub message: String }
 
 macro_rules! rust_error {
     ($($arg:tt)*) => {
@@ -120,14 +114,14 @@ impl JsMeter {
 #[wasm_bindgen]
 pub struct JsEventNoop {}  // in contrast to `null`, indicates that event list is not over
 
-#[wasm_bindgen]
-pub struct JsEventContestStarted { contest_id: String }
+#[wasm_bindgen(getter_with_clone)]
+pub struct JsEventContestStarted { pub contest_id: String }
 
 #[wasm_bindgen]
 pub struct JsEventGameStarted {}
 
-#[wasm_bindgen]
-pub struct JsEventGameOver { result: String }
+#[wasm_bindgen(getter_with_clone)]
+pub struct JsEventGameOver { pub result: String }
 
 #[wasm_bindgen]
 pub struct JsEventTurnMade {}
@@ -138,26 +132,11 @@ pub struct JsEventMyReserveRestocked {}
 #[wasm_bindgen]
 pub struct JsEventLowTime {}
 
-#[wasm_bindgen]
-pub struct JsEventGameExportReady { content: String }
+#[wasm_bindgen(getter_with_clone)]
+pub struct JsEventGameExportReady { pub content: String }
 
 #[wasm_bindgen]
 pub struct JsEventServerShutdown {}
-
-#[wasm_bindgen]
-impl JsEventContestStarted {
-    pub fn contest_id(&self) -> String { self.contest_id.clone() }
-}
-
-#[wasm_bindgen]
-impl JsEventGameOver {
-    pub fn result(&self) -> String { self.result.clone() }
-}
-
-#[wasm_bindgen]
-impl JsEventGameExportReady {
-    pub fn content(&self) -> String { self.content.clone() }
-}
 
 
 #[wasm_bindgen]
