@@ -37,7 +37,7 @@ const CONTEST_GC_INACTIVITY_THRESHOLD: Duration = Duration::from_secs(3600 * 24)
 
 macro_rules! unknown_error {
     ($($arg:tt)*) => {
-        BughouseServerRejection::UnknownError(format!($($arg)*))
+        BughouseServerRejection::UnknownError{ message: format!($($arg)*) }
     }
 }
 
@@ -427,7 +427,9 @@ impl CoreServerState {
 
         let Some(contest_id) = contest_id else {
             // We've already processed all events that do not depend on a contest.
-            ctx.clients[client_id].send_rejection(unknown_error!("Cannot process event: no contest in progress"));
+            ctx.clients[client_id].send_rejection(
+                unknown_error!("Cannot process event: no contest in progress")
+            );
             return;
         };
 
@@ -436,7 +438,9 @@ impl CoreServerState {
             // to join with a bad contest_id. In other cases we are getting contest_id from
             // trusted internal sources, so the contest must exist as well.
             assert!(matches!(event, BughouseClientEvent::Join{ .. }));
-            ctx.clients[client_id].send_rejection(unknown_error!(r#"Cannot join "{}": no such contest"#, contest_id.0));
+            ctx.clients[client_id].send_rejection(BughouseServerRejection::NoSuchContest {
+                contest_id: contest_id.0
+            });
             return;
         };
 
@@ -658,7 +662,7 @@ impl Contest {
                 );
                 if let Some(existing_client_id) = existing_client_id {
                     if ctx.clients[existing_client_id].connection_monitor.status(now) == PassiveConnectionStatus::Healthy {
-                        return Err(unknown_error!(r#"Cannot join: client for player "{}" already connected"#, player_name))
+                        return Err(BughouseServerRejection::PlayerAlreadyExists{ player_name });
                     } else {
                         ctx.clients.remove_client(existing_client_id);
                     }
@@ -692,9 +696,11 @@ impl Contest {
         } else {
             // TODO: Allow to kick players from the lobby when the old client is offline (even temporary).
             if self.participants.find_by_name(&player_name).is_some() {
-                return Err(unknown_error!("Cannot join: player \"{}\" already exists", player_name));
+                return Err(BughouseServerRejection::PlayerAlreadyExists{ player_name });
             }
             if !is_valid_player_name(&player_name) {
+                // This is unexpected, because the client must have checked player name according
+                // to the same rules.
                 return Err(unknown_error!("Invalid player name: \"{}\"", player_name))
             }
             if !matches!(execution, Execution::Running) {
@@ -729,7 +735,7 @@ impl Contest {
         match (faction, self.rules.bughouse_rules.teaming) {
             (Faction::Fixed(_), Teaming::FixedTeams) => {}
             (Faction::Fixed(_), Teaming::IndividualMode) => {
-                return Err(unknown_error!("cannot set fixed team in individual mode"));
+                return Err(unknown_error!("Cannot set fixed team in individual mode"));
             },
             (Faction::Random, _) => {},
             (Faction::Observer, _) => {},
@@ -779,12 +785,13 @@ impl Contest {
                                 game_now, opponent_bughouse_id, preturn, game, preturns, participants, scores, game_end, now
                             ) {
                                 turns.push(preturn_event);
+                            } else {
+                                // It is completely fine for a preturn to fail. No need to do anything.
                             }
-                            // Improvement potential: Report preturn error as well.
                         }
                     },
                     Err(error) => {
-                        return Err(unknown_error!("Impossible turn: {:?}", error));
+                        return turn_error_to_event_result(error);
                     },
                 }
                 let ev = BughouseServerEvent::TurnsMade {
@@ -807,7 +814,7 @@ impl Contest {
                 }
             },
             Err(error) => {
-                Err(unknown_error!("Impossible turn: {:?}", error))
+                turn_error_to_event_result(error)
             },
         }
     }
@@ -1148,6 +1155,7 @@ impl Contest {
 }
 
 fn is_valid_player_name(name: &str) -> bool {
+    // TODO: Convert to NFC (here and in the web client).
     const MAX_NAME_LENGTH: usize = 16;
     if name.is_empty() || name.chars().count() > MAX_NAME_LENGTH {
         false
@@ -1175,6 +1183,16 @@ fn current_game_time(game_state: &GameState, now: Instant) -> GameInstant {
             .min()
             .unwrap();
         GameInstant::from_duration(elapsed_since_start)
+    }
+}
+
+fn turn_error_to_event_result(error: TurnError) -> EventResult {
+    match error {
+        TurnError::GameOver => {
+            // Ignore: it's possible that an event from client arrived after the game ended.
+            Ok(())
+        },
+        _ => Err(unknown_error!("Invalid turn: {:?}", error))
     }
 }
 

@@ -109,8 +109,8 @@ body.observer #page {
     ".  prim-name-bot   .  prim-rsrv-bot     .      scnd-rsrv-bot  .   scnd-name-bot  ."
     ".        .         .  prim-rsrv-bot     .      scnd-rsrv-bot  .  scr-individual  ."
     ".        .         .      info          .        command      .  scr-individual  ."
-    ".        .         .      info          .      button-panel   .  scr-individual  ."
-    ".        .         .      info          .           .         .  scr-individual  ."
+    ".        .         .        .           .      button-panel   .  scr-individual  ."
+    ".        .         .        .           .           .         .  scr-individual  ."
   ;
   grid-template-columns:
     1fr
@@ -154,7 +154,7 @@ body.observer #page {
 #clock-container-secondary-bottom { grid-area: scnd-clock-bot; }
 #turn-log-container-secondary { grid-area: scnd-log; }
 
-#info-string-container { grid-area: info; }
+#info-container { grid-area: info; }
 #command { grid-area: command; }
 #button-panel { grid-area: button-panel; }
 
@@ -306,7 +306,7 @@ body.observer #page {
   height: calc(var(--sq-size-primary) * 8);
   user-select: none;
   touch-action: none;
-  z-index: 20;  /* show dragged pieces above other UI elements */
+  z-index: 10;  /* show dragged pieces above other UI elements */
 }
 #board-secondary {
   width: calc(var(--sq-size-secondary) * 8);
@@ -436,25 +436,26 @@ body.observer .clock-active.clock-low-time {
   padding: calc(var(--sq-size-primary) * 0.1) 0;
 }
 
-#info-string-container {
-  flex: 1;
+#info-container {
   margin-bottom: 0.5em;
   position: relative;
 }
-#info-string {
+#info-subcontainer {
   font-size: 90%;
-  white-space: pre-wrap;
   position: absolute;
   bottom: 0;
   left: 0;
-  /* Note: `z-index` and `background-color` are a "solution" for info-string text overflow. */
-  z-index: 10;
+  /* Note: `z-index` and `background-color` are a "solution" to text overflow. It has to be above
+     the primary board for the sake of observers. Thus dragged pieces will be below info text.
+     TODO: Find a better solution. */
+  z-index: 20;
   background-color: #1c3a0c80;
 }
-body.observer #info-string {
-  top: 0;
-  bottom: auto;
+body.observer #info-subcontainer {
   background-color: #33333380;
+}
+#info-subcontainer > div {
+  white-space: pre-wrap;
 }
 #command {
   flex-grow: 1;
@@ -784,6 +785,9 @@ dialog input:invalid:not(:placeholder-shown) {
   display: flex;
   flex-direction: row;
   gap: 0.6em;
+}
+.simple-dialog-button-box > button {
+  min-width: 6em;
 }
 
 .icon-button {

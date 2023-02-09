@@ -74,6 +74,12 @@ pub fn last_panic() -> String {
 #[wasm_bindgen(getter_with_clone)]
 pub struct RustError { pub message: String }
 
+#[wasm_bindgen(getter_with_clone)]
+pub struct IgnorableError { pub message: String }
+
+#[wasm_bindgen(getter_with_clone)]
+pub struct FatalError { pub message: String }
+
 macro_rules! rust_error {
     ($($arg:tt)*) => {
         JsValue::from(RustError{ message: format!($($arg)*) })
@@ -134,9 +140,6 @@ pub struct JsEventLowTime {}
 
 #[wasm_bindgen(getter_with_clone)]
 pub struct JsEventGameExportReady { pub content: String }
-
-#[wasm_bindgen]
-pub struct JsEventServerShutdown {}
 
 
 #[wasm_bindgen]
@@ -297,8 +300,11 @@ impl WebClient {
 
     fn make_turn(&mut self, turn_input: TurnInput) -> JsResult<()> {
         let turn_result = self.state.make_turn(turn_input);
-        let info_string = web_document().get_existing_element_by_id("info-string")?;
-        info_string.set_text_content(turn_result.as_ref().err().map(|err| format!("{:?}", err)).as_deref());
+        // Improvement potential: Human-readable error messages (and/or visual hints).
+        //   Ideally also include rule-dependent context, e.g. "Illegal drop position:
+        //   pawns can be dropped onto ranks 2–6 counting from the player".
+        let game_message = web_document().get_existing_element_by_id("game-message")?;
+        game_message.set_text_content(turn_result.as_ref().err().map(|err| format!("{:?}", err)).as_deref());
         Ok(())
     }
 
@@ -483,7 +489,11 @@ impl WebClient {
         let server_event = serde_json::from_str(event).unwrap();
         let updated_needed = !matches!(server_event, BughouseServerEvent::Pong);
         self.state.process_server_event(server_event).map_err(|err| {
-            rust_error!("{:?}", err)
+            match err {
+                EventError::IgnorableError(message) => IgnorableError{ message }.into(),
+                EventError::FatalError(message) => FatalError{ message }.into(),
+                EventError::InternalEvent(message) => rust_error!("{message}"),
+            }
         })?;
         Ok(updated_needed)
     }
@@ -499,8 +509,8 @@ impl WebClient {
                 let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
                     return Err(rust_error!("No game in progress"));
                 };
-                let info_string = web_document().get_existing_element_by_id("info-string")?;
-                info_string.set_text_content(None);
+                let game_message = web_document().get_existing_element_by_id("game-message")?;
+                game_message.set_text_content(None);
                 let my_id = alt_game.my_id();
                 let is_observer = matches!(my_id, BughouseParticipantId::Observer(_));
                 render_grids(alt_game.perspective())?;
@@ -534,7 +544,6 @@ impl WebClient {
             Some(NotableEvent::MyReserveRestocked) => Ok(JsEventMyReserveRestocked{}.into()),
             Some(NotableEvent::LowTime) => Ok(JsEventLowTime{}.into()),
             Some(NotableEvent::GameExportReady(content)) => Ok(JsEventGameExportReady{ content }.into()),
-            Some(NotableEvent::ServerShutdown) => Ok(JsEventServerShutdown{}.into()),
             None => Ok(JsValue::NULL),
         }
     }
@@ -553,7 +562,7 @@ impl WebClient {
 
     pub fn update_state(&self) -> JsResult<()> {
         let document = web_document();
-        let info_string = document.get_existing_element_by_id("info-string")?;
+        let game_message = document.get_existing_element_by_id("game-message")?;
         self.update_clock()?;
         let Some(contest) = self.state.contest() else {
             return Ok(());
@@ -646,7 +655,7 @@ impl WebClient {
         if alt_game.status() != BughouseGameStatus::Active {
             // Safe to use `game_confirmed` here, because there could be no local status
             // changes after game over.
-            info_string.set_text_content(Some(&alt_game.game_confirmed().outcome()));
+            game_message.set_text_content(Some(&alt_game.game_confirmed().outcome()));
         }
         Ok(())
     }

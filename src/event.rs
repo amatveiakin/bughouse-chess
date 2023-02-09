@@ -16,12 +16,14 @@ use crate::starter::EffectiveStartingPosition;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseServerRejection {
-    // Server is shutting down for a temporary maintenance.
+    // Cannot join: a contest with given ID does not exist.
+    NoSuchContest{ contest_id: String },
+    // Cannot join contest: there already is a player with this name and an active client.
+    PlayerAlreadyExists{ player_name: String },
+    // Server is shutting down for maintenance.
     ShuttingDown,
-
-    // TODO: Separate error codes for known errors, e.g. "Contest does not exist".
-    //   Make it so that all `UnknownError`s are internal errors that should be reported.
-    UnknownError(String),
+    // Internal error. Should be investigated.
+    UnknownError{ message: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

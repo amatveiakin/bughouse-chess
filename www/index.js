@@ -74,7 +74,8 @@ const SearchParams = {
 };
 
 const git_version = document.getElementById('git-version');
-const info_string = document.getElementById('info-string');
+const command_result = document.getElementById('command-result');
+const loading_status = document.getElementById('loading-status');
 const connection_info = document.getElementById('connection-info');
 
 const menu_dialog = document.getElementById('menu-dialog');
@@ -102,7 +103,7 @@ const volume_button = document.getElementById('volume-button');
 
 const svg_defs = document.getElementById('svg-defs');
 
-const loading_status = new class {
+const loading_tracker = new class {
     #resources_required = 0;
     #resources_loaded = 0;
     #connected = false;
@@ -127,13 +128,13 @@ const loading_status = new class {
         console.assert(this.#resources_loaded <= this.#resources_required);
         const resources_ready = this.#resources_loaded == this.#resources_required;
         if (resources_ready && this.#connected) {
-            info_string.innerText = '';
+            loading_status.innerText = '';
         } else {
             const connection_string = this.#connected ? 'Connected' : 'Connecting...';
             const resource_string = resources_ready
                 ? 'Resources loaded'
                 : `Loading resources... ${this.#resources_loaded} / ${this.#resources_required}`;
-            info_string.innerText = `${connection_string}\n${resource_string}`;
+            loading_status.innerText = `${connection_string}\n${resource_string}`;
         }
     }
 };
@@ -238,22 +239,23 @@ function with_error_handling(f) {
         f();
     } catch (e) {
         if (e instanceof WasmClientDoesNotExist) {
-            const msg = 'Not connected';
-            info_string.innerText = msg;
-            throw msg;
+            fatal_error_dialog('Internal error! WASM object does not exist.');
+            throw e;
         } else if (e instanceof WasmClientPanicked) {
-            const msg = 'The client is dead. Please reload the page.';
-            info_string.innerText = msg;
-            throw msg;
+            // Error dialog should already be shown.
+            throw e;
         } else if (e instanceof InvalidCommand) {
-            info_string.innerText = e.msg;
+            command_result.innerText = e.msg;
+        } else if (e?.constructor?.name == 'IgnorableError') {
+            ignorable_error_dialog(e.message);
+        } else if (e?.constructor?.name == 'FatalError') {
+            fatal_error_dialog(e.message);
         } else if (e?.constructor?.name == 'RustError') {
-            const msg = `Internal Rust error: ${e.message}`;
-            info_string.innerText = msg;
+            ignorable_error_dialog(`Internal Rust error: ${e.message}`);
             if (socket.readyState == WebSocket.OPEN) {
                 socket.send(wasm.make_rust_error_event(e));
             }
-            throw msg;
+            throw e;
         } else {
             const rust_panic = wasm.last_panic();
             if (rust_panic) {
@@ -263,25 +265,28 @@ function with_error_handling(f) {
                     socket.send(rust_panic);
                     reported = 'The error has been reported (unless that failed too).';
                 } else {
-                    reported = 'The error has NOT been reported: not connected to server.';
+                    reported =
+                        'The error has NOT been reported: not connected to server. ' +
+                        'Please consider reporting it to contact.bughousepro@gmail.com'
+                    ;
                 }
-                info_string.innerText =
+                fatal_error_dialog(
                     'Internal error! This client is now dead 💀 ' +
                     'Only refreshing the page may help you. We are very sorry. ' +
-                    reported;
+                    reported
+                );
                 if (on_tick_interval_id != null) {
                     clearInterval(on_tick_interval_id);
                     on_tick_interval_id = null;
                 }
             } else {
                 console.log(log_time(), 'Unknown error: ', e);
-                const msg = `Unknown error: ${e}`;
-                info_string.innerText = msg;
+                ignorable_error_dialog(`Unknown error: ${e}`);
                 if (socket.readyState == WebSocket.OPEN) {
                     // Improvement potential. Include stack trace.
                     socket.send(wasm.make_unknown_error_event(e.toString()));
                 }
-                throw msg;
+                throw e;
             }
         }
     }
@@ -320,14 +325,14 @@ function make_socket() {
         on_server_event(event.data);
     });
     socket.addEventListener('open', function(event) {
-        loading_status.connected();
+        loading_tracker.connected();
     });
     socket.addEventListener('close', (event) => {
         // TODO: Report socket errors.
         // TODO: Reconnect automatically,
         //   OR at least keep a permanent overlay message after closing the dialog.
         console.error('WebSocket closed: ', event);
-        simple_dialog('Connection lost. Please reload the page.');
+        fatal_error_dialog('Connection lost. Please reload the page.');
     });
     return socket;
 }
@@ -384,7 +389,7 @@ function on_command_keydown(event) {
 
 function execute_command(input) {
     with_error_handling(function() {
-        info_string.innerText = '';
+        let command_result_message = '';
         if (input.startsWith('/')) {
             const args = input.slice(1).split(/\s+/);
             switch (args[0]) {
@@ -396,7 +401,7 @@ function execute_command(input) {
                         throw usage_error(args, expected_args);
                     }
                     set_volume(volume);
-                    info_string.innerText = 'Applied';
+                    command_result_message = 'Applied';
                     break;
                 }
                 case 'undo':
@@ -419,7 +424,7 @@ function execute_command(input) {
                     get_args(args, []);
                     const stats = wasm_client().meter_stats();
                     console.log(stats);
-                    info_string.innerText = stats;
+                    command_result_message = stats;
                     break;
                 }
                 default:
@@ -429,6 +434,7 @@ function execute_command(input) {
             wasm_client().make_turn_algebraic(input);
         }
         update();
+        command_result.innerText = command_result_message;
     });
 }
 
@@ -462,6 +468,7 @@ function update() {
         timer.meter(Meter.update_drag_state);
         update_connection_status();
         update_buttons();
+        command_result.innerText = '';
     });
 }
 
@@ -487,6 +494,7 @@ function process_notable_events() {
             const url = new URL(window.location);
             url.searchParams.set(SearchParams.contest_id, js_event.contest_id);
             window.history.pushState({}, '', url);
+            show_menu_page(menu_lobby_page);
         } else if (js_event_type == 'JsEventGameStarted') {
             close_menu();
         } else if (js_event_type == 'JsEventGameOver') {
@@ -505,12 +513,6 @@ function process_notable_events() {
             play_audio(Sound.low_time);
         } else if (js_event_type == 'JsEventGameExportReady') {
             download(js_event.content, 'game.pgn');
-        } else if (js_event_type == 'JsEventServerShutdown') {
-            simple_dialog(
-                "The server is shutting down for maintenance. " +
-                "We'll be back soon (usually within 15 minutes). " +
-                "Please come back later!"
-            );
         } else if (js_event_type != null) {
             throw 'Unexpected notable event: ' + js_event.toString();
         }
@@ -575,7 +577,7 @@ function update_buttons() {
 async function request_resign() {
     const ret = await simple_dialog('Are you sure you want to resign?', [
         new MyButton('Keep playing', MyButton.HIDE),
-        new MyButton('🏳️ Resign', MyButton.DO),
+        new MyButton('🏳 Resign', MyButton.DO),
     ]);
     if (ret == MyButton.DO) {
         execute_command('/resign');
@@ -880,13 +882,14 @@ function simple_dialog(message, buttons) {
         message_node.textContent = message;
         const button_box = document.createElement('div');
         button_box.className = 'simple-dialog-button-box';
-        let can_cancel = false;
+        let can_hide = false;
         for (const button of (buttons || [])) {
             const button_node = document.createElement('button');
             button_node.type = 'button';
+            button_node.role = 'button';
             button_node.textContent = button.label;
             const action = button.action;
-            can_cancel ||= (action == MyButton.HIDE);
+            can_hide ||= (action == MyButton.HIDE);
             button_node.addEventListener('click', (event) => {
                 dialog.close();
                 resolve(action);
@@ -894,7 +897,7 @@ function simple_dialog(message, buttons) {
             button_box.appendChild(button_node);
         }
         dialog.addEventListener('cancel', (event) => {
-            if (can_cancel) {
+            if (can_hide) {
                 resolve(MyButton.HIDE);
             } else {
                 event.preventDefault();
@@ -902,8 +905,18 @@ function simple_dialog(message, buttons) {
         });
         dialog.appendChild(message_node);
         dialog.appendChild(button_box);
-        dialog.showModal();
+        // Delay `showModal`. If it's called directly, then the dialog gets `Enter` key press if it
+        // was the trigger, e.g. if the dialog displays an error processing command line instruction.
+        setTimeout(function() { dialog.showModal(); });
     });
+}
+
+function ignorable_error_dialog(message) {
+    simple_dialog(message, [new MyButton('Ok', MyButton.HIDE)]);
+}
+
+function fatal_error_dialog(message) {
+    simple_dialog(message);
 }
 
 function make_piece_image(symbol_id) {
@@ -923,7 +936,7 @@ async function load_image(filepath, target_id) {
     reader.addEventListener('load', () => {
         const image = document.getElementById(target_id);
         image.setAttribute('href', reader.result);
-        loading_status.resource_loaded();
+        loading_tracker.resource_loaded();
     }, false);
     reader.addEventListener('error', () => {
         console.error(`Cannot load image ${filepath}`);
@@ -939,7 +952,7 @@ function load_piece_images(image_records) {
         const image_id = `${symbol_id}-image`;
         make_piece_image(symbol_id);
         load_image(filepath, image_id);
-        loading_status.resource_required();
+        loading_tracker.resource_required();
     }
 }
 
@@ -948,7 +961,7 @@ async function load_sound(filepath, key) {
     reader.addEventListener('load', () => {
         const audio = Sound[key];
         audio.setAttribute('src', reader.result);
-        loading_status.resource_loaded();
+        loading_tracker.resource_loaded();
     }, false);
     reader.addEventListener('error', () => {
         console.error(`Cannot load sound ${filepath}`);
@@ -963,7 +976,7 @@ function load_sounds(sound_map) {
     for (const [key, filepath] of Object.entries(sound_map)) {
         ret[key] = new Audio();
         load_sound(filepath, key);
-        loading_status.resource_required();
+        loading_tracker.resource_required();
     }
     return ret;
 }
@@ -1004,7 +1017,6 @@ function on_create_contest_confirm(event) {
             data.get('rating'),
         );
         update();
-        show_menu_page(menu_lobby_page);
     });
 }
 
@@ -1016,7 +1028,6 @@ function on_join_contest_confirm(event) {
             data.get('player-name'),
         );
         update();
-        show_menu_page(menu_lobby_page);
     });
 }
 

@@ -559,7 +559,7 @@ fn reconnect_lobby() {
     // Cannot reconnect as an active player.
     let cl1_new = world.new_client();
     world[cl1_new].join(&contest, "p1");
-    assert!(matches!(world.process_events_for(cl1_new), Err(client::EventError::ServerReturnedError(_))));
+    assert!(matches!(world.process_events_for(cl1_new), Err(client::EventError::IgnorableError(_))));
     world.process_all_events();
 
     // Can reconnect with the same name - that's fine.
@@ -602,7 +602,7 @@ fn reconnect_game_active() {
     // Cannot reconnect as an active player.
     let cl2_new = world.new_client();
     world[cl2_new].join(&contest, "p2");
-    assert!(matches!(world.process_events_for(cl2_new), Err(client::EventError::ServerReturnedError(_))));
+    assert!(matches!(world.process_events_for(cl2_new), Err(client::EventError::IgnorableError(_))));
     world.process_all_events();
 
     // Reconnection successful.
@@ -677,7 +677,6 @@ fn turn_after_game_ended_on_another_board() {
     world.process_events_for(cl1).unwrap();
 
     world[cl4].make_turn("e4").unwrap();
-    assert!(matches!(world.process_events_for(cl4), Err(client::EventError::ServerReturnedError(_))));
     world.process_all_events();
 }
 

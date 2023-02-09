@@ -37,15 +37,17 @@ pub enum NotableEvent {
     MyReserveRestocked,
     LowTime,
     GameExportReady(String),
-    ServerShutdown,
 }
 
-// TODO: Does it make sense to have CannotApplyEvent instead of panic? Both can be caused by many
-//   invariant violations in case of bad server behavior anyway.
 #[derive(Clone, Debug)]
 pub enum EventError {
-    ServerReturnedError(String),
-    CannotApplyEvent(String),
+    // An action has failed. Inform the user and continue.
+    IgnorableError(String),
+    // The client cannot continue operating, but *not* an internal error.
+    FatalError(String),
+    // Internal logic error. Should be debugged (or demoted). Could be ignored for now.
+    // For non-ignorable internal errors the client would just panic.
+    InternalEvent(String),
 }
 
 #[derive(Debug)]
@@ -136,9 +138,9 @@ const LOW_TIME_WARNING_THRESHOLDS: &[Duration] = &[
     Duration::from_secs(1),
 ];
 
-macro_rules! cannot_apply_event {
+macro_rules! internal_error {
     ($($arg:tt)*) => {
-        EventError::CannotApplyEvent(format!($($arg)*))
+        EventError::InternalEvent(format!($($arg)*))
     }
 }
 
@@ -312,11 +314,31 @@ impl ClientState {
         match event {
             Rejection(rejection) => {
                 match rejection {
-                    BughouseServerRejection::ShuttingDown => {
-                        self.notable_event_queue.push_back(NotableEvent::ServerShutdown)
+                    BughouseServerRejection::PlayerAlreadyExists{ player_name } => {
+                        // TODO: Fix the message ("browser tab" part) for the console client.
+                        return Err(EventError::IgnorableError(format!(
+                            concat!(
+                                "Cannot join: player {} already exists. If this is you, ",
+                                "make sure you are not connected to the same game in another browser tab. ",
+                                "If you still can't connect, please try again in a few seconds."
+                            ),
+                            player_name
+                        )));
                     },
-                    BughouseServerRejection::UnknownError(message) => {
-                        return Err(EventError::ServerReturnedError(format!("Got error from server: {}", message)))
+                    BughouseServerRejection::NoSuchContest{ contest_id } => {
+                        return Err(EventError::IgnorableError(format!(
+                            "Contest {contest_id} does not exist."
+                        )));
+                    },
+                    BughouseServerRejection::ShuttingDown => {
+                        return Err(EventError::FatalError(concat!(
+                            "The server is shutting down for maintenance. ",
+                            "We'll be back soon (usually within 15 minutes). ",
+                            "Please come back later!",
+                        ).to_owned()));
+                    },
+                    BughouseServerRejection::UnknownError{ message } => {
+                        return Err(internal_error!("Got error from server: {}", message));
                     },
                 }
             },
@@ -327,11 +349,11 @@ impl ClientState {
                     }
                     ContestState::Joining{ contest_id: id, my_name } => {
                         if contest_id != *id {
-                            return Err(cannot_apply_event!("Cannot apply ContestWelcome: expected contest {id}, but got {contest_id}"));
+                            return Err(internal_error!("Cannot apply ContestWelcome: expected contest {id}, but got {contest_id}"));
                         }
                         my_name.clone()
                     },
-                    _ => return Err(cannot_apply_event!("Cannot apply ContestWelcome: not expecting a new contest")),
+                    _ => return Err(internal_error!("Cannot apply ContestWelcome: not expecting a new contest")),
                 };
                 self.notable_event_queue.push_back(NotableEvent::ContestStarted(contest_id.clone()));
                 // `Observer` is a safe faction default that wouldn't allow us to try acting as
@@ -350,7 +372,7 @@ impl ClientState {
                 });
             },
             LobbyUpdated{ participants } => {
-                let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply LobbyUpdated: no contest in progress"))?;
+                let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply LobbyUpdated: no contest in progress"))?;
                 // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
                 //   (e.g. is_ready from another player) arrived before is_ready update from this
                 //   client reached the server. Same for `my_team`.
@@ -366,7 +388,7 @@ impl ClientState {
                 } else {
                     Some(WallGameTimePair::new(now, time.approximate()))
                 };
-                let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameStarted: no contest in progress"))?;
+                let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply GameStarted: no contest in progress"))?;
                 let game = BughouseGame::new_with_starting_position(
                     contest.rules.contest_rules.clone(),
                     contest.rules.chess_rules.clone(),
@@ -419,16 +441,16 @@ impl ClientState {
                 }
             },
             GameOver{ time, game_status, scores: new_scores } => {
-                let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameOver: no contest in progress"))?;
-                let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply GameOver: no game in progress"))?;
+                let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply GameOver: no contest in progress"))?;
+                let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot apply GameOver: no game in progress"))?;
                 assert!(game_state.alt_game.status() == BughouseGameStatus::Active);
                 game_state.alt_game.set_status(game_status, time);
                 contest.scores = new_scores;
                 self.game_over_postprocess()?;
             },
             ChalkboardUpdated{ chalkboard } => {
-                let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot apply ChalkboardUpdated: no contest in progress"))?;
-                let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot apply ChalkboardUpdated: no game in progress"))?;
+                let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply ChalkboardUpdated: no contest in progress"))?;
+                let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot apply ChalkboardUpdated: no game in progress"))?;
                 game_state.chalkboard = chalkboard;
             },
             GameExportReady{ content } => {
@@ -452,12 +474,12 @@ impl ClientState {
     {
         let TurnRecord{ player_id, turn_algebraic, time } = turn_record;
         let ContestState::Connected(contest) = &mut self.contest_state else {
-            return Err(cannot_apply_event!("Cannot make turn: no contest in progress"));
+            return Err(internal_error!("Cannot make turn: no contest in progress"));
         };
-        let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot make turn: no game in progress"))?;
+        let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot make turn: no game in progress"))?;
         let GameState{ ref mut alt_game, ref mut time_pair, ref mut awaiting_turn_confirmation_since, .. } = game_state;
         if alt_game.status() != BughouseGameStatus::Active {
-            return Err(cannot_apply_event!("Cannot make turn {}: game over", turn_algebraic));
+            return Err(internal_error!("Cannot make turn {}: game over", turn_algebraic));
         }
         let is_my_turn = alt_game.my_id() == BughouseParticipantId::Player(player_id);
         let now = Instant::now();
@@ -478,7 +500,7 @@ impl ClientState {
         alt_game.apply_remote_turn_algebraic(
             player_id, &turn_algebraic, time
         ).map_err(|err| {
-            cannot_apply_event!("Impossible turn: {}, error: {:?}", turn_algebraic, err)
+            internal_error!("Got impossible turn from server: {}, error: {:?}", turn_algebraic, err)
         })?;
         let new_reserve_size = my_reserve_size(alt_game);
         if generate_notable_events {
@@ -495,12 +517,12 @@ impl ClientState {
     }
 
     fn verify_game_status(&mut self, game_status: BughouseGameStatus) -> Result<(), EventError> {
-        let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot verify game status: no contest in progress"))?;
-        let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot verify game status: no game in progress"))?;
+        let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot verify game status: no contest in progress"))?;
+        let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot verify game status: no game in progress"))?;
         let GameState{ ref mut alt_game, .. } = game_state;
         if game_status != alt_game.status() {
-            return Err(cannot_apply_event!(
-                "Expected game status = {:?}, actual = {:?}", game_status, alt_game.status()
+            return Err(internal_error!(
+                "Expected game status {:?}, got {:?}", game_status, alt_game.status()
             ));
         }
         Ok(())
@@ -509,8 +531,8 @@ impl ClientState {
     fn update_game_status(&mut self, game_status: BughouseGameStatus, game_now: GameInstant)
         -> Result<(), EventError>
     {
-        let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot update game status: no contest in progress"))?;
-        let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot update game status: no game in progress"))?;
+        let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot update game status: no contest in progress"))?;
+        let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot update game status: no game in progress"))?;
         let GameState{ ref mut alt_game, .. } = game_state;
         if alt_game.status() == BughouseGameStatus::Active {
             if game_status != BughouseGameStatus::Active {
@@ -523,13 +545,13 @@ impl ClientState {
     }
 
     fn game_over_postprocess(&mut self) -> Result<(), EventError> {
-        let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot process game over: no contest in progress"))?;
-        let game_state = contest.game_state.as_mut().ok_or_else(|| cannot_apply_event!("Cannot process game over: no game in progress"))?;
+        let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot process game over: no contest in progress"))?;
+        let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot process game over: no game in progress"))?;
         let GameState{ ref mut alt_game, .. } = game_state;
         if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
             let game_status = match alt_game.status() {
                 BughouseGameStatus::Active => {
-                    return Err(cannot_apply_event!("Cannot process game over: game not over"));
+                    return Err(internal_error!("Cannot process game over: game not over"));
                 },
                 BughouseGameStatus::Victory(team, _) => {
                     if team == my_player_id.team() {
@@ -549,7 +571,7 @@ impl ClientState {
     }
 
     fn update_scores(&mut self, new_scores: Scores) -> Result<(), EventError> {
-        let contest = self.contest_mut().ok_or_else(|| cannot_apply_event!("Cannot update scores: no contest in progress"))?;
+        let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot update scores: no contest in progress"))?;
         contest.scores = new_scores;
         Ok(())
     }

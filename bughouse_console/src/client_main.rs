@@ -266,11 +266,6 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                 NotableEvent::GameExportReady(..) => {
                     // Improvement potential: Implement.
                 },
-                NotableEvent::ServerShutdown => {
-                    restore_terminal();
-                    println!("The server is shutting down for maintenance. Please come back later!");
-                    return Ok(());
-                },
             }
         }
         render(&mut stdout, app_start_time, &client_state, &keyboard_input, &command_error)?;
