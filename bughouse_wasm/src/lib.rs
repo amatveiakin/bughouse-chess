@@ -198,6 +198,23 @@ impl WebClient {
         }.to_owned()
     }
 
+    pub fn lobby_waiting_explanation(&self) -> String {
+        let Some(contest) = self.state.contest() else {
+            return "".to_owned();
+        };
+        // Improvement potential: Factor out common code or send the status from the server
+        //   to ensure there are no discrepancies between server logic and UI messages.
+        let num_players = contest.participants.iter().filter(|p| p.faction != Faction::Observer).count();
+        if num_players < TOTAL_PLAYERS {
+            "Not enough players"
+        } else {
+            "Waiting for players to be ready"
+        }.to_owned()
+    }
+    pub fn lobby_countdown_seconds_left(&self) -> Option<u32> {
+        self.state.first_game_countdown_left().map(|d| d.as_secs_f64().ceil() as u32)
+    }
+
     pub fn new_contest(
         &mut self,
         player_name: &str,

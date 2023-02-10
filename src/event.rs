@@ -36,6 +36,9 @@ pub enum BughouseServerEvent {
     LobbyUpdated {
         participants: Vec<Participant>,
     },
+    // Improvement potential: Merge countdown events into `LobbyUpdated`.
+    FirstGameCountdownStarted,
+    FirstGameCountdownCancelled,
     // Improvement potential: Rename `GameStarted` to take reconnection into account.
     GameStarted {
         starting_position: EffectiveStartingPosition,

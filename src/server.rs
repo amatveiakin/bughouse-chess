@@ -20,18 +20,19 @@ use crate::BughouseServerRejection;
 use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
-use crate::game::{TurnRecord, BughouseBoard, BughousePlayerId, PlayerInGame, BughouseGameStatus, BughouseGame, get_bughouse_force};
+use crate::game::{
+    TurnRecord, BughouseBoard, BughousePlayerId, PlayerInGame, BughouseGameStatus, BughouseGame,
+    get_bughouse_force, TOTAL_PLAYERS, TOTAL_PLAYERS_PER_TEAM,
+};
 use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientErrorReport};
 use crate::pgn::{self, BughouseExportFormat};
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Participant, Team, Faction};
-use crate::rules::{Teaming, Rules};
+use crate::rules::{Teaming, Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
 use crate::server_hooks::{ServerHooks, NoopServerHooks};
 
 
-const TOTAL_PLAYERS: usize = 4;
-const TOTAL_PLAYERS_PER_TEAM: usize = 2;
 const DOUBLE_TERMINATION_ABORT_THRESHOLD: Duration = Duration::from_secs(1);
 const TERMINATION_WAITING_PERIOD: Duration = Duration::from_secs(60);
 const CONTEST_GC_INACTIVITY_THRESHOLD: Duration = Duration::from_secs(3600 * 24);
@@ -236,6 +237,7 @@ struct Contest {
     participants: Participants,
     scores: Scores,
     match_history: Vec<BughouseGame>,  // final game states
+    first_game_countdown_since: Option<Instant>,
     game_state: Option<GameState>,  // active game or latest game
     board_assignment_override: Option<Vec<PlayerInGame>>,  // for tests
 }
@@ -243,6 +245,7 @@ struct Contest {
 struct Context<'a, 'b> {
     clients: &'b mut MutexGuard<'a, Clients>,
     hooks: &'a mut dyn ServerHooks,
+    disable_countdown: bool,
 }
 
 struct CoreServerState {
@@ -262,6 +265,8 @@ pub struct ServerState {
     // Optimization potential: Lock-free map instead of Mutex<HashMap>.
     clients: Arc<Mutex<Clients>>,
     hooks: Box<dyn ServerHooks>,
+    // TODO: Remove special test paths, use proper mock clock instead.
+    disable_countdown: bool,  // for tests
     core: CoreServerState,
 }
 
@@ -273,6 +278,7 @@ impl ServerState {
         ServerState {
             clients,
             hooks: hooks.unwrap_or_else(|| Box::new(NoopServerHooks{})),
+            disable_countdown: false,
             core: CoreServerState::new(),
         }
     }
@@ -290,10 +296,16 @@ impl ServerState {
         // to `Context`.
         let mut ctx = Context {
             clients: &mut clients,
-            hooks: self.hooks.as_mut()
+            hooks: self.hooks.as_mut(),
+            disable_countdown: self.disable_countdown,
         };
 
         self.core.apply_event(&mut ctx, event);
+    }
+
+    #[allow(non_snake_case)]
+    pub fn TEST_disable_countdown(&mut self) {
+        self.disable_countdown = true;
     }
 
     #[allow(non_snake_case)]
@@ -349,6 +361,7 @@ impl CoreServerState {
             participants: Participants::new(),
             scores: Scores::new(),
             match_history: Vec::new(),
+            first_game_countdown_since: None,
             game_state: None,
             board_assignment_override: None,
         };
@@ -490,7 +503,7 @@ impl CoreServerState {
                         //
                         // Improvement potential: Notify everybody immediately, let the clients decide
                         // when it's appropriate to show the message to the user. Pros:
-                        //   - Server code well be simpler. There will be exactly two points when a
+                        //   - Server code will be simpler. There will be exactly two points when a
                         //     shutdown notice should be sent: to all existing clients when termination
                         //     is requested and to new clients as soon as they are connected (to the
                         //     server, not to the contest).
@@ -970,7 +983,15 @@ impl Contest {
                 self.participants.num_fixed_player_per_team().values().all(|&n| n <= TOTAL_PLAYERS_PER_TEAM),
             Teaming::IndividualMode => true,
         };
-        if num_players_ok && teams_ok && all_ready {
+        let can_start_game = num_players_ok && teams_ok && all_ready;
+        if let Some(first_game_countdown_start) = self.first_game_countdown_since {
+            if !can_start_game {
+                self.first_game_countdown_since = None;
+                self.broadcast(ctx, &BughouseServerEvent::FirstGameCountdownCancelled);
+            } else if now.duration_since(first_game_countdown_start) >= FIRST_GAME_COUNTDOWN_DURATION {
+                self.start_game(ctx, now);
+            }
+        } else if can_start_game {
             if !matches!(execution, Execution::Running) {
                 self.broadcast(ctx, &BughouseServerEvent::Rejection(BughouseServerRejection::ShuttingDown));
                 self.reset_readiness();
@@ -980,8 +1001,19 @@ impl Contest {
                 assert!(game.status() != BughouseGameStatus::Active,
                     "Players must not be allowed to set is_ready flag while the game is active");
                 self.match_history.push(game.clone());
+                self.start_game(ctx, now);
+            } else if self.first_game_countdown_since.is_none() {
+                if ctx.disable_countdown {
+                    self.start_game(ctx, now);
+                } else {
+                    // TODO: Add some way of blocking last-moment faction changes, e.g.:
+                    //   - Forbid all changes other than resetting readiness;
+                    //   - Allow changes, but restart the count-down;
+                    //   - Blizzard-style: allow changes during the first half of the count-down.
+                    self.broadcast(ctx, &BughouseServerEvent::FirstGameCountdownStarted);
+                    self.first_game_countdown_since = Some(now);
+                }
             }
-            self.start_game(ctx, now);
         }
     }
 

@@ -449,6 +449,7 @@ function on_tick() {
         timer.meter(Meter.update_clock);
         process_notable_events();
         timer.meter(Meter.process_notable_events);
+        update_lobby_countdown();
         update_connection_status();
     });
 }
@@ -466,6 +467,7 @@ function update() {
         timer.meter(Meter.process_notable_events);
         update_drag_state();
         timer.meter(Meter.update_drag_state);
+        update_lobby_countdown();
         update_connection_status();
         update_buttons();
         command_result.innerText = '';
@@ -539,6 +541,22 @@ function update_drag_state() {
             break;
         default:
             console.error(`Unknown drag_state: ${drag_state}`);
+    }
+}
+
+function update_lobby_countdown() {
+    const lobby_waiting = document.getElementById('lobby-waiting');
+    const lobby_countdown = document.getElementById('lobby-countdown');
+    const lobby_countdown_seconds = document.getElementById('lobby-countdown-seconds');
+    const s = wasm_client().lobby_countdown_seconds_left();
+    if (s == null)  {
+        lobby_waiting.textContent = wasm_client().lobby_waiting_explanation();
+        lobby_waiting.style.display = null;
+        lobby_countdown.style.display = 'none';
+    } else {
+        lobby_countdown_seconds.textContent = s;
+        lobby_waiting.style.display = 'none';
+        lobby_countdown.style.display = null;
     }
 }
 

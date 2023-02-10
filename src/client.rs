@@ -17,7 +17,7 @@ use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::BughouseExportFormat;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Participant, Faction};
-use crate::rules::Rules;
+use crate::rules::{Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
 
 
@@ -83,7 +83,9 @@ pub struct Contest {
     pub scores: Scores,
     // Whether this client is ready to start a new game.
     pub is_ready: bool,
-    // Active game or latest game
+    // If `Some`, the first game is going to start after the countdown.
+    pub first_game_countdown_since: Option<Instant>,
+    // Active game or latest game.
     pub game_state: Option<GameState>,
 }
 
@@ -200,6 +202,12 @@ impl ClientState {
             return PlayerRelation::Other;
         };
         my_player_id.relation_to(other_player_id)
+    }
+
+    pub fn first_game_countdown_left(&self) -> Option<Duration> {
+        self.contest().and_then(|c| c.first_game_countdown_since.map(|t| {
+            FIRST_GAME_COUNTDOWN_DURATION.saturating_sub(Instant::now().duration_since(t))
+        }))
     }
 
     pub fn chalk_canvas(&self) -> Option<&ChalkCanvas> { self.game_state().map(|s| &s.chalk_canvas) }
@@ -365,6 +373,7 @@ impl ClientState {
                     participants: Vec::new(),
                     scores: Scores::new(),
                     is_ready: false,
+                    first_game_countdown_since: None,
                     game_state: None,
                 });
             },
@@ -377,6 +386,14 @@ impl ClientState {
                 contest.is_ready = me.is_ready;
                 contest.my_faction = me.faction;
                 contest.participants = participants;
+            },
+            FirstGameCountdownStarted => {
+                let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply FirstGameCountdownStarted: no contest in progress"))?;
+                contest.first_game_countdown_since = Some(now);
+            },
+            FirstGameCountdownCancelled => {
+                let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply FirstGameCountdownCancelled: no contest in progress"))?;
+                contest.first_game_countdown_since = None;
             },
             GameStarted{ starting_position, players, time, turn_log, preturn, game_status, scores } => {
                 let time_pair = if turn_log.is_empty() {

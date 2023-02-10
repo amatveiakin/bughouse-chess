@@ -19,6 +19,9 @@ use crate::rules::{ContestRules, ChessRules, BughouseRules};
 use crate::starter::{EffectiveStartingPosition, generate_starting_position};
 
 
+pub const TOTAL_PLAYERS: usize = 4;
+pub const TOTAL_PLAYERS_PER_TEAM: usize = 2;
+
 // Stripped version of `TurnRecordExpanded`. For sending turns across network.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TurnRecord {

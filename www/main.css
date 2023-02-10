@@ -739,18 +739,25 @@ dialog input:invalid:not(:placeholder-shown) {
   grid-template-columns: 1fr auto auto;
   column-gap: 0.5em;
   row-gap: 0.5em;
+  margin: 1.2em 0;
   align-items: center;
   user-select: none;  /* prevent accidental name selection when choosing a team */
 }
 #lobby-contest {
   font-size: 110%;
+  margin-bottom: 0.8em;
 }
 #lobby-contest-id {
   font-weight: bold;
 }
 #lobby-rules {
   white-space: pre;
-  margin: 0.8em 0;
+}
+#lobby-countdown {
+  text-shadow: -0.05em -0.05em 0.1em #ffffff60, 0.05em 0.05em 0.1em #00000060;
+}
+#lobby-countdown-seconds {
+  font-weight: bold;
 }
 .lobby-icon {
   width: 2em;
@@ -772,6 +779,25 @@ dialog input:invalid:not(:placeholder-shown) {
 }
 .lobby-icon:not(.lobby-me) {
   filter: saturate(0.9) contrast(0.7) brightness(1.1);
+}
+
+.dot {
+  display: inline-block;
+  animation-name: bouncing;
+  animation-duration: 1000ms;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-out;
+}
+.dot:nth-child(2) {
+  animation-delay: 125ms;
+}
+.dot:nth-child(3) {
+  animation-delay: 250ms;
+}
+@keyframes bouncing {
+  0%  { transform: none; }
+  20% { transform: translateY(-.3em); }
+  40% { transform: none; }
 }
 
 .simple-dialog-message {

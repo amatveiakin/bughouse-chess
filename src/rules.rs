@@ -8,6 +8,22 @@ use crate::clock::TimeControl;
 use crate::player::{Team, Faction};
 
 
+// Time spent in the lobby before starting the first game after all players signal readiness.
+//
+// Why have the countdown? First, it allows everybody to absorb the finial setting and prepare
+// for the game. Many games feature similar mechanics.
+//
+// Second, countdown solves the following problem. Imagine there are five participants, four
+// of them ready. The fifth participant toggles faction from `Random` to `Observer` (maybe
+// we've supported fixed teams mode with 5+ players, or maybe their are just experiment with
+// the UI). Since the server doesn't wait for observer readiness, the game starts right away,
+// not allowing them to switch back their faction.
+//
+// Another way of solving this problem would be to wait for observer readiness, but this
+// approach would be misleading. It would make lobby UX inconsistent with in-game UX where
+// we don't wait for observer readiness (and the latter is definitely not changing).
+pub const FIRST_GAME_COUNTDOWN_DURATION: Duration = Duration::from_secs(3);
+
 const FIXED_TEAMS_FACTIONS: [Faction; 4] = [
     Faction::Random,
     Faction::Fixed(Team::Red),
