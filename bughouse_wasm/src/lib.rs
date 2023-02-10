@@ -1008,10 +1008,10 @@ fn add_lobby_participant_node(p: &Participant, is_me: bool, parent: &web_sys::El
         parent.append_child(&faction_node)?;
     }
     {
-        // TODO: Remove readiness for observers.
-        let readiness_node = match p.is_ready {
-            false => make_menu_icon(&["readiness-checkbox"])?,
-            true => make_menu_icon(&["readiness-checkbox", "readiness-checkmark"])?,
+        let readiness_node = match (p.faction, p.is_ready) {
+            (Faction::Observer, _) => make_menu_icon(&[])?,
+            (_, false) => make_menu_icon(&["readiness-checkbox"])?,
+            (_, true) => make_menu_icon(&["readiness-checkbox", "readiness-checkmark"])?,
         };
         add_relation_class(&readiness_node)?;
         if is_me {
