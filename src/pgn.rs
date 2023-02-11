@@ -1,4 +1,5 @@
 use enum_map::enum_map;
+use indoc::formatdoc;
 use serde::{Serialize, Deserialize};
 use time::macros::format_description;
 
@@ -98,22 +99,22 @@ fn make_bughouse_bpng_header(game: &BughouseGame, game_at_start: &BughouseGame, 
     };
     let event = if game.contest_rules().rated { "Rated Bughouse Match" } else { "Unrated Bughouse Match" };
     // TODO: Save complete rules.
-    format!(
-r#"[Event "{}"]
-[Site "bughouse.pro"]
-[UTCDate "{}"]
-[UTCTime "{}"]
-[Round "{}"]
-[WhiteA "{}"]
-[BlackA "{}"]
-[WhiteB "{}"]
-[BlackB "{}"]
-[TimeControl "{}"]
-[Variant "{}"]
-{}[Result "{}"]
-[Termination "{}"]
-[Outcome "{}"]
-"#,
+    formatdoc!(r#"
+        [Event "{}"]
+        [Site "bughouse.pro"]
+        [UTCDate "{}"]
+        [UTCTime "{}"]
+        [Round "{}"]
+        [WhiteA "{}"]
+        [BlackA "{}"]
+        [WhiteB "{}"]
+        [BlackB "{}"]
+        [TimeControl "{}"]
+        [Variant "{}"]
+        {}[Result "{}"]
+        [Termination "{}"]
+        [Outcome "{}"]
+        "#,
         event,
         now.format(format_description!("[year].[month].[day]")).unwrap(),
         now.format(format_description!("[hour]:[minute]:[second]")).unwrap(),
