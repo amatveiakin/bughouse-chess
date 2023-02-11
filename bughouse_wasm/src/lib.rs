@@ -222,7 +222,7 @@ impl WebClient {
         starting_position: &str,
         starting_time: &str,
         drop_aggression: &str,
-        pawn_drop_rows: &str,
+        pawn_drop_ranks: &str,
         rating: &str,
     ) -> JsResult<()> {
         let teaming = match teaming {
@@ -257,15 +257,15 @@ impl WebClient {
         };
         let starting_time = Duration::from_secs(starting_minutes * 60 + starting_seconds);
 
-        let Some((Ok(min_pawn_drop_row), Ok(max_pawn_drop_row))) = pawn_drop_rows
+        let Some((Ok(min_pawn_drop_rank), Ok(max_pawn_drop_rank))) = pawn_drop_ranks
             .split('-')
             .map(|v| v.parse::<u8>())
             .collect_tuple()
         else {
-            return Err(format!("Invalid pawn drop rows: {pawn_drop_rows}").into());
+            return Err(format!("Invalid pawn drop ranks: {pawn_drop_ranks}").into());
         };
-        if !chmp!(1 <= min_pawn_drop_row <= max_pawn_drop_row <= 7) {
-            return Err(format!("Invalid pawn drop rows: {pawn_drop_rows}").into());
+        if !chmp!(1 <= min_pawn_drop_rank <= max_pawn_drop_rank <= 7) {
+            return Err(format!("Invalid pawn drop ranks: {pawn_drop_ranks}").into());
         }
 
         let contest_rules = ContestRules {
@@ -279,8 +279,8 @@ impl WebClient {
         };
         let bughouse_rules = BughouseRules {
             teaming,
-            min_pawn_drop_row: SubjectiveRow::from_one_based(min_pawn_drop_row).unwrap(),
-            max_pawn_drop_row: SubjectiveRow::from_one_based(max_pawn_drop_row).unwrap(),
+            min_pawn_drop_rank: SubjectiveRow::from_one_based(min_pawn_drop_rank).unwrap(),
+            max_pawn_drop_rank: SubjectiveRow::from_one_based(max_pawn_drop_rank).unwrap(),
             drop_aggression,
         };
         let rules = Rules {

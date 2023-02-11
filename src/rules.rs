@@ -72,8 +72,8 @@ pub struct BughouseRules {
     // Improvement potential. Should `teaming` reside in `BughouseRules` or be moved to
     //   a separate struct (e.g. `ContestRules`)?
     pub teaming: Teaming,
-    pub min_pawn_drop_row: SubjectiveRow,
-    pub max_pawn_drop_row: SubjectiveRow,
+    pub min_pawn_drop_rank: SubjectiveRow,
+    pub max_pawn_drop_rank: SubjectiveRow,
     pub drop_aggression: DropAggression,
 }
 
@@ -114,8 +114,8 @@ impl BughouseRules {
     pub fn chess_com() -> Self {
         Self {
             teaming: Teaming::FixedTeams,
-            min_pawn_drop_row: SubjectiveRow::from_one_based(2).unwrap(),
-            max_pawn_drop_row: SubjectiveRow::from_one_based(7).unwrap(),
+            min_pawn_drop_rank: SubjectiveRow::from_one_based(2).unwrap(),
+            max_pawn_drop_rank: SubjectiveRow::from_one_based(7).unwrap(),
             drop_aggression: DropAggression::MateAllowed,
         }
     }
@@ -139,10 +139,10 @@ impl Rules {
             DropAggression::NoBughouseMate => "No bughouse mate",
             DropAggression::MateAllowed => "Mate allowed",
         };
-        let pawn_drop_rows = format!(
+        let pawn_drop_ranks = format!(
             "{}-{}",
-            self.bughouse_rules.min_pawn_drop_row.to_one_based(),
-            self.bughouse_rules.max_pawn_drop_row.to_one_based()
+            self.bughouse_rules.min_pawn_drop_rank.to_one_based(),
+            self.bughouse_rules.max_pawn_drop_rank.to_one_based()
         );
         let rating = match self.contest_rules.rated {
             true => "Rated",
@@ -153,7 +153,7 @@ impl Rules {
             Starting position: {starting_position}
             Time control: {time_control}
             Drop aggression: {drop_aggression}
-            Pawn drop rows: {pawn_drop_rows}
+            Pawn drop ranks: {pawn_drop_ranks}
             Rating: {rating}
         ")
     }

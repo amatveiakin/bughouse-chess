@@ -1031,7 +1031,7 @@ function on_create_contest_confirm(event) {
             data.get('starting-position'),
             data.get('starting-time'),
             data.get('drop-aggression'),
-            data.get('pawn-drop-rows'),
+            data.get('pawn-drop-ranks'),
             data.get('rating'),
         );
         update();

@@ -905,8 +905,8 @@ impl Board {
                 let bughouse_rules = self.bughouse_rules.as_ref().ok_or(TurnError::DropFobidden)?;
                 let to_subjective_row = SubjectiveRow::from_row(drop.to.row, force);
                 if drop.piece_kind == PieceKind::Pawn && (
-                    to_subjective_row < bughouse_rules.min_pawn_drop_row ||
-                    to_subjective_row > bughouse_rules.max_pawn_drop_row
+                    to_subjective_row < bughouse_rules.min_pawn_drop_rank ||
+                    to_subjective_row > bughouse_rules.max_pawn_drop_rank
                 ) {
                     return Err(TurnError::DropPosition);
                 }
