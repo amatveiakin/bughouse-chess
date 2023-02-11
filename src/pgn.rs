@@ -98,7 +98,6 @@ fn make_bughouse_bpng_header(game: &BughouseGame, game_at_start: &BughouseGame, 
         }
     };
     let event = if game.contest_rules().rated { "Rated Bughouse Match" } else { "Unrated Bughouse Match" };
-    // TODO: Save complete rules.
     formatdoc!(r#"
         [Event "{}"]
         [Site "bughouse.pro"]
@@ -111,6 +110,8 @@ fn make_bughouse_bpng_header(game: &BughouseGame, game_at_start: &BughouseGame, 
         [BlackB "{}"]
         [TimeControl "{}"]
         [Variant "{}"]
+        [DropAggression "{}"]
+        [PawnDropRanks "{}"]
         {}[Result "{}"]
         [Termination "{}"]
         [Outcome "{}"]
@@ -125,6 +126,8 @@ fn make_bughouse_bpng_header(game: &BughouseGame, game_at_start: &BughouseGame, 
         game.board(B).player_name(Black),
         time_control_to_string(&game.chess_rules().time_control),
         variant,
+        game.bughouse_rules().drop_aggression_string(),
+        game.bughouse_rules().pawn_drop_ranks_string(),
         starting_position_fen,
         make_result_string(game),
         make_termination_string(game),

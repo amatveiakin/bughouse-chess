@@ -121,6 +121,25 @@ impl BughouseRules {
     }
 }
 
+impl BughouseRules {
+    pub fn drop_aggression_string(&self) -> &'static str {
+        match self.drop_aggression {
+            DropAggression::NoCheck => "No check",
+            DropAggression::NoChessMate => "No chess mate",
+            DropAggression::NoBughouseMate => "No bughouse mate",
+            DropAggression::MateAllowed => "Mate allowed",
+        }
+    }
+
+    pub fn pawn_drop_ranks_string(&self) -> String {
+        format!(
+            "{}-{}",
+            self.min_pawn_drop_rank.to_one_based(),
+            self.max_pawn_drop_rank.to_one_based()
+        )
+    }
+}
+
 impl Rules {
     // Try to keep in sync with "New contest" dialog.
     pub fn to_human_readable(&self) -> String {
@@ -133,17 +152,8 @@ impl Rules {
             StartingPosition::FischerRandom => "Fischer random",
         };
         let time_control = self.chess_rules.time_control.to_string();
-        let drop_aggression = match self.bughouse_rules.drop_aggression {
-            DropAggression::NoCheck => "No check",
-            DropAggression::NoChessMate => "No chess mate",
-            DropAggression::NoBughouseMate => "No bughouse mate",
-            DropAggression::MateAllowed => "Mate allowed",
-        };
-        let pawn_drop_ranks = format!(
-            "{}-{}",
-            self.bughouse_rules.min_pawn_drop_rank.to_one_based(),
-            self.bughouse_rules.max_pawn_drop_rank.to_one_based()
-        );
+        let drop_aggression = self.bughouse_rules.drop_aggression_string();
+        let pawn_drop_ranks = self.bughouse_rules.pawn_drop_ranks_string();
         let rating = match self.contest_rules.rated {
             true => "Rated",
             false => "Unrated",
