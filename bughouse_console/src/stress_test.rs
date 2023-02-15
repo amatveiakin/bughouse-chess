@@ -20,7 +20,6 @@ const ACTIONS_PER_GAME: usize = 10_000;
 const MAX_ATTEMPTS_GENERATING_SERVER_TURN: usize = 10_000;
 const DROP_RATIO: f64 = 0.2;
 const DRAG_RESERVE_RATIO: f64 = 0.3;
-const DRAG_OVER_BOARD_RATIO: f64 = 0.8;
 const PROMOTION_RATIO: f64 = 0.2;
 const QUIT_INACTIVE_GAME_RATIO: f64 = 0.1;
 
@@ -35,7 +34,6 @@ enum ActionKind {
     LocalTurn,
     PieceDragState,
     StartDragPiece,
-    DragOverPiece,
     AbortDragPiece,
     DragPieceDrop,
     CancelPreturn,
@@ -49,7 +47,6 @@ enum Action {
     LocalTurn{ turn_input: TurnInput, time: GameInstant },
     PieceDragState,
     StartDragPiece{ start: PieceDragStart },
-    DragOverPiece{ dest: Option<Coord> },
     AbortDragPiece,
     DragPieceDrop{ dest: Coord, promote_to: PieceKind },
     CancelPreturn,
@@ -128,7 +125,6 @@ fn random_action_kind(rng: &mut rand::rngs::ThreadRng) -> ActionKind {
         (LocalTurn, n),
         (PieceDragState, n),
         (StartDragPiece, n),
-        (DragOverPiece, n),
         (AbortDragPiece, n),
         (DragPieceDrop, n),
         (CancelPreturn, n),
@@ -199,14 +195,6 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
             };
             Action::StartDragPiece{ start }
         },
-        DragOverPiece => {
-            let dest = if rng.gen_bool(DRAG_OVER_BOARD_RATIO) {
-                Some(random_coord(rng))
-            } else {
-                None
-            };
-            Action::DragOverPiece{ dest }
-        },
         AbortDragPiece => {
             Action::AbortDragPiece
         },
@@ -230,7 +218,6 @@ fn apply_action(alt_game: &mut AlteredGame, action: Action) {
         LocalTurn{ turn_input, time } => _ = alt_game.try_local_turn(turn_input, time),
         PieceDragState => _ = alt_game.piece_drag_state(),
         StartDragPiece{ start } => _ = alt_game.start_drag_piece(start),
-        DragOverPiece{ dest } => _ = alt_game.drag_over_piece(dest),
         AbortDragPiece => _ = alt_game.abort_drag_piece(),
         DragPieceDrop{ dest, promote_to } => _ = alt_game.drag_piece_drop(dest, promote_to),
         CancelPreturn => _ = alt_game.cancel_preturn(),

@@ -45,7 +45,6 @@ pub enum PieceDragSource {
 pub struct PieceDrag {
     pub piece_kind: PieceKind,
     pub source: PieceDragSource,
-    pub dest: Option<Coord>,
 }
 
 #[derive(Clone, Debug)]
@@ -213,17 +212,7 @@ impl AlteredGame {
         self.piece_drag = Some(PieceDrag {
             piece_kind,
             source,
-            dest: None,
         });
-        Ok(())
-    }
-
-    pub fn drag_over_piece(&mut self, dest: Option<Coord>) -> Result<(), PieceDragError> {
-        if let Some(ref mut drag) = self.piece_drag {
-            drag.dest = dest;
-        } else {
-            return Err(PieceDragError::NoDragInProgress);
-        }
         Ok(())
     }
 
