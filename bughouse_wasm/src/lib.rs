@@ -19,6 +19,7 @@ use wasm_bindgen::prelude::*;
 
 use bughouse_chess::*;
 use bughouse_chess::client::*;
+use bughouse_chess::lobby::*;
 use bughouse_chess::meter::*;
 
 
@@ -177,7 +178,7 @@ impl WebClient {
             Faction::Observer => "permanently",
             Faction::Fixed(_) | Faction::Random => {
                 let my_id = self.state.my_id();
-                if matches!(my_id, Some(BughouseParticipantId::Observer(_))) {
+                if my_id == Some(BughouseParticipant::Observer) {
                     "temporary"
                 } else {
                     "no"
@@ -202,13 +203,25 @@ impl WebClient {
         let Some(contest) = self.state.contest() else {
             return "".to_owned();
         };
-        // Improvement potential: Factor out common code or send the status from the server
-        //   to ensure there are no discrepancies between server logic and UI messages.
-        let num_players = contest.participants.iter().filter(|p| p.faction != Faction::Observer).count();
-        if num_players < TOTAL_PLAYERS {
-            "Not enough players"
-        } else {
-            "Waiting for players to be ready"
+        type Error = ParticipantsError;
+        type Warning = ParticipantsWarning;
+        let ParticipantsStatus{ error, warning } =
+            verify_participants(&contest.rules, contest.participants.iter());
+        match (error, warning) {
+            (Some(Error::NotEnoughPlayers), _) => "Not enough players",
+            (Some(Error::TooManyPlayersTotal), _) => "Too many players",
+            (Some(Error::TooManyPlayersInTeam), _) => "Too many players in a team",
+            (Some(Error::EmptyTeam), _) => "A team is empty",
+            (Some(Error::RatedDoublePlay), _) =>
+                "Playing on two boards in a rated game is not supported yet",
+            (Some(Error::RatedOneVersusTwo), _) =>
+                "Playing one versus two in a rated game is not allowed",
+            (Some(Error::NotReady) | None, Some(Warning::NeedToSeatOut)) =>
+                "👉🏾 Can start, but some players will have to seat out each game",
+            (Some(Error::NotReady) | None, Some(Warning::NeedToDoublePlay)) =>
+                "👉🏾 Can start, but some players will have to play on two boards",
+            (Some(Error::NotReady), None) => "👍🏾 Will start when everyone is ready",
+            (None, None) => "",
         }.to_owned()
     }
     pub fn lobby_countdown_seconds_left(&self) -> Option<u32> {
@@ -315,70 +328,77 @@ impl WebClient {
         Ok(())
     }
 
-    fn make_turn(&mut self, turn_input: TurnInput) -> JsResult<()> {
-        let turn_result = self.state.make_turn(turn_input);
-        // Improvement potential: Human-readable error messages (and/or visual hints).
-        //   Ideally also include rule-dependent context, e.g. "Illegal drop position:
-        //   pawns can be dropped onto ranks 2–6 counting from the player".
-        let game_message = web_document().get_existing_element_by_id("game-message")?;
-        game_message.set_text_content(turn_result.as_ref().err().map(|err| format!("{:?}", err)).as_deref());
-        Ok(())
+    pub fn execute_turn_command(&mut self, turn_command: &str) -> JsResult<()> {
+        // if turn_command == "panic" { panic!("Test panic!"); }
+        // if turn_command == "error" { return Err(rust_error!("Test Rust error")); }
+        // if turn_command == "bad" { return Err("Test unknown error".into()); }
+        let turn_result = self.state.execute_turn_command(turn_command);
+        self.show_turn_result(turn_result)
     }
 
-    pub fn make_turn_algebraic(&mut self, turn_algebraic: String) -> JsResult<()> {
-        // if turn_algebraic == "panic" { panic!("Test panic!"); }
-        // if turn_algebraic == "error" { return Err(rust_error!("Test Rust error")); }
-        // if turn_algebraic == "bad" { return Err("Test unknown error".into()); }
-        self.make_turn(TurnInput::Algebraic(turn_algebraic))
+    pub fn start_drag_piece(&mut self, source: &str) -> JsResult<String> {
+        let Some(alt_game) = self.state.alt_game_mut() else {
+            return Err(rust_error!("Cannot drag: no game in progress"));
+        };
+        let (display_board_idx, source) =
+            if let Some((display_board_idx, piece)) = parse_reserve_piece_id(source) {
+                (display_board_idx, PieceDragStart::Reserve(piece))
+            } else if let Some((display_board_idx, coord)) = parse_piece_id(source) {
+                let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
+                set_square_highlight(
+                    None, "drag-start-highlight", SquareHighlightLayer::Drag,
+                    display_board_idx, Some(to_display_coord(coord, board_orientation))
+                )?;
+                let board_idx = get_board_index(display_board_idx, alt_game.perspective());
+                for dest in alt_game.local_game().board(board_idx).legal_move_destinations(coord) {
+                    set_square_highlight(
+                        None, "legal-move-highlight", SquareHighlightLayer::Drag,
+                        display_board_idx, Some(to_display_coord(dest, board_orientation))
+                    )?;
+                }
+                (display_board_idx, PieceDragStart::Board(coord))
+            } else {
+                return Err(rust_error!("Illegal drag source: {source:?}"));
+            };
+        let board_idx = get_board_index(display_board_idx, alt_game.perspective());
+        alt_game.start_drag_piece(board_idx, source)
+            .map_err(|err| rust_error!("Drag&drop error: {:?}", err))?;
+        Ok(board_id(display_board_idx).to_owned())
     }
 
-    pub fn start_drag_piece(&mut self, source: &str) -> JsResult<()> {
+    pub fn drag_piece(&mut self, x: f64, y: f64) -> JsResult<()> {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
-        let source = if let Some(piece) = source.strip_prefix("reserve-") {
-            PieceDragStart::Reserve(PieceKind::from_algebraic(piece).unwrap())
-        } else {
-            let coord = Coord::from_algebraic(source).unwrap();
-            let board_orientation = get_board_orientation(DisplayBoard::Primary, alt_game.perspective());
-            set_square_highlight(
-                None, "drag-start-highlight", SquareHighlightLayer::Drag,
-                DisplayBoard::Primary, Some(to_display_coord(coord, board_orientation))
-            )?;
-            let board_idx = get_board_index(DisplayBoard::Primary, alt_game.my_id());
-            for dest in alt_game.local_game().board(board_idx).legal_move_destinations(coord) {
-                set_square_highlight(
-                    None, "legal-move-highlight", SquareHighlightLayer::Drag,
-                    DisplayBoard::Primary, Some(to_display_coord(dest, board_orientation))
-                )?;
-            }
-            PieceDragStart::Board(coord)
+        let Some(board_idx) = alt_game.piece_drag_state().as_ref().map(|s| s.board_idx) else {
+            return Ok(());
         };
-        alt_game.start_drag_piece(source).map_err(|err| rust_error!("Drag&drop error: {:?}", err))?;
-        Ok(())
-    }
-    pub fn drag_piece(&mut self, x: f64, y: f64) -> JsResult<()> {
+        let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
         let pos = DisplayFCoord{ x, y };
         set_square_highlight(
             Some("drag-over-highlight"), "drag-over-highlight", SquareHighlightLayer::Drag,
-            DisplayBoard::Primary, pos.to_square()
+            display_board_idx, pos.to_square()
         )
     }
-    pub fn drag_piece_drop(&mut self, x: f64, y: f64, alternative_promotion: bool)
-        -> JsResult<()>
-    {
+
+    pub fn drag_piece_drop(&mut self, x: f64, y: f64, alternative_promotion: bool) -> JsResult<()> {
         let Some(alt_game) = self.state.alt_game_mut() else {
+            return Ok(());
+        };
+        let Some(board_idx) = alt_game.piece_drag_state().as_ref().map(|s| s.board_idx) else {
             return Ok(());
         };
         let pos = DisplayFCoord{ x, y };
         if let Some(dest_display) = pos.to_square() {
             use PieceKind::*;
-            let board_orientation = get_board_orientation(DisplayBoard::Primary, alt_game.perspective());
+            let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
+            let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
             let dest_coord = from_display_coord(dest_display, board_orientation).unwrap();
             let promote_to = if alternative_promotion { Knight } else { Queen };
             match alt_game.drag_piece_drop(dest_coord, promote_to) {
                 Ok(turn) => {
-                    self.make_turn(turn)?;
+                    let turn_result = self.state.make_turn(display_board_idx, turn);
+                    self.show_turn_result(turn_result)?;
                 },
                 Err(PieceDragError::DragNoLongerPossible) => {
                     // Ignore: this happen when dragged piece was captured by opponent.
@@ -395,18 +415,21 @@ impl WebClient {
         }
         Ok(())
     }
+
     pub fn abort_drag_piece(&mut self) -> JsResult<()> {
         if let Some(alt_game) = self.state.alt_game_mut() {
             alt_game.abort_drag_piece();
         }
         Ok(())
     }
+
     // Remove drag highlights. Should be called after drag_piece_drop/abort_drag_piece but
     // also in any case where a drag could become obsolete (e.g. dragged piece was captured
     // or it's position was reverted after the game finished).
     pub fn reset_drag_highlights(&self) -> JsResult<()> {
         clear_square_highlight_layer(SquareHighlightLayer::Drag)
     }
+
     pub fn drag_state(&self) -> String {
         (if let Some(GameState{ ref alt_game, .. }) = self.state.game_state() {
             if let Some(drag) = alt_game.piece_drag_state() {
@@ -422,8 +445,9 @@ impl WebClient {
         }).to_owned()
     }
 
-    pub fn cancel_preturn(&mut self) {
-        self.state.cancel_preturn();
+    pub fn cancel_preturn(&mut self, board_id: &str) -> JsResult<()> {
+        self.state.cancel_preturn(parse_board_id(board_id)?);
+        Ok(())
     }
 
     pub fn is_chalk_active(&self) -> bool {
@@ -478,7 +502,6 @@ impl WebClient {
         let Some(GameState{ alt_game, chalkboard, .. }) = self.state.game_state() else {
             return Ok(());
         };
-        let my_id = alt_game.my_id();
         let document = web_document();
         for board_idx in DisplayBoard::iter() {
             let layer = document.get_existing_element_by_id(&chalk_highlight_layer_id(board_idx))?;
@@ -489,7 +512,7 @@ impl WebClient {
         for (player_name, drawing) in chalkboard.all_drawings() {
             let owner = self.state.relation_to(player_name);
             for board_idx in DisplayBoard::iter() {
-                for mark in drawing.board(get_board_index(board_idx, my_id)) {
+                for mark in drawing.board(get_board_index(board_idx, alt_game.perspective())) {
                     self.render_chalk_mark(board_idx, owner, mark)?;
                 }
             }
@@ -529,9 +552,8 @@ impl WebClient {
                 let game_message = web_document().get_existing_element_by_id("game-message")?;
                 game_message.set_text_content(None);
                 let my_id = alt_game.my_id();
-                let is_observer = matches!(my_id, BughouseParticipantId::Observer(_));
                 render_grids(alt_game.perspective())?;
-                setup_participation_mode(is_observer)?;
+                setup_participation_mode(my_id)?;
                 for display_board_idx in DisplayBoard::iter() {
                     scroll_log_to_bottom(display_board_idx)?;
                 }
@@ -545,16 +567,15 @@ impl WebClient {
                 }.to_owned();
                 Ok(JsEventGameOver{ result }.into())
             },
-            Some(NotableEvent::TurnMade(player_id)) => {
+            Some(NotableEvent::TurnMade(envoy)) => {
                 let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
                     return Err(rust_error!("No game in progress"));
                 };
-                let display_board_idx = get_display_board_index(player_id.board_idx, alt_game.my_id());
+                let display_board_idx = get_display_board_index(envoy.board_idx, alt_game.perspective());
                 scroll_log_to_bottom(display_board_idx)?;
-                if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
-                    if player_id.board_idx == my_player_id.board_idx {
-                        return Ok(JsEventTurnMade{}.into());
-                    }
+                if alt_game.my_id().plays_on_board(envoy.board_idx) {
+                    // Improvement potential: Stereo sound when double-playing.
+                    return Ok(JsEventTurnMade{}.into());
                 }
                 Ok(JsEventNoop{}.into())
             }
@@ -593,16 +614,12 @@ impl WebClient {
         let teaming = contest.rules.bughouse_rules.teaming;
         let game = alt_game.local_game();
         let my_id = alt_game.my_id();
-        update_scores(&contest.scores, &contest.participants, game.status(), teaming, my_id)?;
+        let perspective = alt_game.perspective();
+        update_scores(&contest.scores, &contest.participants, game.status(), teaming, perspective)?;
         for (board_idx, board) in game.boards() {
-            let is_piece_draggable = |force| {
-                let BughouseParticipantId::Player(my_player_id) = my_id else {
-                    return false;
-                };
-                board_idx == my_player_id.board_idx && force == my_player_id.force
-            };
-            let display_board_idx = get_display_board_index(board_idx, my_id);
-            let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
+            let is_piece_draggable = |force| my_id.plays_for(BughouseEnvoy{ board_idx, force });
+            let display_board_idx = get_display_board_index(board_idx, perspective);
+            let board_orientation = get_board_orientation(display_board_idx, perspective);
             let piece_layer = document.get_existing_element_by_id(&piece_layer_id(display_board_idx))?;
             let grid = board.grid();
             for coord in Coord::all() {
@@ -625,7 +642,7 @@ impl WebClient {
                     node.set_attribute("x", &pos.x.to_string())?;
                     node.set_attribute("y", &pos.y.to_string())?;
                     node.set_attribute("href", &filename)?;
-                    node.set_attribute("data-bughouse-location", &coord.to_algebraic())?;
+                    node.set_attribute("data-bughouse-location", &node_id)?;
                     if is_piece_draggable(piece.force) {
                         node.set_attribute("class", "draggable")?;
                     } else {
@@ -652,14 +669,14 @@ impl WebClient {
                 update_reserve(board.reserve(force), force, display_board_idx, player_idx, is_draggable)?;
             }
             let latest_turn = game.turn_log().iter().rev()
-                .find(|record| record.player_id.board_idx == board_idx);
+                .find(|record| record.envoy.board_idx == board_idx);
             {
                 let latest_turn_highlight = latest_turn
-                    .filter(|record| BughouseParticipantId::Player(record.player_id) != my_id)
+                    .filter(|record| !my_id.plays_for(record.envoy))
                     .map(|record| &record.turn_expanded);
                 self.set_turn_highlights(TurnHighlight::LatestTurn, latest_turn_highlight, display_board_idx)?;
             }
-            if display_board_idx == DisplayBoard::Primary {
+            {
                 let pre_turn_highlight = latest_turn
                     .filter(|record| record.mode == TurnMode::Preturn)
                     .map(|record| &record.turn_expanded);
@@ -686,7 +703,7 @@ impl WebClient {
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         let game = alt_game.local_game();
         for (board_idx, board) in game.boards() {
-            let display_board_idx = get_display_board_index(board_idx, alt_game.my_id());
+            let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
             let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
             for force in Force::iter() {
                 let player_idx = get_display_player(force, board_orientation);
@@ -702,6 +719,15 @@ impl WebClient {
             .sorted_by_key(|(metric, _)| metric.as_str())
             .map(|(metric, stats)| format!("{metric}: {stats}"))
             .join("\n")
+    }
+
+    fn show_turn_result(&self, turn_result: Result<(), TurnError>) -> JsResult<()> {
+        // Improvement potential: Human-readable error messages (and/or visual hints).
+        //   Ideally also include rule-dependent context, e.g. "Illegal drop position:
+        //   pawns can be dropped onto ranks 2–6 counting from the player".
+        let game_message = web_document().get_existing_element_by_id("game-message")?;
+        game_message.set_text_content(turn_result.as_ref().err().map(|err| format!("{:?}", err)).as_deref());
+        Ok(())
     }
 
     fn change_faction(&mut self, faction_modifier: impl Fn(i32) -> i32) {
@@ -779,10 +805,11 @@ impl WebClient {
         &self, highlight: TurnHighlight, turn: Option<&TurnExpanded>, board_idx: DisplayBoard
     ) -> JsResult<()>
     {
-        let (id_prefix, class_prefix) = match highlight {
-            TurnHighlight::LatestTurn => (format!("latest-{}", board_id(board_idx)), "latest"),
-            TurnHighlight::Preturn => ("pre".to_owned(), "pre"),
+        let class_prefix = match highlight {
+            TurnHighlight::LatestTurn => "latest",
+            TurnHighlight::Preturn => "pre",
         };
+        let id_prefix = format!("{}-{}", class_prefix, board_id(board_idx));
         // Optimization potential: do not reset highlights that stay in place.
         //   ... or replace with a single clear_square_highlight_layer and remove all IDs.
         reset_square_highlight(&format!("{}-turn-from", id_prefix))?;
@@ -876,7 +903,7 @@ fn scroll_log_to_bottom(board_idx: DisplayBoard) -> JsResult<()> {
 #[wasm_bindgen]
 pub fn init_page() -> JsResult<()> {
     generate_svg_markers()?;
-    render_grids(Perspective::PlayAsWhite)?;
+    render_grids(Perspective::for_participant(BughouseParticipant::Observer))?;
     render_starting()?;
     Ok(())
 }
@@ -1057,14 +1084,13 @@ fn render_reserve(
     let y = reserve_y_pos(player_idx);
     for (piece_kind, amount) in reserve_iter {
         let filename = piece_path(piece_kind, force);
-        let location = format!("reserve-{}", piece_kind.to_full_algebraic());
         for iter in 0..amount {
             if iter > 0 {
                 x += piece_sep;
             }
             let node = document.create_svg_element("use")?;
             node.set_attribute("href", &filename)?;
-            node.set_attribute("data-bughouse-location", &location)?;
+            node.set_attribute("data-bughouse-location", &reserve_piece_id(board_idx, piece_kind))?;
             node.set_attribute("x", &x.to_string())?;
             node.set_attribute("y", &y.to_string())?;
             if draggable {
@@ -1110,12 +1136,14 @@ fn render_starting() -> JsResult<()> {
     Ok(())
 }
 
-// Similar to `BughouseGame.player_is_active`, but returns false before game started.
-fn is_clock_ticking(game: &BughouseGame, participant_id: BughouseParticipantId) -> bool {
-    let BughouseParticipantId::Player(player_id) = participant_id else {
-        return false;
-    };
-    game.board(player_id.board_idx).clock().active_force() == Some(player_id.force)
+// Differs from `BughouseGame::envoy_is_active` in that it returns false for White before game start.
+fn is_clock_ticking(game: &BughouseGame, participant_id: BughouseParticipant) -> bool {
+    for envoy in participant_id.envoys() {
+        if game.board(envoy.board_idx).clock().active_force() == Some(envoy.force) {
+            return true;
+        }
+    }
+    false
 }
 
 fn render_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_sys::Element)
@@ -1143,7 +1171,7 @@ fn render_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_
 
 fn update_scores(
     scores: &Scores, participants: &[Participant], game_status: BughouseGameStatus,
-    teaming: Teaming, my_id: BughouseParticipantId
+    teaming: Teaming, perspective: Perspective
 ) -> JsResult<()> {
     let normalize = |score: u32| (score as f64) / 2.0;
     let team_node = web_document().get_existing_element_by_id("score-team")?;
@@ -1152,7 +1180,7 @@ fn update_scores(
         Teaming::FixedTeams => {
             // TODO: Display "0:0" score before the first game.
             assert!(scores.per_player.is_empty());
-            let my_team = my_id.visual_team();
+            let my_team = get_bughouse_team(perspective.board_idx, perspective.force);
             team_node.set_text_content(Some(&format!(
                 "{}\n⎯\n{}",
                 normalize(*scores.per_team.get(&my_team.opponent()).unwrap_or(&0)),
@@ -1205,8 +1233,8 @@ fn update_turn_log(
     let log_node = document.get_existing_element_by_id(&turn_log_node_id(display_board_idx))?;
     remove_all_children(&log_node)?;
     for record in game.turn_log().iter() {
-        if record.player_id.board_idx == board_idx {
-            let force = force_id(record.player_id.force);
+        if record.envoy.board_idx == board_idx {
+            let force = force_id(record.envoy.force);
             let node = document.create_element("div")?;
             node.set_text_content(Some(&record.to_log_entry()));
             node.set_attribute("class", &format!("turn-record turn-record-{force}"))?;
@@ -1229,9 +1257,16 @@ fn update_turn_log(
     Ok(())
 }
 
-fn setup_participation_mode(observer: bool) -> JsResult<()> {
+fn setup_participation_mode(participant_id: BughouseParticipant) -> JsResult<()> {
+    use BughousePlayer::*;
+    let (is_symmetric, is_observer) = match participant_id {
+        BughouseParticipant::Observer => (true, true),
+        BughouseParticipant::Player(SinglePlayer(_)) => (false, false),
+        BughouseParticipant::Player(DoublePlayer(_)) => (true, false),
+    };
     let body = web_document().body()?;
-    body.class_list().toggle_with_force("observer", observer)?;
+    body.class_list().toggle_with_force("symmetric", is_symmetric)?;
+    body.class_list().toggle_with_force("observer", is_observer)?;
     Ok(())
 }
 
@@ -1383,11 +1418,17 @@ fn board_id(idx: DisplayBoard) -> &'static str {
         DisplayBoard::Secondary => "secondary",
     }
 }
+fn parse_board_id(id: &str) -> JsResult<DisplayBoard> {
+    match id {
+        "primary" => Ok(DisplayBoard::Primary),
+        "secondary" => Ok(DisplayBoard::Secondary),
+        _ => Err(format!(r#"Invalid board: "{id}""#).into()),
+    }
+}
 
 fn board_node_id(idx: DisplayBoard) -> String {
     format!("board-{}", board_id(idx))
 }
-
 fn parse_board_node_id(id: &str) -> JsResult<DisplayBoard> {
     match id {
         "board-primary" => Ok(DisplayBoard::Primary),
@@ -1405,6 +1446,25 @@ fn player_id(idx: DisplayPlayer) -> &'static str {
 
 fn piece_id(board_idx: DisplayBoard, coord: Coord) -> String {
     format!("{}-{}", board_id(board_idx), coord.to_algebraic())
+}
+fn parse_piece_id(id: &str) -> Option<(DisplayBoard, Coord)> {
+    let (board_idx, coord) = id.split('-').collect_tuple()?;
+    let board_idx = parse_board_id(board_idx).ok()?;
+    let coord = Coord::from_algebraic(coord)?;
+    Some((board_idx, coord))
+}
+
+fn reserve_piece_id(board_idx: DisplayBoard, piece_kind: PieceKind) -> String {
+    format!("reserve-{}-{}", board_id(board_idx), piece_kind.to_full_algebraic())
+}
+fn parse_reserve_piece_id(id: &str) -> Option<(DisplayBoard, PieceKind)> {
+    let (reserve_literal, board_idx, piece_kind) = id.split('-').collect_tuple()?;
+    if reserve_literal != "reserve" {
+        return None;
+    }
+    let board_idx = parse_board_id(board_idx).ok()?;
+    let piece_kind = PieceKind::from_algebraic(piece_kind)?;
+    Some((board_idx, piece_kind))
 }
 
 fn player_name_node_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String {

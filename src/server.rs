@@ -8,7 +8,7 @@ use std::ops;
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 use std::time::Duration;
 
-use enum_map::{EnumMap, enum_map};
+use enum_map::enum_map;
 use indoc::printdoc;
 use instant::Instant;
 use itertools::Itertools;
@@ -16,15 +16,15 @@ use log::{info, warn};
 use rand::{Rng, seq::SliceRandom};
 use strum::IntoEnumIterator;
 
-use crate::BughouseServerRejection;
 use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
 use crate::game::{
-    TurnRecord, BughouseBoard, BughousePlayerId, PlayerInGame, BughouseGameStatus, BughouseGame,
-    get_bughouse_force, TOTAL_PLAYERS, TOTAL_PLAYERS_PER_TEAM,
+    TurnRecord, BughouseBoard, BughouseEnvoy, BughousePlayer, PlayerInGame, BughouseGameStatus, BughouseGame,
+    get_bughouse_force, TOTAL_ENVOYS, TOTAL_ENVOYS_PER_TEAM,
 };
-use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientErrorReport};
+use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseServerRejection, BughouseClientErrorReport};
+use crate::lobby::{num_fixed_players_per_team, verify_participants};
 use crate::pgn::{self, BughouseExportFormat};
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Participant, Team, Faction};
@@ -43,7 +43,7 @@ macro_rules! unknown_error {
     }
 }
 
-type Preturns = HashMap<BughousePlayerId, TurnInput>;
+type Preturns = HashMap<BughouseEnvoy, TurnInput>;
 
 #[derive(Clone, Copy, Debug)]
 enum Execution {
@@ -111,7 +111,7 @@ struct Participants {
 
 impl Participants {
     fn new() -> Self { Self{ map: BTreeMap::new(), next_id: 1 } }
-    fn iter(&self) -> impl Iterator<Item = &Participant> { self.map.values() }
+    fn iter(&self) -> impl Iterator<Item = &Participant> + Clone { self.map.values() }
     fn iter_mut(&mut self) -> impl Iterator<Item = &mut Participant> { self.map.values_mut() }
     fn find_by_name(&self, name: &str) -> Option<ParticipantId> {
         self.map.iter().find_map(|(id, p)| if p.name == name { Some(*id) } else { None })
@@ -121,15 +121,6 @@ impl Participants {
         self.next_id += 1;
         assert!(self.map.insert(id, participant).is_none());
         id
-    }
-    fn num_fixed_player_per_team(&self) -> EnumMap<Team, usize> {
-        let mut num_players_per_team = enum_map!{ _ => 0 };
-        for p in self.iter() {
-            if let Faction::Fixed(team) = p.faction {
-                num_players_per_team[team] += 1;
-            }
-        }
-        num_players_per_team
     }
 }
 
@@ -311,7 +302,6 @@ impl ServerState {
     #[allow(non_snake_case)]
     pub fn TEST_override_board_assignment(&mut self, contest_id: String, assignment: Vec<PlayerInGame>) {
         let contest_id = ContestId(contest_id);
-        assert_eq!(assignment.len(), TOTAL_PLAYERS);
         self.core.contests.get_mut(&contest_id).unwrap().board_assignment_override = Some(assignment);
     }
 }
@@ -624,11 +614,11 @@ impl Contest {
             BughouseClientEvent::SetFaction{ faction } => {
                 self.process_set_faction(ctx, client_id, faction)
             },
-            BughouseClientEvent::MakeTurn{ turn_input } => {
-                self.process_make_turn(ctx, client_id, now, turn_input)
+            BughouseClientEvent::MakeTurn{ board_idx, turn_input } => {
+                self.process_make_turn(ctx, client_id, now, board_idx, turn_input)
             },
-            BughouseClientEvent::CancelPreturn => {
-                self.process_cancel_preturn(ctx, client_id)
+            BughouseClientEvent::CancelPreturn{ board_idx} => {
+                self.process_cancel_preturn(ctx, client_id, board_idx)
             },
             BughouseClientEvent::Resign => {
                 self.process_resign(ctx, client_id, now)
@@ -757,7 +747,8 @@ impl Contest {
     }
 
     fn process_make_turn(
-        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, turn_input: TurnInput
+        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
+        board_idx: BughouseBoard, turn_input: TurnInput
     ) -> EventResult {
         let Some(GameState{
                 ref mut game_start,
@@ -774,15 +765,18 @@ impl Contest {
         let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name) else {
             return Err(unknown_error!("Cannot make turn: player does not participate"));
         };
+        let Some(envoy) = player_bughouse_id.envoy_for(board_idx) else {
+            return Err(unknown_error!("Cannot make turn: player does not play on this board"));
+        };
         let scores = &mut self.scores;
         let participants = &mut self.participants;
-        let mode = game.turn_mode_for_player(player_bughouse_id);
+        let mode = game.turn_mode_for_envoy(envoy);
         match mode {
             Ok(TurnMode::Normal) => {
                 let mut turns = vec![];
                 let game_now = GameInstant::from_now_game_maybe_active(*game_start, now);
                 match apply_turn(
-                    game_now, player_bughouse_id, turn_input, game, preturns, participants, scores, game_end, now
+                    game_now, envoy, turn_input, game, preturns, participants, scores, game_end, now
                 ) {
                     Ok(turn_event) => {
                         if game_start.is_none() {
@@ -790,10 +784,10 @@ impl Contest {
                             *game_start_offset_time = Some(time::OffsetDateTime::now_utc());
                         }
                         turns.push(turn_event);
-                        let opponent_bughouse_id = player_bughouse_id.opponent();
-                        if let Some(preturn) = preturns.remove(&opponent_bughouse_id) {
+                        let opponent = envoy.opponent();
+                        if let Some(preturn) = preturns.remove(&opponent) {
                             if let Ok(preturn_event) = apply_turn(
-                                game_now, opponent_bughouse_id, preturn, game, preturns, participants, scores, game_end, now
+                                game_now, opponent, preturn, game, preturns, participants, scores, game_end, now
                             ) {
                                 turns.push(preturn_event);
                             } else {
@@ -814,7 +808,7 @@ impl Contest {
                 Ok(())
             },
             Ok(TurnMode::Preturn) => {
-                match preturns.entry(player_bughouse_id) {
+                match preturns.entry(envoy) {
                     hash_map::Entry::Occupied(_) => {
                         Err(unknown_error!("Only one premove is supported"))
                     },
@@ -830,7 +824,9 @@ impl Contest {
         }
     }
 
-    fn process_cancel_preturn(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
+    fn process_cancel_preturn(
+        &mut self, ctx: &mut Context, client_id: ClientId, board_idx: BughouseBoard
+    ) -> EventResult {
         let Some(GameState{ ref game, ref mut preturns, .. }) = self.game_state else {
             return Err(unknown_error!("Cannot cancel pre-turn: no game in progress"));
         };
@@ -840,7 +836,10 @@ impl Contest {
         let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name) else {
             return Err(unknown_error!("Cannot cancel pre-turn: player does not participate"));
         };
-        preturns.remove(&player_bughouse_id);
+        let Some(envoy) = player_bughouse_id.envoy_for(board_idx) else {
+            return Err(unknown_error!("Cannot cancel pre-turn: player does not play on this board"));
+        };
+        preturns.remove(&envoy);
         Ok(())
     }
 
@@ -972,18 +971,7 @@ impl Contest {
             self.broadcast(ctx, &BughouseServerEvent::ChalkboardUpdated{ chalkboard });
         }
 
-        let num_players = self.participants.iter().filter(|p| p.faction.is_player()).count();
-        let all_ready = self.participants.iter().filter(|p| p.faction.is_player()).all(|p| p.is_ready);
-        let num_players_ok = match self.rules.bughouse_rules.teaming {
-            Teaming::FixedTeams => num_players == TOTAL_PLAYERS,
-            Teaming::IndividualMode => num_players >= TOTAL_PLAYERS,
-        };
-        let teams_ok = match self.rules.bughouse_rules.teaming {
-            Teaming::FixedTeams =>
-                self.participants.num_fixed_player_per_team().values().all(|&n| n <= TOTAL_PLAYERS_PER_TEAM),
-            Teaming::IndividualMode => true,
-        };
-        let can_start_game = num_players_ok && teams_ok && all_ready;
+        let can_start_game = verify_participants(&self.rules, self.participants.iter()).error.is_none();
         if let Some(first_game_countdown_start) = self.first_game_countdown_since {
             if !can_start_game {
                 self.first_game_countdown_since = None;
@@ -1071,12 +1059,17 @@ impl Contest {
         };
         let player_bughouse_id = participant_id
             .and_then(|id| game_state.game.find_player(&self.participants[id].name));
+        let preturns = if let Some(player_bughouse_id) = player_bughouse_id {
+            player_preturns(&game_state.preturns, player_bughouse_id)
+        } else {
+            vec![]
+        };
         BughouseServerEvent::GameStarted {
             starting_position: game_state.game.starting_position().clone(),
             players: game_state.game.players(),
             time: current_game_time(game_state, now),
             turn_log: game_state.game.turn_log().iter().map(|t| t.trim_for_sending()).collect(),
-            preturn: player_bughouse_id.and_then(|id| game_state.preturns.get(&id)).cloned(),
+            preturns,
             game_status: game_state.game.status(),
             scores: self.scores.clone(),
         }
@@ -1094,8 +1087,8 @@ impl Contest {
     // Randomize fixed teams in the beginning of a contest.
     //
     // Algorithm: shuffle players, then iterate the resulting shuffled array and assign
-    // teams. Note that it would be incorrent to go in the player order and assign a random
-    // team with a 50/50 probability (or the remaining free team if there's just one).
+    // teams. Note that it would be incorrect to go in the player order and assign a random
+    // team with a 50/50 probability, or the remaining free team if there's just one.
     // If we were to do this, then the first two players to join would get into the same
     // team with probability 1/2 (instead of 1/3).
     fn randomize_fixed_teams(&mut self) {
@@ -1106,23 +1099,21 @@ impl Contest {
             },
         };
         let mut rng = rand::thread_rng();
-        let mut num_fixed = self.participants.num_fixed_player_per_team();
+        let mut num_fixed = num_fixed_players_per_team(self.participants.iter());
         let mut to_randomize = self.participants.iter_mut()
             .filter(|p| p.faction == Faction::Random)
             .collect_vec();
         to_randomize.shuffle(&mut rng);
         for p in to_randomize {
-            for team in Team::iter() {
-                if num_fixed[team] < TOTAL_PLAYERS_PER_TEAM {
-                    p.faction = Faction::Fixed(team);
-                    num_fixed[team] += 1;
-                    break;
-                }
-            }
+            let team = Team::iter().min_by_key(|&t| num_fixed[t]).unwrap();
+            assert!(num_fixed[team] < TOTAL_ENVOYS_PER_TEAM);
+            p.faction = Faction::Fixed(team);
+            num_fixed[team] += 1;
         }
-        assert!(num_fixed.values().all(|&n| n <= TOTAL_PLAYERS_PER_TEAM));
     }
 
+    // Improvement potential: In a game with three players also balance the number of times
+    //   each person double-plays.
     fn assign_boards(&self) -> Vec<PlayerInGame> {
         if let Some(assignment) = &self.board_assignment_override {
             for player_assignment in assignment {
@@ -1159,28 +1150,44 @@ impl Contest {
                 let mut current_players = Vec::<String>::new();
                 for (_, bucket) in players_buckets.into_iter() {
                     let bucket = bucket.collect_vec();
-                    let seats_left = TOTAL_PLAYERS - current_players.len();
+                    let seats_left = TOTAL_ENVOYS - current_players.len();
                     let n = cmp::min(bucket.len(), seats_left);
                     current_players.extend(bucket.choose_multiple(&mut rng, n).map(|p| p.name.clone()));
                 }
                 current_players.shuffle(&mut rng);
-                for team in Team::iter() {
-                    for _ in 0..TOTAL_PLAYERS_PER_TEAM {
-                        players_per_team[team].push(current_players.pop().unwrap().clone());
-                    }
+                for p in current_players {
+                    let team = Team::iter().min_by_key(|&t| players_per_team[t].len()).unwrap();
+                    assert!(players_per_team[team].len() < TOTAL_ENVOYS_PER_TEAM);
+                    players_per_team[team].push(p);
                 }
             },
         }
-        players_per_team.into_iter().flat_map(|(team, mut team_players)| {
+        players_per_team.into_iter().map(|(team, mut team_players)| {
             team_players.shuffle(&mut rng);
-            BughouseBoard::iter().zip_eq(team_players.into_iter()).map(move |(board_idx, name)| PlayerInGame {
-                name,
-                id: BughousePlayerId {
-                    board_idx,
-                    force: get_bughouse_force(team, board_idx)
-                }
-            })
-        }).collect()
+            match team_players.len() {
+                1 => {
+                    vec![
+                        PlayerInGame {
+                            name: team_players.pop().unwrap(),
+                            id: BughousePlayer::DoublePlayer(team)
+                        }
+                    ]
+                },
+                2 => {
+                    BughouseBoard::iter()
+                        .zip_eq(team_players.into_iter())
+                        .map(move |(board_idx, name)| PlayerInGame {
+                            name,
+                            id: BughousePlayer::SinglePlayer(BughouseEnvoy {
+                                board_idx,
+                                force: get_bughouse_force(team, board_idx)
+                            })
+                        })
+                        .collect_vec()
+                },
+                _ => panic!("Unexpected number of players in a team: {}", team_players.len()),
+            }
+        }).flatten().collect_vec()
     }
 }
 
@@ -1227,11 +1234,11 @@ fn turn_error_to_event_result(error: TurnError) -> EventResult {
 }
 
 fn apply_turn(
-    game_now: GameInstant, player_bughouse_id: BughousePlayerId, turn_input: TurnInput,
-    game: &mut BughouseGame, preturns: &mut Preturns, participants: &mut Participants, scores: &mut Scores,
+    game_now: GameInstant, envoy: BughouseEnvoy, turn_input: TurnInput, game: &mut BughouseGame,
+    preturns: &mut Preturns, participants: &mut Participants, scores: &mut Scores,
     game_end: &mut Option<Instant>, now: Instant,
 ) -> Result<TurnRecord, TurnError> {
-    game.try_turn_by_player(player_bughouse_id, &turn_input, TurnMode::Normal, game_now)?;
+    game.try_turn_by_envoy(envoy, &turn_input, TurnMode::Normal, game_now)?;
     if game.status() != BughouseGameStatus::Active {
         update_state_on_game_over(game, preturns, participants, scores, game_end, now);
     }
@@ -1274,6 +1281,22 @@ fn update_state_on_game_over(
             p.games_played += 1;
         }
     }
+}
+
+fn player_preturns(preturns: &Preturns, player: BughousePlayer) -> Vec<(BughouseBoard, TurnInput)> {
+    let preturns_or = match player {
+        BughousePlayer::SinglePlayer(envoy) => vec![
+            (envoy.board_idx, preturns.get(&envoy))
+        ],
+        BughousePlayer::DoublePlayer(team) => BughouseBoard::iter().map(|board_idx| {
+            let envoy = BughouseEnvoy{ board_idx, force: get_bughouse_force(team, board_idx) };
+            (board_idx, preturns.get(&envoy))
+        }).collect_vec(),
+    };
+    return preturns_or.into_iter()
+        .filter(|(_, turn)| turn.is_some())
+        .map(|(board_idx, turn)| (board_idx, turn.unwrap().clone()))
+        .collect();
 }
 
 fn process_report_error(ctx: &Context, client_id: ClientId, report: &BughouseClientErrorReport) {

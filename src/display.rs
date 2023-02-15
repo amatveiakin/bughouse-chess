@@ -8,7 +8,7 @@ use strum::EnumIter;
 
 use crate::coord::{Row, Col, Coord, NUM_ROWS, NUM_COLS};
 use crate::force::Force;
-use crate::game::{BughouseBoard, BughouseParticipantId};
+use crate::game::{BughouseBoard, BughousePlayer, BughouseParticipant, get_bughouse_board};
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
@@ -23,10 +23,12 @@ pub enum DisplayPlayer {
     Bottom,
 }
 
+// Lens through which to view the game: the corresponding envoy will be rendered in
+// bottom left.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Perspective {
-    PlayAsWhite,
-    PlayAsBlack,
+pub struct Perspective {
+    pub board_idx: BughouseBoard,
+    pub force: Force,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -64,31 +66,42 @@ pub struct DisplayFCoord {
 
 
 impl Perspective {
-    pub fn for_force(force: Force) -> Self {
-        match force {
-            Force::White => Perspective::PlayAsWhite,
-            Force::Black => Perspective::PlayAsBlack,
+    pub fn for_participant(participant: BughouseParticipant) -> Self {
+        use BughousePlayer::*;
+        match participant {
+            BughouseParticipant::Player(SinglePlayer(envoy)) => Perspective {
+                board_idx: envoy.board_idx,
+                force: envoy.force,
+            },
+            BughouseParticipant::Player(DoublePlayer(team)) => Perspective {
+                board_idx: get_bughouse_board(team, Force::White),
+                force: Force::White,
+            },
+            BughouseParticipant::Observer => Perspective {
+                board_idx: BughouseBoard::A,
+                force: Force::White,
+            },
         }
     }
 }
 
-pub fn get_board_index(board: DisplayBoard, viewer: BughouseParticipantId) -> BughouseBoard {
+pub fn get_board_index(board: DisplayBoard, perspective: Perspective) -> BughouseBoard {
     match board {
-        DisplayBoard::Primary => viewer.visual_board_idx(),
-        DisplayBoard::Secondary => viewer.visual_board_idx().other(),
+        DisplayBoard::Primary => perspective.board_idx,
+        DisplayBoard::Secondary => perspective.board_idx.other(),
     }
 }
 
-pub fn get_display_board_index(board: BughouseBoard, viewer: BughouseParticipantId) -> DisplayBoard {
-    if viewer.visual_board_idx() == board { DisplayBoard::Primary } else { DisplayBoard::Secondary }
+pub fn get_display_board_index(board: BughouseBoard, perspective: Perspective) -> DisplayBoard {
+    if perspective.board_idx == board { DisplayBoard::Primary } else { DisplayBoard::Secondary }
 }
 
 pub fn get_board_orientation(board: DisplayBoard, perspective: Perspective) -> BoardOrientation {
     use DisplayBoard::*;
-    use Perspective::*;
-    match (board, perspective) {
-        (Primary, PlayAsWhite) | (Secondary, PlayAsBlack) => BoardOrientation::Normal,
-        (Primary, PlayAsBlack) | (Secondary, PlayAsWhite) => BoardOrientation::Rotated,
+    use Force::*;
+    match (board, perspective.force) {
+        (Primary, White) | (Secondary, Black) => BoardOrientation::Normal,
+        (Primary, Black) | (Secondary, White) => BoardOrientation::Rotated,
     }
 }
 

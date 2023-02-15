@@ -67,9 +67,9 @@ pub fn algebraic_turn(algebraic: &str) -> TurnInput {
 
 
 #[macro_export]
-macro_rules! seating {
+macro_rules! envoy {
     ($force:ident $board_idx:ident) => {
-        bughouse_chess::BughousePlayerId {
+        bughouse_chess::BughouseEnvoy {
             board_idx: bughouse_chess::BughouseBoard::$board_idx,
             force: bughouse_chess::Force::$force,
         }

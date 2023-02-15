@@ -6,7 +6,7 @@ use bughouse_chess::test_util::*;
 
 fn bughouse_chess_com() -> BughouseGame {
     BughouseGame::new(
-        ContestRules::rated(),
+        ContestRules::unrated(),
         ChessRules::classic_blitz(),
         BughouseRules::chess_com(),
         &sample_bughouse_players()

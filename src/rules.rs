@@ -94,10 +94,8 @@ impl Teaming {
 }
 
 impl ContestRules {
-    pub fn rated() -> Self {
-        Self {
-            rated: true,
-        }
+    pub fn unrated() -> Self {
+        Self { rated: false }
     }
 }
 

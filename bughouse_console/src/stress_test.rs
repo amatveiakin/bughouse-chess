@@ -43,13 +43,13 @@ enum ActionKind {
 #[derive(Clone, Debug)]
 enum Action {
     SetStatus{ status: BughouseGameStatus, time: GameInstant },
-    ApplyRemoteTurn{ player_id: BughousePlayerId, turn_algebraic: String, time: GameInstant },
-    LocalTurn{ turn_input: TurnInput, time: GameInstant },
+    ApplyRemoteTurn{ envoy: BughouseEnvoy, turn_algebraic: String, time: GameInstant },
+    LocalTurn{ board_idx: BughouseBoard, turn_input: TurnInput, time: GameInstant },
     PieceDragState,
-    StartDragPiece{ start: PieceDragStart },
+    StartDragPiece{ board_idx: BughouseBoard, start: PieceDragStart },
     AbortDragPiece,
     DragPieceDrop{ dest: Coord, promote_to: PieceKind },
-    CancelPreturn,
+    CancelPreturn{ board_idx: BughouseBoard },
 }
 
 #[derive(Default)]
@@ -64,7 +64,7 @@ thread_local! {
 
 fn default_bughouse_game() -> BughouseGame {
     BughouseGame::new(
-        ContestRules::rated(),
+        ContestRules::unrated(),
         ChessRules::classic_blitz(),
         BughouseRules::chess_com(),
         &sample_bughouse_players()
@@ -146,9 +146,12 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
             // Optimization potential. A more direct way of generating random valid moves.
             for _ in 0..MAX_ATTEMPTS_GENERATING_SERVER_TURN {
                 let mut game = alt_game.game_confirmed().clone();
-                let mut board_idx = random_board(rng);
-                let mut force = game.board(board_idx).active_force();
-                let mut player_id = BughousePlayerId{ board_idx, force };
+                let mut random_envoy = || {
+                    let board_idx = random_board(rng);
+                    let force = game.board(board_idx).active_force();
+                    BughouseEnvoy{ board_idx, force }
+                };
+                let mut envoy = random_envoy();
                 // The client can reasonably expect that the server wouldn't send back turns by
                 // the current player other than those which they actually made (except while
                 // reconnecting). Some assertions along those lines are sprinkled here and there
@@ -159,14 +162,14 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
                 // but I don't have better ideas for now. Perhaps AlteredGame is just a bad
                 // layer of abstraction for fuzzing, and this test should be deleted when a
                 // client/server fuzzer test is in place.
-                if alt_game.my_id() == BughouseParticipantId::Player(player_id) {
-                    board_idx = board_idx.other();
-                    force = game.board(board_idx).active_force();
-                    player_id = BughousePlayerId{ board_idx, force };
+                // Note that as a consequence we cannot have double-play.
+                // TODO: Fix this and test double-play scenarios as well.
+                while alt_game.my_id().plays_for(envoy) {
+                    envoy = random_envoy();
                 }
                 let turn = random_turn(rng);
                 let turn_is_valid = game.try_turn(
-                    board_idx,
+                    envoy.board_idx,
                     &TurnInput::DragDrop(turn),
                     TurnMode::Normal,
                     GameInstant::game_start()
@@ -174,26 +177,28 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
                 if turn_is_valid {
                     let turn_algebraic = game.last_turn_record().unwrap().turn_expanded.algebraic_for_log.clone();
                     let time = GameInstant::game_start();
-                    return Some(Action::ApplyRemoteTurn{ player_id, turn_algebraic, time });
+                    return Some(Action::ApplyRemoteTurn{ envoy, turn_algebraic, time });
                 }
             }
             return None;
         },
         LocalTurn => {
+            let board_idx = random_board(rng);
             let turn_input = TurnInput::DragDrop(random_turn(rng));
             let time = GameInstant::game_start();
-            Action::LocalTurn{ turn_input, time }
+            Action::LocalTurn{ board_idx, turn_input, time }
         },
         PieceDragState => {
             Action::PieceDragState
         },
         StartDragPiece => {
+            let board_idx = random_board(rng);
             let start = if rng.gen_bool(DRAG_RESERVE_RATIO) {
                 PieceDragStart::Reserve(random_piece(rng))
             } else {
                 PieceDragStart::Board(random_coord(rng))
             };
-            Action::StartDragPiece{ start }
+            Action::StartDragPiece{ board_idx, start }
         },
         AbortDragPiece => {
             Action::AbortDragPiece
@@ -204,7 +209,8 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
             Action::DragPieceDrop{ dest, promote_to }
         },
         CancelPreturn => {
-            Action::CancelPreturn
+            let board_idx = random_board(rng);
+            Action::CancelPreturn{ board_idx }
         },
     })
 }
@@ -212,15 +218,22 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
 fn apply_action(alt_game: &mut AlteredGame, action: Action) {
     use Action::*;
     match action {
-        SetStatus{ status, time } => _ = alt_game.set_status(status, time),
-        ApplyRemoteTurn{ player_id, turn_algebraic, time } =>
-            _ = alt_game.apply_remote_turn_algebraic(player_id, &turn_algebraic, time),
-        LocalTurn{ turn_input, time } => _ = alt_game.try_local_turn(turn_input, time),
-        PieceDragState => _ = alt_game.piece_drag_state(),
-        StartDragPiece{ start } => _ = alt_game.start_drag_piece(start),
-        AbortDragPiece => _ = alt_game.abort_drag_piece(),
-        DragPieceDrop{ dest, promote_to } => _ = alt_game.drag_piece_drop(dest, promote_to),
-        CancelPreturn => _ = alt_game.cancel_preturn(),
+        SetStatus{ status, time } =>
+            _ = alt_game.set_status(status, time),
+        ApplyRemoteTurn{ envoy, turn_algebraic, time } =>
+            _ = alt_game.apply_remote_turn_algebraic(envoy, &turn_algebraic, time),
+        LocalTurn{ board_idx, turn_input, time } =>
+            _ = alt_game.try_local_turn(board_idx, turn_input, time),
+        PieceDragState =>
+            _ = alt_game.piece_drag_state(),
+        StartDragPiece{ board_idx,start } =>
+            _ = alt_game.start_drag_piece(board_idx, start),
+        AbortDragPiece =>
+            _ = alt_game.abort_drag_piece(),
+        DragPieceDrop{ dest, promote_to } =>
+            _ = alt_game.drag_piece_drop(dest, promote_to),
+        CancelPreturn{ board_idx } =>
+            _ = alt_game.cancel_preturn(board_idx),
     }
 }
 
@@ -283,10 +296,12 @@ pub fn altered_game_test() -> io::Result<()> {
         let t0 = Instant::now();
         let mut finished_games = 0;
         for _ in 0..GAMES_PER_BATCH {
-            let participant = BughouseParticipantId::Player(BughousePlayerId {
-                board_idx: random_board(rng),
-                force: random_force(rng),
-            });
+            let participant = BughouseParticipant::Player(
+                BughousePlayer::SinglePlayer(BughouseEnvoy {
+                    board_idx: random_board(rng),
+                    force: random_force(rng),
+                })
+            );
             let mut alt_game = AlteredGame::new(participant, default_bughouse_game());
             for _ in 0..ACTIONS_PER_GAME {
                 let Some(action) = random_action(&alt_game, rng) else {

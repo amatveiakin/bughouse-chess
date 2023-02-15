@@ -71,11 +71,11 @@ fn render_bughouse_board(
     )
 }
 
-pub fn render_bughouse_game(game: &BughouseGame, my_id: BughouseParticipantId, now: GameInstant) -> String {
+pub fn render_bughouse_game(game: &BughouseGame, my_id: BughouseParticipant, now: GameInstant) -> String {
     use DisplayBoard::*;
-    let perspective = Perspective::for_force(my_id.visual_force());
-    let primary_idx = get_board_index(Primary, my_id);
-    let secondary_idx = get_board_index(Secondary, my_id);
+    let perspective = Perspective::for_participant(my_id);
+    let primary_idx = get_board_index(Primary, perspective);
+    let secondary_idx = get_board_index(Secondary, perspective);
     let board_primary = render_bughouse_board(game.board(primary_idx), now, Primary, perspective);
     let board_secondary = render_bughouse_board(game.board(secondary_idx), now, Secondary, perspective);
     board_primary.lines().zip(board_secondary.lines()).map(

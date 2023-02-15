@@ -248,10 +248,10 @@ where
         let game = maybe_game?;
         let (players, result) = match event {
             BughouseServerEvent::TurnsMade { game_status, .. } => {
-                (players(game)?, game_result_str(*game_status)?)
+                (players(game), game_result_str(*game_status)?)
             }
             BughouseServerEvent::GameOver { game_status, .. } => {
-                (players(game)?, game_result_str(*game_status)?)
+                (players(game), game_result_str(*game_status)?)
             }
             _ => {
                 return None;
@@ -283,26 +283,15 @@ fn game_result_str(status: BughouseGameStatus) -> Option<String> {
     .map(|x| x.to_owned())
 }
 
-fn players(game: &GameState) -> Option<(String, String, String, String)> {
-    let mut red_a = None;
-    let mut red_b = None;
-    let mut blue_a = None;
-    let mut blue_b = None;
-    for PlayerInGame{ name, id } in game.game().players().iter() {
-        match (id.team(), id.board_idx) {
-            (Team::Red, BughouseBoard::A) => {
-                red_a = Some(name.clone());
-            }
-            (Team::Red, BughouseBoard::B) => {
-                red_b = Some(name.clone());
-            }
-            (Team::Blue, BughouseBoard::A) => {
-                blue_a = Some(name.clone());
-            }
-            (Team::Blue, BughouseBoard::B) => {
-                blue_b = Some(name.clone());
-            }
-        }
-    }
-    Some((red_a?, red_b?, blue_a?, blue_b?))
+// TODO: Support double-play and remove `ParticipantsError::RatedDoublePlay`.
+fn players(game: &GameState) -> (String, String, String, String) {
+    let get_player = |team, board_idx| {
+        game.game().board(board_idx).player_name(get_bughouse_force(team, board_idx)).to_owned()
+    };
+    (
+        get_player(Team::Red, BughouseBoard::A),
+        get_player(Team::Red, BughouseBoard::B),
+        get_player(Team::Blue, BughouseBoard::A),
+        get_player(Team::Blue, BughouseBoard::B),
+    )
 }

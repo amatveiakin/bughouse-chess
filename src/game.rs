@@ -1,3 +1,28 @@
+// On terminology:
+//   Participant: Somebody who is either playing or observing the game. There is
+//     a 1:1 corresponence between participants and humans connected to a contest.
+//   Player: A participant who is playing (not observing) in a given game. Normally
+//     there are 4 player in a game. However it is also possible to have a game with
+//     2 or 3 players if some of them are double-playing, i.e. if they play on both
+//     boards for a given team.
+//   Observer: A participant who is not playing in a given game. An observer
+//     could be temporary (if they were randomly selected to skip one game, but will
+//     play next time) or permanent (if they never play in a given contest).
+//   Envoy: Representative of all pieces of a given color on a given board. There are
+//     always exactly 4 envoys: (2 per team) x (2 per side). Each player controls one
+//     or two envoys.
+//
+// Correspondence. How many <Column> objects there exist per one <Row> object:
+//
+//                   Human    Participant    Player     Envoy
+//   Human                         1           0-1       0-2
+//   Participant       1                       0-1       0-2
+//   Player            1           1                     1-2
+//   Envoy             1           1            1
+
+// Improvement potential: Factor out defines for bughouse, leave only `Game` classes.
+//   Or split into `chess.rs` and `bughouse.rs`.
+
 #![allow(unused_parens)]
 
 use std::rc::Rc;
@@ -19,13 +44,14 @@ use crate::rules::{ContestRules, ChessRules, BughouseRules};
 use crate::starter::{EffectiveStartingPosition, generate_starting_position};
 
 
-pub const TOTAL_PLAYERS: usize = 4;
-pub const TOTAL_PLAYERS_PER_TEAM: usize = 2;
+pub const MIN_PLAYERS: usize = 2;
+pub const TOTAL_ENVOYS: usize = 4;
+pub const TOTAL_ENVOYS_PER_TEAM: usize = 2;
 
 // Stripped version of `TurnRecordExpanded`. For sending turns across network.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TurnRecord {
-    pub player_id: BughousePlayerId,
+    pub envoy: BughouseEnvoy,
     pub turn_algebraic: String,
     pub time: GameInstant,
 }
@@ -33,7 +59,7 @@ pub struct TurnRecord {
 #[derive(Clone, Debug)]
 pub struct TurnRecordExpanded {
     pub mode: TurnMode,
-    pub player_id: BughousePlayerId,
+    pub envoy: BughouseEnvoy,
     pub turn_expanded: TurnExpanded,
     pub time: GameInstant,
 }
@@ -44,7 +70,7 @@ impl TurnRecordExpanded {
         // should never occur here.
         assert_eq!(self.mode, TurnMode::Normal);
         TurnRecord {
-            player_id: self.player_id,
+            envoy: self.envoy,
             turn_algebraic: self.turn_expanded.algebraic_for_log.clone(),
             time: self.time,
         }
@@ -159,35 +185,29 @@ pub fn get_bughouse_force(team: Team, board_idx: BughouseBoard) -> Force {
     }
 }
 
-// TODO: Factor out this and other defines for bughouse.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
-pub struct BughousePlayerId {
+pub struct BughouseEnvoy {
     pub board_idx: BughouseBoard,
     pub force: Force,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+pub enum BughousePlayer {
+    SinglePlayer(BughouseEnvoy),
+    DoublePlayer(Team),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum BughouseParticipant {
+    Player(BughousePlayer),
+    Observer,
 }
 
 // Player in an active game.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PlayerInGame {
     pub name: String,
-    pub id: BughousePlayerId,
-}
-
-// Describes the player with whose eyes the game is viewed. This is not really an ID in that
-// it's not unique: many observers can view the game through the same lens.
-// Improvement potential. Rename BughouseObserserId and BughouseParticipantId to reflect that.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct BughouseObserserId {
-    pub board_idx: BughouseBoard,
-    pub force: Force,
-}
-
-// Describes a participant who is either playing or observing the game. This is not really an
-// ID in that it's not unique: many observers can view the game through the same lens.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum BughouseParticipantId {
-    Player(BughousePlayerId),
-    Observer(BughouseObserserId)
+    pub id: BughousePlayer,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
@@ -196,25 +216,77 @@ pub enum PlayerRelation {
     Opponent,
     Partner,
     Diagonal,
-    Other,  // either me or the other party is not a player
+    Other,
 }
 
-impl BughousePlayerId {
+impl BughouseEnvoy {
     pub fn team(self) -> Team {
         get_bughouse_team(self.board_idx, self.force)
     }
     pub fn opponent(self) -> Self {
-        BughousePlayerId {
+        BughouseEnvoy {
             board_idx: self.board_idx,
             force: self.force.opponent(),
         }
     }
+}
 
-    pub fn relation_to(self, other_player: BughousePlayerId) -> PlayerRelation {
-        let same_board = self.board_idx == other_player.board_idx;
+impl BughousePlayer {
+    pub fn team(self) -> Team {
+        match self {
+            BughousePlayer::SinglePlayer(envoy) => envoy.team(),
+            BughousePlayer::DoublePlayer(team) => team,
+        }
+    }
+    pub fn envoy_for(self, board_idx: BughouseBoard) -> Option<BughouseEnvoy> {
+        match self {
+            BughousePlayer::SinglePlayer(envoy) => {
+                if envoy.board_idx == board_idx { Some(envoy) } else { None }
+            },
+            BughousePlayer::DoublePlayer(team) => Some(BughouseEnvoy {
+                board_idx,
+                force: get_bughouse_force(team, board_idx),
+            }),
+        }
+    }
+    pub fn envoys(self) -> Vec<BughouseEnvoy> {
+        match self {
+            BughousePlayer::SinglePlayer(envoy) => vec![envoy],
+            BughousePlayer::DoublePlayer(team) => BughouseBoard::iter().map(|board_idx| BughouseEnvoy {
+                board_idx,
+                force: get_bughouse_force(team, board_idx),
+            }).collect(),
+        }
+    }
+    pub fn plays_on_board(self, board_idx: BughouseBoard) -> bool {
+        self.envoy_for(board_idx).is_some()
+    }
+    pub fn plays_for(self, envoy: BughouseEnvoy) -> bool {
+        match self {
+            BughousePlayer::SinglePlayer(e) => e == envoy,
+            BughousePlayer::DoublePlayer(team) => envoy.team() == team,
+        }
+    }
+
+    pub fn relation_to(self, other_player: BughousePlayer) -> PlayerRelation {
+        use BughousePlayer::*;
+        let common_board = match (self, other_player) {
+            (SinglePlayer(p1), SinglePlayer(p2)) => p1.board_idx == p2.board_idx,
+            (DoublePlayer(_), _) | (_, DoublePlayer(_)) => true,
+        };
         let same_team = self.team() == other_player.team();
-        match (same_board, same_team) {
-            (true, true) => PlayerRelation::Myself,
+        match (common_board, same_team) {
+            (true, true) => {
+                if self == other_player {
+                    PlayerRelation::Myself
+                } else {
+                    // Shouldn't normally happen. We would only get here if trying to
+                    // compute relation between e.g. "a player who plays for the entire
+                    // red team" and "a player who plays for board A in red team". In an
+                    // actual game such two players cannot coexist.
+                    PlayerRelation::Other
+                }
+            },
             (true, false) => PlayerRelation::Opponent,
             (false, true) => PlayerRelation::Partner,
             (false, false) => PlayerRelation::Diagonal,
@@ -222,27 +294,24 @@ impl BughousePlayerId {
     }
 }
 
-impl BughouseParticipantId {
-    // To be used for rendering purposes only. If actions are to be taken on a board, use
-    // `let BughouseParticipantId::Player(...) = ...` to check that this is an actual player.
-    pub fn visual_board_idx(self) -> BughouseBoard {
+impl BughouseParticipant {
+    pub fn as_player(self) -> Option<BughousePlayer> {
         match self {
-            Self::Player(id) => id.board_idx,
-            Self::Observer(id) => id.board_idx,
+            BughouseParticipant::Player(player) => Some(player),
+            BughouseParticipant::Observer => None,
         }
     }
-    // To be used for rendering purposes only. If actions are to be taken on behalf of a force, use
-    // `let BughouseParticipantId::Player(...) = ...` to check that this is an actual player.
-    pub fn visual_force(self) -> Force {
-        match self {
-            Self::Player(id) => id.force,
-            Self::Observer(id) => id.force,
-        }
+    pub fn envoy_for(self, board_idx: BughouseBoard) -> Option<BughouseEnvoy> {
+        self.as_player().and_then(|p| p.envoy_for(board_idx))
     }
-    // To be used for rendering purposes only. If actions are to be taken on behalf of a team, use
-    // `let BughouseParticipantId::Player(...) = ...` to check that this is an actual player.
-    pub fn visual_team(self) -> Team {
-        get_bughouse_team(self.visual_board_idx(), self.visual_force())
+    pub fn plays_on_board(self, board_idx: BughouseBoard) -> bool {
+        self.as_player().map_or(false, |p| p.plays_on_board(board_idx))
+    }
+    pub fn plays_for(self, envoy: BughouseEnvoy) -> bool {
+        self.as_player().map_or(false, |p| p.plays_for(envoy))
+    }
+    pub fn envoys(self) -> Vec<BughouseEnvoy> {
+        self.as_player().map_or(vec![], |p| p.envoys())
     }
 }
 
@@ -310,38 +379,49 @@ impl BughouseGame {
     pub fn board_mut(&mut self, idx: BughouseBoard) -> &mut Board { &mut self.boards[idx] }
     pub fn board(&self, idx: BughouseBoard) -> &Board { &self.boards[idx] }
     pub fn boards(&self) -> &EnumMap<BughouseBoard, Board> { &self.boards }
-    pub fn reserve(&self, player_id: BughousePlayerId) -> &Reserve {
-        self.boards[player_id.board_idx].reserve(player_id.force)
+    pub fn reserve(&self, envoy: BughouseEnvoy) -> &Reserve {
+        self.boards[envoy.board_idx].reserve(envoy.force)
     }
     pub fn turn_log(&self) -> &Vec<TurnRecordExpanded> { &self.turn_log }
     pub fn last_turn_record(&self) -> Option<&TurnRecordExpanded> { self.turn_log.last() }
     pub fn status(&self) -> BughouseGameStatus { self.status }
 
     pub fn players(&self) -> Vec<PlayerInGame> {
-        self.boards.iter().flat_map(|(board_idx, board)|
-            board.player_names().iter().map(move |(force, name)| PlayerInGame {
-                name: name.to_owned(),
-                id: BughousePlayerId{ board_idx, force }
-            })
-        ).collect()
-    }
-    pub fn find_player(&self, player_name: &str) -> Option<BughousePlayerId> {
-        for (board_idx, board) in self.boards.iter() {
-            for (force, name) in board.player_names() {
-                if name == player_name {
-                    return Some(BughousePlayerId{ board_idx, force });
+        let mut ret = vec![];
+        for team in Team::iter() {
+            let same_player = BughouseBoard::iter().map(|board_idx| {
+                self.boards[board_idx].player_name(get_bughouse_force(team, board_idx))
+            }).all_equal();
+            if same_player {
+                let board_idx = BughouseBoard::A;
+                let force = get_bughouse_force(team, board_idx);
+                ret.push(PlayerInGame {
+                    name: self.boards[board_idx].player_name(force).to_owned(),
+                    id: BughousePlayer::DoublePlayer(team),
+                });
+            } else {
+                for board_idx in BughouseBoard::iter() {
+                    let force = get_bughouse_force(team, board_idx);
+                    ret.push(PlayerInGame {
+                        name: self.boards[board_idx].player_name(force).to_owned(),
+                        id: BughousePlayer::SinglePlayer(BughouseEnvoy{ board_idx, force }),
+                    });
                 }
             }
         }
-        None
+        ret
     }
-    pub fn player_is_active(&self, player_id: BughousePlayerId) -> bool {
+    pub fn find_player(&self, player_name: &str) -> Option<BughousePlayer> {
+        // Improvement potential: Avoid constructing `players` vector.
+        self.players().iter().find(|p| p.name == player_name).map(|p| p.id)
+    }
+    pub fn envoy_is_active(&self, envoy: BughouseEnvoy) -> bool {
         self.status == BughouseGameStatus::Active &&
-            self.boards[player_id.board_idx].active_force() == player_id.force
+            self.boards[envoy.board_idx].active_force() == envoy.force
     }
-    pub fn turn_mode_for_player(&self, player_id: BughousePlayerId) -> Result<TurnMode, TurnError> {
+    pub fn turn_mode_for_envoy(&self, envoy: BughouseEnvoy) -> Result<TurnMode, TurnError> {
         if self.status == BughouseGameStatus::Active {
-            Ok(if self.player_is_active(player_id) { TurnMode::Normal } else { TurnMode::Preturn })
+            Ok(if self.envoy_is_active(envoy) { TurnMode::Normal } else { TurnMode::Preturn })
         } else {
             Err(TurnError::GameOver)
         }
@@ -395,7 +475,7 @@ impl BughouseGame {
             return Err(TurnError::GameOver);
         }
         let board = &mut self.boards[board_idx];
-        let player_id = BughousePlayerId{ board_idx, force: board.turn_owner(mode) };
+        let envoy = BughouseEnvoy{ board_idx, force: board.turn_owner(mode) };
         let turn = board.parse_turn_input(turn_input, mode)?;
         // `turn_to_algebraic` must be called before `try_turn`, because algebraic form depend
         // on the current position.
@@ -413,22 +493,22 @@ impl BughouseGame {
             other_board.receive_capture(&capture);
         }
         let turn_expanded = make_turn_expanded(turn, turn_algebraic, turn_facts);
-        self.turn_log.push(TurnRecordExpanded{ mode, player_id, turn_expanded, time: now });
+        self.turn_log.push(TurnRecordExpanded{ mode, envoy, turn_expanded, time: now });
         assert!(self.status == BughouseGameStatus::Active);
         self.set_status(self.game_status_for_board(board_idx), now);
         Ok(turn)
     }
 
-    pub fn try_turn_by_player(
-        &mut self, player_id: BughousePlayerId, turn_input: &TurnInput, mode: TurnMode, now: GameInstant
+    pub fn try_turn_by_envoy(
+        &mut self, envoy: BughouseEnvoy, turn_input: &TurnInput, mode: TurnMode, now: GameInstant
     )
         -> Result<Turn, TurnError>
     {
-        let expected_mode = self.turn_mode_for_player(player_id)?;
+        let expected_mode = self.turn_mode_for_envoy(envoy)?;
         if mode != expected_mode {
             return Err(TurnError::WrongTurnOrder);
         }
-        self.try_turn(player_id.board_idx, turn_input, mode, now)
+        self.try_turn(envoy.board_idx, turn_input, mode, now)
     }
 
     pub fn outcome(&self) -> String {
@@ -464,10 +544,22 @@ impl BughouseGame {
 fn make_player_map(players: &[PlayerInGame]) -> EnumMap<BughouseBoard, EnumMap<Force, String>> {
     let mut player_map: EnumMap<BughouseBoard, EnumMap<Force, Option<String>>> =
         enum_map!{ _ => enum_map!{ _ => None } };
-    for p in players {
-        let player_ref = &mut player_map[p.id.board_idx][p.id.force];
+    let mut insert_player = |board_idx, force, name: &String| {
+        let player_ref = &mut player_map[board_idx][force];
         assert!(player_ref.is_none());
-        *player_ref = Some(p.name.clone());
+        *player_ref = Some(name.clone());
+    };
+    for p in players {
+        match p.id {
+            BughousePlayer::SinglePlayer(envoy) => {
+                insert_player(envoy.board_idx, envoy.force, &p.name);
+            },
+            BughousePlayer::DoublePlayer(team) => {
+                for board_idx in BughouseBoard::iter() {
+                    insert_player(board_idx, get_bughouse_force(team, board_idx), &p.name);
+                }
+            },
+        }
     }
     player_map.map(|_, board_players| {
         board_players.map(|_, p| { p.unwrap() })

@@ -3,11 +3,11 @@ use indoc::formatdoc;
 use serde::{Serialize, Deserialize};
 use time::macros::format_description;
 
-use crate::board::{TurnInput, TurnMode, VictoryReason, DrawReason};
+use crate::board::{AlgebraicFormat, TurnInput, TurnMode, VictoryReason, DrawReason};
 use crate::clock::TimeControl;
-use crate::{fen, AlgebraicFormat};
+use crate::fen;
 use crate::force::Force;
-use crate::game::{TurnRecordExpanded, BughousePlayerId, BughouseBoard, BughouseGameStatus, BughouseGame};
+use crate::game::{TurnRecordExpanded, BughouseEnvoy, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::player::Team;
 use crate::rules::StartingPosition;
 
@@ -135,10 +135,10 @@ fn make_bughouse_bpng_header(game: &BughouseGame, game_at_start: &BughouseGame, 
     )
 }
 
-fn player_notation(player_id: BughousePlayerId) -> &'static str {
+fn envoy_notation(envoy: BughouseEnvoy) -> &'static str {
     use BughouseBoard::*;
     use Force::*;
-    match (player_id.board_idx, player_id.force) {
+    match (envoy.board_idx, envoy.force) {
         (A, White) => "A",
         (A, Black) => "a",
         (B, White) => "B",
@@ -163,26 +163,26 @@ pub fn export_to_bpgn(_format: BughouseExportFormat, game: &BughouseGame, round:
     let mut doc = TextDocument::new();
     let mut full_turn_idx = enum_map!{ _ => 1 };
     for turn_record in game.turn_log() {
-        let TurnRecordExpanded{ player_id, turn_expanded, time, .. } = turn_record;
-        let turn_algebraic = game_rerun.board(player_id.board_idx).turn_to_algebraic(
+        let TurnRecordExpanded{ envoy, turn_expanded, time, .. } = turn_record;
+        let turn_algebraic = game_rerun.board(envoy.board_idx).turn_to_algebraic(
             turn_expanded.turn,
             TurnMode::Normal,
             AlgebraicFormat::for_pgn(),
         ).unwrap();
-        game_rerun.try_turn_by_player(
-            *player_id,
+        game_rerun.try_turn_by_envoy(
+            *envoy,
             &TurnInput::Explicit(turn_expanded.turn),
             TurnMode::Normal,
             *time,
         ).unwrap();
         let turn_notation = format!(
             "{}{}. {}",
-            full_turn_idx[player_id.board_idx],
-            player_notation(*player_id),
+            full_turn_idx[envoy.board_idx],
+            envoy_notation(*envoy),
             turn_algebraic,
         );
-        if player_id.force == Force::Black {
-            full_turn_idx[player_id.board_idx] += 1;
+        if envoy.force == Force::Black {
+            full_turn_idx[envoy.board_idx] += 1;
         }
         doc.push_word(&turn_notation);
     }

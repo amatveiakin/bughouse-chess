@@ -19,9 +19,11 @@ body {
   --color-dialog-scrollbar-background: #c7bc7c;
   --color-dialog-tooltip: #c6bcad;
 }
-body.observer {
+body.symmetric {
   --sq-size-primary: min(4.4vw, 7.8vh);
   --sq-size-secondary: var(--sq-size-primary);
+}
+body.observer {
   --color-main-scrollbar: #71755e;
 }
 
@@ -96,7 +98,7 @@ svg {
   ;
 }
 
-body.observer #page {
+body.symmetric #page {
   display: grid;
   grid-template-areas:
     ".        .         .  prim-rsrv-top     .      scnd-rsrv-top  .        .         ."
@@ -732,6 +734,12 @@ dialog input:invalid:not(:placeholder-shown) {
   width: 50%;
 }
 
+#menu-lobby-page {
+  width: 24em;
+}
+#menu-lobby-page > hr {
+  margin: 1em 0;
+}
 #lobby-participants {
   min-width: 10em;
   font-size: 110%;
@@ -739,7 +747,6 @@ dialog input:invalid:not(:placeholder-shown) {
   grid-template-columns: 1fr auto auto;
   column-gap: 0.5em;
   row-gap: 0.5em;
-  margin: 1.2em 0;
   align-items: center;
   user-select: none;  /* prevent accidental name selection when choosing a team */
 }
@@ -753,18 +760,56 @@ dialog input:invalid:not(:placeholder-shown) {
 #lobby-rules {
   white-space: pre;
 }
+#lobby-footer {
+  position: relative;
+  text-align: center;
+  height: 2.5em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5em;
+  box-sizing: border-box;
+}
+#lobby-footer.countdown {
+  border: 0.15em solid #a36125;
+}
+#lobby-waiting {
+  width: 90%;
+  font-size: 90%;
+}
+#lobby-footer.countdown > #lobby-waiting {
+  display: none;
+}
 #lobby-countdown {
+  display: none;
+  font-size: 110%;
   text-shadow: -0.05em -0.05em 0.1em #ffffff60, 0.05em 0.05em 0.1em #00000060;
+}
+#lobby-footer.countdown > #lobby-countdown {
+  display: unset;
 }
 #lobby-countdown-seconds {
   font-weight: bold;
+}
+#lobby-countdown-progressbar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  background-color: #a3612580;
+  width: 0%;
+  height: 100%;
+  z-index: -10;
+}
+#lobby-footer.countdown > #lobby-countdown-progressbar {
+  width: 100%;
+  transition: width 3s linear;
 }
 .lobby-icon {
   width: 2em;
   height: 2em;
 }
 .lobby-name.lobby-me {
-  font-size: 110%;
+  text-shadow: -0.05em -0.05em 0.1em #ffffff40, 0.05em 0.05em 0.1em #00000040;
   font-weight: bold;
 }
 .lobby-me .readiness-checkbox { stroke: #82a12f; }

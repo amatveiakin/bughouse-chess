@@ -67,8 +67,8 @@ fn render(
             // TODO: Show last turn by opponent.
             execute!(stdout, terminal::Clear(terminal::ClearType::FromCursorDown))?;
             if game.status() == BughouseGameStatus::Active {
-                if let BughouseParticipantId::Player(my_player_id) = my_id {
-                    highlight_input = game.player_is_active(my_player_id);
+                if let BughouseParticipant::Player(my_player_id) = my_id {
+                    highlight_input = my_player_id.envoys().into_iter().any(|e| game.envoy_is_active(e));
                 }
             } else {
                 additional_message = Some(
@@ -226,10 +226,10 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                                     },
                                 }
                             } else {
-                                let turn_input = TurnInput::Algebraic(keyboard_input.clone());
-                                command_error = match client_state.make_turn(turn_input) {
+                                let turn_result = client_state.execute_turn_command(&keyboard_input);
+                                command_error = match turn_result {
                                     Ok(()) => None,
-                                    Err(TurnError::WrongTurnOrder) => {
+                                    Err(TurnError::WrongTurnOrder | TurnError::PreturnLimitReached) => {
                                         keep_input = true;
                                         None
                                     },

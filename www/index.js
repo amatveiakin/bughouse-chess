@@ -197,6 +197,7 @@ let audio_last_played = 0;
 let audio_queue = [];
 let audio_volume = 0;
 
+let drag_source_board = null;
 let drag_element = null;
 
 const Meter = make_meters();
@@ -404,10 +405,6 @@ function execute_command(input) {
                     command_result_message = 'Applied';
                     break;
                 }
-                case 'undo':
-                    get_args(args, []);
-                    wasm_client().cancel_preturn();
-                    break;
                 case 'resign':
                     get_args(args, []);
                     wasm_client().resign();
@@ -431,7 +428,7 @@ function execute_command(input) {
                     throw new InvalidCommand(`Command does not exist: /${args[0]}`);
             }
         } else {
-            wasm_client().make_turn_algebraic(input);
+            wasm_client().execute_turn_command(input);
         }
         update();
         command_result.innerText = command_result_message;
@@ -528,6 +525,7 @@ function update_drag_state() {
             if (drag_element) {
                 drag_element.remove();
                 drag_element = null;
+                drag_source_board = null;
             }
             wasm_client().reset_drag_highlights();
             break;
@@ -545,19 +543,13 @@ function update_drag_state() {
 }
 
 function update_lobby_countdown() {
+    const lobby_footer = document.getElementById('lobby-footer');
     const lobby_waiting = document.getElementById('lobby-waiting');
-    const lobby_countdown = document.getElementById('lobby-countdown');
     const lobby_countdown_seconds = document.getElementById('lobby-countdown-seconds');
     const s = wasm_client().lobby_countdown_seconds_left();
-    if (s == null)  {
-        lobby_waiting.textContent = wasm_client().lobby_waiting_explanation();
-        lobby_waiting.style.display = null;
-        lobby_countdown.style.display = 'none';
-    } else {
-        lobby_countdown_seconds.textContent = s;
-        lobby_waiting.style.display = 'none';
-        lobby_countdown.style.display = null;
-    }
+    lobby_footer.classList.toggle('countdown', s != null);
+    lobby_waiting.textContent = wasm_client().lobby_waiting_explanation();
+    lobby_countdown_seconds.textContent = s;
 }
 
 function update_connection_status() {
@@ -642,14 +634,16 @@ function set_up_drag_and_drop() {
     document.addEventListener('touchend', end_drag);
     document.addEventListener('touchcancel', end_drag);
 
-    const svg = document.getElementById('board-primary');
-    svg.addEventListener('contextmenu', cancel_preturn);
+    for (const board of ['primary', 'secondary']) {
+        const svg = document.getElementById(`board-${board}`);
+        svg.addEventListener('contextmenu', function(event) { cancel_preturn(event, board); });
+    }
     document.addEventListener('contextmenu', cancel_drag);
 
     function is_main_pointer(event) { return event.button == 0 || event.changedTouches?.length >= 1; }
 
     function mouse_position_relative_to_board(event) {
-        const ctm = svg.getScreenCTM();
+        const ctm = drag_source_board.getScreenCTM();
         const src = event.changedTouches ? event.changedTouches[0] : event;
         return {
             x: (src.clientX - ctm.e) / ctm.a,
@@ -670,10 +664,11 @@ function set_up_drag_and_drop() {
                 // Dissociate image from the board/reserve:
                 drag_element.id = null;
                 // Bring on top; (if reserve) remove shadow by extracting from reserve group:
-                svg.appendChild(drag_element);
 
                 const source = drag_element.getAttribute('data-bughouse-location');
-                wasm_client().start_drag_piece(source);
+                const drag_source_board_idx = wasm_client().start_drag_piece(source);
+                drag_source_board = document.getElementById(`board-${drag_source_board_idx}`);
+                drag_source_board.appendChild(drag_element);
                 update();
 
                 // Properly position reserve piece after re-parenting.
@@ -699,17 +694,18 @@ function set_up_drag_and_drop() {
                 const coord = mouse_position_relative_to_board(event);
                 drag_element.remove();
                 drag_element = null;
+                drag_source_board = null;
                 wasm_client().drag_piece_drop(coord.x, coord.y, event.shiftKey);
                 update();
             }
         });
     }
 
-    function cancel_preturn(event) {
+    function cancel_preturn(event, board) {
         with_error_handling(function() {
             event.preventDefault();
             if (!drag_element) {
-                wasm_client().cancel_preturn();
+                wasm_client().cancel_preturn(board);
                 update();
             }
         });

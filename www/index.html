@@ -356,6 +356,10 @@
             <div class="tooltip-text">
               <p>Whether the game is rated.</p>
               <p>Unrated games are still recorded, but they do not affect either personal or team rating.</p>
+              <p>
+                In a rated game either each player must play on one board (classic bughouse),
+                or each player must play on two boards. Playing one versus two is only allowed in unrated.
+              </p>
             </div>
           </div>
         </div>
@@ -449,14 +453,19 @@
       <div id="menu-lobby-page" class="menu-page">
         <div id="lobby-contest">Contest <span id="lobby-contest-id"></span></div>
         <div id="lobby-rules"></div>
+        <hr>
         <div id="lobby-participants"></div>
-        <div id="lobby-waiting"></div>
-        <div id="lobby-countdown">
-          Starting in
-          <span id="lobby-countdown-seconds"></span>
-          <span>
-            <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
-          </span>
+        <hr>
+        <div id="lobby-footer">
+          <div id="lobby-waiting" class="centered"></div>
+          <div id="lobby-countdown">
+            Starting in
+            <span id="lobby-countdown-seconds"></span>
+            <span>
+              <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+            </span>
+          </div>
+          <div id="lobby-countdown-progressbar"></div>
         </div>
       </div>
     </dialog>

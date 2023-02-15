@@ -28,6 +28,7 @@ mod starter;
 pub mod client;
 pub mod fen;
 pub mod janitor;
+pub mod lobby;
 pub mod meter;
 pub mod persistence;
 pub mod ping_pong;

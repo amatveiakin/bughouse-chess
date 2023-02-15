@@ -3,7 +3,7 @@
 use enum_map::{EnumMap, enum_map};
 
 use crate::force::Force;
-use crate::game::{BughouseBoard, BughousePlayerId, PlayerInGame};
+use crate::game::{BughouseBoard, BughouseEnvoy, BughousePlayer, PlayerInGame};
 
 
 pub fn sample_chess_players() -> EnumMap<Force, String> {
@@ -16,22 +16,25 @@ pub fn sample_chess_players() -> EnumMap<Force, String> {
 pub fn sample_bughouse_players() -> Vec<PlayerInGame> {
     use Force::*;
     use BughouseBoard::*;
+    let single_player = |force, board_idx| BughousePlayer::SinglePlayer(
+        BughouseEnvoy{ board_idx, force }
+    );
     vec! [
         PlayerInGame {
             name: "Alice".to_owned(),
-            id: BughousePlayerId{ force: White, board_idx: A }
+            id: single_player(White, A),
         },
         PlayerInGame {
             name: "Bob".to_owned(),
-            id: BughousePlayerId{ force: Black, board_idx: A }
+            id: single_player(Black, A),
         },
         PlayerInGame {
             name: "Charlie".to_owned(),
-            id: BughousePlayerId{ force: White, board_idx: B }
+            id: single_player(White, B),
         },
         PlayerInGame {
             name: "Dave".to_owned(),
-            id: BughousePlayerId{ force: Black, board_idx: B }
+            id: single_player(Black, B),
         },
     ]
 }

@@ -2,17 +2,20 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc;
 use std::time::Duration;
 
+use enum_map::{EnumMap, enum_map};
 use instant::Instant;
+use strum::{IntoEnumIterator};
 
-use crate::BughouseServerRejection;
 use crate::altered_game::AlteredGame;
 use crate::board::{TurnError, TurnMode, TurnInput};
 use crate::chalk::{Chalkboard, ChalkCanvas, ChalkDrawing, ChalkMark};
 use crate::clock::{GameInstant, WallGameTimePair};
 use crate::display::{DisplayBoard, get_board_index};
-use crate::force::Force;
-use crate::game::{TurnRecord, BughouseParticipantId, BughousePlayerId, BughouseObserserId, PlayerRelation, BughouseBoard, BughouseGameStatus, BughouseGame};
-use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseClientPerformance};
+use crate::game::{
+    TurnRecord, BughouseBoard, BughouseEnvoy, BughousePlayer, BughouseParticipant, PlayerRelation,
+    BughouseGameStatus, BughouseGame
+};
+use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseServerRejection, BughouseClientPerformance};
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::BughouseExportFormat;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
@@ -33,7 +36,7 @@ pub enum NotableEvent {
     ContestStarted(String),  // contains ContestID
     GameStarted,
     GameOver(SubjectiveGameResult),
-    TurnMade(BughousePlayerId),
+    TurnMade(BughouseEnvoy),
     MyReserveRestocked,
     LowTime,
     GameExportReady(String),
@@ -64,10 +67,8 @@ pub struct GameState {
     // Canvas for the current client to draw on.
     pub chalk_canvas: ChalkCanvas,
     // Index of the next warning in `LOW_TIME_WARNING_THRESHOLDS`.
-    next_low_time_warning_idx: usize,
-    // TODO: Do we still need this now that we have ping?
-    // Used to track how long it took the server to confirm a turn.
-    awaiting_turn_confirmation_since: Option<Instant>,
+    next_low_time_warning_idx: EnumMap<BughouseBoard, usize>,
+
 }
 
 #[derive(Debug)]
@@ -128,7 +129,6 @@ pub struct ClientState {
     notable_event_queue: VecDeque<NotableEvent>,
     meter_box: MeterBox,
     ping_meter: Meter,
-    turn_confirmed_meter: Meter,
 }
 
 const LOW_TIME_WARNING_THRESHOLDS: &[Duration] = &[
@@ -152,7 +152,6 @@ impl ClientState {
     ) -> Self {
         let mut meter_box = MeterBox::new();
         let ping_meter = meter_box.meter("ping".to_owned());
-        let turn_confirmed_meter = meter_box.meter("turn_confirmation".to_owned());
         ClientState {
             user_agent,
             time_zone,
@@ -161,7 +160,6 @@ impl ClientState {
             notable_event_queue: VecDeque::new(),
             meter_box,
             ping_meter,
-            turn_confirmed_meter,
         }
     }
 
@@ -179,7 +177,7 @@ impl ClientState {
     pub fn alt_game_mut(&mut self) -> Option<&mut AlteredGame> { self.game_state_mut().map(|s| &mut s.alt_game) }
 
     pub fn my_faction(&self) -> Option<Faction> { self.contest().map(|c| c.my_faction) }
-    pub fn my_id(&self) -> Option<BughouseParticipantId> { self.game_state().map(|s| s.alt_game.my_id()) }
+    pub fn my_id(&self) -> Option<BughouseParticipant> { self.game_state().map(|s| s.alt_game.my_id()) }
     pub fn my_name(&self) -> Option<&str> {
         match &self.contest_state {
             ContestState::NotConnected => None,
@@ -195,7 +193,7 @@ impl ClientState {
         let Some(GameState{ alt_game, .. }) = self.game_state() else {
             return PlayerRelation::Other;
         };
-        let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() else {
+        let BughouseParticipant::Player(my_player_id) = alt_game.my_id() else {
             return PlayerRelation::Other;
         };
         let Some(other_player_id) = alt_game.game_confirmed().find_player(name) else {
@@ -271,28 +269,53 @@ impl ClientState {
         self.update_low_time_warnings(true);
     }
 
-    pub fn make_turn(&mut self, turn_input: TurnInput) -> Result<(), TurnError> {
-        let game_state = self.game_state_mut().ok_or(TurnError::NoGameInProgress)?;
-        let GameState{ ref mut alt_game, time_pair, ref mut awaiting_turn_confirmation_since, .. } = game_state;
-        let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() else {
-            return Err(TurnError::NotPlayer);
-        };
-        let now = Instant::now();
-        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
-        let mode = alt_game.try_local_turn(turn_input.clone(), game_now)?;
-        if mode == TurnMode::Normal {
-            *awaiting_turn_confirmation_since = Some(now);
+    // Turn command consists of:
+    //   1. Board notation (usually optional; mandatory if double-playing).
+    //   2. Algebraic turn notation or "-" to cancel pending preturn.
+    pub fn execute_turn_command(&mut self, turn_command: &str) -> Result<(), TurnError> {
+        let (display_board, turn) =
+            if let Some(suffix) = turn_command.strip_prefix('<') {
+                (DisplayBoard::Primary, suffix)
+            } else if let Some(suffix) = turn_command.strip_prefix('>') {
+                (DisplayBoard::Secondary, suffix)
+            } else {
+                let game_state = self.game_state().ok_or(TurnError::NoGameInProgress)?;
+                let my_player_id = game_state.alt_game.my_id().as_player().ok_or(TurnError::NotPlayer)?;
+                match my_player_id {
+                    BughousePlayer::SinglePlayer(_) => (DisplayBoard::Primary, turn_command),
+                    BughousePlayer::DoublePlayer(_) => { return Err(TurnError::AmbiguousBoard); },
+                }
+            };
+        if turn == "-" {
+            self.cancel_preturn(display_board);
+        } else {
+            self.make_turn(display_board, TurnInput::Algebraic(turn.to_owned()))?;
         }
-        self.connection.send(BughouseClientEvent::MakeTurn{ turn_input });
-        self.notable_event_queue.push_back(NotableEvent::TurnMade(my_player_id));
         Ok(())
     }
 
-    pub fn cancel_preturn(&mut self) {
-        if let Some(alt_game) = self.alt_game_mut() {
-            if alt_game.cancel_preturn() {
-                self.connection.send(BughouseClientEvent::CancelPreturn);
-            }
+    pub fn make_turn(&mut self, display_board: DisplayBoard, turn_input: TurnInput)
+        -> Result<(), TurnError>
+    {
+        let game_state = self.game_state_mut().ok_or(TurnError::NoGameInProgress)?;
+        let GameState{ ref mut alt_game, time_pair, .. } = game_state;
+        let board_idx = get_board_index(display_board, alt_game.perspective());
+        let my_envoy = alt_game.my_id().envoy_for(board_idx).ok_or(TurnError::NotPlayer)?;
+        let now = Instant::now();
+        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
+        alt_game.try_local_turn(board_idx, turn_input.clone(), game_now)?;
+        self.connection.send(BughouseClientEvent::MakeTurn{ board_idx, turn_input });
+        self.notable_event_queue.push_back(NotableEvent::TurnMade(my_envoy));
+        Ok(())
+    }
+
+    pub fn cancel_preturn(&mut self, display_board: DisplayBoard) {
+        let Some(alt_game) = self.alt_game_mut() else {
+            return;
+        };
+        let board_idx = get_board_index(display_board, alt_game.perspective());
+        if alt_game.cancel_preturn(board_idx) {
+            self.connection.send(BughouseClientEvent::CancelPreturn{ board_idx });
         }
     }
 
@@ -395,7 +418,7 @@ impl ClientState {
                 let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply FirstGameCountdownCancelled: no contest in progress"))?;
                 contest.first_game_countdown_since = None;
             },
-            GameStarted{ starting_position, players, time, turn_log, preturn, game_status, scores } => {
+            GameStarted{ starting_position, players, time, turn_log, preturns, game_status, scores } => {
                 let time_pair = if turn_log.is_empty() {
                     assert!(time.elapsed_since_start().is_zero());
                     None
@@ -411,11 +434,8 @@ impl ClientState {
                     &players
                 );
                 let my_id = match game.find_player(&contest.my_name) {
-                    Some(id) => BughouseParticipantId::Player(id),
-                    None => BughouseParticipantId::Observer(BughouseObserserId {
-                        board_idx: BughouseBoard::A,
-                        force: Force::White,
-                    }),
+                    Some(id) => BughouseParticipant::Player(id),
+                    None => BughouseParticipant::Observer,
                 };
                 let alt_game = AlteredGame::new(my_id, game);
                 let perspective = alt_game.perspective();
@@ -424,19 +444,18 @@ impl ClientState {
                     time_pair,
                     chalkboard: Chalkboard::new(),
                     chalk_canvas: ChalkCanvas::new(perspective),
-                    next_low_time_warning_idx: 0,
-                    awaiting_turn_confirmation_since: None,
+                    next_low_time_warning_idx: enum_map!{ _ => 0 },
                 });
                 for turn in turn_log {
                     self.apply_remote_turn(turn, false)?;
                 }
-                if let Some(preturn) = preturn {
+                for (board_idx, preturn) in preturns.into_iter() {
                     let now = Instant::now();
                     let game_now = GameInstant::from_pair_game_maybe_active(time_pair, now);
-                    // Safe to unwrap: we just created the `game_state`.
+                    // Unwrap ok: we just created the `game_state`.
                     let alt_game = self.alt_game_mut().unwrap();
-                    // Safe to unwrap: this is a preturn made by this very client before reconnection.
-                    let mode = alt_game.try_local_turn(preturn, game_now).unwrap();
+                    // Unwrap ok: this is a preturn made by this very client before reconnection.
+                    let mode = alt_game.try_local_turn(board_idx, preturn, game_now).unwrap();
                     assert_eq!(mode, TurnMode::Preturn);
                 }
                 self.update_game_status(game_status, time)?;
@@ -483,47 +502,39 @@ impl ClientState {
         self.notable_event_queue.pop_front()
     }
 
-    fn apply_remote_turn(&mut self, turn_record: TurnRecord, generate_notable_events: bool)
-        -> Result<(), EventError>
-    {
-        let TurnRecord{ player_id, turn_algebraic, time } = turn_record;
+    fn apply_remote_turn(
+        &mut self, turn_record: TurnRecord, generate_notable_events: bool
+    ) -> Result<(), EventError> {
+        let TurnRecord{ envoy, turn_algebraic, time } = turn_record;
         let ContestState::Connected(contest) = &mut self.contest_state else {
             return Err(internal_error!("Cannot make turn: no contest in progress"));
         };
         let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot make turn: no game in progress"))?;
-        let GameState{ ref mut alt_game, ref mut time_pair, ref mut awaiting_turn_confirmation_since, .. } = game_state;
+        let GameState{ ref mut alt_game, ref mut time_pair, .. } = game_state;
         if alt_game.status() != BughouseGameStatus::Active {
             return Err(internal_error!("Cannot make turn {}: game over", turn_algebraic));
         }
-        let is_my_turn = alt_game.my_id() == BughouseParticipantId::Player(player_id);
+        let is_my_turn = alt_game.my_id().plays_for(envoy);
         let now = Instant::now();
-        if is_my_turn {
-            // It's normal that the client is not awaiting confirmation, because preturns are not confirmed.
-            if let Some(t0) = awaiting_turn_confirmation_since {
-                let d = now.duration_since(*t0);
-                self.turn_confirmed_meter.record_duration(d);
-                *awaiting_turn_confirmation_since = None;
-            }
-        }
         if time_pair.is_none() {
             // Improvement potential. Sync client/server times better; consider NTP.
             let game_start = GameInstant::game_start().approximate();
             *time_pair = Some(WallGameTimePair::new(now, game_start));
         }
-        let old_reserve_size = my_reserve_size(alt_game);
+        let old_reserve_size = reserve_size(alt_game, envoy);
         alt_game.apply_remote_turn_algebraic(
-            player_id, &turn_algebraic, time
+            envoy, &turn_algebraic, time
         ).map_err(|err| {
             internal_error!("Got impossible turn from server: {}, error: {:?}", turn_algebraic, err)
         })?;
-        let new_reserve_size = my_reserve_size(alt_game);
+        let new_reserve_size = reserve_size(alt_game, envoy);
         if generate_notable_events {
             if !is_my_turn {
                 // The `TurnMade` event fires when a turn is seen by the user, not when it's
                 // confirmed by the server.
-                self.notable_event_queue.push_back(NotableEvent::TurnMade(player_id));
+                self.notable_event_queue.push_back(NotableEvent::TurnMade(envoy));
             }
-            if new_reserve_size > old_reserve_size {
+            if is_my_turn && new_reserve_size > old_reserve_size {
                 self.notable_event_queue.push_back(NotableEvent::MyReserveRestocked);
             }
         }
@@ -562,7 +573,7 @@ impl ClientState {
         let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot process game over: no contest in progress"))?;
         let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot process game over: no game in progress"))?;
         let GameState{ ref mut alt_game, .. } = game_state;
-        if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
+        if let BughouseParticipant::Player(my_player_id) = alt_game.my_id() {
             let game_status = match alt_game.status() {
                 BughouseGameStatus::Active => {
                     return Err(internal_error!("Cannot process game over: game not over"));
@@ -603,7 +614,7 @@ impl ClientState {
         if game_state.alt_game.status() == BughouseGameStatus::Active {
             return;
         }
-        let board_idx = get_board_index(display_board, game_state.alt_game.my_id());
+        let board_idx = get_board_index(display_board, game_state.alt_game.perspective());
         f(&mut game_state.chalkboard, contest.my_name.clone(), board_idx);
         self.send_chalk_drawing_update();
     }
@@ -641,14 +652,16 @@ impl ClientState {
         // out of sync if local player made a move at 0:20.01 and the opponent replied
         // one minute later.
         let game_now = GameInstant::from_pair_game_active(*time_pair, Instant::now());
-        let Some(time_left) = my_time_left(alt_game, game_now) else {
-            return;
-        };
-        let idx = next_low_time_warning_idx;
         let mut num_events = 0;
-        while *idx < LOW_TIME_WARNING_THRESHOLDS.len() && time_left <= LOW_TIME_WARNING_THRESHOLDS[*idx] {
-            *idx += 1;
-            num_events += 1;
+        for board_idx in BughouseBoard::iter() {
+            let Some(time_left) = my_time_left(alt_game, board_idx, game_now) else {
+                return;
+            };
+            let idx = &mut next_low_time_warning_idx[board_idx];
+            while *idx < LOW_TIME_WARNING_THRESHOLDS.len() && time_left <= LOW_TIME_WARNING_THRESHOLDS[*idx] {
+                *idx += 1;
+                num_events += 1;
+            }
         }
         if generate_notable_events {
             for _ in 0..num_events {
@@ -658,21 +671,15 @@ impl ClientState {
     }
 }
 
-fn my_reserve_size(alt_game: &AlteredGame) -> Option<u8> {
+fn reserve_size(alt_game: &AlteredGame, envoy: BughouseEnvoy) -> Option<u8> {
     // For detecting if new reserve pieces have arrived.
     // Look at `game_confirmed`, not `local_game`. The latter would give a false positive if
     // a drop premove gets cancelled because the square is now occupied by an opponent's piece.
-    if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
-        Some(alt_game.game_confirmed().reserve(my_player_id).values().sum())
-    } else {
-        None
-    }
+    Some(alt_game.game_confirmed().reserve(envoy).values().sum())
 }
 
-fn my_time_left(alt_game: &AlteredGame, now: GameInstant) -> Option<Duration> {
-    if let BughouseParticipantId::Player(my_player_id) = alt_game.my_id() {
-        Some(alt_game.local_game().board(my_player_id.board_idx).clock().time_left(my_player_id.force, now))
-    } else {
-        None
-    }
+fn my_time_left(alt_game: &AlteredGame, board_idx: BughouseBoard, now: GameInstant) -> Option<Duration> {
+    alt_game.my_id().envoy_for(board_idx).map(|e| {
+        alt_game.local_game().board(e.board_idx).clock().time_left(e.force, now)
+    })
 }

@@ -34,8 +34,18 @@ fn default_bughouse_rules() -> BughouseRules {
     }
 }
 
-fn player_in_game(name: &str, id: BughousePlayerId) -> PlayerInGame {
-    PlayerInGame{ name: name.to_owned(), id }
+fn single_player(name: &str, envoy: BughouseEnvoy) -> PlayerInGame {
+    PlayerInGame {
+        name: name.to_owned(),
+        id: BughousePlayer::SinglePlayer(envoy),
+    }
+}
+
+fn double_player(name: &str, team: Team) -> PlayerInGame {
+    PlayerInGame {
+        name: name.to_owned(),
+        id: BughousePlayer::DoublePlayer(team),
+    }
 }
 
 
@@ -89,20 +99,32 @@ impl Client {
     }
 
     fn alt_game(&self) -> &AlteredGame { &self.state.game_state().unwrap().alt_game }
-    fn my_id(&self) -> BughouseParticipantId { self.alt_game().my_id() }
-    fn my_player_id(&self) -> BughousePlayerId {
-        let BughouseParticipantId::Player(id) = self.my_id() else {
-            panic!("Not a player");
-        };
-        id
-    }
+    fn perspective(&self) -> Perspective { self.alt_game().perspective() }
+    fn my_id(&self) -> BughouseParticipant { self.alt_game().my_id() }
     fn local_game(&self) -> BughouseGame { self.alt_game().local_game() }
-    fn my_force(&self) -> Force { self.my_player_id().force }
-    fn my_board(&self) -> Board {
-        self.local_game().board(self.my_player_id().board_idx).clone()
+
+    // Only if player:
+    fn my_player_id(&self) -> BughousePlayer { self.my_id().as_player().unwrap() }
+
+    // Only if single player:
+    fn my_envoy(&self) -> BughouseEnvoy {
+        let BughousePlayer::SinglePlayer(envoy) = self.my_player_id() else {
+            panic!("Not a single player");
+        };
+        envoy
     }
-    fn other_board(&self) -> Board {
-        self.local_game().board(self.my_player_id().board_idx.other()).clone()
+    fn my_force(&self) -> Force { self.my_envoy().force }
+    fn my_board_idx(&self) -> BughouseBoard { self.my_envoy().board_idx }
+    fn my_display_board_idx(&self) -> DisplayBoard {
+        get_display_board_index(self.my_board_idx(), self.perspective())
+    }
+    fn my_board(&self) -> Board { self.local_game().board(self.my_board_idx()).clone() }
+    fn other_board(&self) -> Board { self.local_game().board(self.my_board_idx().other()).clone() }
+    fn make_turn(&mut self, turn: impl AutoTurnInput) -> Result<(), TurnError> {
+        self.state.make_turn(self.my_display_board_idx(), turn.to_turn_input())
+    }
+    fn cancel_preturn(&mut self) {
+        self.state.cancel_preturn(self.my_display_board_idx())
     }
 
     fn process_outgoing_events(&mut self, server: &mut Server) -> bool {
@@ -126,9 +148,6 @@ impl Client {
         }
         self.state.refresh();
         (something_changed, Ok(()))
-    }
-    fn make_turn(&mut self, turn: impl AutoTurnInput) -> Result<(), TurnError> {
-        self.state.make_turn(turn.to_turn_input())
     }
 }
 
@@ -156,7 +175,7 @@ impl World {
         chess_rules: ChessRules, bughouse_rules: BughouseRules
     ) -> String {
         let rules = Rules {
-            contest_rules: ContestRules::rated(),
+            contest_rules: ContestRules::unrated(),
             chess_rules,
             bughouse_rules,
         };
@@ -196,10 +215,10 @@ impl World {
         self.process_all_events();
 
         self.server.state.TEST_override_board_assignment(contest.clone(), vec! [
-            player_in_game("p1", seating!(White A)),
-            player_in_game("p2", seating!(Black B)),
-            player_in_game("p3", seating!(Black A)),
-            player_in_game("p4", seating!(White B)),
+            single_player("p1", envoy!(White A)),
+            single_player("p2", envoy!(Black B)),
+            single_player("p3", envoy!(Black A)),
+            single_player("p4", envoy!(White B)),
         ]);
 
         self.join_and_set_team(cl2, &contest, "p2", Team::Red);
@@ -294,10 +313,10 @@ fn play_online_misc() {
     world.process_all_events();
 
     world.server.state.TEST_override_board_assignment(contest.clone(), vec! [
-        player_in_game("p1", seating!(White A)),
-        player_in_game("p2", seating!(Black B)),
-        player_in_game("p3", seating!(Black A)),
-        player_in_game("p4", seating!(White B)),
+        single_player("p1", envoy!(White A)),
+        single_player("p2", envoy!(Black B)),
+        single_player("p3", envoy!(Black A)),
+        single_player("p4", envoy!(White B)),
     ]);
 
     world.join_and_set_team(cl2, &contest, "p2", Team::Red);
@@ -406,7 +425,7 @@ fn preturn_cancellation_successful() {
     // Cancel pre-turn
     world[cl3].make_turn("Nc6").unwrap();
     world.process_all_events();
-    world[cl3].state.cancel_preturn();
+    world[cl3].cancel_preturn();
     world.process_all_events();
     world[cl1].make_turn("e4").unwrap();
     world.process_all_events();
@@ -418,7 +437,7 @@ fn preturn_cancellation_successful() {
     // Cancel pre-turn and schedule other
     world[cl3].make_turn("a7a6").unwrap();
     world.process_all_events();
-    world[cl3].state.cancel_preturn();
+    world[cl3].cancel_preturn();
     world.process_all_events();
     world[cl3].make_turn("h7h6").unwrap();
     world.process_all_events();
@@ -435,7 +454,7 @@ fn preturn_cancellation_late() {
 
     world[cl3].make_turn("e5").unwrap();
     world.process_events_for(cl3).unwrap();
-    world[cl3].state.cancel_preturn();
+    world[cl3].cancel_preturn();
     world[cl3].make_turn("d5").unwrap();
     world[cl1].make_turn("Nc3").unwrap();
     world.process_events_for(cl1).unwrap();
@@ -537,9 +556,6 @@ fn reconnect_lobby() {
     world.join_and_set_team(cl3, &contest, "p3", Team::Blue);
     world.process_all_events();
 
-    world[cl1].state.set_ready(true);
-    world[cl2].state.set_ready(true);
-    world[cl3].state.set_ready(true);
     world.process_all_events();
     assert_eq!(world[cl1].state.contest().unwrap().participants.len(), 3);
 
@@ -572,6 +588,7 @@ fn reconnect_lobby() {
     world.process_all_events();
     assert!(world[cl1].state.game_state().is_none());
 
+    world[cl1].state.set_ready(true);
     world[cl2_new].state.set_ready(true);
     world[cl5].state.set_ready(true);
     world.process_all_events();
@@ -682,6 +699,49 @@ fn turn_after_game_ended_on_another_board() {
 }
 
 #[test]
+fn three_players() {
+    use BughouseBoard::*;
+    use DisplayBoard::*;
+
+    let mut world = World::new();
+    let [cl1, cl2, cl3] = world.new_clients();
+
+    let contest = world.new_contest_with_rules(
+        cl1, "p1",
+        default_chess_rules(),
+        BughouseRules {
+            teaming: Teaming::IndividualMode,
+            .. default_bughouse_rules()
+        }
+    );
+
+    world.server.state.TEST_override_board_assignment(contest.clone(), vec! [
+        single_player("p1", envoy!(White A)),
+        single_player("p2", envoy!(Black B)),
+        double_player("p3", Team::Blue),
+    ]);
+
+    world[cl2].join(&contest, "p2");
+    world[cl3].join(&contest, "p3");
+    world.process_all_events();
+
+    for cl in [cl1, cl2, cl3].iter() {
+        world[*cl].state.set_ready(true);
+    }
+    world.process_all_events();
+
+    // For a double-player the board where they play White is always primary, thus
+    // for p3: A is Secondary, B is Primary.
+    world[cl1].make_turn("e4").unwrap();
+    world[cl3].state.make_turn(Secondary, TurnInput::Algebraic("e5".to_owned())).unwrap();
+    world[cl3].state.make_turn(Primary, TurnInput::Algebraic("Nc3".to_owned())).unwrap();
+    world.process_all_events();
+    assert!(world[cl2].local_game().board(A).grid()[Coord::E4].is(piece!(White Pawn)));
+    assert!(world[cl2].local_game().board(A).grid()[Coord::E5].is(piece!(Black Pawn)));
+    assert!(world[cl2].local_game().board(B).grid()[Coord::C3].is(piece!(White Knight)));
+}
+
+#[test]
 fn five_players() {
     let mut world = World::new();
     let [cl1, cl2, cl3, cl4, cl5] = world.new_clients();
@@ -696,10 +756,10 @@ fn five_players() {
     );
 
     world.server.state.TEST_override_board_assignment(contest.clone(), vec! [
-        player_in_game("p1", seating!(White A)),
-        player_in_game("p2", seating!(Black B)),
-        player_in_game("p3", seating!(Black A)),
-        player_in_game("p4", seating!(White B)),
+        single_player("p1", envoy!(White A)),
+        single_player("p2", envoy!(Black B)),
+        single_player("p3", envoy!(Black A)),
+        single_player("p4", envoy!(White B)),
     ]);
 
     world[cl2].join(&contest, "p2");
@@ -732,16 +792,16 @@ fn two_contests() {
     world.process_all_events();
 
     world.server.state.TEST_override_board_assignment(contest1.clone(), vec! [
-        player_in_game("p1", seating!(White A)),
-        player_in_game("p2", seating!(Black B)),
-        player_in_game("p3", seating!(Black A)),
-        player_in_game("p4", seating!(White B)),
+        single_player("p1", envoy!(White A)),
+        single_player("p2", envoy!(Black B)),
+        single_player("p3", envoy!(Black A)),
+        single_player("p4", envoy!(White B)),
     ]);
     world.server.state.TEST_override_board_assignment(contest2.clone(), vec! [
-        player_in_game("p5", seating!(White A)),
-        player_in_game("p6", seating!(Black B)),
-        player_in_game("p7", seating!(Black A)),
-        player_in_game("p8", seating!(White B)),
+        single_player("p5", envoy!(White A)),
+        single_player("p6", envoy!(Black B)),
+        single_player("p7", envoy!(Black A)),
+        single_player("p8", envoy!(White B)),
     ]);
 
     world.join_and_set_team(cl2, &contest1, "p2", Team::Red);
@@ -796,7 +856,7 @@ fn seating_assignment_is_fair() {
         }
         world.process_all_events();
         for cl in [cl1, cl2, cl3, cl4, cl5].iter() {
-            if !matches!(world[*cl].my_id(), BughouseParticipantId::Observer(_)) {
+            if world[*cl].my_id() != BughouseParticipant::Observer {
                 world[*cl].state.resign();
                 break;
             }

@@ -5,7 +5,7 @@ use serde::{Serialize, Deserialize};
 use crate::board::TurnInput;
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
-use crate::game::{TurnRecord, BughouseGameStatus, PlayerInGame};
+use crate::game::{BughouseBoard, TurnRecord, BughouseGameStatus, PlayerInGame};
 use crate::meter::MeterStats;
 use crate::pgn::BughouseExportFormat;
 use crate::player::{Participant, Faction};
@@ -43,10 +43,10 @@ pub enum BughouseServerEvent {
     GameStarted {
         starting_position: EffectiveStartingPosition,
         players: Vec<PlayerInGame>,
-        time: GameInstant,                // for re-connection
-        turn_log: Vec<TurnRecord>,        // for re-connection
-        preturn: Option<TurnInput>,       // for re-connection
-        game_status: BughouseGameStatus,  // for re-connection
+        time: GameInstant,                          // for re-connection
+        turn_log: Vec<TurnRecord>,                  // for re-connection
+        preturns: Vec<(BughouseBoard, TurnInput)>,  // for re-connection
+        game_status: BughouseGameStatus,            // for re-connection
         scores: Scores,
     },
     // Improvement potential: unite `TurnsMade` and `GameOver` into a single event "something happened".
@@ -105,9 +105,12 @@ pub enum BughouseClientEvent {
         faction: Faction,
     },
     MakeTurn {
+        board_idx: BughouseBoard,
         turn_input: TurnInput,
     },
-    CancelPreturn,
+    CancelPreturn {
+        board_idx: BughouseBoard,
+    },
     Resign,
     SetReady {
         is_ready: bool,
