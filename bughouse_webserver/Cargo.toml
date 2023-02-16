@@ -5,17 +5,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.66"
-async-std = { version = "1.6.5", features = ["attributes"] }
-clap = { version = "4.0.29", features = ["cargo", "derive"] }
+anyhow = "1.0.69"
+async-std = { version = "1.12.0", features = ["attributes"] }
+clap = { version = "4.1.6", features = ["cargo", "derive"] }
 femme = "2.2.1"
 humantime = "2.1.0"
 log = "0.4.17"
 plotly = "0.8.3"
-skillratings = "0.22.0"
+skillratings = "0.24.0"
 sqlx = { version = "0.6.2", features = ["postgres", "sqlite", "runtime-async-std-rustls", "time"] }
 tide = "0.16.0"
 tide-jsx = { version = "0.4.0" }
-time = { version = "0.3.17", features = ["formatting"] }
+time = { version = "0.3.18", features = ["formatting"] }
 
 bughouse_chess = { path = ".." }
