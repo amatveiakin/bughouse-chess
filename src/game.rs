@@ -38,7 +38,6 @@ use crate::board::{
 };
 use crate::clock::GameInstant;
 use crate::force::Force;
-use crate::piece::piece_to_pictogram;
 use crate::player::Team;
 use crate::rules::{ContestRules, ChessRules, BughouseRules};
 use crate::starter::{EffectiveStartingPosition, generate_starting_position};
@@ -73,20 +72,6 @@ impl TurnRecordExpanded {
             envoy: self.envoy,
             turn_algebraic: self.turn_expanded.algebraic_for_log.clone(),
             time: self.time,
-        }
-    }
-
-    pub fn to_log_entry(&self) -> String {
-        let algebraic = &self.turn_expanded.algebraic_for_log;
-        let s = if let Some(capture) = self.turn_expanded.capture {
-            let capture = piece_to_pictogram(capture.piece_kind, capture.force);
-            format!("{algebraic} ·{capture}")
-        } else {
-            format!("{algebraic}")
-        };
-        match self.mode {
-            TurnMode::Normal => s,
-            TurnMode::Preturn => format!("({s})"),
         }
     }
 }

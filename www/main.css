@@ -511,7 +511,6 @@ dialog ::-webkit-scrollbar-thumb {
   display: inline-block;
   min-width: 7.8em;
   height: 100%;
-  /* background-color: #ffffff0b; */
   overflow-x: visible;
   overflow-y: scroll;
   box-shadow: 0.05em 0.05em 0.2em #00000080;
@@ -524,14 +523,37 @@ dialog ::-webkit-scrollbar-thumb {
 /* Put scrol bars on the left */
 #turn-log-scroll-area-primary { direction: rtl; }
 #turn-log-primary { direction: ltr; }
-.turn-record {
-  padding: 0.15em 0.6em;
+
+.log-turn-number {
+  display: inline-block;
+  min-width: 3ch;
+  font-size: 70%;
+  transform: scaleX(0.9);
+  transform-origin: 0 100%;
 }
-.turn-record-white {
+.log-turn-record {
+  padding: 0.15em 0.3em;
+}
+.log-turn-record-white {
   background-color: #ffffff0c;
 }
-.turn-record-black {
+.log-turn-record-black {
   background-color: #0000001a;
+}
+.log-capture-separator {
+  margin: 0 0.15em;
+  user-select: none;
+}
+.log-capture {
+  display: inline-block;
+  height: 1em;
+  scale: 120%;
+}
+.log-capture-white {
+  opacity: 75%;
+}
+.log-capture-black {
+  background: radial-gradient(circle farthest-corner, #ffffff28 50%, #ffffff00 80%);
 }
 
 #command {

@@ -993,6 +993,18 @@ fn participant_string(p: &Participant, show_readiness: bool) -> String {
     format!("{}{}", participant_prefix(p, show_readiness), p.name)
 }
 
+// Standalone chess piece icon to be used outside of SVG area.
+fn make_piece_icon(piece_kind: PieceKind, force: Force, classes: &[&str]) -> JsResult<web_sys::Element> {
+    let document = web_document();
+    let svg_node = document.create_svg_element("svg")?;
+    svg_node.set_attribute("viewBox", "0 0 1 1")?;
+    svg_node.set_attribute("class", &classes.iter().join(" "))?;
+    let use_node = document.create_svg_element("use")?;
+    use_node.set_attribute("href", piece_path(piece_kind, force))?;
+    svg_node.append_child(&use_node)?;
+    Ok(svg_node)
+}
+
 fn make_menu_icon(images: &[&str]) -> JsResult<web_sys::Element> {
     let document = web_document();
     let svg_node = document.create_svg_element("svg")?;
@@ -1230,13 +1242,53 @@ fn update_turn_log(
     let document = web_document();
     let log_node = document.get_existing_element_by_id(&turn_log_node_id(display_board_idx))?;
     remove_all_children(&log_node)?;
+    let mut turn_number = 0;
     for record in game.turn_log().iter() {
         if record.envoy.board_idx == board_idx {
-            let force = force_id(record.envoy.force);
-            let node = document.create_element("div")?;
-            node.set_text_content(Some(&record.to_log_entry()));
-            node.set_attribute("class", &format!("turn-record turn-record-{force}"))?;
-            log_node.append_child(&node)?;
+            let force = record.envoy.force;
+            let mut turn_number_str = "".to_owned();
+            if force == Force::White || record.mode == TurnMode::Preturn {
+                turn_number += 1;
+                turn_number_str = format!("{turn_number}.");
+            }
+            let (algebraic, capture) = match record.mode {
+                TurnMode::Normal => (
+                    record.turn_expanded.algebraic_for_log.clone(),
+                    record.turn_expanded.capture,
+                ),
+                TurnMode::Preturn => (
+                    format!("({})", record.turn_expanded.algebraic_for_log),
+                    None,  // don't show captures for preturns: too unpredictable and messes with braces
+                ),
+            };
+
+            let line_node = document.create_element("div")?;
+            line_node.set_attribute("class", &format!("log-turn-record log-turn-record-{}", force_id(force)))?;
+
+            let turn_number_node = document.create_element("span")?;
+            turn_number_node.set_text_content(Some(&turn_number_str));
+            turn_number_node.set_attribute("class", "log-turn-number")?;
+            line_node.append_child(&turn_number_node)?;
+
+            let algebraic_node = document.create_element("span")?;
+            algebraic_node.set_text_content(Some(&algebraic));
+            line_node.append_child(&algebraic_node)?;
+
+            if let Some(capture) = capture {
+                let capture_sep_node = document.create_element("span")?;
+                capture_sep_node.set_text_content(Some("·"));
+                capture_sep_node.set_attribute("class", "log-capture-separator")?;
+                line_node.append_child(&capture_sep_node)?;
+
+                let capture_classes = [
+                    "log-capture",
+                    &format!("log-capture-{}", force_id(capture.force))
+                ];
+                let capture_node = make_piece_icon(capture.piece_kind, capture.force, &capture_classes)?;
+                line_node.append_child(&capture_node)?;
+            }
+
+            log_node.append_child(&line_node)?;
         }
     }
     // Note. The log will be scrolled to bottom whenever a turn is made on a given board (see
