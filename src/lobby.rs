@@ -11,8 +11,7 @@ pub enum ParticipantsError {
     TooManyPlayersTotal,
     TooManyPlayersInTeam,
     EmptyTeam,
-    RatedDoublePlay,  // temporary limitation until rating system is updated
-    RatedOneVersusTwo,
+    RatedDoublePlay,
     NotReady,
 }
 
@@ -82,9 +81,6 @@ pub fn verify_participants<'a>(
     };
     if rules.contest_rules.rated && num_players < TOTAL_ENVOYS {
         return ParticipantsStatus::from_error(ParticipantsError::RatedDoublePlay);
-    }
-    if rules.contest_rules.rated && TOTAL_ENVOYS_PER_TEAM < num_players && num_players < TOTAL_ENVOYS {
-        return ParticipantsStatus::from_error(ParticipantsError::RatedOneVersusTwo);
     }
 
     // Check readiness.

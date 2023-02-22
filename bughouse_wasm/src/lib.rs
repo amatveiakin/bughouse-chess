@@ -213,9 +213,7 @@ impl WebClient {
             (Some(Error::TooManyPlayersInTeam), _) => "Too many players in a team",
             (Some(Error::EmptyTeam), _) => "A team is empty",
             (Some(Error::RatedDoublePlay), _) =>
-                "Playing on two boards in a rated game is not supported yet",
-            (Some(Error::RatedOneVersusTwo), _) =>
-                "Playing one versus two in a rated game is not allowed",
+                "Playing on two boards is only allowed in unrated contests",
             (Some(Error::NotReady) | None, Some(Warning::NeedToSeatOut)) =>
                 "👉🏾 Can start, but some players will have to seat out each game",
             (Some(Error::NotReady) | None, Some(Warning::NeedToDoublePlay)) =>

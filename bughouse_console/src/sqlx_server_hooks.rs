@@ -283,7 +283,6 @@ fn game_result_str(status: BughouseGameStatus) -> Option<String> {
     .map(|x| x.to_owned())
 }
 
-// TODO: Support double-play and remove `ParticipantsError::RatedDoublePlay`.
 fn players(game: &GameState) -> (String, String, String, String) {
     let get_player = |team, board_idx| {
         game.game().board(board_idx).player_name(get_bughouse_force(team, board_idx)).to_owned()
