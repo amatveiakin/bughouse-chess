@@ -1,5 +1,4 @@
-use crate::{GroupStats, RawStats};
-
+use crate::game_stats::{GroupStats, RawStats};
 // for colorizer plugins in editors
 const fn rgb(x: u8, y: u8, z: u8) -> (u8, u8, u8) {
     (x, y, z)

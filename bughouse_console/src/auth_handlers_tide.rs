@@ -1,7 +1,8 @@
 use tide::StatusCode;
 
-use crate::http_server_state::*;
-use crate::session::*;
+use bughouse_console::auth;
+use bughouse_console::http_server_state::*;
+use bughouse_console::session::*;
 
 pub const OAUTH_CSRF_COOKIE_NAME: &str = "oauth-csrf-state";
 
@@ -54,7 +55,9 @@ pub fn check_origin<T>(req: &tide::Request<T>) -> tide::Result<()> {
 // Initiates authentication process (e.g. with OAuth).
 // TODO: this page should probably display some privacy considerations
 //   and link to OAuth providers instead of just redirecting.
-pub async fn handle_login(req: tide::Request<HttpServerState>) -> tide::Result {
+pub async fn handle_login<DB: Send + Sync + 'static>(
+    req: tide::Request<HttpServerState<DB>>,
+) -> tide::Result {
     let mut callback_url = req.url().clone();
     callback_url.set_path(AUTH_SESSION_URL_PATH);
     if req.state().auth_callback_is_https {
@@ -100,8 +103,8 @@ pub async fn handle_login(req: tide::Request<HttpServerState>) -> tide::Result {
 //   in 3...2...1... or something similar.
 //   To send to the "desired location", pass the desired URL as a parameter
 //   into /login and propagate it to callback_url.
-pub async fn handle_session(mut req: tide::Request<HttpServerState>) -> tide::Result {
-    let (auth_code, request_csrf_state) = req.query::<crate::auth::NewSessionQuery>()?.parse();
+pub async fn handle_session<DB>(mut req: tide::Request<HttpServerState<DB>>) -> tide::Result {
+    let (auth_code, request_csrf_state) = req.query::<auth::NewSessionQuery>()?.parse();
     let Some(oauth_csrf_state_cookie) = req.cookie(OAUTH_CSRF_COOKIE_NAME) else {
                 return Err(tide::Error::from_str(
                     StatusCode::Forbidden, "Missing CSRF token cookie.",
@@ -149,12 +152,12 @@ pub async fn handle_session(mut req: tide::Request<HttpServerState>) -> tide::Re
     Ok(format!("You are now logged in. UserInfo: \n{:?}", user_info).into())
 }
 
-pub async fn handle_logout(mut req: tide::Request<HttpServerState>) -> tide::Result {
+pub async fn handle_logout<DB>(mut req: tide::Request<HttpServerState<DB>>) -> tide::Result {
     get_session_mut(&mut req)?.remove("data");
     Ok("You are now logged out.".into())
 }
 
-pub async fn handle_mysession(req: tide::Request<HttpServerState>) -> tide::Result {
+pub async fn handle_mysession<DB>(req: tide::Request<HttpServerState<DB>>) -> tide::Result {
     match get_session(&req)?.get::<Session>("data") {
         None => Ok("You are not logged in.".into()),
         Some(Session { user_info, .. }) => {

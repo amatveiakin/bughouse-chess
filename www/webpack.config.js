@@ -36,4 +36,9 @@ module.exports = {
   experiments: {
     asyncWebAssembly: true,
   },
+  devServer: {
+    proxy: {
+      '/dyn': 'http://127.0.0.1:14361',
+    },
+  },
 };

@@ -18,7 +18,7 @@ use bughouse_chess::server_hooks::ServerHooks;
 use crate::network::{self, CommunicationError};
 use crate::sqlx_server_hooks::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DatabaseOptions {
     NoDatabase,
     Sqlite(String),
@@ -49,6 +49,7 @@ pub struct ServerConfig {
     pub database_options: DatabaseOptions,
     pub auth_options: AuthOptions,
     pub session_options: SessionOptions,
+    pub static_content_url_prefix: String,
 }
 
 fn to_debug_string<T: std::fmt::Debug>(v: T) -> String {

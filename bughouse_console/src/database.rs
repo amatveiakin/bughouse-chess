@@ -14,13 +14,25 @@ pub struct RowId {
 }
 
 #[async_trait]
-pub trait Database {
+pub trait DatabaseReader {
     async fn finished_games(
         &self,
         game_end_time_range: Range<OffsetDateTime>,
         only_rated: bool,
     ) -> Result<Vec<(RowId, GameResultRow)>, anyhow::Error>;
     async fn pgn(&self, rowid: RowId) -> Result<String, anyhow::Error>;
+}
+
+pub struct UnimplementedDatabase {}
+
+#[async_trait]
+impl DatabaseReader for UnimplementedDatabase {
+    async fn finished_games( &self, _: Range<OffsetDateTime>, _: bool) -> Result<Vec<(RowId, GameResultRow)>, anyhow::Error> {
+        Err(anyhow::Error::msg("finished_games() unimplemented"))
+    }
+    async fn pgn(&self, _: RowId) -> Result<String, anyhow::Error> {
+        Err(anyhow::Error::msg("pgn() unimplemented"))
+    }
 }
 
 pub struct SqlxDatabase<DB: sqlx::Database> {
@@ -53,7 +65,7 @@ impl SqlxDatabase<sqlx::Postgres> {
 }
 
 #[async_trait]
-impl<DB> Database for SqlxDatabase<DB>
+impl<DB> DatabaseReader for SqlxDatabase<DB>
 where
     DB: sqlx::Database,
     for<'q> i64: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
