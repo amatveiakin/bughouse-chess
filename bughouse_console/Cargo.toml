@@ -8,9 +8,9 @@ edition = "2021"
 anyhow = "1.0.68"
 async-std = { version = "1.6.5", features = ["tokio1"] }
 async-tungstenite = "0.19.0"
-crossterm = "0.25.0"
-console = "0.15.2"
 clap = { version = "4.0.29", features = ["cargo"] }
+console = "0.15.2"
+crossterm = "0.25.0"
 ctrlc = "3.2.4"
 enum-map = "2.4.1"
 env_logger = "0.10.0"
@@ -18,21 +18,25 @@ futures-io = "0.3.25"
 futures-util = "0.3.25"
 http = "0.2.8"
 http-types = { version = "2.12.0", features = ["hyperium_http"] }
+humantime = "2.1.0"
 instant = "0.1.12"
 itertools = "0.10.5"
 log = "0.4.17"
 oauth2 = "4.3.0"
+plotly = "0.8.3"
 rand = "0.8.5"
 reqwest = { version = "0.11.14", features = ["json"] }
 scopeguard = "1.1.0"
-tide-jsx = "0.4.0"
-tungstenite = "0.18.0"
-url = "2.3.1"
 serde = "1.0.149"
 serde_json = "1.0.89"
+skillratings = "0.22.0"
 sqlx = { version = "0.6.2", features = ["postgres", "sqlite", "runtime-async-std-rustls", "time"] }
 tide = "0.16.0"
+tide-jsx = "0.4.0"
 time = "0.3.17"
+tungstenite = "0.18.0"
+url = "2.3.1"
 uuid = { version = "1.2.2", features = ["v4"] }
 
 bughouse_chess = { path = ".." }
+

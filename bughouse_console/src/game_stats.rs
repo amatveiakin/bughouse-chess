@@ -12,9 +12,6 @@ use time::OffsetDateTime;
 
 use bughouse_chess::persistence::GameResultRow;
 
-pub mod database;
-pub mod history;
-
 type Rating = WengLinRating;
 
 // TODO: persist the history of these stats.

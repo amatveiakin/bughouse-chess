@@ -17,12 +17,14 @@ use tungstenite::protocol;
 
 use bughouse_chess::server::*;
 use bughouse_chess::server_hooks::ServerHooks;
+use bughouse_console::auth;
+use bughouse_console::database;
+use bughouse_console::http_server_state::*;
+use bughouse_console::session::Session;
 
 use crate::auth_handlers_tide::*;
-use crate::http_server_state::*;
 use crate::network::{self, CommunicationError};
 use crate::server_main::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
-use crate::session::Session;
 use crate::sqlx_server_hooks::*;
 
 async fn handle_connection<S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
@@ -101,63 +103,24 @@ async fn handle_connection<S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'st
     Ok(())
 }
 
-pub fn run(config: ServerConfig) {
-    assert!(
-        config.auth_options == AuthOptions::NoAuth
-            || config.session_options != SessionOptions::NoSessions,
-        "Authentication is enabled while sessions are not."
-    );
-
-    // Limited buffer for data streaming from clients into the server.
-    // When this is full because ServerState::apply_event isn't coping with
-    // the load, we start putting back pressure on client websockets.
-    let (tx, rx) = mpsc::sync_channel(100000);
-    let tx_tick = tx.clone();
-    let tx_terminate = tx.clone();
-    let clients = Arc::new(Mutex::new(Clients::new()));
-    let clients_copy = Arc::clone(&clients);
-
-    ctrlc::set_handler(move || tx_terminate.send(IncomingEvent::Terminate).unwrap())
-        .expect("Error setting Ctrl-C handler");
-
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_millis(100));
-        tx_tick.send(IncomingEvent::Tick).unwrap();
-    });
-
-    thread::spawn(move || {
-        let hooks = match config.database_options {
-            DatabaseOptions::NoDatabase => None,
-            DatabaseOptions::Sqlite(address) => Some(Box::new(
-                SqlxServerHooks::<sqlx::Sqlite>::new(address.as_str())
-                    .unwrap_or_else(|err| panic!("Cannot connect to SQLite DB {address}:\n{err}")),
-            ) as Box<dyn ServerHooks>),
-            DatabaseOptions::Postgres(address) => Some(Box::new(
-                SqlxServerHooks::<sqlx::Postgres>::new(address.as_str()).unwrap_or_else(|err| {
-                    panic!("Cannot connect to Postgres DB {address}:\n{err}")
-                }),
-            ) as Box<dyn ServerHooks>),
-        };
-        let mut server_state = ServerState::new(clients_copy, hooks);
-
-        for event in rx {
-            server_state.apply_event(event);
-        }
-        panic!("Unexpected end of events stream");
-    });
-
+fn run_tide<DB: Sync + Send + 'static + database::DatabaseReader>(
+    config: ServerConfig,
+    db: DB,
+    clients: Arc<Mutex<Clients>>,
+    tx: mpsc::SyncSender<IncomingEvent>,
+) {
     let (google_auth, auth_callback_is_https) = match config.auth_options {
         AuthOptions::NoAuth => (None, false),
-        AuthOptions::GoogleAuthFromEnv { callback_is_https } => (
-            Some(crate::auth::GoogleAuth::new().unwrap()),
-            callback_is_https,
-        ),
+        AuthOptions::GoogleAuthFromEnv { callback_is_https } => {
+            (Some(auth::GoogleAuth::new().unwrap()), callback_is_https)
+        }
     };
-
     let mut app = tide::with_state(Arc::new(HttpServerStateImpl {
         sessions_enabled: config.session_options != SessionOptions::NoSessions,
         google_auth,
         auth_callback_is_https,
+        db,
+        static_content_url_prefix: config.static_content_url_prefix,
     }));
 
     if app.state().sessions_enabled {
@@ -190,62 +153,133 @@ pub fn run(config: ServerConfig) {
     app.at(AUTH_LOGOUT_URL_PATH).get(handle_logout);
     app.at(AUTH_MYSESSION_URL_PATH).get(handle_mysession);
 
-    app.at("/").get(move |req: tide::Request<HttpServerState>| {
-        let mytx = tx.clone();
-        let myclients = clients.clone();
-        async move {
-            if req.state().sessions_enabled {
-                // When the sessions are enabled, we might be using the session
-                // cookie for authentication.
-                // We should be checking request origin in that case to
-                // preven CSRF, to which websockets are inherently vulnerable.
-                check_origin(&req)?;
-            }
-            let peer_addr = req.peer_addr().map_or_else(
-                || {
-                    Err(tide::Error::from_str(
-                        StatusCode::Forbidden,
-                        "Peer address missing",
-                    ))
-                },
-                |x| Ok(x.to_owned()),
-            )?;
+    bughouse_console::stats_handlers_tide::Handlers::<HttpServerState<DB>>::register_handlers(
+        &mut app,
+    );
 
-            let session_data = get_session(&req).ok().and_then(|s| s.get("data"));
-
-            // tide::Request -> http_types::Request -> http::Request<Body> -> http::Request<()>.
-            let http_types_req: http_types::Request = req.into();
-            let http_req_with_body: http::Request<http_types::Body> = http_types_req.into();
-            let http_req = http_req_with_body.map(|_| ());
-
-            let http_resp = tungstenite::handshake::server::create_response(&http_req)
-                .map_err(|e| tide::Error::new(StatusCode::BadRequest, e))?;
-
-            // http::Response<()> -> http::Response<Body> -> http_types::Response
-            let http_resp_with_body = http_resp.map(|_| http_types::Body::empty());
-            let mut http_types_resp: http_types::Response = http_resp_with_body.into();
-
-            // http_types::Response is a magic thing that can give us the stream back
-            // once it's upgraded.
-            let upgrade_receiver = http_types_resp.recv_upgrade().await;
-
-            async_std::task::spawn(async move {
-                if let Some(stream) = upgrade_receiver.await {
-                    let stream =
-                        WebSocketStream::from_raw_socket(stream, protocol::Role::Server, None)
-                            .await;
-                    if let Err(err) =
-                        handle_connection(peer_addr, stream, mytx, myclients, session_data).await
-                    {
-                        error!("{}", err);
-                    }
-                } else {
-                    error!("Never received an upgrade for client {}", peer_addr);
+    app.at("/")
+        .get(move |req: tide::Request<HttpServerState<_>>| {
+            let mytx = tx.clone();
+            let myclients = clients.clone();
+            async move {
+                if req.state().sessions_enabled {
+                    // When the sessions are enabled, we might be using the session
+                    // cookie for authentication.
+                    // We should be checking request origin in that case to
+                    // preven CSRF, to which websockets are inherently vulnerable.
+                    check_origin(&req)?;
                 }
-            });
-            Ok(http_types_resp)
-        }
-    });
+                let peer_addr = req.peer_addr().map_or_else(
+                    || {
+                        Err(tide::Error::from_str(
+                            StatusCode::Forbidden,
+                            "Peer address missing",
+                        ))
+                    },
+                    |x| Ok(x.to_owned()),
+                )?;
+
+                let session_data = get_session(&req).ok().and_then(|s| s.get("data"));
+
+                // tide::Request -> http_types::Request -> http::Request<Body> -> http::Request<()>.
+                let http_types_req: http_types::Request = req.into();
+                let http_req_with_body: http::Request<http_types::Body> = http_types_req.into();
+                let http_req = http_req_with_body.map(|_| ());
+
+                let http_resp = tungstenite::handshake::server::create_response(&http_req)
+                    .map_err(|e| tide::Error::new(StatusCode::BadRequest, e))?;
+
+                // http::Response<()> -> http::Response<Body> -> http_types::Response
+                let http_resp_with_body = http_resp.map(|_| http_types::Body::empty());
+                let mut http_types_resp: http_types::Response = http_resp_with_body.into();
+
+                // http_types::Response is a magic thing that can give us the stream back
+                // once it's upgraded.
+                let upgrade_receiver = http_types_resp.recv_upgrade().await;
+
+                async_std::task::spawn(async move {
+                    if let Some(stream) = upgrade_receiver.await {
+                        let stream =
+                            WebSocketStream::from_raw_socket(stream, protocol::Role::Server, None)
+                                .await;
+                        if let Err(err) =
+                            handle_connection(peer_addr, stream, mytx, myclients, session_data)
+                                .await
+                        {
+                            error!("{}", err);
+                        }
+                    } else {
+                        error!("Never received an upgrade for client {}", peer_addr);
+                    }
+                });
+                Ok(http_types_resp)
+            }
+        });
     async_std::task::block_on(async { app.listen(format!("0.0.0.0:{}", network::PORT)).await })
         .expect("Failed to start the tide server");
+}
+
+pub fn run(config: ServerConfig) {
+    assert!(
+        config.auth_options == AuthOptions::NoAuth
+            || config.session_options != SessionOptions::NoSessions,
+        "Authentication is enabled while sessions are not."
+    );
+
+    // Limited buffer for data streaming from clients into the server.
+    // When this is full because ServerState::apply_event isn't coping with
+    // the load, we start putting back pressure on client websockets.
+    let (tx, rx) = mpsc::sync_channel(100000);
+    let tx_tick = tx.clone();
+    let tx_terminate = tx.clone();
+    let clients = Arc::new(Mutex::new(Clients::new()));
+    let clients_copy = Arc::clone(&clients);
+
+    ctrlc::set_handler(move || tx_terminate.send(IncomingEvent::Terminate).unwrap())
+        .expect("Error setting Ctrl-C handler");
+
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_millis(100));
+        tx_tick.send(IncomingEvent::Tick).unwrap();
+    });
+
+    let hooks = match config.database_options.clone() {
+        DatabaseOptions::NoDatabase => None,
+        DatabaseOptions::Sqlite(address) => Some(Box::new(
+            SqlxServerHooks::<sqlx::Sqlite>::new(address.as_str())
+                .unwrap_or_else(|err| panic!("Cannot connect to SQLite DB {address}:\n{err}")),
+        ) as Box<dyn ServerHooks + Send>),
+        DatabaseOptions::Postgres(address) => Some(Box::new(
+            SqlxServerHooks::<sqlx::Postgres>::new(address.as_str())
+                .unwrap_or_else(|err| panic!("Cannot connect to Postgres DB {address}:\n{err}")),
+        ) as Box<dyn ServerHooks + Send>),
+    };
+
+    thread::spawn(move || {
+        let mut server_state =
+            ServerState::new(clients_copy, hooks.map(|h| h as Box<dyn ServerHooks>));
+
+        for event in rx {
+            server_state.apply_event(event);
+        }
+        panic!("Unexpected end of events stream");
+    });
+
+    match config.database_options.clone() {
+        DatabaseOptions::NoDatabase => {
+            run_tide(config, database::UnimplementedDatabase {}, clients, tx)
+        }
+        DatabaseOptions::Sqlite(address) => run_tide(
+            config,
+            database::SqlxDatabase::<sqlx::Sqlite>::new(&address).unwrap(),
+            clients,
+            tx,
+        ),
+        DatabaseOptions::Postgres(address) => run_tide(
+            config,
+            database::SqlxDatabase::<sqlx::Postgres>::new(&address).unwrap(),
+            clients,
+            tx,
+        ),
+    }
 }
