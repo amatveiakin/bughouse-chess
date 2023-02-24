@@ -111,6 +111,25 @@ macro_rules! ride {
     };
 }
 
+// Improvement potential: Also generate `to_algebraic_for_move` returning `&'static str` instead
+//   of `String`.
+macro_rules! make_algebraic_mappings {
+    ($($piece:path : $ch:literal,)*) => {
+        // Should not be used to construct moves in algebraic notation, because it returns a
+        // non-empty name for a pawn (use `to_algebraic_for_move` instead).
+        pub fn to_full_algebraic(self) -> char {
+            match self { $($piece => $ch,)* }
+        }
+
+        pub fn from_algebraic_char(notation: char) -> Option<Self> {
+            match notation {
+                $($ch => Some($piece),)*
+                _ => None
+            }
+        }
+    }
+}
+
 impl PieceKind {
     pub fn movements(self) -> &'static [PieceMovement] {
         match self {
@@ -123,39 +142,20 @@ impl PieceKind {
         }
     }
 
-    // Should not be used to construct moves in algebraic notation, because it returns a
-    // non-empty name for a pawn (use `to_algebraic_for_move` instead).
-    pub fn to_full_algebraic(self) -> char {
-        match self {
-            PieceKind::Pawn => 'P',
-            PieceKind::Knight => 'N',
-            PieceKind::Bishop => 'B',
-            PieceKind::Rook => 'R',
-            PieceKind::Queen => 'Q',
-            PieceKind::King => 'K',
-        }
-    }
+    make_algebraic_mappings!(
+        PieceKind::Pawn : 'P',
+        PieceKind::Knight : 'N',
+        PieceKind::Bishop : 'B',
+        PieceKind::Rook : 'R',
+        PieceKind::Queen : 'Q',
+        PieceKind::King : 'K',
+    );
 
-    pub fn to_algebraic_for_move(self) -> &'static str {
-        match self {
-            PieceKind::Pawn => "",
-            PieceKind::Knight => "N",
-            PieceKind::Bishop => "B",
-            PieceKind::Rook => "R",
-            PieceKind::Queen => "Q",
-            PieceKind::King => "K",
-        }
-    }
-
-    pub fn from_algebraic_char(notation: char) -> Option<Self> {
-        match notation {
-            'P' => Some(PieceKind::Pawn),
-            'N' => Some(PieceKind::Knight),
-            'B' => Some(PieceKind::Bishop),
-            'R' => Some(PieceKind::Rook),
-            'Q' => Some(PieceKind::Queen),
-            'K' => Some(PieceKind::King),
-            _ => None,
+    pub fn to_algebraic_for_move(self) -> String {
+        if self == PieceKind::Pawn {
+            String::new()
+        } else {
+            self.to_full_algebraic().to_string()
         }
     }
 
