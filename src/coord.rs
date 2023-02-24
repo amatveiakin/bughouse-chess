@@ -1,4 +1,5 @@
-// Improvement potential. Return Option-s instead of failing, let the caller unwrap.
+// We use Row/Col terminology instead of traditional Rank/File because "File" could be misleading
+// in programming context. But all user-visible places (UI, PGN, etc.) should say Rank/File.
 
 use std::fmt;
 use std::ops;

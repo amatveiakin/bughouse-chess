@@ -330,8 +330,7 @@ function make_socket() {
     });
     socket.addEventListener('close', (event) => {
         // TODO: Report socket errors.
-        // TODO: Reconnect automatically,
-        //   OR at least keep a permanent overlay message after closing the dialog.
+        // TODO: Reconnect automatically.
         console.error('WebSocket closed: ', event);
         fatal_error_dialog('Connection lost. Please reload the page.');
     });
@@ -612,17 +611,10 @@ function server_websocket_address() {
 }
 
 function set_up_drag_and_drop() {
-    // Note. One would think that the new and shiny pointer events
-    // (https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events) are the
-    // answer to supporting both mouse and touch events in a uniform fashion.
-    // Unfortunately pointer events don't work here for two reasons:
-    //   - It seems impossible to implement drag cancellation with a right-click,
-    //     because pointer API does not report nested mouse events.
-    //   - The `drag_element.id = null; svg.appendChild(drag_element);` trick
-    ///    starts to break `touch-action: none`, i.e. the drag gets cancelled and
-    //     the page is panned instead. This is really quite bizarre: the same code
-    //     works differently depending on whether it was called from 'touchstart'
-    //     or from 'pointerdown'. But what can you do?
+    // Note. Need to process mouse and touch screens separately. Cannot use pointer events
+    // (https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events) here: it seems impossible
+    // to implement drag cancellation with a right-click, because pointer API does not report
+    // nested mouse events.
 
     document.addEventListener('mousedown', start_drag);
     document.addEventListener('mousemove', drag);
@@ -663,12 +655,20 @@ function set_up_drag_and_drop() {
                 drag_element.classList.add('dragged');
                 // Dissociate image from the board/reserve:
                 drag_element.id = null;
-                // Bring on top; (if reserve) remove shadow by extracting from reserve group:
 
                 const source = drag_element.getAttribute('data-bughouse-location');
                 const drag_source_board_idx = wasm_client().start_drag_piece(source);
                 drag_source_board = document.getElementById(`board-${drag_source_board_idx}`);
+
+                // Reparent: bring on top; (if reserve) remove shadow by extracting from reserve group.
+                //
+                // TODO: Fix: Reparenting breaks touch drag. According to
+                //   https://stackoverflow.com/questions/33298828/touch-move-event-dont-fire-after-touch-start-target-is-removed
+                // this should've helped:
+                //   drag_element.addEventListener('touchmove', drag);
+                // but it didn't work for me.
                 drag_source_board.appendChild(drag_element);
+
                 update();
 
                 // Properly position reserve piece after re-parenting.
