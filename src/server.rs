@@ -1114,6 +1114,7 @@ impl Contest {
 
     // Improvement potential: In a game with three players also balance the number of times
     //   each person double-plays.
+    // TODO: Add unit tests for `assign_boards` since it's not covered by `bughouse_online.rs`.
     fn assign_boards(&self) -> Vec<PlayerInGame> {
         if let Some(assignment) = &self.board_assignment_override {
             for player_assignment in assignment {
@@ -1132,30 +1133,20 @@ impl Contest {
             Teaming::FixedTeams => {
                 for p in self.participants.iter() {
                     match p.faction {
-                        Faction::Fixed(team) => players_per_team[team].push(p.name.clone()),
+                        Faction::Fixed(team) => players_per_team[team].push(p.clone()),
                         Faction::Random => panic!("Player {} doesn't have a team in team mode", p.name),
                         Faction::Observer => {},
                     }
                 }
             },
             Teaming::IndividualMode => {
-                let players_buckets = self.participants.iter()
+                let participants = self.participants.iter()
                     .filter(|p| match p.faction {
                         Faction::Fixed(_) => panic!("Player {} has a fixed team in individual mode", p.name),
                         Faction::Random => true,
                         Faction::Observer => false,
-                    })
-                    .sorted_by_key(|p| p.games_played)
-                    .group_by(|p| p.games_played);
-                let mut current_players = Vec::<String>::new();
-                for (_, bucket) in players_buckets.into_iter() {
-                    let bucket = bucket.collect_vec();
-                    let seats_left = TOTAL_ENVOYS - current_players.len();
-                    let n = cmp::min(bucket.len(), seats_left);
-                    current_players.extend(bucket.choose_multiple(&mut rng, n).map(|p| p.name.clone()));
-                }
-                current_players.shuffle(&mut rng);
-                for p in current_players {
+                    });
+                for p in get_next_players(participants, TOTAL_ENVOYS) {
                     let team = Team::iter().min_by_key(|&t| players_per_team[t].len()).unwrap();
                     assert!(players_per_team[team].len() < TOTAL_ENVOYS_PER_TEAM);
                     players_per_team[team].push(p);
@@ -1165,19 +1156,20 @@ impl Contest {
         players_per_team.into_iter().map(|(team, mut team_players)| {
             team_players.shuffle(&mut rng);
             match team_players.len() {
+                0 => panic!("Empty team: {}", team_players.len()),
                 1 => {
                     vec![
                         PlayerInGame {
-                            name: team_players.pop().unwrap(),
+                            name: team_players.pop().unwrap().name.clone(),
                             id: BughousePlayer::DoublePlayer(team)
                         }
                     ]
                 },
-                2 => {
+                _ => {
                     BughouseBoard::iter()
-                        .zip_eq(team_players.into_iter())
-                        .map(move |(board_idx, name)| PlayerInGame {
-                            name,
+                        .zip(get_next_players(team_players.iter(), TOTAL_ENVOYS_PER_TEAM).into_iter())
+                        .map(move |(board_idx, participant)| PlayerInGame {
+                            name: participant.name.clone(),
                             id: BughousePlayer::SinglePlayer(BughouseEnvoy {
                                 board_idx,
                                 force: get_bughouse_force(team, board_idx)
@@ -1185,7 +1177,6 @@ impl Contest {
                         })
                         .collect_vec()
                 },
-                _ => panic!("Unexpected number of players in a team: {}", team_players.len()),
             }
         }).flatten().collect_vec()
     }
@@ -1297,6 +1288,24 @@ fn player_preturns(preturns: &Preturns, player: BughousePlayer) -> Vec<(Bughouse
         .filter(|(_, turn)| turn.is_some())
         .map(|(board_idx, turn)| (board_idx, turn.unwrap().clone()))
         .collect();
+}
+
+fn get_next_players<'a>(
+    participants: impl Iterator<Item = &'a Participant>, max_players: usize
+) -> Vec<Participant> {
+    let mut rng = rand::thread_rng();
+    let players_buckets = participants
+        .sorted_by_key(|p| p.games_played)
+        .group_by(|p| p.games_played);
+    let mut ret = Vec::<Participant>::new();
+    for (_, bucket) in players_buckets.into_iter() {
+        let bucket = bucket.collect_vec();
+        let seats_left = max_players - ret.len();
+        let n = cmp::min(bucket.len(), seats_left);
+        ret.extend(bucket.choose_multiple(&mut rng, n).cloned().cloned());
+    }
+    ret.shuffle(&mut rng);
+    ret
 }
 
 fn process_report_error(ctx: &Context, client_id: ClientId, report: &BughouseClientErrorReport) {

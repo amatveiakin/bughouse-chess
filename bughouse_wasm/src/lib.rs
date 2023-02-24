@@ -210,14 +210,15 @@ impl WebClient {
         match (error, warning) {
             (Some(Error::NotEnoughPlayers), _) => "Not enough players",
             (Some(Error::TooManyPlayersTotal), _) => "Too many players",
-            (Some(Error::TooManyPlayersInTeam), _) => "Too many players in a team",
             (Some(Error::EmptyTeam), _) => "A team is empty",
             (Some(Error::RatedDoublePlay), _) =>
                 "Playing on two boards is only allowed in unrated contests",
-            (Some(Error::NotReady) | None, Some(Warning::NeedToSeatOut)) =>
-                "👉🏾 Can start, but some players will have to seat out each game",
+            (Some(Error::NotReady) | None, Some(Warning::NeedToDoublePlayAndSeatOut)) =>
+                "👉🏾 Can start, but some players will have to play on two boards while others will have to seat out",
             (Some(Error::NotReady) | None, Some(Warning::NeedToDoublePlay)) =>
                 "👉🏾 Can start, but some players will have to play on two boards",
+            (Some(Error::NotReady) | None, Some(Warning::NeedToSeatOut)) =>
+                "👉🏾 Can start, but some players will have to seat out each game",
             (Some(Error::NotReady), None) => "👍🏾 Will start when everyone is ready",
             (None, None) => "",
         }.to_owned()
@@ -660,6 +661,7 @@ impl WebClient {
                 let player_name = board.player_name(force);
                 let player = contest.participants.iter().find(|p| p.name == *player_name).unwrap();
                 // TODO: Show teams for the upcoming game in individual mode.
+                // TODO: Display temporary observer readiness in case of teams with 3+ members.
                 let show_readiness = game.status() != BughouseGameStatus::Active && teaming == Teaming::FixedTeams;
                 let player_string = participant_string(&player, show_readiness);
                 name_node.set_text_content(Some(&player_string));
