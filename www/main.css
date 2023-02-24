@@ -314,6 +314,8 @@ body.symmetric #page {
   width: calc(var(--sq-size-secondary) * 8);
   height: calc(var(--sq-size-secondary) * 8);
   user-select: none;
+  touch-action: none;
+  z-index: 9;  /* show dragged pieces above other UI elements */
 }
 #reserve-primary-top,
 #reserve-primary-bottom {
@@ -327,6 +329,7 @@ body.symmetric #page {
   width: calc(var(--sq-size-secondary) * 8);
   height: calc(var(--sq-size-secondary) * 1.5);
   user-select: none;
+  touch-action: none;
 }
 .reserve {
   filter: url(#reserve-shadow);
