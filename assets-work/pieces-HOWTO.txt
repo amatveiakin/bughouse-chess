@@ -1,3 +1,30 @@
+# Vector post-processing (Inkscape)
+
+Final pieces have been produced from svg images. The goal is to have same fill
+colors as in the original raster version after the light filter.
+
+Images are produces with `render-svg-pieces.py` script. In order to generate
+templates for the script...
+
+Object params:
+- [black] Fill: #151515ff
+- [white] Fill: #cfcfcfff
+- Stroke: #000000ff, 1.5px, round join
+
+Pseudo 3D:
+- Filters > Bevels > Diffuse light...
+- Settings:
+    Smoothness = 1.6
+    Elevation = 150
+    Azimuth = 0
+    [black] Color = #ffffffe8
+    [white] Color = #ffffffcc
+- [black] Apply x2
+- [white] Apply x1
+
+
+# Original raster post-processing (Gimp)
+
 Final pieces have been produced from 1200x1200 png images for black pieces.
 Some were pre-processed (see `pieces-gimp`), others were not.
 

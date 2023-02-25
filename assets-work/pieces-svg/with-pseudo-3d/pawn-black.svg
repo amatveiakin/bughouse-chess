@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   viewBox="0 0 100 100"
+   x="0px"
+   y="0px"
+   version="1.1"
+   id="svg957">
+  <metadata
+     id="metadata963">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs961">
+    <filter
+       style="color-interpolation-filters:sRGB;"
+       id="filter3216">
+      <feGaussianBlur
+         in="SourceGraphic"
+         stdDeviation="1.6"
+         result="blur"
+         id="feGaussianBlur3206" />
+      <feDiffuseLighting
+         diffuseConstant="1"
+         surfaceScale="10"
+         lighting-color="rgb(255,255,255)"
+         result="diffuse"
+         id="feDiffuseLighting3210">
+        <feDistantLight
+           elevation="150"
+           azimuth="0"
+           id="feDistantLight3208" />
+      </feDiffuseLighting>
+      <feComposite
+         in="diffuse"
+         in2="diffuse"
+         operator="arithmetic"
+         k1="1"
+         result="composite1"
+         id="feComposite3212" />
+      <feComposite
+         in="composite1"
+         in2="SourceGraphic"
+         k1="0.909804"
+         operator="arithmetic"
+         k3="1"
+         result="fbSourceGraphic"
+         id="feComposite3214" />
+      <feColorMatrix
+         result="fbSourceGraphicAlpha"
+         in="fbSourceGraphic"
+         values="0 0 0 -1 0 0 0 0 -1 0 0 0 0 -1 0 0 0 0 1 0"
+         id="feColorMatrix3218" />
+      <feGaussianBlur
+         id="feGaussianBlur3220"
+         in="fbSourceGraphic"
+         stdDeviation="1.6"
+         result="blur" />
+      <feDiffuseLighting
+         id="feDiffuseLighting3222"
+         diffuseConstant="1"
+         surfaceScale="10"
+         lighting-color="rgb(255,255,255)"
+         result="diffuse">
+        <feDistantLight
+           id="feDistantLight3224"
+           elevation="150"
+           azimuth="0" />
+      </feDiffuseLighting>
+      <feComposite
+         in2="diffuse"
+         id="feComposite3226"
+         in="diffuse"
+         operator="arithmetic"
+         k1="1"
+         result="composite1" />
+      <feComposite
+         in2="fbSourceGraphic"
+         id="feComposite3228"
+         in="composite1"
+         k1="0.909804"
+         operator="arithmetic"
+         k3="1"
+         result="composite2" />
+    </filter>
+  </defs>
+  <path
+     id="path"
+     style="display:inline;fill:#151515;fill-opacity:1;stroke:#000000;stroke-opacity:1;stroke-linejoin:round;stroke-linecap:round;filter:url(#filter3216);stroke-width:1.5;stroke-miterlimit:4;stroke-dasharray:none"
+     d="m 60.782122,38.240524 a 11.102198,11.102198 0 0 1 -3.569354,8.167887 l 5.655804,3.992434 v 7.316622 h -5.537477 c 0.267296,3.39144 2.443129,6.785433 5.259114,9.746133 a 41.914586,41.914586 0 0 0 8.970631,7.039961 l 0.350721,0.200898 V 85.541915 H 28.088439 V 74.704459 L 28.43916,74.503561 A 41.914586,41.914586 0 0 0 37.409791,67.4636 c 2.815985,-2.9607 4.991818,-6.354693 5.259114,-9.746133 h -5.533222 v -7.316622 l 5.267628,-3.718327 a 11.129439,11.129439 0 1 1 18.387324,-8.441994 z" />
+</svg>
