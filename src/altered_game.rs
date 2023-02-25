@@ -9,6 +9,7 @@
 // normal and one preturn.
 
 use std::cmp;
+use std::rc::Rc;
 
 use enum_map::{EnumMap, enum_map};
 use strum::IntoEnumIterator;
@@ -20,6 +21,7 @@ use crate::coord::{SubjectiveRow, Coord};
 use crate::display::Perspective;
 use crate::game::{BughouseEnvoy, BughouseParticipant, BughouseGameStatus, BughouseGame};
 use crate::piece::{CastleDirection, PieceKind};
+use crate::rules::{ChessRules, BughouseRules};
 
 
 #[derive(Clone, Copy, Debug)]
@@ -82,6 +84,9 @@ impl AlteredGame {
             piece_drag: None,
         }
     }
+
+    pub fn chess_rules(&self) -> &Rc<ChessRules> { self.game_confirmed().chess_rules() }
+    pub fn bughouse_rules(&self) -> &Rc<BughouseRules> { self.game_confirmed().bughouse_rules() }
 
     // Status returned by this function may differ from `local_game()` status.
     // This function should be used as the source of truth when showing game status to the

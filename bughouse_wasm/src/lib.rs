@@ -232,6 +232,7 @@ impl WebClient {
         player_name: &str,
         teaming: &str,
         starting_position: &str,
+        fairy_pieces: &str,
         starting_time: &str,
         drop_aggression: &str,
         pawn_drop_ranks: &str,
@@ -246,6 +247,11 @@ impl WebClient {
             "classic" => StartingPosition::Classic,
             "fischer-random" => StartingPosition::FischerRandom,
             _ => return Err(format!("Invalid starting position: {starting_position}").into()),
+        };
+        let fairy_pieces = match fairy_pieces {
+            "no-fairy" => FairyPieces::NoFairy,
+            "accolade" => FairyPieces::Accolade,
+            _ => return Err(format!("Invalid fairy pieces: {fairy_pieces}").into()),
         };
         let drop_aggression = match drop_aggression {
             "no-check" => DropAggression::NoCheck,
@@ -285,6 +291,7 @@ impl WebClient {
         };
         let chess_rules = ChessRules {
             starting_position,
+            fairy_pieces,
             time_control: TimeControl {
                 starting_time,
             },
@@ -349,11 +356,15 @@ impl WebClient {
                     display_board_idx, Some(to_display_coord(coord, board_orientation))
                 )?;
                 let board_idx = get_board_index(display_board_idx, alt_game.perspective());
-                for dest in alt_game.local_game().board(board_idx).legal_move_destinations(coord) {
-                    set_square_highlight(
-                        None, "legal-move-highlight", SquareHighlightLayer::Drag,
-                        display_board_idx, Some(to_display_coord(dest, board_orientation))
-                    )?;
+                // Improvement potential. More conistent legal moves highlighting. Perhaps, add
+                //   a config with "Yes" / "No" / "If fairy chess" values.
+                if alt_game.chess_rules().fairy_pieces != FairyPieces::NoFairy {
+                    for dest in alt_game.local_game().board(board_idx).legal_move_destinations(coord) {
+                        set_square_highlight(
+                            None, "legal-move-highlight", SquareHighlightLayer::Drag,
+                            display_board_idx, Some(to_display_coord(dest, board_orientation))
+                        )?;
+                    }
                 }
                 (display_board_idx, PieceDragStart::Board(coord))
             } else {
@@ -1120,8 +1131,13 @@ fn update_reserve(
 ) -> JsResult<()> {
     let piece_kind_sep = 1.0;
     let reserve_iter = reserve.iter()
-        .filter(|(kind, _)| *kind != PieceKind::King)
-        .map(|(piece_kind, &amount)| (piece_kind, amount));
+        .filter(|(kind, &amount)| {
+            if !kind.can_be_in_reserve() {
+                assert_eq!(amount, 0);
+            }
+            kind.can_be_in_reserve()
+        })
+        .map(|(kind, &amount)| (kind, amount));
     render_reserve(force, board_idx, player_idx, is_draggable, piece_kind_sep, reserve_iter)
 }
 
@@ -1256,7 +1272,7 @@ fn update_turn_log(
             let (algebraic, capture) = match record.mode {
                 TurnMode::Normal => (
                     record.turn_expanded.algebraic_for_log.clone(),
-                    record.turn_expanded.capture,
+                    record.turn_expanded.capture.clone(),
                 ),
                 TurnMode::Preturn => (
                     format!("({})", record.turn_expanded.algebraic_for_log),
@@ -1286,8 +1302,10 @@ fn update_turn_log(
                     "log-capture",
                     &format!("log-capture-{}", force_id(capture.force))
                 ];
-                let capture_node = make_piece_icon(capture.piece_kind, capture.force, &capture_classes)?;
-                line_node.append_child(&capture_node)?;
+                for &kind in capture.piece_kinds.iter() {
+                    let capture_node = make_piece_icon(kind, capture.force, &capture_classes)?;
+                    line_node.append_child(&capture_node)?;
+                }
             }
 
             log_node.append_child(&line_node)?;
@@ -1450,7 +1468,7 @@ fn turn_highlights(turn_expanded: &TurnExpanded) -> Vec<(&'static str, Coord)> {
     if let Some(drop) = turn_expanded.drop {
         highlights.push(("drop-to", drop));
     }
-    if let Some(capture) = turn_expanded.capture {
+    if let Some(ref capture) = turn_expanded.capture {
         highlights.retain(|(_, coord)| *coord != capture.from);
         highlights.push(("capture", capture.from));
     }
@@ -1617,12 +1635,18 @@ fn piece_path(piece_kind: PieceKind, force: Force) -> &'static str {
         (White, Bishop) => "#white-bishop",
         (White, Rook) => "#white-rook",
         (White, Queen) => "#white-queen",
+        (White, Cardinal) => "#white-cardinal",
+        (White, Empress) => "#white-empress",
+        (White, Amazon) => "#white-amazon",
         (White, King) => "#white-king",
         (Black, Pawn) => "#black-pawn",
         (Black, Knight) => "#black-knight",
         (Black, Bishop) => "#black-bishop",
         (Black, Rook) => "#black-rook",
         (Black, Queen) => "#black-queen",
+        (Black, Cardinal) => "#black-cardinal",
+        (Black, Empress) => "#black-empress",
+        (Black, Amazon) => "#black-amazon",
         (Black, King) => "#black-king",
     }
 }

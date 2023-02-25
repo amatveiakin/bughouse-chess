@@ -210,16 +210,19 @@ INKSCAPE_PATH = r'C:\Program Files\Inkscape\bin\inkscape.exe'
 TEMP_PATH = Path('rendering-tmp.svg')
 
 for input in Path('pieces-svg').glob('*.svg'):
+    def get_out(prefix):
+        return Path('../assets/pieces') / f'{prefix}-{input.stem}.png'
+
+    print(f'{input} -> {get_out("*")}')
+
     doc = minidom.parse(input.as_posix())
     path_strings = [p.getAttribute('d') for p in doc.getElementsByTagName('path')]
     assert(len(path_strings) == 1)
     doc.unlink()
 
     for is_white in [False, True]:
-        out_prefix = 'white' if is_white else 'black'
-        out = Path('../assets/pieces') / f'{out_prefix}-{input.stem}.png'
+        out = get_out('white' if is_white else 'black')
         template = white_piece_template if is_white else black_piece_template
-        print(f'{input} -> {out}')
         TEMP_PATH.write_text(template.format(path = path_strings[0]))
         subprocess.run(
             [

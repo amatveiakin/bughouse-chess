@@ -12,8 +12,28 @@
    y="0px"
    version="1.1"
    id="svg8"
-   sodipodi:docname="nightrider.svg"
+   sodipodi:docname="nightrider-concept.svg"
    inkscape:version="1.0.1 (3bc2e813f5, 2020-09-07)">
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="1280"
+     inkscape:window-height="650"
+     id="namedview7"
+     showgrid="false"
+     inkscape:zoom="3.4082547"
+     inkscape:cx="56.78832"
+     inkscape:cy="62.054871"
+     inkscape:window-x="-6"
+     inkscape:window-y="-6"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg8" />
   <metadata
      id="metadata12">
     <rdf:RDF>
@@ -26,28 +46,6 @@
       </cc:Work>
     </rdf:RDF>
   </metadata>
-  <sodipodi:namedview
-     pagecolor="#ffffff"
-     bordercolor="#666666"
-     borderopacity="1"
-     objecttolerance="10"
-     gridtolerance="10"
-     guidetolerance="10"
-     inkscape:pageopacity="0"
-     inkscape:pageshadow="2"
-     inkscape:window-width="1280"
-     inkscape:window-height="650"
-     id="namedview10"
-     showgrid="false"
-     inkscape:snap-global="true"
-     inkscape:zoom="2.41"
-     inkscape:cx="81.70888"
-     inkscape:cy="52.235147"
-     inkscape:window-x="-6"
-     inkscape:window-y="-6"
-     inkscape:window-maximized="1"
-     inkscape:current-layer="svg8"
-     inkscape:document-rotation="0" />
   <defs
      id="defs4">
     <style
@@ -55,7 +53,7 @@
   </defs>
   <path
      class="a"
-     d="M 57.413673,27.121477 46.445627,13.435415 c -1.588412,3.224474 -3.127158,8.915766 -0.914234,13.024832 a 10.61762,11.358968 0 0 0 -2.89446,0.637614 c -5.065996,2.174577 -10.624059,7.794038 -13.356642,19.482638 -0.790988,3.384861 -2.214764,5.005462 -3.906189,6.932079 a 25.337336,27.106449 0 0 0 -5.199359,8.004609 c -3.64314,8.442476 6.187173,16.885936 13.355723,9.217846 a 33.463347,35.799838 0 0 1 10.510009,-7.585437 c 4.256614,-2.14801 7.342382,-3.707606 9.085312,-11.373728 0.827778,3.574769 0.498506,12.012325 -7.463789,17.160465 -7.962296,5.148139 -9.620609,15.999379 -9.454133,19.212045 h 45.282163 c 0,-30.547398 -3.780181,-56.937516 -24.076355,-61.026901 z"
+     d="M 57.413673,25.277062 46.445627,11.591 c -1.588412,3.224474 -3.127158,8.915766 -0.914234,13.024832 a 10.61762,11.358968 0 0 0 -2.89446,0.637614 c -5.065996,2.174577 -10.624059,7.794038 -13.356642,19.482638 -0.790988,3.384861 -2.214764,5.005462 -3.906189,6.932079 a 25.337336,27.106449 0 0 0 -5.199359,8.004609 c -3.64314,8.442476 6.187173,16.885936 13.355723,9.217846 a 33.463347,35.799838 0 0 1 10.510009,-7.585437 c 4.256614,-2.14801 7.342382,-3.707606 9.085312,-11.373728 0.827778,3.574769 0.498506,12.012325 -7.463789,17.160465 -7.962296,5.148139 -9.620609,15.999379 -9.454133,19.212048 h 45.282163 c 0,-30.547401 -3.780181,-56.937519 -24.076355,-61.026904 z"
      id="path6"
      style="display:inline;fill:#000000;stroke-width:0.95132" />
   <rect
@@ -63,41 +61,41 @@
      id="rect1099"
      width="20.77158"
      height="5.4346299"
-     x="67.734634"
-     y="46.043571" />
+     x="69.838531"
+     y="44.505344" />
   <rect
      style="fill:#ffffff;stroke-width:0.801473;stroke-linecap:round;stroke-linejoin:round"
      id="rect1099-9"
      width="20.77158"
      height="5.4346299"
-     x="67.734634"
-     y="51.478191" />
+     x="69.838531"
+     y="49.939964" />
   <rect
      style="fill:#000000;stroke-width:0.801473;stroke-linecap:round;stroke-linejoin:round"
      id="rect1099-6"
      width="20.77158"
      height="5.4346299"
-     x="67.734634"
-     y="56.912834" />
+     x="67.838531"
+     y="55.374607" />
   <rect
      style="fill:#ffffff;stroke-width:0.801473;stroke-linecap:round;stroke-linejoin:round"
      id="rect1099-9-0"
      width="20.77158"
      height="5.4346299"
-     x="67.734634"
-     y="62.347462" />
+     x="67.838531"
+     y="60.809235" />
   <rect
      style="fill:#000000;stroke-width:0.801473;stroke-linecap:round;stroke-linejoin:round"
      id="rect1099-6-7"
      width="20.77158"
      height="5.4346299"
-     x="67.734634"
-     y="67.782082" />
+     x="69.838531"
+     y="66.243851" />
   <rect
      style="fill:#ffffff;stroke-width:0.801473;stroke-linecap:round;stroke-linejoin:round"
      id="rect1099-9-0-0"
      width="20.77158"
      height="5.4346299"
-     x="67.734634"
-     y="73.216721" />
+     x="69.838531"
+     y="71.67849" />
 </svg>

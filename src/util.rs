@@ -19,9 +19,11 @@ macro_rules! once_cell_regex {
     }};
 }
 
-pub fn sort_two<T: Ord>(v: (T, T)) -> (T, T) {
-    let (a, b) = v;
+pub fn sort_two<T: Ord>((a, b): (T, T)) -> (T, T) {
     if a < b { (a, b) } else { (b, a) }
+}
+pub fn sort_two_desc<T: Ord>((a, b): (T, T)) -> (T, T) {
+    if a > b { (a, b) } else { (b, a) }
 }
 
 // Rust-upgrade (https://github.com/rust-lang/rust/issues/88581):

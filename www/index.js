@@ -12,12 +12,18 @@ import white_knight from '../assets/pieces/white-knight.png';
 import white_bishop from '../assets/pieces/white-bishop.png';
 import white_rook from '../assets/pieces/white-rook.png';
 import white_queen from '../assets/pieces/white-queen.png';
+import white_cardinal from '../assets/pieces/white-cardinal.png';
+import white_empress from '../assets/pieces/white-empress.png';
+import white_amazon from '../assets/pieces/white-amazon.png';
 import white_king from '../assets/pieces/white-king.png';
 import black_pawn from '../assets/pieces/black-pawn.png';
 import black_knight from '../assets/pieces/black-knight.png';
 import black_bishop from '../assets/pieces/black-bishop.png';
 import black_rook from '../assets/pieces/black-rook.png';
 import black_queen from '../assets/pieces/black-queen.png';
+import black_cardinal from '../assets/pieces/black-cardinal.png';
+import black_empress from '../assets/pieces/black-empress.png';
+import black_amazon from '../assets/pieces/black-amazon.png';
 import black_king from '../assets/pieces/black-king.png';
 
 import turn_sound from '../assets/sounds/turn.ogg';
@@ -147,12 +153,18 @@ load_piece_images([
     [ white_bishop, 'white-bishop' ],
     [ white_rook, 'white-rook' ],
     [ white_queen, 'white-queen' ],
+    [ white_cardinal, 'white-cardinal' ],
+    [ white_empress, 'white-empress' ],
+    [ white_amazon, 'white-amazon' ],
     [ white_king, 'white-king' ],
     [ black_pawn, 'black-pawn' ],
     [ black_knight, 'black-knight' ],
     [ black_bishop, 'black-bishop' ],
     [ black_rook, 'black-rook' ],
     [ black_queen, 'black-queen' ],
+    [ black_cardinal, 'black-cardinal' ],
+    [ black_empress, 'black-empress' ],
+    [ black_amazon, 'black-amazon' ],
     [ black_king, 'black-king' ],
 ]);
 
@@ -1025,6 +1037,7 @@ function on_create_contest_confirm(event) {
             data.get('player-name'),
             data.get('teaming'),
             data.get('starting-position'),
+            data.get('fairy-pieces'),
             data.get('starting-time'),
             data.get('drop-aggression'),
             data.get('pawn-drop-ranks'),

@@ -5,7 +5,7 @@ use static_assertions::const_assert;
 use strum::EnumIter;
 
 use crate::force::Force;
-use crate::util::as_single_char;
+use crate::util::{as_single_char, sort_two_desc};
 
 
 // Improvement potential: Support pieces with asymmetric movements.
@@ -38,13 +38,16 @@ pub enum PieceMovement {
     LikePawn,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Enum, Serialize, Deserialize)]
 pub enum PieceKind {
     Pawn,
     Knight,
     Bishop,
     Rook,
     Queen,
+    Cardinal,  // == Bishop + Knight (a.k.a. Archbishop)
+    Empress,   // == Rook + Knight
+    Amazon,    // == Queen + Knight
     King,
 }
 
@@ -52,6 +55,8 @@ pub enum PieceKind {
 pub enum PieceOrigin {
     Innate,
     Promoted,
+    // For FairyPieces::Accolade. Contains original non-promoted pieces.
+    Combined((PieceKind, PieceKind)),
     Dropped,
 }
 
@@ -118,6 +123,9 @@ macro_rules! make_algebraic_mappings {
         // Should not be used to construct moves in algebraic notation, because it returns a
         // non-empty name for a pawn (use `to_algebraic_for_move` instead).
         pub fn to_full_algebraic(self) -> char {
+            // Don't forget to change `PIECE_RE` in `algebraic_to_turn` if relaxing this condition:
+            $( const_assert!('A' <= $ch && $ch <= 'Z'); )*
+
             match self { $($piece => $ch,)* }
         }
 
@@ -138,6 +146,9 @@ impl PieceKind {
             PieceKind::Bishop => &[ride!(1, 1)],
             PieceKind::Rook => &[ride!(0, 1)],
             PieceKind::Queen => &[ride!(1, 1), ride!(0, 1)],
+            PieceKind::Cardinal => &[leap!(1, 2), ride!(1, 1)],
+            PieceKind::Empress => &[leap!(1, 2), ride!(0, 1)],
+            PieceKind::Amazon => &[leap!(1, 2), ride!(1, 1), ride!(0, 1)],
             PieceKind::King => &[leap!(1, 1), leap!(0, 1)],
         }
     }
@@ -148,6 +159,9 @@ impl PieceKind {
         PieceKind::Bishop : 'B',
         PieceKind::Rook : 'R',
         PieceKind::Queen : 'Q',
+        PieceKind::Cardinal : 'C',
+        PieceKind::Empress : 'E',
+        PieceKind::Amazon : 'A',
         PieceKind::King : 'K',
     );
 
@@ -159,9 +173,56 @@ impl PieceKind {
         }
     }
 
+    pub fn can_be_in_reserve(self) -> bool {
+        use PieceKind::*;
+        match self {
+            Cardinal | Empress | Amazon | King => false,
+            Pawn | Knight | Bishop | Rook | Queen => true,
+        }
+    }
+
+    pub fn can_be_promotion_target(self) -> bool {
+        use PieceKind::*;
+        match self {
+            Pawn | Cardinal | Empress | Amazon | King => false,
+            Knight | Bishop | Rook | Queen => true,
+        }
+    }
+
     pub fn from_algebraic(notation: &str) -> Option<Self> {
         as_single_char(notation).and_then(Self::from_algebraic_char)
     }
+}
+
+pub fn accolade_combine_piece_kinds(first: PieceKind, second: PieceKind) -> Option<PieceKind> {
+    use PieceKind::*;
+    let base_piece = match (first, second) {
+        (Knight, p) | (p, Knight) => p,
+        _ => { return None; },
+    };
+    match base_piece {
+        Knight => None,                       // knight itself
+        Pawn | King => None,                  // not combinable
+        Cardinal | Empress | Amazon => None,  // already combined
+        Bishop => Some(Cardinal),
+        Rook => Some(Empress),
+        Queen => Some(Amazon),
+    }
+}
+
+pub fn accolade_combine_pieces(first: PieceOnBoard, second: PieceOnBoard) -> Option<PieceOnBoard> {
+    let original_piece = |p: PieceOnBoard| match p.origin {
+        PieceOrigin::Innate | PieceOrigin::Dropped => Some(p.kind),
+        PieceOrigin::Promoted => Some(PieceKind::Pawn),
+        PieceOrigin::Combined(_) => None,
+    };
+    let kind = accolade_combine_piece_kinds(first.kind, second.kind)?;
+    let origin = PieceOrigin::Combined(sort_two_desc((original_piece(first)?, original_piece(second)?)));
+    if first.force != second.force {
+        return None;
+    }
+    let force = first.force;
+    return Some(PieceOnBoard{ kind, origin, force });
 }
 
 pub fn piece_to_pictogram(piece_kind: PieceKind, force: Force) -> char {
@@ -180,5 +241,7 @@ pub fn piece_to_pictogram(piece_kind: PieceKind, force: Force) -> char {
         (Black, Rook) => '♜',
         (Black, Queen) => '♛',
         (Black, King) => '♚',
+        (White, _) => piece_kind.to_full_algebraic().to_ascii_uppercase(),
+        (Black, _) => piece_kind.to_full_algebraic().to_ascii_lowercase(),
     }
 }

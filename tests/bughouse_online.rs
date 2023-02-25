@@ -21,6 +21,7 @@ use common::*;
 fn default_chess_rules() -> ChessRules {
     ChessRules {
         starting_position: StartingPosition::Classic,
+        fairy_pieces: FairyPieces::NoFairy,
         time_control: TimeControl{ starting_time: Duration::from_secs(300) },
     }
 }

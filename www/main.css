@@ -240,9 +240,7 @@ body.symmetric #page {
 }
 
 .legal-move-highlight {
-  /* Disable until there is an understanding whether we actually want this. */
-  /* fill: url(#legal-move-gradient); */
-  fill: none;
+  fill: url(#legal-move-gradient);
 }
 .drag-start-highlight {
   fill: url(#drag-start-gradient);
@@ -551,6 +549,7 @@ dialog ::-webkit-scrollbar-thumb {
   display: inline-block;
   height: 1em;
   scale: 120%;
+  margin-right: -0.3em;
 }
 .log-capture-white {
   opacity: 75%;

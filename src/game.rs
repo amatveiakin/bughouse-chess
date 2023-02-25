@@ -474,7 +474,7 @@ impl BughouseGame {
             TurnMode::Normal => { other_board.start_clock(now) }
             TurnMode::Preturn => {}
         }
-        if let Some(capture) = turn_facts.capture {
+        if let Some(ref capture) = turn_facts.capture {
             other_board.receive_capture(&capture);
         }
         let turn_expanded = make_turn_expanded(turn, turn_algebraic, turn_facts);

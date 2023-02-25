@@ -43,6 +43,20 @@ pub enum StartingPosition {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum FairyPieces {
+    NoFairy,
+
+    // Can "glue" a Knight to a Bishop, a Rook or a Queen by moving one piece onto another
+    // or dropping one piece onto another. Could move a Knight onto a piece, could move a
+    // piece onto a Knight - both are fine. When captured the piece falls back apart. Other
+    // than that, there is no way to unglue the piece.
+    // Improvement potential: Add a special sign in the notation when pieces are glued,
+    //   similarly to "x" for capture.
+    // TODO: Add tests.
+    Accolade,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum DropAggression {
     NoCheck,
     NoChessMate,
@@ -64,6 +78,7 @@ pub struct ContestRules {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChessRules {
     pub starting_position: StartingPosition,
+    pub fairy_pieces: FairyPieces,
     pub time_control: TimeControl,
 }
 
@@ -103,6 +118,7 @@ impl ChessRules {
     pub fn classic_blitz() -> Self {
         Self {
             starting_position: StartingPosition::Classic,
+            fairy_pieces: FairyPieces::NoFairy,
             time_control: TimeControl{ starting_time: Duration::from_secs(300) }
         }
     }
@@ -149,6 +165,10 @@ impl Rules {
             StartingPosition::Classic => "Classic",
             StartingPosition::FischerRandom => "Fischer random",
         };
+        let fairy_pieces = match self.chess_rules.fairy_pieces {
+            FairyPieces::NoFairy => "None",
+            FairyPieces::Accolade => "Accolade",
+        };
         let time_control = self.chess_rules.time_control.to_string();
         let drop_aggression = self.bughouse_rules.drop_aggression_string();
         let pawn_drop_ranks = self.bughouse_rules.pawn_drop_ranks_string();
@@ -159,6 +179,7 @@ impl Rules {
         formatdoc!("
             Teaming: {teaming}
             Starting position: {starting_position}
+            Fairy pieces: {fairy_pieces}
             Time control: {time_control}
             Drop aggression: {drop_aggression}
             Pawn drop ranks: {pawn_drop_ranks}
