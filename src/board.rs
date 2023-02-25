@@ -220,46 +220,40 @@ fn is_check_to(grid: &Grid, king_pos: Coord) -> bool {
 }
 
 fn reachability(grid: &Grid, from: Coord, to: Coord, capturing: bool) -> Reachability {
-    use ProtoReachability::*;
-    match proto_reachability(grid, from, to) {
-        Ok => Reachability::Ok,
-        OkIfCapturing => if capturing { Reachability::Ok } else { Reachability::Blocked },
-        OkIfNonCapturing => if !capturing { Reachability::Ok } else { Reachability::Blocked },
-        Blocked => Reachability::Blocked,
-        Impossible => Reachability::Impossible,
-    }
+    let capturing = if capturing { Capturing::Yes } else { Capturing::No };
+    generic_reachability(grid, from, to, capturing)
 }
 
 fn is_reachable_for_premove(grid: &Grid, from: Coord, to: Coord) -> bool {
-    use ProtoReachability::*;
-    match proto_reachability(grid, from, to) {
-        Ok | OkIfCapturing | OkIfNonCapturing | Blocked => true,
+    use Reachability::*;
+    match generic_reachability(grid, from, to, Capturing::Maybe) {
+        Ok | Blocked => true,
         Impossible => false,
     }
 }
 
 // Tests that the piece can move in such a way and that the path is free.
 // Does not support castling.
-fn proto_reachability(grid: &Grid, from: Coord, to: Coord) -> ProtoReachability {
-    use ProtoReachability::*;
-    let proto = proto_reachability_modulo_destination_square(grid, from, to);
-    match proto {
-        Blocked | Impossible => proto,
-        Ok | OkIfCapturing | OkIfNonCapturing => {
+fn generic_reachability(grid: &Grid, from: Coord, to: Coord, capturing: Capturing) -> Reachability {
+    use Reachability::*;
+    match generic_reachability_modulo_destination_square(grid, from, to, capturing) {
+        Blocked  => Blocked,
+        Impossible => Impossible,
+        Ok => {
             if let Some(piece) = grid[to] {
                 if piece.force == grid[from].unwrap().force {
                     return Blocked;
                 }
             }
-            proto
+            Ok
         }
     }
 }
 
-fn proto_reachability_modulo_destination_square(grid: &Grid, from: Coord, to: Coord)
-    -> ProtoReachability
-{
-    use ProtoReachability::*;
+fn generic_reachability_modulo_destination_square(
+    grid: &Grid, from: Coord, to: Coord, capturing: Capturing
+) -> Reachability {
+    use Reachability::*;
     if to == from {
         return Impossible;
     }
@@ -277,17 +271,16 @@ fn proto_reachability_modulo_destination_square(grid: &Grid, from: Coord, to: Co
 
     let mut ret = Impossible;
     for &m in piece_kind.movements() {
-        let r = reachability_by_movement_modulo_destination_square(grid, from, to, force, m);
-        ret = combine_proto_reachability(ret, r);
+        let r = reachability_by_movement_modulo_destination_square(grid, from, to, force, capturing, m);
+        ret = combine_reachability(ret, r);
     }
     ret
 }
 
 fn reachability_by_movement_modulo_destination_square(
-    grid: &Grid, from: Coord, to: Coord, force: Force, movement: PieceMovement
-) -> ProtoReachability
-{
-    use ProtoReachability::*;
+    grid: &Grid, from: Coord, to: Coord, force: Force, capturing: Capturing, movement: PieceMovement
+) -> Reachability {
+    use Reachability::*;
     match movement {
         PieceMovement::Leap{ shift } => {
             if sort_two(tuple_abs(to - from)) == sort_two(shift) {
@@ -342,26 +335,29 @@ fn reachability_by_movement_modulo_destination_square(
                     _ => panic!("Unexpected pawn move distance: {d_row}"),
                 }
             };
-            match (valid_capturing_move, valid_non_capturing_move) {
-                (true, true) => panic!("A pawn move cannot be both capturing and non-capturing"),
-                (true, false) => OkIfCapturing,
-                // TODO: Test that `is_path_free()` is verified for.
-                (false, true) => if is_path_free() { OkIfNonCapturing } else { Blocked },
-                (false, false) => Impossible,
-            }
+            let capturing_reachability = match (valid_capturing_move, capturing) {
+                (false, _) => Reachability::Impossible,
+                (true, Capturing::No) => Reachability::Blocked,
+                (true, Capturing::Yes | Capturing::Maybe) => Reachability::Ok,
+            };
+            let non_capturing_reachability = match (valid_non_capturing_move, capturing) {
+                (false, _) => Reachability::Impossible,
+                (true, Capturing::Yes) => Reachability::Blocked,
+                (true, Capturing::No | Capturing::Maybe) => {
+                    if is_path_free() { Reachability::Ok } else { Reachability::Blocked }
+                },
+            };
+            combine_reachability(capturing_reachability, non_capturing_reachability)
         }
     }
 }
 
-fn combine_proto_reachability(a: ProtoReachability, b: ProtoReachability) -> ProtoReachability {
-    use ProtoReachability::*;
+fn combine_reachability(a: Reachability, b: Reachability) -> Reachability {
+    use Reachability::*;
     match (a, b) {
-        (Impossible, r) | (r, Impossible) => r,
-        (Blocked, r) | (r, Blocked) => r,
-        (OkIfCapturing, OkIfCapturing) => OkIfCapturing,
-        (OkIfNonCapturing, OkIfNonCapturing) => OkIfNonCapturing,
-        (OkIfCapturing, OkIfNonCapturing) | (OkIfNonCapturing, OkIfCapturing) => Ok,
         (Ok, _) | (_, Ok) => Ok,
+        (Blocked, _) | (_, Blocked) => Blocked,
+        (Impossible, Impossible) => Impossible,
     }
 }
 
@@ -391,13 +387,12 @@ fn remove_castling_right(castling_rights: &mut CastlingRights, col: Col) {
 }
 
 
+// Whether the piece is going to capture. Used by reachability tests.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum ProtoReachability {
-    Ok,
-    OkIfCapturing,
-    OkIfNonCapturing,
-    Blocked,
-    Impossible,
+enum Capturing {
+    Yes,    // used by TurnMode::Normal
+    No,     // used by TurnMode::Normal
+    Maybe,  // used by TurnMode::Preturn
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
