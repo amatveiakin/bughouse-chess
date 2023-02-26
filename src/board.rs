@@ -138,7 +138,6 @@ fn get_en_passant_target(grid: &Grid, turn: Turn) -> Option<Coord> {
     None
 }
 
-// See Board::legal_move_destinations for limitations.
 fn legal_move_destinations(rules: &ChessRules, grid: &Grid, from: Coord, en_passant_target: Option<Coord>)
     -> Vec<Coord>
 {
@@ -151,6 +150,39 @@ fn legal_move_destinations(rules: &ChessRules, grid: &Grid, from: Coord, en_pass
         }
     }
     moves
+}
+
+// Generates two kinds of castling moves: moving the king onto a neighboring rook and moving the
+// king two cols in the corresponding direction. In reality it's also possible to move the king
+// by 3 or more cols, but we exclude this to reduce clutter.
+// TODO: Exclude moves when the path is blocked.
+fn legal_castling_destinations(grid: &Grid, from: Coord, castling_rights: &EnumMap<Force, CastlingRights>)
+    -> Vec<Coord>
+{
+    let Some(piece) = grid[from] else {
+        return vec![];
+    };
+    if piece.kind != PieceKind::King {
+        return vec![];
+    }
+    let mut dst_cols = vec![];
+    for (dir, rook_col) in castling_rights[piece.force] {
+        if let Some(rook_col) = rook_col {
+            if (rook_col - from.col).abs() == 1 {
+                dst_cols.push(rook_col);
+            }
+            let d = match dir {
+                CastleDirection::ASide => -2,
+                CastleDirection::HSide => 2,
+            };
+            if let Some(jump_col) = from.col + d {
+                dst_cols.push(jump_col);
+            }
+        }
+    }
+    dst_cols.sort();
+    dst_cols.dedup();
+    dst_cols.into_iter().map(|col| Coord::new(from.row, col)).collect()
 }
 
 fn king_force(grid: &Grid, king_pos: Coord) -> Force {
@@ -720,16 +752,16 @@ impl Board {
         })
     }
 
-    // Generates legal moves for a piece in a given square. Limitations:
-    //   - Generates only regular moves, not castlings or drops.
-    //   - Check and mate are not taken into account.
-    //   - Pawn promotions are not taken into account.
-    pub fn legal_move_destinations(&self, from: Coord) -> Vec<Coord> {
+    // Generates legal moves and castlings (if King) for a piece in a given square.
+    // Check and mate are not taken into account.
+    pub fn legal_turn_destinations(&self, from: Coord) -> Vec<Coord> {
         // TODO: What about preturns? Possibilities:
         //   - Treat as a normal turn (this happens now),
         //   - Include all possibilities,
         //   - Return two separate lists: normal turn moves + preturn moves.
-        legal_move_destinations(&self.chess_rules, &self.grid, from, self.en_passant_target)
+        let mut ret = legal_move_destinations(&self.chess_rules, &self.grid, from, self.en_passant_target);
+        ret.extend(legal_castling_destinations(&self.grid, from, &self.castling_rights));
+        ret
     }
 
     fn log_position_for_repetition_draw(&mut self) {

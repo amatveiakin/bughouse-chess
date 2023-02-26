@@ -359,7 +359,7 @@ impl WebClient {
                 // Improvement potential. More conistent legal moves highlighting. Perhaps, add
                 //   a config with "Yes" / "No" / "If fairy chess" values.
                 if alt_game.chess_rules().fairy_pieces != FairyPieces::NoFairy {
-                    for dest in alt_game.local_game().board(board_idx).legal_move_destinations(coord) {
+                    for dest in alt_game.local_game().board(board_idx).legal_turn_destinations(coord) {
                         set_square_highlight(
                             None, "legal-move-highlight", SquareHighlightLayer::Drag,
                             display_board_idx, Some(to_display_coord(dest, board_orientation))
