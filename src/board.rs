@@ -92,6 +92,13 @@ fn col_range_inclusive((col_min, col_max): (Col, Col)) -> impl Iterator<Item = C
     (col_min.to_zero_based() ..= col_max.to_zero_based()).map(|v| Col::from_zero_based(v).unwrap())
 }
 
+fn combine_pieces(rules: &ChessRules, first: PieceOnBoard, second: PieceOnBoard) -> Option<PieceOnBoard> {
+    match rules.fairy_pieces {
+        FairyPieces::NoFairy => None,
+        FairyPieces::Accolade => accolade_combine_pieces(first, second),
+    }
+}
+
 fn find_king(grid: &Grid, force: Force) -> Option<Coord> {
     for pos in Coord::all() {
         if let Some(piece) = grid[pos] {
@@ -277,18 +284,11 @@ fn generic_reachability(rules: &ChessRules, grid: &Grid, from: Coord, to: Coord,
         Reachable => {
             if let Some(dst_piece) = grid[to] {
                 if dst_piece.force == grid[from].unwrap().force {
-                    match rules.fairy_pieces {
-                        FairyPieces::NoFairy => {
-                            return Blocked;
-                        },
-                        FairyPieces::Accolade => {
-                            let src_piece = grid[from].unwrap();
-                            if accolade_combine_pieces(src_piece, dst_piece).is_some() {
-                                return Reachable;
-                            } else {
-                                return Blocked;
-                            }
-                        },
+                    let src_piece = grid[from].unwrap();
+                    if combine_pieces(rules, src_piece, dst_piece).is_some() {
+                        return Reachable;
+                    } else {
+                        return Blocked;
                     }
                 }
             }
@@ -941,7 +941,7 @@ impl Board {
                     if let Some(_) = mv.promote_to {
                         return Err(TurnError::BadPromotion);
                     } else if let Some(dst_piece) = new_grid[mv.to] {
-                        if let Some(combined_piece) = accolade_combine_pieces(piece, dst_piece) {
+                        if let Some(combined_piece) = combine_pieces(&self.chess_rules, piece, dst_piece) {
                             new_grid[mv.to] = Some(combined_piece);
                         } else {
                             assert_eq!(mode, TurnMode::Preturn);
@@ -969,7 +969,7 @@ impl Board {
                     drop.piece_kind, PieceOrigin::Dropped, force
                 );
                 if let Some(dst_piece) = new_grid[drop.to] {
-                    if let Some(combined_piece) = accolade_combine_pieces(new_piece, dst_piece) {
+                    if let Some(combined_piece) = combine_pieces(&self.chess_rules, new_piece, dst_piece) {
                         new_piece = combined_piece;
                     } else {
                         match mode {
