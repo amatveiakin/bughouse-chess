@@ -2,7 +2,7 @@
 
 #![allow(unused_parens)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::rc::Rc;
 
@@ -764,6 +764,20 @@ impl Board {
         ret
     }
 
+    // For fog-of-war variant.
+    pub fn fog_free_area(&self, force: Force) -> HashSet<Coord> {
+        let mut ret = HashSet::new();
+        for from in Coord::all() {
+            if let Some(piece) = self.grid[from] {
+                if piece.force == force {
+                    ret.insert(from);
+                    ret.extend(legal_move_destinations(&self.chess_rules, &self.grid, from, self.en_passant_target));
+                }
+            }
+        }
+        ret
+    }
+
     fn log_position_for_repetition_draw(&mut self) {
         let position_for_repetition_draw = PositionForRepetitionDraw {
             grid: self.grid.map(|piece| {
@@ -793,7 +807,7 @@ impl Board {
                     self.castling_rights[force].clear();
                 } else if piece.kind == PieceKind::Rook && mv.from.row == first_row {
                     remove_castling_right(&mut self.castling_rights[force], mv.from.col);
-                } else if let Some(capture) = capture {
+                } else if let Some(ref capture) = capture {
                     let opponent = force.opponent();
                     assert_eq!(capture.force, opponent);
                     let opponent_first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(opponent);
@@ -820,13 +834,21 @@ impl Board {
             TurnMode::Normal => {
                 self.en_passant_target = get_en_passant_target(&self.grid, turn);
                 let opponent_king_pos = find_king(&self.grid, force.opponent()).unwrap();
-                if self.is_bughouse() {
-                    if is_bughouse_mate_to(&self.chess_rules, &mut self.grid, opponent_king_pos, self.en_passant_target) {
-                        self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
+                if self.chess_rules.enable_check_and_mate() {
+                    if self.is_bughouse() {
+                        if is_bughouse_mate_to(&self.chess_rules, &mut self.grid, opponent_king_pos, self.en_passant_target) {
+                            self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
+                        }
+                    } else {
+                        if is_chess_mate_to(&self.chess_rules, &mut self.grid, opponent_king_pos, self.en_passant_target) {
+                            self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
+                        }
                     }
                 } else {
-                    if is_chess_mate_to(&self.chess_rules, &mut self.grid, opponent_king_pos, self.en_passant_target) {
-                        self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
+                    if let Some(ref capture) = capture {
+                        if capture.piece_kinds.contains(&PieceKind::King) {
+                            self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
+                        }
                     }
                 }
                 self.active_force = force.opponent();
@@ -856,11 +878,15 @@ impl Board {
         let force = self.turn_owner(mode);
         let king_pos = find_king(new_grid, force).unwrap();
         let opponent_king_pos = find_king(new_grid, force.opponent()).unwrap();
-        if is_check_to(&self.chess_rules, new_grid, king_pos) {
+        if self.chess_rules.enable_check_and_mate() && is_check_to(&self.chess_rules, new_grid, king_pos) {
             return Err(TurnError::UnprotectedKing);
         }
         if let Turn::Drop(_) = turn {
-            let bughouse_rules = self.bughouse_rules.as_ref().unwrap();  // should've been tested earlier
+            // Note. In theory drop aggression limitation are supported even if
+            // `self.chess_rules.enable_check_and_mate()` is false. In practice such rule combinations
+            // are discouraged. They could be broken in the future if maintaining this setup becomes
+            // inconvenient.
+            let bughouse_rules = self.bughouse_rules.as_ref().unwrap();  // unwrap ok: tested earlier
             let drop_legal = match bughouse_rules.drop_aggression {
                 DropAggression::NoCheck =>
                     !is_check_to(&self.chess_rules, new_grid, opponent_king_pos),
@@ -1036,7 +1062,7 @@ impl Board {
                         for col in col_range_inclusive(iter_minmax(cols.into_iter()).unwrap()) {
                             let pos = Coord::new(row, col);
                             let new_grid = new_grid.scoped_set(pos, king);
-                            if is_check_to(&self.chess_rules, &new_grid, pos) {
+                            if self.chess_rules.enable_check_and_mate() && is_check_to(&self.chess_rules, &new_grid, pos) {
                                 return Err(TurnError::UnprotectedKing);
                             }
                         }

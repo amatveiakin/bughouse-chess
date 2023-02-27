@@ -13,6 +13,7 @@ authors = ["Andrei Matveiakin <a.matveiakin@gmail.com>"]
 edition = "2021"
 
 [dependencies]
+chain-cmp = "0.2.0"
 derive-new = "0.5.9"
 enum-map = "2.4.1"
 git-version = "0.3.5"

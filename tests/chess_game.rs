@@ -1,7 +1,5 @@
 mod common;
 
-use std::time::Duration;
-
 use itertools::Itertools;
 
 use bughouse_chess::*;
@@ -16,8 +14,7 @@ fn chess_classic() -> ChessGame {
 fn chess960_from_short_fen(pieces: &str) -> ChessGame {
     let rules = ChessRules {
         starting_position: StartingPosition::FischerRandom,
-        fairy_pieces: FairyPieces::NoFairy,
-        time_control: TimeControl{ starting_time: Duration::from_secs(300) }
+        ..ChessRules::classic_blitz()
     };
     let pieces: [PieceKind; 8] = pieces.chars()
         .map(|ch| PieceKind::from_algebraic_char(ch).unwrap())

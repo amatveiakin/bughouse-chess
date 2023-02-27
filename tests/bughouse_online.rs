@@ -10,7 +10,6 @@ use std::collections::HashMap;
 use std::iter;
 use std::ops;
 use std::sync::{Arc, Mutex, mpsc};
-use std::time::Duration;
 
 use itertools::Itertools;
 
@@ -19,11 +18,7 @@ use common::*;
 
 
 fn default_chess_rules() -> ChessRules {
-    ChessRules {
-        starting_position: StartingPosition::Classic,
-        fairy_pieces: FairyPieces::NoFairy,
-        time_control: TimeControl{ starting_time: Duration::from_secs(300) },
-    }
+    ChessRules::classic_blitz()
 }
 
 fn default_bughouse_rules() -> BughouseRules {

@@ -26,6 +26,8 @@ import black_empress from '../assets/pieces/black-empress.png';
 import black_amazon from '../assets/pieces/black-amazon.png';
 import black_king from '../assets/pieces/black-king.png';
 
+import fog_of_war from '../assets/fog-of-war.png';
+
 import turn_sound from '../assets/sounds/turn.ogg';
 import reserve_restocked_sound from '../assets/sounds/reserve-restocked.ogg';
 import low_time_sound from '../assets/sounds/low-time.ogg';
@@ -147,25 +149,26 @@ const loading_tracker = new class {
 
 set_favicon();
 
-load_piece_images([
-    [ white_pawn, 'white-pawn' ],
-    [ white_knight, 'white-knight' ],
-    [ white_bishop, 'white-bishop' ],
-    [ white_rook, 'white-rook' ],
-    [ white_queen, 'white-queen' ],
-    [ white_cardinal, 'white-cardinal' ],
-    [ white_empress, 'white-empress' ],
-    [ white_amazon, 'white-amazon' ],
-    [ white_king, 'white-king' ],
-    [ black_pawn, 'black-pawn' ],
-    [ black_knight, 'black-knight' ],
-    [ black_bishop, 'black-bishop' ],
-    [ black_rook, 'black-rook' ],
-    [ black_queen, 'black-queen' ],
-    [ black_cardinal, 'black-cardinal' ],
-    [ black_empress, 'black-empress' ],
-    [ black_amazon, 'black-amazon' ],
-    [ black_king, 'black-king' ],
+load_svg_images([
+    { path: white_pawn, symbol: 'white-pawn' },
+    { path: white_knight, symbol: 'white-knight' },
+    { path: white_bishop, symbol: 'white-bishop' },
+    { path: white_rook, symbol: 'white-rook' },
+    { path: white_queen, symbol: 'white-queen' },
+    { path: white_cardinal, symbol: 'white-cardinal' },
+    { path: white_empress, symbol: 'white-empress' },
+    { path: white_amazon, symbol: 'white-amazon' },
+    { path: white_king, symbol: 'white-king' },
+    { path: black_pawn, symbol: 'black-pawn' },
+    { path: black_knight, symbol: 'black-knight' },
+    { path: black_bishop, symbol: 'black-bishop' },
+    { path: black_rook, symbol: 'black-rook' },
+    { path: black_queen, symbol: 'black-queen' },
+    { path: black_cardinal, symbol: 'black-cardinal' },
+    { path: black_empress, symbol: 'black-empress' },
+    { path: black_amazon, symbol: 'black-amazon' },
+    { path: black_king, symbol: 'black-king' },
+    { path: fog_of_war, symbol: 'fog-of-war' },
 ]);
 
 // Improvement potential. Establish priority on sounds; play more important sounds first
@@ -945,14 +948,14 @@ function fatal_error_dialog(message) {
     simple_dialog(message);
 }
 
-function make_piece_image(symbol_id) {
+function make_svg_image(symbol_id, size) {
     const SVG_NS = 'http://www.w3.org/2000/svg';
     const symbol = document.createElementNS(SVG_NS, 'symbol');
     symbol.id = symbol_id;
     const image = document.createElementNS(SVG_NS, 'image');
     image.id = `${symbol_id}-image`;
-    image.setAttribute('width', '1');
-    image.setAttribute('height', '1');
+    image.setAttribute('width', size);
+    image.setAttribute('height', size);
     symbol.appendChild(image);
     svg_defs.appendChild(symbol);
 }
@@ -972,12 +975,13 @@ async function load_image(filepath, target_id) {
     reader.readAsDataURL(blob);
 }
 
-function load_piece_images(image_records) {
+function load_svg_images(image_records) {
     for (const record of image_records) {
-        const [filepath, symbol_id] = record;
+        const symbol_id = record.symbol;
+        const size = record.size || 1;
         const image_id = `${symbol_id}-image`;
-        make_piece_image(symbol_id);
-        load_image(filepath, image_id);
+        make_svg_image(symbol_id, size);
+        load_image(record.path, image_id, size);
         loading_tracker.resource_required();
     }
 }
@@ -1037,6 +1041,7 @@ function on_create_contest_confirm(event) {
             data.get('player-name'),
             data.get('teaming'),
             data.get('starting-position'),
+            data.get('chess-variant'),
             data.get('fairy-pieces'),
             data.get('starting-time'),
             data.get('drop-aggression'),

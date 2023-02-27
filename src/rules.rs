@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use chain_cmp::chmp;
 use indoc::formatdoc;
 use serde::{Serialize, Deserialize};
 
@@ -43,6 +44,14 @@ pub enum StartingPosition {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum ChessVariant {
+    Standard,
+
+    // Can only see squares that are legal move destinations for your pieces.
+    FogOfWar,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum FairyPieces {
     NoFairy,
 
@@ -78,6 +87,7 @@ pub struct ContestRules {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChessRules {
     pub starting_position: StartingPosition,
+    pub chess_variant: ChessVariant,
     pub fairy_pieces: FairyPieces,
     pub time_control: TimeControl,
 }
@@ -118,8 +128,20 @@ impl ChessRules {
     pub fn classic_blitz() -> Self {
         Self {
             starting_position: StartingPosition::Classic,
+            chess_variant: ChessVariant::Standard,
             fairy_pieces: FairyPieces::NoFairy,
             time_control: TimeControl{ starting_time: Duration::from_secs(300) }
+        }
+    }
+
+    // If true, use normal chess rules: players are not allowed to leave the king undefended,
+    // the king cannot pass through a square attacked by an enemy piece when castling, the game
+    // end with a mate.
+    // If false, there are no checks and mates. The game ends when the king is captured.
+    pub fn enable_check_and_mate(&self) -> bool {
+        match self.chess_variant {
+            ChessVariant::Standard => true,
+            ChessVariant::FogOfWar => false,
         }
     }
 }
@@ -155,6 +177,25 @@ impl BughouseRules {
 }
 
 impl Rules {
+    pub fn verify(&self) -> Result<(), String> {
+        let min_pawn_drop_rank = self.bughouse_rules.min_pawn_drop_rank.to_one_based();
+        let max_pawn_drop_rank = self.bughouse_rules.max_pawn_drop_rank.to_one_based();
+        if !chmp!(1 <= min_pawn_drop_rank <= max_pawn_drop_rank <= 7) {
+            return Err(format!("Invalid pawn drop ranks: {min_pawn_drop_rank}-{max_pawn_drop_rank}"));
+        }
+        if self.chess_rules.chess_variant == ChessVariant::FogOfWar
+            && self.bughouse_rules.drop_aggression != DropAggression::MateAllowed
+        {
+            // Note. Technically this setup works fine for now, but it makes little sense and
+            // it could be broken in the future.
+            return Err(
+                "Fog-of-war variant is played until a king is captured. \
+                Drop aggression must be set to \"mate allowed\"".to_owned()
+            );
+        }
+        Ok(())
+    }
+
     // Try to keep in sync with "New contest" dialog.
     pub fn to_human_readable(&self) -> String {
         let teaming = match self.bughouse_rules.teaming {
@@ -164,6 +205,10 @@ impl Rules {
         let starting_position = match self.chess_rules.starting_position {
             StartingPosition::Classic => "Classic",
             StartingPosition::FischerRandom => "Fischer random",
+        };
+        let chess_variant = match self.chess_rules.chess_variant {
+            ChessVariant::Standard => "Standard",
+            ChessVariant::FogOfWar => "Fog of war",
         };
         let fairy_pieces = match self.chess_rules.fairy_pieces {
             FairyPieces::NoFairy => "None",
@@ -179,6 +224,7 @@ impl Rules {
         formatdoc!("
             Teaming: {teaming}
             Starting position: {starting_position}
+            Variant: {chess_variant}
             Fairy pieces: {fairy_pieces}
             Time control: {time_control}
             Drop aggression: {drop_aggression}

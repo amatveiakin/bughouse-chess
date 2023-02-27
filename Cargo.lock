@@ -487,6 +487,7 @@ dependencies = [
 name = "bughouse_chess"
 version = "0.1.0"
 dependencies = [
+ "chain-cmp",
  "derive-new",
  "enum-map",
  "git-version",
@@ -547,7 +548,6 @@ name = "bughouse_wasm"
 version = "0.1.0"
 dependencies = [
  "bughouse_chess",
- "chain-cmp",
  "console_error_panic_hook",
  "enum-map",
  "getrandom 0.2.8",

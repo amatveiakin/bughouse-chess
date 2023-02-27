@@ -9,6 +9,7 @@
 // normal and one preturn.
 
 use std::cmp;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use enum_map::{EnumMap, enum_map};
@@ -19,9 +20,9 @@ use crate::board::{Turn, TurnInput, TurnMove, TurnDrop, TurnMode, TurnError};
 use crate::clock::GameInstant;
 use crate::coord::{SubjectiveRow, Coord};
 use crate::display::Perspective;
-use crate::game::{BughouseEnvoy, BughouseParticipant, BughouseGameStatus, BughouseGame};
+use crate::game::{BughouseEnvoy, BughouseParticipant, BughouseGameStatus, BughouseGame, get_bughouse_force};
 use crate::piece::{CastleDirection, PieceKind};
-use crate::rules::{ChessRules, BughouseRules};
+use crate::rules::{ChessRules, BughouseRules, ChessVariant};
 
 
 #[derive(Clone, Copy, Debug)]
@@ -168,7 +169,7 @@ impl AlteredGame {
             }
         }
 
-        let mut game = self.game_with_local_turns();
+        let mut game = self.game_with_local_turns(true);
         if self.apply_drag(&mut game).is_err() {
             let Some(ref mut drag) = self.piece_drag else {
                 panic!("Got a drag failure with no drag in progress");
@@ -185,9 +186,41 @@ impl AlteredGame {
     pub fn game_confirmed(&self) -> &BughouseGame { &self.game_confirmed }
 
     pub fn local_game(&self) -> BughouseGame {
-        let mut game = self.game_with_local_turns();
+        let mut game = self.game_with_local_turns(true);
         self.apply_drag(&mut game).unwrap();
         game
+    }
+
+    pub fn visible_area(&self, board_idx: BughouseBoard) -> Option<HashSet<Coord>> {
+        match self.chess_rules().chess_variant {
+            ChessVariant::Standard => None,
+            ChessVariant::FogOfWar => {
+                if let BughouseParticipant::Player(my_player_id) = self.my_id {
+                    // Don't use `local_game`: preturns and drags should not reveal new areas.
+                    let mut game = self.game_with_local_turns(false);
+                    let force = get_bughouse_force(my_player_id.team(), board_idx);
+                    let mut area = game.board(board_idx).fog_free_area(force);
+                    // ... but do show preturn pieces themselves:
+                    if let Some((ref turn_input, turn_time)) = self.alterations[board_idx].local_preturn {
+                        let envoy = self.my_id.envoy_for(board_idx).unwrap();
+                        game.try_turn_by_envoy(envoy, turn_input, TurnMode::Preturn, turn_time).unwrap();
+                        let turn_expanded = &game.last_turn_record().unwrap().turn_expanded;
+                        if let Some((_, sq)) = turn_expanded.relocation {
+                            area.insert(sq);
+                        }
+                        if let Some((_, sq)) = turn_expanded.relocation_extra {
+                            area.insert(sq);
+                        }
+                        if let Some(sq) = turn_expanded.drop {
+                            area.insert(sq);
+                        }
+                    }
+                    Some(area)
+                } else {
+                    None
+                }
+            },
+        }
     }
 
     pub fn try_local_turn(&mut self, board_idx: BughouseBoard, turn_input: TurnInput, time: GameInstant)
@@ -214,7 +247,7 @@ impl AlteredGame {
         if self.piece_drag.is_some() {
             return Err(PieceDragError::DragAlreadyStarted);
         }
-        let game = self.game_with_local_turns();
+        let game = self.game_with_local_turns(true);
         let board = game.board(board_idx);
         let (piece_kind, source) = match start {
             PieceDragStart::Board(coord) => {
@@ -308,7 +341,7 @@ impl AlteredGame {
         self.piece_drag = None;
     }
 
-    fn game_with_local_turns(&self) -> BughouseGame {
+    fn game_with_local_turns(&self, include_preturns: bool) -> BughouseGame {
         let mut game = self.game_confirmed.clone();
         for board_idx in BughouseBoard::iter() {
             let Some(envoy) = self.my_id.envoy_for(board_idx) else {
@@ -320,8 +353,10 @@ impl AlteredGame {
             if let Some((ref turn_input, turn_time)) = alterations.local_turn {
                 game.try_turn_by_envoy(envoy, turn_input, TurnMode::Normal, turn_time).unwrap();
             }
-            if let Some((ref turn_input, turn_time)) = alterations.local_preturn {
-                game.try_turn_by_envoy(envoy, turn_input, TurnMode::Preturn, turn_time).unwrap();
+            if include_preturns {
+                if let Some((ref turn_input, turn_time)) = alterations.local_preturn {
+                    game.try_turn_by_envoy(envoy, turn_input, TurnMode::Preturn, turn_time).unwrap();
+                }
             }
         }
         game
@@ -364,7 +399,7 @@ impl AlteredGame {
         if self.alterations[board_idx].local_preturn.is_some() {
             return Err(TurnError::PreturnLimitReached);
         }
-        let mut game = self.game_with_local_turns();
+        let mut game = self.game_with_local_turns(true);
         let mode = game.turn_mode_for_envoy(envoy)?;
         game.try_turn_by_envoy(envoy, &turn_input, mode, time)?;
         let alterations = &mut self.alterations[board_idx];

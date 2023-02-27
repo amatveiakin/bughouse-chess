@@ -8,10 +8,10 @@ extern crate wasm_bindgen;
 extern crate bughouse_chess;
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use chain_cmp::chmp;
 use instant::Instant;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
@@ -232,6 +232,7 @@ impl WebClient {
         player_name: &str,
         teaming: &str,
         starting_position: &str,
+        chess_variant: &str,
         fairy_pieces: &str,
         starting_time: &str,
         drop_aggression: &str,
@@ -247,6 +248,11 @@ impl WebClient {
             "classic" => StartingPosition::Classic,
             "fischer-random" => StartingPosition::FischerRandom,
             _ => return Err(format!("Invalid starting position: {starting_position}").into()),
+        };
+        let chess_variant = match chess_variant {
+            "standard" => ChessVariant::Standard,
+            "fog-of-war" => ChessVariant::FogOfWar,
+            _ => return Err(format!("Invalid chess variant: {chess_variant}").into()),
         };
         let fairy_pieces = match fairy_pieces {
             "no-fairy" => FairyPieces::NoFairy,
@@ -275,22 +281,20 @@ impl WebClient {
         };
         let starting_time = Duration::from_secs(starting_minutes * 60 + starting_seconds);
 
-        let Some((Ok(min_pawn_drop_rank), Ok(max_pawn_drop_rank))) = pawn_drop_ranks
+        let Some((Some(min_pawn_drop_rank), Some(max_pawn_drop_rank))) = pawn_drop_ranks
             .split('-')
-            .map(|v| v.parse::<u8>())
+            .map(|v| v.parse::<u8>().ok().and_then(|r| SubjectiveRow::from_one_based(r)))
             .collect_tuple()
         else {
             return Err(format!("Invalid pawn drop ranks: {pawn_drop_ranks}").into());
         };
-        if !chmp!(1 <= min_pawn_drop_rank <= max_pawn_drop_rank <= 7) {
-            return Err(format!("Invalid pawn drop ranks: {pawn_drop_ranks}").into());
-        }
 
         let contest_rules = ContestRules {
             rated,
         };
         let chess_rules = ChessRules {
             starting_position,
+            chess_variant,
             fairy_pieces,
             time_control: TimeControl {
                 starting_time,
@@ -298,8 +302,8 @@ impl WebClient {
         };
         let bughouse_rules = BughouseRules {
             teaming,
-            min_pawn_drop_rank: SubjectiveRow::from_one_based(min_pawn_drop_rank).unwrap(),
-            max_pawn_drop_rank: SubjectiveRow::from_one_based(max_pawn_drop_rank).unwrap(),
+            min_pawn_drop_rank,
+            max_pawn_drop_rank,
             drop_aggression,
         };
         let rules = Rules {
@@ -307,6 +311,9 @@ impl WebClient {
             chess_rules,
             bughouse_rules,
         };
+        if let Err(message) = rules.verify() {
+            return Err(IgnorableError{ message }.into());
+        }
         self.state.new_contest(rules, player_name.to_owned());
         Ok(())
     }
@@ -358,7 +365,8 @@ impl WebClient {
                 let board_idx = get_board_index(display_board_idx, alt_game.perspective());
                 // Improvement potential. More conistent legal moves highlighting. Perhaps, add
                 //   a config with "Yes" / "No" / "If fairy chess" values.
-                if alt_game.chess_rules().fairy_pieces != FairyPieces::NoFairy {
+                let rules = alt_game.chess_rules();
+                if rules.fairy_pieces != FairyPieces::NoFairy && rules.chess_variant != ChessVariant::FogOfWar {
                     for dest in alt_game.local_game().board(board_idx).legal_turn_destinations(coord) {
                         set_square_highlight(
                             None, "legal-move-highlight", SquareHighlightLayer::Drag,
@@ -628,40 +636,52 @@ impl WebClient {
         update_scores(&contest.scores, &contest.participants, game.status(), teaming, perspective)?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |force| my_id.plays_for(BughouseEnvoy{ board_idx, force });
+            let visible_area = alt_game.visible_area(board_idx);
             let display_board_idx = get_display_board_index(board_idx, perspective);
             let board_orientation = get_board_orientation(display_board_idx, perspective);
             let piece_layer = document.get_existing_element_by_id(&piece_layer_id(display_board_idx))?;
             let grid = board.grid();
+            let mut fog_clip_path = String::new();
             for coord in Coord::all() {
                 let node_id = piece_id(display_board_idx, coord);
                 let node = document.get_element_by_id(&node_id);
-                let piece = grid[coord];
-                if let Some(piece) = piece {
-                    let display_coord = to_display_coord(coord, board_orientation);
-                    let node = match node {
-                        Some(v) => v,
-                        None => {
-                            let v = web_document().create_svg_element("use")?;
-                            v.set_attribute("id", &node_id)?;
-                            piece_layer.append_child(&v)?;
-                            v
-                        },
-                    };
-                    let filename = piece_path(piece.kind, piece.force);
-                    let pos = DisplayFCoord::square_pivot(display_coord);
-                    node.set_attribute("x", &pos.x.to_string())?;
-                    node.set_attribute("y", &pos.y.to_string())?;
-                    node.set_attribute("href", &filename)?;
-                    node.set_attribute("data-bughouse-location", &node_id)?;
-                    if is_piece_draggable(piece.force) {
-                        node.set_attribute("class", "draggable")?;
-                    } else {
-                        node.remove_attribute("class")?;
-                    }
-                } else {
-                    if let Some(node) = node {
+                let remove_piece_node = || {
+                    if let Some(ref node) = node {
                         node.remove();
                     }
+                };
+                let display_coord = to_display_coord(coord, board_orientation);
+                if !visible_area.as_ref().map_or(true, |a| a.contains(&coord)) {
+                    let DisplayFCoord{ x, y } = DisplayFCoord::square_pivot(display_coord);
+                    fog_clip_path += &format!("M {x},{y} h 1 v 1 h -1 z ");
+                    remove_piece_node();
+                } else if let Some(piece) = grid[coord] {
+                    let node = ensure_piece_node(display_coord, &piece_layer, &node_id, node, 1.0)?;
+                    let filename = piece_path(piece.kind, piece.force);
+                    node.set_attribute("href", &filename)?;
+                    node.set_attribute("data-bughouse-location", &node_id)?;
+                    node.class_list().toggle_with_force("draggable", is_piece_draggable(piece.force))?;
+                } else {
+                    remove_piece_node();
+                }
+            }
+            let fog_of_war_id = fog_of_war_id(display_board_idx);
+            let fog_of_war_node = document.get_element_by_id(&fog_of_war_id);
+            if visible_area.is_some() {
+                let layer = document.get_existing_element_by_id(&fog_of_war_layer_id(display_board_idx))?;
+                let node = fog_of_war_node.ok_or(JsValue::UNDEFINED).or_else(|_| -> JsResult<web_sys::Element> {
+                    let node = document.create_svg_element("use")?;
+                    node.set_attribute("id", &fog_of_war_id)?;
+                    node.set_attribute("href", "#fog-of-war")?;
+                    node.set_attribute("x", "0")?;
+                    node.set_attribute("y", "0")?;
+                    layer.append_child(&node)?;
+                    Ok(node)
+                })?;
+                node.set_attribute("style", &format!(r#"clip-path: path("{fog_clip_path}")"#))?;
+            } else {
+                if let Some(node) = fog_of_war_node {
+                    node.remove();
                 }
             }
             for force in Force::iter() {
@@ -685,13 +705,13 @@ impl WebClient {
                 let latest_turn_highlight = latest_turn
                     .filter(|record| !my_id.plays_for(record.envoy))
                     .map(|record| &record.turn_expanded);
-                self.set_turn_highlights(TurnHighlight::LatestTurn, latest_turn_highlight, display_board_idx)?;
+                self.set_turn_highlights(TurnHighlight::LatestTurn, latest_turn_highlight, display_board_idx, &visible_area)?;
             }
             {
                 let pre_turn_highlight = latest_turn
                     .filter(|record| record.mode == TurnMode::Preturn)
                     .map(|record| &record.turn_expanded);
-                self.set_turn_highlights(TurnHighlight::Preturn, pre_turn_highlight, display_board_idx)?;
+                self.set_turn_highlights(TurnHighlight::Preturn, pre_turn_highlight, display_board_idx, &visible_area)?;
             }
             update_turn_log(&game, board_idx, display_board_idx)?;
         }
@@ -813,9 +833,9 @@ impl WebClient {
     }
 
     fn set_turn_highlights(
-        &self, highlight: TurnHighlight, turn: Option<&TurnExpanded>, board_idx: DisplayBoard
-    ) -> JsResult<()>
-    {
+        &self, highlight: TurnHighlight, turn: Option<&TurnExpanded>, board_idx: DisplayBoard,
+        visible_area: &Option<HashSet<Coord>>
+    ) -> JsResult<()> {
         let class_prefix = match highlight {
             TurnHighlight::LatestTurn => "latest",
             TurnHighlight::Preturn => "pre",
@@ -835,6 +855,9 @@ impl WebClient {
         let board_orientation = get_board_orientation(board_idx, alt_game.perspective());
         if let Some(turn) = turn {
             for (suffix, coord) in turn_highlights(turn) {
+                if !visible_area.as_ref().map_or(true, |a| a.contains(&coord)) {
+                    continue;
+                }
                 let id = format!("{}-{}", id_prefix, suffix);
                 let class = format!("{}-{}", class_prefix, suffix);
                 set_square_highlight(
@@ -916,6 +939,7 @@ pub fn init_page() -> JsResult<()> {
     generate_svg_markers()?;
     render_grids(Perspective::for_participant(BughouseParticipant::Observer))?;
     render_starting()?;
+    init_fog_of_war()?;
     Ok(())
 }
 
@@ -934,6 +958,26 @@ fn update_lobby(contest: &Contest) -> JsResult<()> {
     }
     document.get_existing_element_by_id("lobby-contest-id")?.set_text_content(Some(&contest.contest_id));
     Ok(())
+}
+
+fn ensure_piece_node(
+    display_coord: DisplayCoord, layer: &web_sys::Element, node_id: &str,
+    existing_node: Option<web_sys::Element>, size: f64
+) -> JsResult<web_sys::Element> {
+    let node = match existing_node {
+        Some(v) => v,
+        None => {
+            let v = web_document().create_svg_element("use")?;
+            v.set_attribute("id", &node_id)?;
+            layer.append_child(&v)?;
+            v
+        },
+    };
+    let shift = (size - 1.0) / 2.0;
+    let pos = DisplayFCoord::square_pivot(display_coord);
+    node.set_attribute("x", &(pos.x - shift).to_string())?;
+    node.set_attribute("y", &(pos.y - shift).to_string())?;
+    Ok(node)
 }
 
 // Note. If present, `id` must be unique across both boards.
@@ -1161,6 +1205,13 @@ fn render_starting() -> JsResult<()> {
     render_reserve(Black, Primary, Top, draggable, piece_kind_sep, reserve_iter.clone())?;
     render_reserve(Black, Secondary, Bottom, draggable, piece_kind_sep, reserve_iter.clone())?;
     render_reserve(White, Secondary, Top, draggable, piece_kind_sep, reserve_iter.clone())?;
+    Ok(())
+}
+
+fn init_fog_of_war() -> JsResult<()> {
+    let node = web_document().get_existing_element_by_id("fog-of-war-image")?;
+    node.set_attribute("width", &NUM_COLS.to_string())?;
+    node.set_attribute("height", &NUM_ROWS.to_string())?;
     Ok(())
 }
 
@@ -1403,6 +1454,7 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
         Ok(())
     };
 
+    add_layer(fog_of_war_layer_id(board_idx))?;
     add_layer(square_highlight_layer_id(SquareHighlightLayer::Turn, board_idx))?;
     add_layer(chalk_highlight_layer_id(board_idx))?;
     add_layer(piece_layer_id(board_idx))?;
@@ -1563,6 +1615,14 @@ fn turn_log_node_id(board_idx: DisplayBoard) -> String {
 
 fn piece_layer_id(board_idx: DisplayBoard) -> String {
     format!("piece-layer-{}", board_id(board_idx))
+}
+
+fn fog_of_war_id(board_idx: DisplayBoard) -> String {
+    format!("fog-of-war-{}", board_id(board_idx))
+}
+
+fn fog_of_war_layer_id(board_idx: DisplayBoard) -> String {
+    format!("fog-of-war-layer-{}", board_id(board_idx))
 }
 
 fn square_highlight_layer_id(layer: SquareHighlightLayer, board_idx: DisplayBoard) -> String {

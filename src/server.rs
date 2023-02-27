@@ -314,7 +314,8 @@ impl CoreServerState {
         }
     }
 
-    fn make_contest(&mut self, now: Instant, rules: Rules) -> ContestId {
+    fn make_contest(&mut self, now: Instant, rules: Rules) -> Result<ContestId, String> {
+        rules.verify().map_err(|err| format!("Invalid contest rules: {err}"))?;
         // Exclude confusing characters:
         //   - 'O' and '0' (easy to confuse);
         //   - 'I' (looks like '1'; keep '1' because confusion in the other direction seems less likely).
@@ -356,7 +357,7 @@ impl CoreServerState {
             board_assignment_override: None,
         };
         assert!(self.contests.insert(id.clone(), contest).is_none());
-        id
+        Ok(id)
     }
 
     fn apply_event(&mut self, ctx: &mut Context, event: IncomingEvent) {
@@ -415,7 +416,13 @@ impl CoreServerState {
                 }
                 ctx.clients[client_id].contest_id = None;
                 ctx.clients[client_id].participant_id = None;
-                let contest_id = self.make_contest(now, rules.clone());
+                let contest_id = match self.make_contest(now, rules.clone()) {
+                    Ok(id) => id,
+                    Err(message) => {
+                        ctx.clients[client_id].send_rejection(BughouseServerRejection::UnknownError{ message });
+                        return;
+                    },
+                };
                 info!("Contest {} created by client {}", contest_id.0, ctx.clients[client_id].logging_id);
                 Some(contest_id)
             },
