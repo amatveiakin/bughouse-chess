@@ -64,6 +64,10 @@
             sodipodi:nodetypes="cccccccccc" />
         </symbol>
 
+        <symbol id="fog-of-war">
+          <rect id="fog-of-war-image" x="0" y="0" filter="url(#fog-noise)"></rect>
+        </symbol>
+
         <filter id="icon-shadow">
           <feDropShadow dx=0 dy=0 stdDeviation=0.5 flood-color="#c4dc5c" flood-opacity=1 />
         </filter>
@@ -89,6 +93,23 @@
           <stop offset="10%" stop-color="#e2b17f" stop-opacity=1 />
           <stop offset="30%" stop-color="#e2b17f" stop-opacity=0 />
         </radialGradient>
+        <filter width="100%" height="100%" x="0%" y="0%" id="fog-noise">
+          <!-- TODO: Different fog seed for different boards -->
+          <feTurbulence type="turbulence" id="fog-turbulence" baseFrequency="1.5" numOctaves="5" result="turbulence" seed="1" />
+          <feColorMatrix in="turbulence" type="hueRotate" values="0" result="cloud">
+            <animate attributeName="values" from="0" to="360" dur="20s" repeatCount="indefinite"/>
+          </feColorMatrix>
+          <feColorMatrix in="cloud" result="wispy" type="matrix"
+            values="4 0 0 0 -1
+                    4 0 0 0 -1
+                    4 0 0 0 -1
+                    1 0 0 0 0
+                    "/>
+          <feFlood flood-color="#74e4ff80" result="light"/>
+          <feFlood flood-color="#1c549f80" result="dark"/>
+          <feBlend mode="screen" in2="light" in="wispy" out="blended"/>
+          <feBlend mode="multiply" in="dark" in2="blended"/>
+        </filter>
       </defs>
     </svg>
 

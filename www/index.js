@@ -26,8 +26,6 @@ import black_empress from '../assets/pieces/black-empress.png';
 import black_amazon from '../assets/pieces/black-amazon.png';
 import black_king from '../assets/pieces/black-king.png';
 
-import fog_of_war from '../assets/fog-of-war.png';
-
 import turn_sound from '../assets/sounds/turn.ogg';
 import reserve_restocked_sound from '../assets/sounds/reserve-restocked.ogg';
 import low_time_sound from '../assets/sounds/low-time.ogg';
@@ -168,7 +166,6 @@ load_svg_images([
     { path: black_empress, symbol: 'black-empress' },
     { path: black_amazon, symbol: 'black-amazon' },
     { path: black_king, symbol: 'black-king' },
-    { path: fog_of_war, symbol: 'fog-of-war' },
 ]);
 
 // Improvement potential. Establish priority on sounds; play more important sounds first
