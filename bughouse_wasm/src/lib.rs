@@ -848,20 +848,29 @@ impl WebClient {
         reset_square_highlight(&format!("{}-turn-to-extra", id_prefix))?;
         reset_square_highlight(&format!("{}-drop-to", id_prefix))?;
         reset_square_highlight(&format!("{}-capture", id_prefix))?;
+        reset_square_highlight(&format!("{}-capture-above", id_prefix))?;
         let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
             return Ok(());
         };
         let board_orientation = get_board_orientation(board_idx, alt_game.perspective());
         if let Some(turn) = turn {
-            for (suffix, coord) in turn_highlights(turn) {
+            for (mut suffix, coord) in turn_highlights(turn) {
+                let mut layer = SquareHighlightLayer::Turn;
                 if !visible_area.as_ref().map_or(true, |a| a.contains(&coord)) {
-                    continue;
+                    if suffix == "capture" {
+                        // A piece owned by the current player before it was captured. Location
+                        // information is known to the player.
+                        suffix = "capture-above";
+                        layer = SquareHighlightLayer::TurnAbove;
+                    } else {
+                        continue;
+                    }
                 }
                 let id = format!("{}-{}", id_prefix, suffix);
                 let class = format!("{}-{}", class_prefix, suffix);
                 set_square_highlight(
-                    Some(&id), &class, SquareHighlightLayer::Turn,
-                    board_idx, Some(to_display_coord(coord, board_orientation))
+                    Some(&id), &class, layer, board_idx,
+                    Some(to_display_coord(coord, board_orientation))
                 )?;
             }
         }
@@ -877,8 +886,9 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SquareHighlightLayer {
-    Turn,  // last turn, preturn
-    Drag,  // drag start, drag hover, legal moves
+    Turn,       // last turn, preturn
+    TurnAbove,  // like `Turn`, but above the fog of war
+    Drag,       // drag start, drag hover, legal moves
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1458,6 +1468,8 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
     add_layer(square_highlight_layer_id(SquareHighlightLayer::Turn, board_idx))?;
     add_layer(chalk_highlight_layer_id(board_idx))?;
     add_layer(piece_layer_id(board_idx))?;
+    // Highlight layer for squares inside the fog of war.
+    add_layer(square_highlight_layer_id(SquareHighlightLayer::TurnAbove, board_idx))?;
     // Place drag highlight layer above pieces to allow legal move highlight for captures.
     // Note that the dragged piece will still be above the highlight.
     add_layer(square_highlight_layer_id(SquareHighlightLayer::Drag, board_idx))?;
@@ -1615,8 +1627,9 @@ fn piece_layer_id(board_idx: DisplayBoard) -> String {
 
 fn square_highlight_layer_id(layer: SquareHighlightLayer, board_idx: DisplayBoard) -> String {
     let layer_id = match layer {
-        SquareHighlightLayer::Drag => "drag",
         SquareHighlightLayer::Turn => "turn",
+        SquareHighlightLayer::TurnAbove => "turn-above",
+        SquareHighlightLayer::Drag => "drag",
     };
     format!("{}-highlight-layer-{}", layer_id, board_id(board_idx))
 }

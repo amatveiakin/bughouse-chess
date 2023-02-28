@@ -238,6 +238,10 @@ body.symmetric #page {
   fill: #4dcc7d;
   opacity: 0.5;
 }
+.latest-capture-above {
+  fill: #4dcc7d;
+  opacity: 0.4;
+}
 
 .legal-move-highlight {
   fill: url(#legal-move-gradient);
