@@ -5,7 +5,7 @@ use time::macros::format_description;
 
 use crate::board::{AlgebraicFormat, TurnInput, TurnMode, VictoryReason, DrawReason};
 use crate::clock::TimeControl;
-use crate::fen;
+use crate::{fen, ChessVariant, FairyPieces};
 use crate::force::Force;
 use crate::game::{TurnRecordExpanded, BughouseEnvoy, BughouseBoard, BughouseGameStatus, BughouseGame};
 use crate::player::Team;
@@ -88,15 +88,25 @@ fn make_bughouse_bpng_header(game: &BughouseGame, game_at_start: &BughouseGame, 
     use Force::*;
     // TODO: Save game start time instead.
     let now = time::OffsetDateTime::now_utc();
-    let (variant, starting_position_fen) = match game.chess_rules().starting_position {
-        StartingPosition::Classic =>
-            ("Bughouse", String::new()),
+    let mut variant = vec!["Bughouse"];
+    let mut setup = String::new();
+    match game.chess_rules().starting_position {
+        StartingPosition::Classic => {},
         StartingPosition::FischerRandom => {
+            variant.push("Chess960");
             let a = fen::starting_position_to_shredder_fen(&game_at_start.board(BughouseBoard::A));
             let b = fen::starting_position_to_shredder_fen(&game_at_start.board(BughouseBoard::B));
-            ("Bughouse Chess960", format!("[SetUp \"1\"]\n[FEN \"{a} | {b}\"]\n"))
+            setup = format!("[SetUp \"1\"]\n[FEN \"{a} | {b}\"]\n");
         }
-    };
+    }
+    match game.chess_rules().chess_variant {
+        ChessVariant::Standard => {},
+        ChessVariant::FogOfWar => { variant.push("DarkChess"); },
+    }
+    match game.chess_rules().fairy_pieces {
+        FairyPieces::NoFairy => {},
+        FairyPieces::Accolade => { variant.push("Accolade"); },
+    }
     let event = if game.contest_rules().rated { "Rated Bughouse Match" } else { "Unrated Bughouse Match" };
     formatdoc!(r#"
         [Event "{}"]
@@ -125,10 +135,10 @@ fn make_bughouse_bpng_header(game: &BughouseGame, game_at_start: &BughouseGame, 
         game.board(B).player_name(White),
         game.board(B).player_name(Black),
         time_control_to_string(&game.chess_rules().time_control),
-        variant,
+        variant.join(" "),
         game.bughouse_rules().drop_aggression_string(),
         game.bughouse_rules().pawn_drop_ranks_string(),
-        starting_position_fen,
+        setup,
         make_result_string(game),
         make_termination_string(game),
         game.outcome(),
