@@ -9,6 +9,8 @@ extern crate bughouse_chess;
 
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -27,6 +29,8 @@ type JsResult<T> = Result<T, JsValue>;
 
 const RESERVE_HEIGHT: f64 = 1.5;  // total reserve area height, in squares
 const RESERVE_PADDING: f64 = 0.25;  // padding between board and reserve, in squares
+const TOTAL_FOG_TILES: u64 = 3;
+const FOG_TILE_SIZE: f64 = 1.2;
 
 // The client is single-threaded, so wrapping all mutable singletons in `thread_local!` seems ok.
 thread_local! {
@@ -641,7 +645,6 @@ impl WebClient {
             let board_orientation = get_board_orientation(display_board_idx, perspective);
             let piece_layer = document.get_existing_element_by_id(&piece_layer_id(display_board_idx))?;
             let grid = board.grid();
-            let mut fog_clip_path = String::new();
             for coord in Coord::all() {
                 let node_id = piece_id(display_board_idx, coord);
                 let node = document.get_element_by_id(&node_id);
@@ -652,36 +655,32 @@ impl WebClient {
                 };
                 let display_coord = to_display_coord(coord, board_orientation);
                 if !visible_area.as_ref().map_or(true, |a| a.contains(&coord)) {
-                    let DisplayFCoord{ x, y } = DisplayFCoord::square_pivot(display_coord);
-                    fog_clip_path += &format!("M {x},{y} h 1 v 1 h -1 z ");
-                    remove_piece_node();
+                    let sq_hash = calculate_hash(&(&contest.contest_id, board_idx, coord));
+                    let fog_tile = sq_hash % TOTAL_FOG_TILES + 1;
+                    let node = ensure_piece_node(display_coord, &piece_layer, &node_id, node, FOG_TILE_SIZE)?;
+                    node.set_attribute("href", &format!("#fog-{fog_tile}"))?;
+                    node.remove_attribute("data-bughouse-location")?;
+                    node.remove_attribute("class")?;
+                    // Improvement potential. To make fog look more varied, add variants:
+                    //   let variant = (sq_hash / TOTAL_FOG_TILES) % 4;
+                    //   node.class_list().add_1(&format!("fog-variant-{variant}"))?;
+                    // and alter the variants. Ideas:
+                    //   - Rotate the tiles 90, 180 or 270 degrees. Problem: don't know how to
+                    //     rotate <use> element around center.
+                    //     https://stackoverflow.com/questions/15138801/rotate-rectangle-around-its-own-center-in-svg
+                    //     did not work.
+                    //   - Shift colors somehow. Problem: tried `hue-rotate` and `saturate`, but
+                    //     it's either unnoticeable or too visisble. Ideal would be to rotate hue
+                    //     within bluish color range.
                 } else if let Some(piece) = grid[coord] {
                     let node = ensure_piece_node(display_coord, &piece_layer, &node_id, node, 1.0)?;
                     let filename = piece_path(piece.kind, piece.force);
                     node.set_attribute("href", &filename)?;
                     node.set_attribute("data-bughouse-location", &node_id)?;
+                    node.remove_attribute("class")?;
                     node.class_list().toggle_with_force("draggable", is_piece_draggable(piece.force))?;
                 } else {
                     remove_piece_node();
-                }
-            }
-            let fog_of_war_id = fog_of_war_id(display_board_idx);
-            let fog_of_war_node = document.get_element_by_id(&fog_of_war_id);
-            if visible_area.is_some() {
-                let layer = document.get_existing_element_by_id(&fog_of_war_layer_id(display_board_idx))?;
-                let node = fog_of_war_node.ok_or(JsValue::UNDEFINED).or_else(|_| -> JsResult<web_sys::Element> {
-                    let node = document.create_svg_element("use")?;
-                    node.set_attribute("id", &fog_of_war_id)?;
-                    node.set_attribute("href", "#fog-of-war")?;
-                    node.set_attribute("x", "0")?;
-                    node.set_attribute("y", "0")?;
-                    layer.append_child(&node)?;
-                    Ok(node)
-                })?;
-                node.set_attribute("style", &format!(r#"clip-path: path("{fog_clip_path}")"#))?;
-            } else {
-                if let Some(node) = fog_of_war_node {
-                    node.remove();
                 }
             }
             for force in Force::iter() {
@@ -870,6 +869,12 @@ impl WebClient {
     }
 }
 
+fn calculate_hash<T: Hash>(t: &T) -> u64 {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SquareHighlightLayer {
     Turn,  // last turn, preturn
@@ -939,7 +944,6 @@ pub fn init_page() -> JsResult<()> {
     generate_svg_markers()?;
     render_grids(Perspective::for_participant(BughouseParticipant::Observer))?;
     render_starting()?;
-    init_fog_of_war()?;
     Ok(())
 }
 
@@ -1208,13 +1212,6 @@ fn render_starting() -> JsResult<()> {
     Ok(())
 }
 
-fn init_fog_of_war() -> JsResult<()> {
-    let node = web_document().get_existing_element_by_id("fog-of-war-image")?;
-    node.set_attribute("width", &NUM_COLS.to_string())?;
-    node.set_attribute("height", &NUM_ROWS.to_string())?;
-    Ok(())
-}
-
 // Differs from `BughouseGame::envoy_is_active` in that it returns false for White before game start.
 fn is_clock_ticking(game: &BughouseGame, participant_id: BughouseParticipant) -> bool {
     for envoy in participant_id.envoys() {
@@ -1447,6 +1444,10 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
         }
     }
 
+    let border = make_board_rect(&document)?;
+    border.set_attribute("class", "board-border")?;
+    svg.append_child(&border)?;
+
     let add_layer = |id: String| -> JsResult<()> {
         let layer = document.create_svg_element("g")?;
         layer.set_attribute("id", &id)?;
@@ -1454,7 +1455,6 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
         Ok(())
     };
 
-    add_layer(fog_of_war_layer_id(board_idx))?;
     add_layer(square_highlight_layer_id(SquareHighlightLayer::Turn, board_idx))?;
     add_layer(chalk_highlight_layer_id(board_idx))?;
     add_layer(piece_layer_id(board_idx))?;
@@ -1462,10 +1462,6 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
     // Note that the dragged piece will still be above the highlight.
     add_layer(square_highlight_layer_id(SquareHighlightLayer::Drag, board_idx))?;
     add_layer(chalk_drawing_layer_id(board_idx))?;
-
-    let border = make_board_rect(&document)?;
-    border.set_attribute("class", "board-border")?;
-    svg.append_child(&border)?;
 
     for player_idx in DisplayPlayer::iter() {
         let reserve = document.create_svg_element("g")?;
@@ -1615,14 +1611,6 @@ fn turn_log_node_id(board_idx: DisplayBoard) -> String {
 
 fn piece_layer_id(board_idx: DisplayBoard) -> String {
     format!("piece-layer-{}", board_id(board_idx))
-}
-
-fn fog_of_war_id(board_idx: DisplayBoard) -> String {
-    format!("fog-of-war-{}", board_id(board_idx))
-}
-
-fn fog_of_war_layer_id(board_idx: DisplayBoard) -> String {
-    format!("fog-of-war-layer-{}", board_id(board_idx))
 }
 
 fn square_highlight_layer_id(layer: SquareHighlightLayer, board_idx: DisplayBoard) -> String {

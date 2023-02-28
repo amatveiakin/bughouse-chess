@@ -26,6 +26,10 @@ import black_empress from '../assets/pieces/black-empress.png';
 import black_amazon from '../assets/pieces/black-amazon.png';
 import black_king from '../assets/pieces/black-king.png';
 
+import fog_1 from '../assets/fog-of-war/fog-1.png';
+import fog_2 from '../assets/fog-of-war/fog-2.png';
+import fog_3 from '../assets/fog-of-war/fog-3.png';
+
 import turn_sound from '../assets/sounds/turn.ogg';
 import reserve_restocked_sound from '../assets/sounds/reserve-restocked.ogg';
 import low_time_sound from '../assets/sounds/low-time.ogg';
@@ -147,6 +151,7 @@ const loading_tracker = new class {
 
 set_favicon();
 
+const FOG_TILE_SIZE = 1.2;
 load_svg_images([
     { path: white_pawn, symbol: 'white-pawn' },
     { path: white_knight, symbol: 'white-knight' },
@@ -166,6 +171,9 @@ load_svg_images([
     { path: black_empress, symbol: 'black-empress' },
     { path: black_amazon, symbol: 'black-amazon' },
     { path: black_king, symbol: 'black-king' },
+    { path: fog_1, symbol: 'fog-1', size: FOG_TILE_SIZE },
+    { path: fog_2, symbol: 'fog-2', size: FOG_TILE_SIZE },
+    { path: fog_3, symbol: 'fog-3', size: FOG_TILE_SIZE },
 ]);
 
 // Improvement potential. Establish priority on sounds; play more important sounds first
