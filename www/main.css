@@ -210,6 +210,10 @@ body.symmetric #page {
   font: normal 0.25px sans-serif;
 }
 
+.see-though-fog {
+  opacity: 0.5;
+}
+
 .latest-turn-from,
 .latest-turn-from-extra {
   fill: #acbd38;

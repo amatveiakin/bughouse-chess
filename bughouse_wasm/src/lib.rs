@@ -640,49 +640,66 @@ impl WebClient {
         update_scores(&contest.scores, &contest.participants, game.status(), teaming, perspective)?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |force| my_id.plays_for(BughouseEnvoy{ board_idx, force });
-            let visible_area = alt_game.visible_area(board_idx);
+            let see_though_fog = game.status() != BughouseGameStatus::Active;
+            let empty_area = HashSet::new();
+            let fog_render_area = alt_game.fog_of_war_area(board_idx);
+            let fog_cover_area = if see_though_fog { &empty_area } else { &fog_render_area };
             let display_board_idx = get_display_board_index(board_idx, perspective);
             let board_orientation = get_board_orientation(display_board_idx, perspective);
             let piece_layer = document.get_existing_element_by_id(&piece_layer_id(display_board_idx))?;
+            let fog_of_war_layer = document.get_existing_element_by_id(&fog_of_war_layer_id(display_board_idx))?;
             let grid = board.grid();
             for coord in Coord::all() {
-                let node_id = piece_id(display_board_idx, coord);
-                let node = document.get_element_by_id(&node_id);
-                let remove_piece_node = || {
-                    if let Some(ref node) = node {
-                        node.remove();
-                    }
-                };
                 let display_coord = to_display_coord(coord, board_orientation);
-                if !visible_area.as_ref().map_or(true, |a| a.contains(&coord)) {
-                    let sq_hash = calculate_hash(&(&contest.contest_id, board_idx, coord));
-                    let fog_tile = sq_hash % TOTAL_FOG_TILES + 1;
-                    let node = ensure_piece_node(display_coord, &piece_layer, &node_id, node, FOG_TILE_SIZE)?;
-                    node.set_attribute("href", &format!("#fog-{fog_tile}"))?;
-                    node.remove_attribute("data-bughouse-location")?;
-                    node.remove_attribute("class")?;
-                    // Improvement potential. To make fog look more varied, add variants:
-                    //   let variant = (sq_hash / TOTAL_FOG_TILES) % 4;
-                    //   node.class_list().add_1(&format!("fog-variant-{variant}"))?;
-                    // and alter the variants. Ideas:
-                    //   - Rotate the tiles 90, 180 or 270 degrees. Problem: don't know how to
-                    //     rotate <use> element around center.
-                    //     https://stackoverflow.com/questions/15138801/rotate-rectangle-around-its-own-center-in-svg
-                    //     did not work.
-                    //   - Shift colors somehow. Problem: tried `hue-rotate` and `saturate`, but
-                    //     it's either unnoticeable or too visisble. Ideal would be to rotate hue
-                    //     within bluish color range.
-                } else if let Some(piece) = grid[coord] {
-                    let node = ensure_piece_node(display_coord, &piece_layer, &node_id, node, 1.0)?;
-                    let filename = piece_path(piece.kind, piece.force);
-                    node.set_attribute("href", &filename)?;
-                    node.set_attribute("data-bughouse-location", &node_id)?;
-                    node.remove_attribute("class")?;
-                    node.class_list().toggle_with_force("draggable", is_piece_draggable(piece.force))?;
-                } else {
-                    remove_piece_node();
+                {
+                    let node_id = fog_of_war_id(display_board_idx, coord);
+                    let node = document.get_element_by_id(&node_id);
+                    if fog_render_area.contains(&coord) {
+                        let sq_hash = calculate_hash(&(&contest.contest_id, board_idx, coord));
+                        let fog_tile = sq_hash % TOTAL_FOG_TILES + 1;
+                        let node = ensure_square_node(display_coord, &fog_of_war_layer, &node_id, node, FOG_TILE_SIZE)?;
+                        node.set_attribute("href", &format!("#fog-{fog_tile}"))?;
+                        node.remove_attribute("data-bughouse-location")?;
+                        node.remove_attribute("class")?;
+                        // Improvement potential. To make fog look more varied, add variants:
+                        //   let variant = (sq_hash / TOTAL_FOG_TILES) % 4;
+                        //   node.class_list().add_1(&format!("fog-variant-{variant}"))?;
+                        // and alter the variants. Ideas:
+                        //   - Rotate the tiles 90, 180 or 270 degrees. Problem: don't know how to
+                        //     rotate <use> element around center.
+                        //     https://stackoverflow.com/questions/15138801/rotate-rectangle-around-its-own-center-in-svg
+                        //     did not work.
+                        //   - Shift colors somehow. Problem: tried `hue-rotate` and `saturate`, but
+                        //     it's either unnoticeable or too visisble. Ideal would be to rotate hue
+                        //     within bluish color range.
+                    } else {
+                        // Rust-upgrade (https://github.com/rust-lang/rust/issues/91345):
+                        //   `map` -> `inspect`.
+                        node.map(|n| n.remove());
+                    }
+                }
+                {
+                    let node_id = piece_id(display_board_idx, coord);
+                    let node = document.get_element_by_id(&node_id);
+                    // Rust-upgrade (https://github.com/rust-lang/rust/issues/53667):
+                    //   Combine into a single if-let-chain.
+                    if fog_cover_area.contains(&coord) {
+                        node.map(|n| n.remove());
+                    } else if let Some(piece) = grid[coord] {
+                        let node = ensure_square_node(display_coord, &piece_layer, &node_id, node, 1.0)?;
+                        let filename = piece_path(piece.kind, piece.force);
+                        node.set_attribute("href", &filename)?;
+                        node.set_attribute("data-bughouse-location", &node_id)?;
+                        node.remove_attribute("class")?;
+                        node.class_list().toggle_with_force("draggable", is_piece_draggable(piece.force))?;
+                    } else {
+                        // Rust-upgrade (https://github.com/rust-lang/rust/issues/91345):
+                        //   `map` -> `inspect`.
+                        node.map(|n| n.remove());
+                    }
                 }
             }
+            fog_of_war_layer.class_list().toggle_with_force("see-though-fog", see_though_fog)?;
             for force in Force::iter() {
                 let player_idx = get_display_player(force, board_orientation);
                 let name_node = document.get_existing_element_by_id(
@@ -704,13 +721,17 @@ impl WebClient {
                 let latest_turn_highlight = latest_turn
                     .filter(|record| !my_id.plays_for(record.envoy))
                     .map(|record| &record.turn_expanded);
-                self.set_turn_highlights(TurnHighlight::LatestTurn, latest_turn_highlight, display_board_idx, &visible_area)?;
+                self.set_turn_highlights(
+                    TurnHighlight::LatestTurn, latest_turn_highlight, display_board_idx, fog_cover_area
+                )?;
             }
             {
                 let pre_turn_highlight = latest_turn
                     .filter(|record| record.mode == TurnMode::Preturn)
                     .map(|record| &record.turn_expanded);
-                self.set_turn_highlights(TurnHighlight::Preturn, pre_turn_highlight, display_board_idx, &visible_area)?;
+                self.set_turn_highlights(
+                    TurnHighlight::Preturn, pre_turn_highlight, display_board_idx, fog_cover_area
+                )?;
             }
             update_turn_log(&game, board_idx, display_board_idx)?;
         }
@@ -833,7 +854,7 @@ impl WebClient {
 
     fn set_turn_highlights(
         &self, highlight: TurnHighlight, turn: Option<&TurnExpanded>, board_idx: DisplayBoard,
-        visible_area: &Option<HashSet<Coord>>
+        fog_of_war_area: &HashSet<Coord>
     ) -> JsResult<()> {
         let class_prefix = match highlight {
             TurnHighlight::LatestTurn => "latest",
@@ -856,7 +877,7 @@ impl WebClient {
         if let Some(turn) = turn {
             for (mut suffix, coord) in turn_highlights(turn) {
                 let mut layer = SquareHighlightLayer::Turn;
-                if !visible_area.as_ref().map_or(true, |a| a.contains(&coord)) {
+                if fog_of_war_area.contains(&coord) {
                     if suffix == "capture" {
                         // A piece owned by the current player before it was captured. Location
                         // information is known to the player.
@@ -974,7 +995,7 @@ fn update_lobby(contest: &Contest) -> JsResult<()> {
     Ok(())
 }
 
-fn ensure_piece_node(
+fn ensure_square_node(
     display_coord: DisplayCoord, layer: &web_sys::Element, node_id: &str,
     existing_node: Option<web_sys::Element>, size: f64
 ) -> JsResult<web_sys::Element> {
@@ -1471,6 +1492,7 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
     add_layer(square_highlight_layer_id(SquareHighlightLayer::Turn, board_idx))?;
     add_layer(chalk_highlight_layer_id(board_idx))?;
     add_layer(piece_layer_id(board_idx))?;
+    add_layer(fog_of_war_layer_id(board_idx))?;
     // Highlight layer for squares inside the fog of war.
     add_layer(square_highlight_layer_id(SquareHighlightLayer::TurnAbove, board_idx))?;
     // Place drag highlight layer above pieces to allow legal move highlight for captures.
@@ -1600,6 +1622,10 @@ fn parse_reserve_piece_id(id: &str) -> Option<(DisplayBoard, PieceKind)> {
     Some((board_idx, piece_kind))
 }
 
+fn fog_of_war_id(board_idx: DisplayBoard, coord: Coord) -> String {
+    format!("fog-{}-{}", board_id(board_idx), coord.to_algebraic())
+}
+
 fn player_name_node_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String {
     format!("player-name-{}-{}", board_id(board_idx), player_id(player_idx))
 }
@@ -1626,6 +1652,10 @@ fn turn_log_node_id(board_idx: DisplayBoard) -> String {
 
 fn piece_layer_id(board_idx: DisplayBoard) -> String {
     format!("piece-layer-{}", board_id(board_idx))
+}
+
+fn fog_of_war_layer_id(board_idx: DisplayBoard) -> String {
+    format!("fog-of-war-layer-{}", board_id(board_idx))
 }
 
 fn square_highlight_layer_id(layer: SquareHighlightLayer, board_idx: DisplayBoard) -> String {

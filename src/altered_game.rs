@@ -191,33 +191,33 @@ impl AlteredGame {
         game
     }
 
-    pub fn visible_area(&self, board_idx: BughouseBoard) -> Option<HashSet<Coord>> {
+    pub fn fog_of_war_area(&self, board_idx: BughouseBoard) -> HashSet<Coord> {
         match self.chess_rules().chess_variant {
-            ChessVariant::Standard => None,
+            ChessVariant::Standard => HashSet::new(),
             ChessVariant::FogOfWar => {
                 if let BughouseParticipant::Player(my_player_id) = self.my_id {
                     // Don't use `local_game`: preturns and drags should not reveal new areas.
                     let mut game = self.game_with_local_turns(false);
                     let force = get_bughouse_force(my_player_id.team(), board_idx);
-                    let mut area = game.board(board_idx).fog_free_area(force);
+                    let mut visible = game.board(board_idx).fog_free_area(force);
                     // ... but do show preturn pieces themselves:
                     if let Some((ref turn_input, turn_time)) = self.alterations[board_idx].local_preturn {
                         let envoy = self.my_id.envoy_for(board_idx).unwrap();
                         game.try_turn_by_envoy(envoy, turn_input, TurnMode::Preturn, turn_time).unwrap();
                         let turn_expanded = &game.last_turn_record().unwrap().turn_expanded;
                         if let Some((_, sq)) = turn_expanded.relocation {
-                            area.insert(sq);
+                            visible.insert(sq);
                         }
                         if let Some((_, sq)) = turn_expanded.relocation_extra {
-                            area.insert(sq);
+                            visible.insert(sq);
                         }
                         if let Some(sq) = turn_expanded.drop {
-                            area.insert(sq);
+                            visible.insert(sq);
                         }
                     }
-                    Some(area)
+                    Coord::all().filter(|c| !visible.contains(c)).collect()
                 } else {
-                    None
+                    HashSet::new()
                 }
             },
         }
