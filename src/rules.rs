@@ -186,8 +186,6 @@ impl Rules {
         if self.chess_rules.chess_variant == ChessVariant::FogOfWar
             && self.bughouse_rules.drop_aggression != DropAggression::MateAllowed
         {
-            // Note. Technically this setup works fine for now, but it makes little sense and
-            // it could be broken in the future.
             return Err(
                 "Fog-of-war variant is played until a king is captured. \
                 Drop aggression must be set to \"mate allowed\"".to_owned()

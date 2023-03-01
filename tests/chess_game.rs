@@ -7,8 +7,12 @@ use bughouse_chess::test_util::*;
 use common::*;
 
 
+fn chess_with_rules(rules: ChessRules) -> ChessGame {
+    ChessGame::new(ContestRules::unrated(), rules, sample_chess_players())
+}
+
 fn chess_classic() -> ChessGame {
-    ChessGame::new(ContestRules::unrated(), ChessRules::classic_blitz(), sample_chess_players())
+    chess_with_rules(ChessRules::classic_blitz())
 }
 
 fn chess960_from_short_fen(pieces: &str) -> ChessGame {
@@ -92,4 +96,15 @@ fn chess960_drag_king_onto_rook_castle() {
     game.try_turn(&drag_move!(F1 -> G1), TurnMode::Normal, GameInstant::game_start()).unwrap();
     assert!(game.board().grid()[Coord::F1].is(piece!(White Rook)));
     assert!(game.board().grid()[Coord::G1].is(piece!(White King)));
+}
+
+#[test]
+fn king_capture() {
+    let rules = ChessRules {
+        chess_variant: ChessVariant::FogOfWar,
+        ..ChessRules::classic_blitz()
+    };
+    let mut game = chess_with_rules(rules);
+    replay_log(&mut game, "1.Nc3 a6 2.Nd5 a5 3.N×c7 a4 4.N×e8").unwrap();
+    assert_eq!(game.status(), ChessGameStatus::Victory(Force::White, VictoryReason::Checkmate));
 }

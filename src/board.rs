@@ -832,9 +832,9 @@ impl Board {
 
         match mode {
             TurnMode::Normal => {
-                self.en_passant_target = get_en_passant_target(&self.grid, turn);
-                let opponent_king_pos = find_king(&self.grid, force.opponent()).unwrap();
                 if self.chess_rules.enable_check_and_mate() {
+                    self.en_passant_target = get_en_passant_target(&self.grid, turn);
+                    let opponent_king_pos = find_king(&self.grid, force.opponent()).unwrap();
                     if self.is_bughouse() {
                         if is_bughouse_mate_to(&self.chess_rules, &mut self.grid, opponent_king_pos, self.en_passant_target) {
                             self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
@@ -874,18 +874,17 @@ impl Board {
     fn verify_check_and_drop_aggression(&self, turn: Turn, mode: TurnMode, outcome: &mut TurnOutcome)
         -> Result<(), TurnError>
     {
+        if !self.chess_rules.enable_check_and_mate() {
+            return Ok(());
+        }
         let new_grid = &mut outcome.new_grid;
         let force = self.turn_owner(mode);
         let king_pos = find_king(new_grid, force).unwrap();
         let opponent_king_pos = find_king(new_grid, force.opponent()).unwrap();
-        if self.chess_rules.enable_check_and_mate() && is_check_to(&self.chess_rules, new_grid, king_pos) {
+        if is_check_to(&self.chess_rules, new_grid, king_pos) {
             return Err(TurnError::UnprotectedKing);
         }
         if let Turn::Drop(_) = turn {
-            // Note. In theory drop aggression limitation are supported even if
-            // `self.chess_rules.enable_check_and_mate()` is false. In practice such rule combinations
-            // are discouraged. They could be broken in the future if maintaining this setup becomes
-            // inconvenient.
             let bughouse_rules = self.bughouse_rules.as_ref().unwrap();  // unwrap ok: tested earlier
             let drop_legal = match bughouse_rules.drop_aggression {
                 DropAggression::NoCheck =>

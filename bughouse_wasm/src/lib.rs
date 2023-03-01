@@ -1190,10 +1190,13 @@ fn update_reserve(
     let piece_kind_sep = 1.0;
     let reserve_iter = reserve.iter()
         .filter(|(kind, &amount)| {
-            if !kind.can_be_in_reserve() {
-                assert_eq!(amount, 0);
-            }
-            kind.can_be_in_reserve()
+            // Normally we leave space for all pieces that can be in reserve, so that the
+            // pieces don't shift too much and you don't misclick after receiving a new
+            // reserve piece. We make an exception  for the king: it could be captured in
+            // some game variants (e.g. Fog-of-war) and by the time you get a Kind in reserve
+            // misclicks are not a problem, because the game is over.
+            assert!(amount == 0 || kind.can_be_in_reserve() || *kind == PieceKind::King);
+            kind.can_be_in_reserve() || amount > 0
         })
         .map(|(kind, &amount)| (kind, amount));
     render_reserve(force, board_idx, player_idx, is_draggable, piece_kind_sep, reserve_iter)
