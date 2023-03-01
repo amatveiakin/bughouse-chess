@@ -134,14 +134,11 @@ pub struct JsEventGameStarted {}
 #[wasm_bindgen(getter_with_clone)]
 pub struct JsEventGameOver { pub result: String }
 
-#[wasm_bindgen]
-pub struct JsEventTurnMade {}
-
-#[wasm_bindgen]
-pub struct JsEventMyReserveRestocked {}
-
-#[wasm_bindgen]
-pub struct JsEventLowTime {}
+#[wasm_bindgen(getter_with_clone)]
+pub struct JsEventPlaySound {
+    pub audio: String,
+    pub pan: f64,
+}
 
 #[wasm_bindgen(getter_with_clone)]
 pub struct JsEventGameExportReady { pub content: String }
@@ -596,13 +593,21 @@ impl WebClient {
                 let display_board_idx = get_display_board_index(envoy.board_idx, alt_game.perspective());
                 scroll_log_to_bottom(display_board_idx)?;
                 if alt_game.my_id().plays_on_board(envoy.board_idx) {
-                    // Improvement potential: Stereo sound when double-playing.
-                    return Ok(JsEventTurnMade{}.into());
+                    return Ok(JsEventPlaySound {
+                        audio: "turn".to_owned(),
+                        pan: self.get_game_audio_pan(envoy.board_idx)?,
+                    }.into());
                 }
                 Ok(JsEventNoop{}.into())
             }
-            Some(NotableEvent::MyReserveRestocked) => Ok(JsEventMyReserveRestocked{}.into()),
-            Some(NotableEvent::LowTime) => Ok(JsEventLowTime{}.into()),
+            Some(NotableEvent::MyReserveRestocked(board_idx)) => Ok(JsEventPlaySound {
+                audio: "reserve_restocked".to_owned(),
+                pan: self.get_game_audio_pan(board_idx)?,
+            }.into()),
+            Some(NotableEvent::LowTime(board_idx)) => Ok(JsEventPlaySound {
+                audio: "low_time".to_owned(),
+                pan: self.get_game_audio_pan(board_idx)?,
+            }.into()),
             Some(NotableEvent::GameExportReady(content)) => Ok(JsEventGameExportReady{ content }.into()),
             None => Ok(JsValue::NULL),
         }
@@ -896,6 +901,14 @@ impl WebClient {
             }
         }
         Ok(())
+    }
+
+    fn get_game_audio_pan(&self, board_idx: BughouseBoard) -> JsResult<f64> {
+        let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
+            return Err(rust_error!("No game in progress"));
+        };
+        let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
+        get_audio_pan(alt_game.my_id(), display_board_idx)
     }
 }
 
@@ -1752,5 +1765,17 @@ fn piece_path(piece_kind: PieceKind, force: Force) -> &'static str {
         (Black, Empress) => "#black-empress",
         (Black, Amazon) => "#black-amazon",
         (Black, King) => "#black-king",
+    }
+}
+
+fn get_audio_pan(my_id: BughouseParticipant, display_board_idx: DisplayBoard) -> JsResult<f64> {
+    use BughouseParticipant::*;
+    use BughousePlayer::*;
+    match (my_id, display_board_idx) {
+        (Player(SinglePlayer(_)), DisplayBoard::Primary) => Ok(0.),
+        (Player(SinglePlayer(_)), DisplayBoard::Secondary) =>
+            Err(rust_error!("Unexpected secondary board sound for a single-board player")),
+        (Player(DoublePlayer(_)) | Observer, DisplayBoard::Primary) => Ok(-1.),
+        (Player(DoublePlayer(_)) | Observer, DisplayBoard::Secondary) => Ok(1.),
     }
 }

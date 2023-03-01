@@ -38,8 +38,8 @@ pub enum NotableEvent {
     GameStarted,
     GameOver(SubjectiveGameResult),
     TurnMade(BughouseEnvoy),
-    MyReserveRestocked,
-    LowTime,
+    MyReserveRestocked(BughouseBoard),
+    LowTime(BughouseBoard),
     GameExportReady(String),
 }
 
@@ -541,7 +541,7 @@ impl ClientState {
                 self.notable_event_queue.push_back(NotableEvent::TurnMade(envoy));
             }
             if is_my_turn && new_reserve_size > old_reserve_size {
-                self.notable_event_queue.push_back(NotableEvent::MyReserveRestocked);
+                self.notable_event_queue.push_back(NotableEvent::MyReserveRestocked(envoy.board_idx));
             }
         }
         Ok(())
@@ -658,7 +658,7 @@ impl ClientState {
         // out of sync if local player made a move at 0:20.01 and the opponent replied
         // one minute later.
         let game_now = GameInstant::from_pair_game_active(*time_pair, Instant::now());
-        let mut num_events = 0;
+        let mut num_events = enum_map!{ _ => 0 };
         for board_idx in BughouseBoard::iter() {
             let Some(time_left) = my_time_left(alt_game, board_idx, game_now) else {
                 return;
@@ -666,12 +666,14 @@ impl ClientState {
             let idx = &mut next_low_time_warning_idx[board_idx];
             while *idx < LOW_TIME_WARNING_THRESHOLDS.len() && time_left <= LOW_TIME_WARNING_THRESHOLDS[*idx] {
                 *idx += 1;
-                num_events += 1;
+                num_events[board_idx] += 1;
             }
         }
         if generate_notable_events {
-            for _ in 0..num_events {
-                self.notable_event_queue.push_back(NotableEvent::LowTime);
+            for board_idx in BughouseBoard::iter() {
+                for _ in 0..num_events[board_idx] {
+                    self.notable_event_queue.push_back(NotableEvent::LowTime(board_idx));
+                }
             }
         }
     }

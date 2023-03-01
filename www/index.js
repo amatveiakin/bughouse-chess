@@ -201,6 +201,8 @@ let wasm_client_object = make_wasm_client();
 let wasm_client_panicked = false;
 let socket = make_socket();
 
+let audio_context = null;
+
 // Parameters and data structures for the audio logic. Our goal is to make short and
 // important sounds (like turn sound) as clear as possible when several events occur
 // simultaneously. The main example is when you make a move and immediately get a
@@ -516,19 +518,9 @@ function process_notable_events() {
         } else if (js_event_type == 'JsEventGameStarted') {
             close_menu();
         } else if (js_event_type == 'JsEventGameOver') {
-            const sound_map = {
-                'victory': Sound.victory,
-                'defeat': Sound.defeat,
-                'draw': Sound.draw,
-            };
-            const sound = sound_map[js_event.result];
-            play_audio(sound);
-        } else if (js_event_type == 'JsEventTurnMade') {
-            play_audio(Sound.turn);
-        } else if (js_event_type == 'JsEventMyReserveRestocked') {
-            play_audio(Sound.reserve_restocked);
-        } else if (js_event_type == 'JsEventLowTime') {
-            play_audio(Sound.low_time);
+            play_audio(Sound[js_event.result]);
+        } else if (js_event_type == 'JsEventPlaySound') {
+            play_audio(Sound[js_event.audio], js_event.pan);
         } else if (js_event_type == 'JsEventGameExportReady') {
             download(js_event.content, 'game.pgn');
         } else if (js_event_type != null) {
@@ -1088,11 +1080,23 @@ function next_volume() {
     set_volume((audio_volume + 1) % (max_volume + 1));
 }
 
-function play_audio(audio) {
+function ensure_audio_context() {
+    // Ideally this should be called after the first user interaction.
+    // If an AudioContext is created before the document receives a user gesture, it will be
+    // created in the "suspended" state, and a log warning will be shown (in Chrome):
+    // https://developer.chrome.com/blog/autoplay/#webaudio
+    audio_context ||= new AudioContext();
+    // Ensure that the context is active in case it was created too early.
+    audio_context.resume();
+}
+
+function play_audio(audio, pan) {
+    ensure_audio_context();
+    pan = pan || 0;
     if (audio_queue.length >= audio_max_queue_size) {
         return;
     }
-    audio_queue.push(audio);
+    audio_queue.push({ audio, pan });
     const now = performance.now();
     const audio_next_avaiable = audio_last_played + audio_min_interval_ms;
     if (audio_queue.length > 1) {
@@ -1113,12 +1117,16 @@ function play_audio_delayed() {
 
 function play_audio_impl() {
     console.assert(audio_queue.length > 0);
-    let audio = audio_queue.shift();
+    const { audio, pan } = audio_queue.shift();
     if (audio_volume > 0) {
         // Clone node to allow playing overlapping instances of the same sound.
-        let auto_clone = audio.cloneNode();
-        auto_clone.volume = volume_to_js[audio_volume];
-        auto_clone.play();
+        // TODO: Should `audio_clone`, `track` and/or `panner` be manually GCed?
+        let audio_clone = audio.cloneNode();
+        const panner = new StereoPannerNode(audio_context, { pan });
+        const track = audio_context.createMediaElementSource(audio_clone);
+        track.connect(panner).connect(audio_context.destination);
+        audio_clone.volume = volume_to_js[audio_volume];
+        audio_clone.play();
     }
     audio_last_played = performance.now();
 }
