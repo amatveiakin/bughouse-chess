@@ -3,6 +3,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update && apt-get install -y \
     curl \
     npm \
+    # as recommended by https://docs.rs/openssl/latest/openssl/:
+    pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:$PATH"
@@ -28,15 +30,13 @@ RUN \
     # Build everything. Subsequent runs of `cargo build` will be fast thanks to
     # the caches above, but `wasm-pack` is always slow.
     && cargo build -r --package bughouse_console \
-    && cargo build -r --package bughouse_webserver \
     && cd bughouse_wasm && wasm-pack build && cd - \
     # Copy produced binaries to a separate folder, because cache folders are not
     # available when running the container.
     && mkdir bin \
-    && cp target/release/bughouse_console bin/ \
-    && cp target/release/bughouse_webserver bin/
+    && cp target/release/bughouse_console bin/
 # Copy everything else last. Changes to "www/" shouldn't trigger Rust builds.
 COPY . .
 
 CMD bash ./docker_start.sh
-EXPOSE 8080 14361 14362
+EXPOSE 8080 14361

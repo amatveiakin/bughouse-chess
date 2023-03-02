@@ -19,9 +19,10 @@ Folder structure:
 
 - `/` — The core library (`bughouse_chess` Rust package).
 - `/bughouse_console` — A binary that can run as a server or as console client.
-  Note that this is only a game engine server. It does not serve HTML content.
+  The server part is responsible for the game engine and dynamic HTML content.
+  It does not serve static HTML content.
 - `/bughouse_wasm` — WASM (WebAssembly) bindings for the web client.
-- `/bughouse_webserver` — Dynamic HTML content server.
+- `/bughouse_webserver` — Stand-alone dynamic HTML content server (obsolete).
 - `/www` — Web client based on the abovementioned WASM bindings.
 
 
@@ -36,11 +37,11 @@ DOCKER_BUILDKIT=1 docker build -t bughouse-chess .
 Run the container:
 
 ```
-docker run -d -p 8080:8080 -p14361:14361 -p 14362:14362 bughouse-chess
+docker run -d -p 8080:8080 -p14361:14361 bughouse-chess
 ```
 
-Go to http://localhost:8080 for the game and to http://localhost:14362/dyn/stats
-or http://localhost:14362/dyn/games for stats.
+Go to http://localhost:8080 for the game. Use links in the start menu or go to
+http://localhost:14361/dyn/stats or http://localhost:14361/dyn/games for stats.
 
 > **Note** Docker is the easiest way to set up the entire environment. It's
 > configured to make `docker build` / `docker run` development workflow somewhat
@@ -53,22 +54,20 @@ or http://localhost:14362/dyn/games for stats.
 
 ## Local setup
 
+Install Rust, npm, OpenSSL and pkg-config (if Linux). See `Dockerfile` for
+Ubuntu setup steps.
+
 Run once:
 
 ```
 cd www && npm install
 ```
 
-Build & run game engine server and webserver (in two separate terminals):
+Build & run game server:
 
 ```
 cargo run --package bughouse_console -- server --sqlite-db ~/bughouse.db
-cargo run --package bughouse_webserver --sqlite-db ~/bughouse.db
 ```
-
-Running the webserver is optional. It is only used to display game statistics
-and it's not required for the game itself. If you don't run the webserver,
-`--sqlite-db` can also be omitted.
 
 Run once in the beginning and every time after changing Rust code:
 
@@ -83,8 +82,8 @@ cd www && npm run start
 ```
 
 Go to http://localhost:8080/. The client would automatically connect to the
-local server. If the webserver is running, the stats are at
-http://localhost:14362/dyn/stats and http://localhost:14362/dyn/games.
+local server. For stats, use links in the main menu or go to
+http://localhost:14361/dyn/stats or http://localhost:14361/dyn/games.
 
 Changes to CSS will apply immediately. Changes to HTML and JS will
 apply after a page refresh. Changes to Rust code must be recompiled via
@@ -107,9 +106,9 @@ sudo a2enmod proxy proxy_http proxy_wstunnel headers deflate
 ```
 
 Configure Apache:
-- Enable request redirection to make game server and statistics server available
-- (Optional) Set `Cache-Control` to `no-cache` to make sure that the clients are
-  always up-to-date.
+- Enable request redirection to make game server available.
+- Set `Cache-Control` to `no-cache` to make sure that the clients are always
+  up-to-date.
 - (Optional) Enable GZIP compression.
 
 Add this to `/etc/apache2/sites-available/<site>`:
@@ -118,8 +117,8 @@ Add this to `/etc/apache2/sites-available/<site>`:
 <VirtualHost *:443>
     ProxyPreserveHost On
     ProxyRequests Off
-    ProxyPass /dyn http://localhost:14362/dyn
-    ProxyPassReverse /dyn http://localhost:14362/dyn
+    ProxyPass /dyn http://localhost:14361/dyn
+    ProxyPassReverse /dyn http://localhost:14361/dyn
     ProxyPass /ws ws://localhost:14361 keepalive=On
     ProxyPassReverse /ws ws://localhost:14361
 
@@ -143,20 +142,12 @@ Add this to `/etc/apache2/sites-available/<site>`:
 </VirtualHost>
 ```
 
-Run the engine server:
+Run game server:
 
 ```
 export RUST_BACKTRACE=1
 export RUST_LOG=INFO
 cargo run -r --package bughouse_console -- server --sqlite-db <DB>
-```
-
-Run the webserver:
-
-```
-export RUST_BACKTRACE=1
-export RUST_LOG=INFO
-cargo run -r --package bughouse_webserver -- --database-address <DB>
 ```
 
 
