@@ -782,29 +782,31 @@ impl Contest {
             Ok(TurnMode::Normal) => {
                 let mut turns = vec![];
                 let game_now = GameInstant::from_now_game_maybe_active(*game_start, now);
-                match apply_turn(
+                if let Ok(turn_event) = apply_turn(
                     game_now, envoy, turn_input, game, preturns, participants, scores, game_end, now
                 ) {
-                    Ok(turn_event) => {
-                        if game_start.is_none() {
-                            *game_start = Some(now);
-                            *game_start_offset_time = Some(time::OffsetDateTime::now_utc());
+                    if game_start.is_none() {
+                        *game_start = Some(now);
+                        *game_start_offset_time = Some(time::OffsetDateTime::now_utc());
+                    }
+                    turns.push(turn_event);
+                    let opponent = envoy.opponent();
+                    if let Some(preturn) = preturns.remove(&opponent) {
+                        if let Ok(preturn_event) = apply_turn(
+                            game_now, opponent, preturn, game, preturns, participants, scores, game_end, now
+                        ) {
+                            turns.push(preturn_event);
+                        } else {
+                            // Ignore error: It is completely fine for a preturn to fail.
                         }
-                        turns.push(turn_event);
-                        let opponent = envoy.opponent();
-                        if let Some(preturn) = preturns.remove(&opponent) {
-                            if let Ok(preturn_event) = apply_turn(
-                                game_now, opponent, preturn, game, preturns, participants, scores, game_end, now
-                            ) {
-                                turns.push(preturn_event);
-                            } else {
-                                // It is completely fine for a preturn to fail. No need to do anything.
-                            }
-                        }
-                    },
-                    Err(error) => {
-                        return turn_error_to_event_result(error);
-                    },
+                    }
+                } else {
+                    // Ignore error: We are processing this as a normal turn, but it is possible
+                    // that the client hasn't seen last opponent's turn yet and sent this as a
+                    // preturn.
+                    // This could be made into an error if `BughouseClientEvent::MakeTurn`
+                    // distinguishes between in-order turns and preturns (even in this case,
+                    // TurnError::GameOver needs to be silenced though).
                 }
                 let ev = BughouseServerEvent::TurnsMade {
                     turns,
@@ -825,8 +827,10 @@ impl Contest {
                     },
                 }
             },
-            Err(error) => {
-                turn_error_to_event_result(error)
+            Err(_) => {
+                // Ignore error: This could fail if the game ended by flag or on the other board
+                // while the turn was in flight.
+                Ok(())
             },
         }
     }
@@ -1218,16 +1222,6 @@ fn current_game_time(game_state: &GameState, now: Instant) -> GameInstant {
             .min()
             .unwrap();
         GameInstant::from_duration(elapsed_since_start)
-    }
-}
-
-fn turn_error_to_event_result(error: TurnError) -> EventResult {
-    match error {
-        TurnError::GameOver => {
-            // Ignore: it's possible that an event from client arrived after the game ended.
-            Ok(())
-        },
-        _ => Err(unknown_error!("Invalid turn: {:?}", error))
     }
 }
 
