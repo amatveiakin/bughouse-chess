@@ -3,7 +3,8 @@ use indoc::formatdoc;
 use serde::{Serialize, Deserialize};
 use time::macros::format_description;
 
-use crate::board::{AlgebraicFormat, TurnInput, TurnMode, VictoryReason, DrawReason};
+use crate::algebraic::AlgebraicFormat;
+use crate::board::{TurnInput, TurnMode, VictoryReason, DrawReason};
 use crate::clock::TimeControl;
 use crate::{fen, ChessVariant, FairyPieces};
 use crate::force::Force;

@@ -10,7 +10,7 @@ use enum_map::{EnumMap, enum_map};
 use itertools::{Itertools, iproduct};
 use serde::{Serialize, Deserialize};
 
-use crate::{once_cell_regex, FairyPieces};
+use crate::algebraic::{AlgebraicDetails, AlgebraicFormat, AlgebraicTurn, AlgebraicMove, AlgebraicDrop};
 use crate::coord::{SubjectiveRow, Row, Col, Coord};
 use crate::clock::{GameInstant, Clock};
 use crate::force::Force;
@@ -19,42 +19,10 @@ use crate::piece::{
     PieceKind, PieceMovement, PieceOrigin, PieceOnBoard, PieceForRepetitionDraw, CastleDirection,
     accolade_combine_pieces,
 };
-use crate::rules::{DropAggression, ContestRules, ChessRules, BughouseRules};
-use crate::util::{sort_two, as_single_char};
+use crate::rules::{FairyPieces, DropAggression, ContestRules, ChessRules, BughouseRules};
+use crate::util::sort_two;
 use crate::starter::{EffectiveStartingPosition, starting_piece_row, generate_starting_grid};
 
-
-pub enum AlgebraicDetails {
-    ShortAlgebraic,  // omit starting row/col when unambiguous, e.g. "e4"
-    LongAlgebraic,   // always include starting rol/col, e.g. "e2e4"
-}
-
-pub enum AlgebraicCharset {
-    Ascii,
-    AuxiliaryUnicode,
-    // Improvement potential: An option to have unicode pieces, e.g. "♞c6"
-}
-
-pub struct AlgebraicFormat {
-    pub details: AlgebraicDetails,
-    pub charset: AlgebraicCharset,
-}
-
-impl AlgebraicFormat {
-    pub fn for_log() -> Self {
-        AlgebraicFormat {
-            details: AlgebraicDetails::ShortAlgebraic,
-            charset: AlgebraicCharset::AuxiliaryUnicode,
-        }
-    }
-
-    pub fn for_pgn() -> Self {
-        AlgebraicFormat {
-            details: AlgebraicDetails::ShortAlgebraic,
-            charset: AlgebraicCharset::Ascii,
-        }
-    }
-}
 
 fn tuple_abs((a, b): (i8, i8)) -> (u8, u8) {
     (a.abs().try_into().unwrap(), b.abs().try_into().unwrap())
@@ -748,7 +716,10 @@ impl Board {
         Ok(match turn_input {
             TurnInput::Explicit(turn) => *turn,
             TurnInput::DragDrop(turn) => self.parse_drag_drop_turn(*turn, mode)?,
-            TurnInput::Algebraic(notation) => self.algebraic_to_turn(notation, mode)?,
+            TurnInput::Algebraic(notation) => {
+                let notation_parsed = AlgebraicTurn::parse(notation).ok_or(TurnError::InvalidNotation)?;
+                self.algebraic_to_turn(&notation_parsed, mode)?
+            },
         })
     }
 
@@ -1123,95 +1094,84 @@ impl Board {
         Ok(prototurn)
     }
 
-    pub fn algebraic_to_turn(&self, notation: &str, mode: TurnMode) -> Result<Turn, TurnError> {
+    pub fn algebraic_to_turn(&self, algebraic: &AlgebraicTurn, mode: TurnMode) -> Result<Turn, TurnError> {
         let force = self.turn_owner(mode);
-        let notation = notation.trim();
-        const PIECE_RE: &str = r"[A-Z]";
-        let move_re = once_cell_regex!(
-            &format!(r"^({piece})?([a-h])?([1-8])?([x×:])?([a-h][1-8])(?:[=/]?({piece})?)([+†#‡]?)$", piece=PIECE_RE)
-        );
-        let drop_re = once_cell_regex!(
-            &format!(r"^({piece})@([a-h][1-8])$", piece=PIECE_RE)
-        );
-        let a_castling_re = once_cell_regex!("^(0-0-0|O-O-O)$");
-        let h_castling_re = once_cell_regex!("^(0-0|O-O)$");
-        if let Some(cap) = move_re.captures(notation) {
-            let piece_kind = cap.get(1).map_or(PieceKind::Pawn, |m| PieceKind::from_algebraic(m.as_str()).unwrap());
-            let from_col = cap.get(2).map(|m| Col::from_algebraic(as_single_char(m.as_str()).unwrap()).unwrap());
-            let from_row = cap.get(3).map(|m| Row::from_algebraic(as_single_char(m.as_str()).unwrap()).unwrap());
-            let capturing = cap.get(4).is_some();
-            let to = Coord::from_algebraic(cap.get(5).unwrap().as_str()).unwrap();
-            let promote_to = cap.get(6).map(|m| PieceKind::from_algebraic(m.as_str()).unwrap());
-            let _mark = cap.get(7).map(|m| m.as_str());  // TODO: Test check/mate
-            if promote_to.is_some() != should_promote(force, piece_kind, to) {
-                return Err(TurnError::BadPromotion);
-            }
-            let mut turn = None;
-            let mut potentially_reachable = false;
-            for from in Coord::all() {
-                if let Some(piece) = self.grid[from] {
-                    if (
-                        piece.force == force &&
-                        piece.kind == piece_kind &&
-                        from_row.unwrap_or(from.row) == from.row &&
-                        from_col.unwrap_or(from.col) == from.col
-                    ) {
-                        let reachable;
-                        match mode {
-                            TurnMode::Normal => {
-                                use Reachability::*;
-                                let capture_or = get_capture(&self.grid, from, to, self.en_passant_target);
-                                match reachability(&self.chess_rules, &self.grid, from, to, capture_or.is_some()) {
-                                    Reachable => {
-                                        if capturing && capture_or.is_none() {
-                                            return Err(TurnError::CaptureNotationRequiresCapture);
-                                        }
-                                        reachable = true;
-                                    },
-                                    Blocked => {
-                                        potentially_reachable = true;
-                                        reachable = false;
-                                    },
-                                    Impossible => {
-                                        reachable = false;
-                                    },
+        match algebraic {
+            AlgebraicTurn::Move(mv) => {
+                if mv.promote_to.is_some() != should_promote(force, mv.piece_kind, mv.to) {
+                    return Err(TurnError::BadPromotion);
+                }
+                let mut turn = None;
+                let mut potentially_reachable = false;
+                for from in Coord::all() {
+                    if let Some(piece) = self.grid[from] {
+                        if (
+                            piece.force == force &&
+                            piece.kind == mv.piece_kind &&
+                            mv.from_row.unwrap_or(from.row) == from.row &&
+                            mv.from_col.unwrap_or(from.col) == from.col
+                        ) {
+                            let reachable;
+                            match mode {
+                                TurnMode::Normal => {
+                                    use Reachability::*;
+                                    let capture_or = get_capture(&self.grid, from, mv.to, self.en_passant_target);
+                                    match reachability(&self.chess_rules, &self.grid, from, mv.to, capture_or.is_some()) {
+                                        Reachable => {
+                                            if mv.capturing && capture_or.is_none() {
+                                                return Err(TurnError::CaptureNotationRequiresCapture);
+                                            }
+                                            reachable = true;
+                                        },
+                                        Blocked => {
+                                            potentially_reachable = true;
+                                            reachable = false;
+                                        },
+                                        Impossible => {
+                                            reachable = false;
+                                        },
+                                    }
+                                },
+                                TurnMode::Preturn => {
+                                    reachable = is_reachable_for_premove(&self.chess_rules, &self.grid, from, mv.to)
+                                },
+                            };
+                            if reachable {
+                                if turn.is_some() {
+                                    // Note. Checking for a preturn may reject a turn that would
+                                    // become valid by the time it's executed (because one of the
+                                    // pieces that can make the move is blocked or captured, so
+                                    // it's no longer ambiguous). However without this condition
+                                    // it is unclear how to render the preturn on the client.
+                                    return Err(TurnError::AmbiguousNotation);
                                 }
-                            },
-                            TurnMode::Preturn => {
-                                reachable = is_reachable_for_premove(&self.chess_rules, &self.grid, from, to)
-                            },
-                        };
-                        if reachable {
-                            if turn.is_some() {
-                                // Note. Checking for a preturn may reject a turn that would
-                                // become valid by the time it's executed (because one of the
-                                // pieces that can make the move is blocked or captured, so
-                                // it's no longer ambiguous). However without this condition
-                                // it is unclear how to render the preturn on the client.
-                                return Err(TurnError::AmbiguousNotation);
+                                turn = Some(Turn::Move(TurnMove {
+                                    from,
+                                    to: mv.to,
+                                    promote_to: mv.promote_to,
+                                }));
                             }
-                            turn = Some(Turn::Move(TurnMove{ from, to, promote_to }));
                         }
                     }
                 }
+                if let Some(turn) = turn {
+                    Ok(turn)
+                } else if potentially_reachable {
+                    Err(TurnError::PathBlocked)
+                } else {
+                    Err(TurnError::ImpossibleTrajectory)
+                }
+            },
+            AlgebraicTurn::Drop(drop) => {
+                Ok(Turn::Drop(TurnDrop{
+                    piece_kind: drop.piece_kind,
+                    to: drop.to,
+                }))
+            },
+            AlgebraicTurn::Castle(dir) => {
+                Ok(Turn::Castle(*dir))
             }
-            if let Some(turn) = turn {
-                return Ok(turn);
-            } else if potentially_reachable {
-                return Err(TurnError::PathBlocked);
-            } else {
-                return Err(TurnError::ImpossibleTrajectory);
-            }
-        } else if let Some(cap) = drop_re.captures(notation) {
-            let piece_kind = PieceKind::from_algebraic(cap.get(1).unwrap().as_str()).unwrap();
-            let to = Coord::from_algebraic(cap.get(2).unwrap().as_str()).unwrap();
-            return Ok(Turn::Drop(TurnDrop{ piece_kind, to }));
-        } else if a_castling_re.is_match(notation) {
-            return Ok(Turn::Castle(CastleDirection::ASide));
-        } else if h_castling_re.is_match(notation) {
-            return Ok(Turn::Castle(CastleDirection::HSide));
         }
-        Err(TurnError::InvalidNotation)
     }
 
     // Renders turn as algebraic notation, PGN-style, see
@@ -1222,22 +1182,22 @@ impl Board {
     //   - Short or long algebraic;
     //   - Unicode: None / Just characters / Characters and pieces;
     //   Allow to specify options when exporting PGN.
-    pub fn turn_to_algebraic(&self, turn: Turn, mode: TurnMode, format: AlgebraicFormat) -> Option<String> {
+    pub fn turn_to_algebraic(
+        &self, turn: Turn, mode: TurnMode, format: AlgebraicFormat
+    ) -> Option<String> {
         let notation = self.turn_to_algebraic_impl(turn, mode, format)?;
         // Improvement potential. Remove when sufficiently tested.
         if let Ok(turn_parsed) = self.algebraic_to_turn(&notation, mode) {
-            assert_eq!(turn_parsed, turn, "{}", notation);
+            assert_eq!(turn_parsed, turn, "{:?}", notation);
         }
-        Some(notation)
+        Some(notation.format(format))
     }
 
-    fn turn_to_algebraic_impl(&self, turn: Turn, mode: TurnMode, format: AlgebraicFormat) -> Option<String> {
+    fn turn_to_algebraic_impl(
+        &self, turn: Turn, mode: TurnMode, format: AlgebraicFormat
+    ) -> Option<AlgebraicTurn> {
         match turn {
             Turn::Move(mv) => {
-                let capture_notation = match format.charset {
-                    AlgebraicCharset::Ascii => "x",
-                    AlgebraicCharset::AuxiliaryUnicode => "×",
-                };
                 let details = match mode {
                     TurnMode::Normal => format.details,
                     TurnMode::Preturn => AlgebraicDetails::LongAlgebraic,
@@ -1249,25 +1209,14 @@ impl Board {
                 for (&include_col, &include_row) in include_col_row {
                     let piece = self.grid[mv.from]?;
                     let capture = get_capture(&self.grid, mv.from, mv.to, self.en_passant_target);
-                    let promotion = match mv.promote_to {
-                        Some(piece_kind) => format!("={}", piece_kind.to_full_algebraic()),
-                        None => "".to_owned(),
-                    };
-                    let mut from = String::new();
-                    if include_col {
-                        from.push(mv.from.col.to_algebraic())
-                    };
-                    if include_row {
-                        from.push(mv.from.row.to_algebraic())
-                    };
-                    let algebraic = format!(
-                        "{}{}{}{}{}",
-                        piece.kind.to_algebraic_for_move(),
-                        from,
-                        if capture.is_some() { capture_notation } else { "" },
-                        mv.to.to_algebraic(),
-                        promotion,
-                    );
+                    let algebraic = AlgebraicTurn::Move(AlgebraicMove {
+                        piece_kind: piece.kind,
+                        from_col: if include_col { Some(mv.from.col) } else { None },
+                        from_row: if include_row { Some(mv.from.row) } else { None },
+                        capturing: capture.is_some(),
+                        to: mv.to,
+                        promote_to: mv.promote_to,
+                    });
                     if let Ok(turn_parsed) = self.algebraic_to_turn(&algebraic, mode) {
                         // It's possible that we've got back a different turn if the original turn
                         // was garbage, e.g. c2e4 -> e4 -> e2e4.
@@ -1279,13 +1228,13 @@ impl Board {
                 None
             },
             Turn::Drop(drop) => {
-                Some(format!("{}@{}", drop.piece_kind.to_full_algebraic(), drop.to.to_algebraic()))
+                Some(AlgebraicTurn::Drop(AlgebraicDrop {
+                    piece_kind: drop.piece_kind,
+                    to: drop.to,
+                }))
             },
             Turn::Castle(dir) => {
-                Some((match dir {
-                    CastleDirection::ASide => "O-O-O",
-                    CastleDirection::HSide => "O-O",
-                }).to_owned())
+                Some(AlgebraicTurn::Castle(dir))
             },
         }
     }

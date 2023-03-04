@@ -10,6 +10,7 @@
 //     Modules defining them should do
 //       pub mod Foo;
 
+mod algebraic;
 mod altered_game;
 mod board;
 mod chalk;
@@ -38,6 +39,7 @@ pub mod server_hooks;
 pub mod test_util;
 pub mod util;
 
+pub use algebraic::*;
 pub use altered_game::*;
 pub use board::*;
 pub use chalk::*;

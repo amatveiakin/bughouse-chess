@@ -32,9 +32,10 @@ use itertools::Itertools;
 use serde::{Serialize, Deserialize};
 use strum::{EnumIter, IntoEnumIterator};
 
+use crate::algebraic::AlgebraicFormat;
 use crate::board::{
     Board, Reserve, Turn, TurnInput, TurnExpanded, TurnFacts, TurnMode, TurnError,
-    AlgebraicFormat, ChessGameStatus, VictoryReason, DrawReason
+    ChessGameStatus, VictoryReason, DrawReason
 };
 use crate::clock::GameInstant;
 use crate::force::Force;
