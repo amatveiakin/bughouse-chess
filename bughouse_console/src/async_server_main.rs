@@ -15,29 +15,47 @@ use rand::RngCore;
 use tide::StatusCode;
 use tungstenite::protocol;
 
-use bughouse_chess::server::*;
 use bughouse_chess::server_hooks::ServerHooks;
+use bughouse_chess::{server::*, BughouseServerEvent};
 use bughouse_console::auth;
 use bughouse_console::database;
 use bughouse_console::http_server_state::*;
-use bughouse_console::session::Session;
+use bughouse_console::session_store::*;
 
 use crate::auth_handlers_tide::*;
 use crate::network::{self, CommunicationError};
 use crate::server_main::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
 use crate::sqlx_server_hooks::*;
 
-async fn handle_connection<S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
+async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
     peer_addr: String,
     stream: WebSocketStream<S>,
     tx: mpsc::SyncSender<IncomingEvent>,
     clients: Arc<Mutex<Clients>>,
-    session: Option<Session>,
+    session_id: Option<SessionId>,
+    http_server_state: HttpServerState<DB>,
 ) -> tide::Result<()> {
     let (mut stream_tx, mut stream_rx) = stream.split();
-    info!("Client connected: {}, session={:?}", peer_addr, session);
+    info!("Client connected: {}", peer_addr);
 
     let (client_tx, client_rx) = mpsc::channel();
+
+    let mut session_store_subscription_id = None;
+    if let Some(session_id) = &session_id {
+        // Subscribe the client to all updates to the session in session store.
+        let my_client_tx = client_tx.clone();
+        session_store_subscription_id = Some(http_server_state.session_store.lock().unwrap().subscribe(
+            session_id,
+            move |s| {
+                // Send the entire session data to the client.
+                // We can perform some mapping here if we want to hide
+                // some of the state from the client.
+                let _ =
+                    my_client_tx.send(BughouseServerEvent::UpdateSession { session: s.clone() });
+            },
+        ));
+    }
+
     let client_id = clients
         .lock()
         .unwrap()
@@ -100,6 +118,16 @@ async fn handle_connection<S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'st
     // This instead of just running the loop to completion or join() on the
     // thread for the same reason of not blocking the async executor thread.
     done_rx.recv().await.unwrap();
+    match (session_id, session_store_subscription_id) {
+        (Some(session_id), Some(session_store_subscription_id)) => {
+            http_server_state
+                .session_store
+                .lock()
+                .unwrap()
+                .unsubscribe(&session_id, session_store_subscription_id);
+        }
+        _ => {}
+    };
     Ok(())
 }
 
@@ -121,6 +149,7 @@ fn run_tide<DB: Sync + Send + 'static + database::DatabaseReader>(
         auth_callback_is_https,
         db,
         static_content_url_prefix: config.static_content_url_prefix,
+        session_store: Mutex::new(SessionStore::new()),
     }));
 
     if app.state().sessions_enabled {
@@ -133,10 +162,15 @@ fn run_tide<DB: Sync + Send + 'static + database::DatabaseReader>(
             }
             SessionOptions::WithSecret(secret) => secret,
         };
-        app.with(tide::sessions::SessionMiddleware::new(
-            tide::sessions::CookieStore::new(),
-            secret.as_slice(),
-        ));
+        app.with(
+            tide::sessions::SessionMiddleware::new(
+                tide::sessions::CookieStore::new(),
+                secret.as_slice(),
+            )
+            // Set to Lax so that the session persists third-party
+            // redirects like Google Auth.
+            .with_same_site_policy(http_types::cookies::SameSite::Lax),
+        );
     }
 
     app.with(tide::utils::After(|mut res: tide::Response| async {
@@ -179,8 +213,9 @@ fn run_tide<DB: Sync + Send + 'static + database::DatabaseReader>(
                     |x| Ok(x.to_owned()),
                 )?;
 
-                let session_data = get_session(&req).ok().and_then(|s| s.get("data"));
+                let session_id = get_session_id(&req).ok();
 
+                let http_server_state = req.state().clone();
                 // tide::Request -> http_types::Request -> http::Request<Body> -> http::Request<()>.
                 let http_types_req: http_types::Request = req.into();
                 let http_req_with_body: http::Request<http_types::Body> = http_types_req.into();
@@ -202,9 +237,15 @@ fn run_tide<DB: Sync + Send + 'static + database::DatabaseReader>(
                         let stream =
                             WebSocketStream::from_raw_socket(stream, protocol::Role::Server, None)
                                 .await;
-                        if let Err(err) =
-                            handle_connection(peer_addr, stream, mytx, myclients, session_data)
-                                .await
+                        if let Err(err) = handle_connection(
+                            peer_addr,
+                            stream,
+                            mytx,
+                            myclients,
+                            session_id,
+                            http_server_state,
+                        )
+                        .await
                         {
                             error!("{}", err);
                         }

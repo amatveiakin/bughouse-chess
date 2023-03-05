@@ -35,6 +35,7 @@ pub mod ping_pong;
 pub mod pgn;
 pub mod server;
 pub mod server_hooks;
+pub mod session;
 pub mod test_util;
 pub mod util;
 

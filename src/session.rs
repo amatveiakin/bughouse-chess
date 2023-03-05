@@ -19,4 +19,12 @@ impl Default for Session {
             user_info: UserInfo::default(),
         }
     }
+
+}
+
+impl Session {
+    pub fn logout(&mut self) {
+        self.logged_in = false;
+        self.user_info = UserInfo::default();
+    }
 }
