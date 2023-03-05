@@ -40,12 +40,11 @@ async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync +
 
     let (client_tx, client_rx) = mpsc::channel();
 
-    let mut session_store_subscription_id = None;
-    if let Some(session_id) = &session_id {
+    let session_store_subscription_id = session_id.as_ref().map(|session_id| {
         // Subscribe the client to all updates to the session in session store.
         let my_client_tx = client_tx.clone();
-        session_store_subscription_id = Some(http_server_state.session_store.lock().unwrap().subscribe(
-            session_id,
+        http_server_state.session_store.lock().unwrap().subscribe(
+            &session_id,
             move |s| {
                 // Send the entire session data to the client.
                 // We can perform some mapping here if we want to hide
@@ -53,8 +52,8 @@ async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync +
                 let _ =
                     my_client_tx.send(BughouseServerEvent::UpdateSession { session: s.clone() });
             },
-        ));
-    }
+        )
+    });
 
     let client_id = clients
         .lock()
