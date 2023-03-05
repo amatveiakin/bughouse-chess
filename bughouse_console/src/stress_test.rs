@@ -175,7 +175,8 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
                     GameInstant::game_start()
                 ).is_ok();
                 if turn_is_valid {
-                    let turn_algebraic = game.last_turn_record().unwrap().turn_expanded.algebraic_for_log.clone();
+                    let turn_algebraic = game.last_turn_record().unwrap()
+                        .turn_expanded.algebraic.format(AlgebraicCharset::Ascii);
                     let time = GameInstant::game_start();
                     return Some(Action::ApplyRemoteTurn{ envoy, turn_algebraic, time });
                 }

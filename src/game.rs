@@ -32,7 +32,7 @@ use itertools::Itertools;
 use serde::{Serialize, Deserialize};
 use strum::{EnumIter, IntoEnumIterator};
 
-use crate::algebraic::AlgebraicFormat;
+use crate::algebraic::{AlgebraicDetails, AlgebraicCharset, AlgebraicTurn};
 use crate::board::{
     Board, Reserve, Turn, TurnInput, TurnExpanded, TurnFacts, TurnMode, TurnError,
     ChessGameStatus, VictoryReason, DrawReason
@@ -71,7 +71,7 @@ impl TurnRecordExpanded {
         assert_eq!(self.mode, TurnMode::Normal);
         TurnRecord {
             envoy: self.envoy,
-            turn_algebraic: self.turn_expanded.algebraic_for_log.clone(),
+            turn_algebraic: self.turn_expanded.algebraic.format(AlgebraicCharset::Ascii),
             time: self.time,
         }
     }
@@ -465,7 +465,7 @@ impl BughouseGame {
         let turn = board.parse_turn_input(turn_input, mode)?;
         // `turn_to_algebraic` must be called before `try_turn`, because algebraic form depend
         // on the current position.
-        let turn_algebraic = board.turn_to_algebraic(turn, mode, AlgebraicFormat::for_log());
+        let turn_algebraic = board.turn_to_algebraic(turn, mode, AlgebraicDetails::ShortAlgebraic);
         let turn_facts = board.try_turn(turn, mode, now)?;
         // If `try_turn` succeeded, then the turn was valid. Thus conversion to algebraic must
         // have succeeded as well, because there exists an algebraic form for any valid turn.
@@ -552,7 +552,7 @@ fn make_player_map(players: &[PlayerInGame]) -> EnumMap<BughouseBoard, EnumMap<F
     })
 }
 
-fn make_turn_expanded(turn: Turn, algebraic: String, facts: TurnFacts) -> TurnExpanded {
+fn make_turn_expanded(turn: Turn, algebraic: AlgebraicTurn, facts: TurnFacts) -> TurnExpanded {
     let mut relocation = None;
     let mut relocation_extra = None;
     let mut drop = None;
@@ -571,7 +571,7 @@ fn make_turn_expanded(turn: Turn, algebraic: String, facts: TurnFacts) -> TurnEx
     }
     TurnExpanded {
         turn,
-        algebraic_for_log: algebraic,
+        algebraic,
         relocation,
         relocation_extra,
         drop,

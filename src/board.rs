@@ -10,7 +10,7 @@ use enum_map::{EnumMap, enum_map};
 use itertools::{Itertools, iproduct};
 use serde::{Serialize, Deserialize};
 
-use crate::algebraic::{AlgebraicDetails, AlgebraicFormat, AlgebraicTurn, AlgebraicMove, AlgebraicDrop};
+use crate::algebraic::{AlgebraicDetails, AlgebraicTurn, AlgebraicMove, AlgebraicDrop};
 use crate::coord::{SubjectiveRow, Row, Col, Coord};
 use crate::clock::{GameInstant, Clock};
 use crate::force::Force;
@@ -500,7 +500,7 @@ pub enum TurnInput {
 #[derive(Clone, Debug)]
 pub struct TurnExpanded {
     pub turn: Turn,
-    pub algebraic_for_log: String,
+    pub algebraic: AlgebraicTurn,
     pub relocation: Option<(Coord, Coord)>,
     pub relocation_extra: Option<(Coord, Coord)>,
     pub drop: Option<Coord>,
@@ -1183,23 +1183,23 @@ impl Board {
     //   - Unicode: None / Just characters / Characters and pieces;
     //   Allow to specify options when exporting PGN.
     pub fn turn_to_algebraic(
-        &self, turn: Turn, mode: TurnMode, format: AlgebraicFormat
-    ) -> Option<String> {
-        let notation = self.turn_to_algebraic_impl(turn, mode, format)?;
+        &self, turn: Turn, mode: TurnMode, details: AlgebraicDetails
+    ) -> Option<AlgebraicTurn> {
+        let algebraic = self.turn_to_algebraic_impl(turn, mode, details)?;
         // Improvement potential. Remove when sufficiently tested.
-        if let Ok(turn_parsed) = self.algebraic_to_turn(&notation, mode) {
-            assert_eq!(turn_parsed, turn, "{:?}", notation);
+        if let Ok(turn_parsed) = self.algebraic_to_turn(&algebraic, mode) {
+            assert_eq!(turn_parsed, turn, "{:?}", algebraic);
         }
-        Some(notation.format(format))
+        Some(algebraic)
     }
 
     fn turn_to_algebraic_impl(
-        &self, turn: Turn, mode: TurnMode, format: AlgebraicFormat
+        &self, turn: Turn, mode: TurnMode, details: AlgebraicDetails
     ) -> Option<AlgebraicTurn> {
         match turn {
             Turn::Move(mv) => {
                 let details = match mode {
-                    TurnMode::Normal => format.details,
+                    TurnMode::Normal => details,
                     TurnMode::Preturn => AlgebraicDetails::LongAlgebraic,
                 };
                 let include_col_row = match details {

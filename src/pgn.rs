@@ -3,7 +3,7 @@ use indoc::formatdoc;
 use serde::{Serialize, Deserialize};
 use time::macros::format_description;
 
-use crate::algebraic::AlgebraicFormat;
+use crate::algebraic::{AlgebraicDetails, AlgebraicCharset};
 use crate::board::{TurnInput, TurnMode, VictoryReason, DrawReason};
 use crate::clock::TimeControl;
 use crate::{fen, ChessVariant, FairyPieces};
@@ -174,11 +174,12 @@ pub fn export_to_bpgn(_format: BughouseExportFormat, game: &BughouseGame, round:
     let mut doc = TextDocument::new();
     let mut full_turn_idx = enum_map!{ _ => 1 };
     for turn_record in game.turn_log() {
+        // TODO: Just use the turn log now that representation can be chosen on the fly.
         let TurnRecordExpanded{ envoy, turn_expanded, time, .. } = turn_record;
         let turn_algebraic = game_rerun.board(envoy.board_idx).turn_to_algebraic(
             turn_expanded.turn,
             TurnMode::Normal,
-            AlgebraicFormat::for_pgn(),
+            AlgebraicDetails::ShortAlgebraic,
         ).unwrap();
         game_rerun.try_turn_by_envoy(
             *envoy,
@@ -190,7 +191,7 @@ pub fn export_to_bpgn(_format: BughouseExportFormat, game: &BughouseGame, round:
             "{}{}. {}",
             full_turn_idx[envoy.board_idx],
             envoy_notation(*envoy),
-            turn_algebraic,
+            turn_algebraic.format(AlgebraicCharset::Ascii),
         );
         if envoy.force == Force::Black {
             full_turn_idx[envoy.board_idx] += 1;

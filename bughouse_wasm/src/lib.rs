@@ -733,7 +733,7 @@ impl WebClient {
                     TurnHighlight::Preturn, pre_turn_highlight, display_board_idx, fog_cover_area
                 )?;
             }
-            update_turn_log(&game, board_idx, display_board_idx)?;
+            update_turn_log(&game, my_id, board_idx, display_board_idx)?;
         }
         document.body()?.class_list().toggle_with_force("active-player", is_clock_ticking(&game, my_id))?;
         self.repaint_chalk()?;
@@ -1337,7 +1337,7 @@ fn render_grids(perspective: Perspective) -> JsResult<()> {
 }
 
 fn update_turn_log(
-    game: &BughouseGame, board_idx: BughouseBoard, display_board_idx: DisplayBoard
+    game: &BughouseGame, my_id: BughouseParticipant, board_idx: BughouseBoard, display_board_idx: DisplayBoard
 ) -> JsResult<()> {
     let document = web_document();
     let log_node = document.get_existing_element_by_id(&turn_log_node_id(display_board_idx))?;
@@ -1351,13 +1351,22 @@ fn update_turn_log(
                 turn_number += 1;
                 turn_number_str = format!("{turn_number}.");
             }
+            let is_in_fog =
+                game.chess_rules().chess_variant == ChessVariant::FogOfWar &&
+                game.status() == BughouseGameStatus::Active &&
+                my_id.as_player().map_or(false, |p| p.team() != record.envoy.team())
+            ;
             let (algebraic, capture) = match record.mode {
                 TurnMode::Normal => (
-                    record.turn_expanded.algebraic_for_log.clone(),
+                    if is_in_fog {
+                        record.turn_expanded.algebraic.format_in_the_fog()
+                    } else {
+                        record.turn_expanded.algebraic.format(AlgebraicCharset::AuxiliaryUnicode)
+                    },
                     record.turn_expanded.capture.clone(),
                 ),
                 TurnMode::Preturn => (
-                    format!("({})", record.turn_expanded.algebraic_for_log),
+                    format!("({})", record.turn_expanded.algebraic.format(AlgebraicCharset::AuxiliaryUnicode)),
                     None,  // don't show captures for preturns: too unpredictable and messes with braces
                 ),
             };

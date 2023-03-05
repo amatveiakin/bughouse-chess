@@ -17,12 +17,6 @@ pub enum AlgebraicDetails {
     LongAlgebraic,   // always include starting rol/col, e.g. "e2e4"
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct AlgebraicFormat {
-    pub details: AlgebraicDetails,
-    pub charset: AlgebraicCharset,
-}
-
 #[derive(Clone, Debug)]
 pub struct AlgebraicMove {
     pub piece_kind: PieceKind,
@@ -48,22 +42,6 @@ pub enum AlgebraicTurn {
     Castle(CastleDirection),
 }
 
-
-impl AlgebraicFormat {
-    pub fn for_log() -> Self {
-        AlgebraicFormat {
-            details: AlgebraicDetails::ShortAlgebraic,
-            charset: AlgebraicCharset::AuxiliaryUnicode,
-        }
-    }
-
-    pub fn for_pgn() -> Self {
-        AlgebraicFormat {
-            details: AlgebraicDetails::ShortAlgebraic,
-            charset: AlgebraicCharset::Ascii,
-        }
-    }
-}
 
 impl AlgebraicTurn {
     pub fn parse(notation: &str) -> Option<Self> {
@@ -99,10 +77,10 @@ impl AlgebraicTurn {
         }
     }
 
-    pub fn format(&self, format: AlgebraicFormat) -> String {
+    pub fn format(&self, charset: AlgebraicCharset) -> String {
         match self {
             AlgebraicTurn::Move(mv) => {
-                let capture_notation = match format.charset {
+                let capture_notation = match charset {
                     AlgebraicCharset::Ascii => "x",
                     AlgebraicCharset::AuxiliaryUnicode => "×",
                 };
@@ -134,6 +112,17 @@ impl AlgebraicTurn {
                     CastleDirection::ASide => "O-O-O",
                     CastleDirection::HSide => "O-O",
                 }).to_owned()
+            },
+        }
+    }
+
+    pub fn format_in_the_fog(&self) -> String {
+        match self {
+            AlgebraicTurn::Move(..) | AlgebraicTurn::Castle(..) => {
+                "🌫".to_owned()
+            },
+            AlgebraicTurn::Drop(drop) => {
+                format!("{}@🌫", drop.piece_kind.to_full_algebraic())
             },
         }
     }
