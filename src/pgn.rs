@@ -3,8 +3,8 @@ use indoc::formatdoc;
 use serde::{Serialize, Deserialize};
 use time::macros::format_description;
 
-use crate::algebraic::{AlgebraicDetails, AlgebraicCharset};
-use crate::board::{TurnInput, TurnMode, VictoryReason, DrawReason};
+use crate::algebraic::AlgebraicCharset;
+use crate::board::{VictoryReason, DrawReason};
 use crate::clock::TimeControl;
 use crate::{fen, ChessVariant, FairyPieces};
 use crate::force::Force;
@@ -84,11 +84,13 @@ fn make_termination_string(game: &BughouseGame) -> &'static str {
     }
 }
 
-fn make_bughouse_bpng_header(game: &BughouseGame, game_at_start: &BughouseGame, round: usize) -> String {
+fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
     use BughouseBoard::*;
     use Force::*;
     // TODO: Save game start time instead.
     let now = time::OffsetDateTime::now_utc();
+    // Improvement potential: Convert `EffectiveStartingPosition`to FEN directly.
+    let game_at_start = game.clone_from_start();
     let mut variant = vec!["Bughouse"];
     let mut setup = String::new();
     match game.chess_rules().starting_position {
@@ -169,29 +171,16 @@ fn envoy_notation(envoy: BughouseEnvoy) -> &'static str {
 pub fn export_to_bpgn(_format: BughouseExportFormat, game: &BughouseGame, round: usize)
     -> String
 {
-    let mut game_rerun = game.clone_from_start();
-    let header = make_bughouse_bpng_header(game, &game_rerun, round);
+    let header = make_bughouse_bpng_header(game, round);
     let mut doc = TextDocument::new();
     let mut full_turn_idx = enum_map!{ _ => 1 };
     for turn_record in game.turn_log() {
-        // TODO: Just use the turn log now that representation can be chosen on the fly.
-        let TurnRecordExpanded{ envoy, turn_expanded, time, .. } = turn_record;
-        let turn_algebraic = game_rerun.board(envoy.board_idx).turn_to_algebraic(
-            turn_expanded.turn,
-            TurnMode::Normal,
-            AlgebraicDetails::ShortAlgebraic,
-        ).unwrap();
-        game_rerun.try_turn_by_envoy(
-            *envoy,
-            &TurnInput::Explicit(turn_expanded.turn),
-            TurnMode::Normal,
-            *time,
-        ).unwrap();
+        let TurnRecordExpanded{ envoy, turn_expanded, .. } = turn_record;
         let turn_notation = format!(
             "{}{}. {}",
             full_turn_idx[envoy.board_idx],
             envoy_notation(*envoy),
-            turn_algebraic.format(AlgebraicCharset::Ascii),
+            turn_expanded.algebraic.format(AlgebraicCharset::Ascii),
         );
         if envoy.force == Force::Black {
             full_turn_idx[envoy.board_idx] += 1;
