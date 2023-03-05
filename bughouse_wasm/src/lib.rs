@@ -1356,17 +1356,18 @@ fn update_turn_log(
                 game.status() == BughouseGameStatus::Active &&
                 my_id.as_player().map_or(false, |p| p.team() != record.envoy.team())
             ;
+            let algebraic = if is_in_fog {
+                record.turn_expanded.algebraic.format_in_the_fog()
+            } else {
+                record.turn_expanded.algebraic.format(AlgebraicCharset::AuxiliaryUnicode)
+            };
             let (algebraic, capture) = match record.mode {
                 TurnMode::Normal => (
-                    if is_in_fog {
-                        record.turn_expanded.algebraic.format_in_the_fog()
-                    } else {
-                        record.turn_expanded.algebraic.format(AlgebraicCharset::AuxiliaryUnicode)
-                    },
+                    algebraic,
                     record.turn_expanded.capture.clone(),
                 ),
                 TurnMode::Preturn => (
-                    format!("({})", record.turn_expanded.algebraic.format(AlgebraicCharset::AuxiliaryUnicode)),
+                    format!("({})", algebraic),
                     None,  // don't show captures for preturns: too unpredictable and messes with braces
                 ),
             };
