@@ -25,10 +25,17 @@ pub mod network;
 pub mod tui;
 
 mod async_server_main;
+mod auth;
 mod auth_handlers_tide;
 mod client_main;
-mod sqlx_server_hooks;
+mod database;
+mod game_stats;
+mod history_graphs;
+mod http_server_state;
 mod server_main;
+mod session_store;
+mod sqlx_server_hooks;
+mod stats_handlers_tide;
 mod stress_test;
 
 use std::io;

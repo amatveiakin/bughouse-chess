@@ -1,8 +1,8 @@
 use bughouse_chess::session::Session;
 use tide::StatusCode;
 
-use bughouse_console::auth;
-use bughouse_console::http_server_state::*;
+use crate::auth;
+use crate::http_server_state::*;
 
 pub const OAUTH_CSRF_COOKIE_NAME: &str = "oauth-csrf-state";
 

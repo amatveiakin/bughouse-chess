@@ -3,7 +3,6 @@ members = [
     ".",
     "bughouse_console",
     "bughouse_wasm",
-    "bughouse_webserver",
 ]
 
 [package]

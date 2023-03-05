@@ -17,14 +17,14 @@ use tungstenite::protocol;
 
 use bughouse_chess::server_hooks::ServerHooks;
 use bughouse_chess::{server::*, BughouseServerEvent};
-use bughouse_console::auth;
-use bughouse_console::database;
-use bughouse_console::http_server_state::*;
-use bughouse_console::session_store::*;
 
+use crate::auth;
 use crate::auth_handlers_tide::*;
+use crate::database;
+use crate::http_server_state::*;
 use crate::network::{self, CommunicationError};
 use crate::server_main::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
+use crate::session_store::*;
 use crate::sqlx_server_hooks::*;
 
 async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
@@ -186,7 +186,7 @@ fn run_tide<DB: Sync + Send + 'static + database::DatabaseReader>(
     app.at(AUTH_LOGOUT_URL_PATH).get(handle_logout);
     app.at(AUTH_MYSESSION_URL_PATH).get(handle_mysession);
 
-    bughouse_console::stats_handlers_tide::Handlers::<HttpServerState<DB>>::register_handlers(
+    crate::stats_handlers_tide::Handlers::<HttpServerState<DB>>::register_handlers(
         &mut app,
     );
 
