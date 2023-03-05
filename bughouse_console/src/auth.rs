@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::env;
 use url::Url;
 
-use crate::session::UserInfo;
+use bughouse_chess::session::UserInfo;
 
 #[derive(Clone)]
 pub struct GoogleAuth {

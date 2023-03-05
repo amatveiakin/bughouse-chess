@@ -11,6 +11,7 @@ use crate::pgn::BughouseExportFormat;
 use crate::player::{Participant, Faction};
 use crate::rules::Rules;
 use crate::scores::Scores;
+use crate::session::Session;
 use crate::starter::EffectiveStartingPosition;
 
 
@@ -29,6 +30,9 @@ pub enum BughouseServerRejection {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseServerEvent {
     Rejection(BughouseServerRejection),
+    UpdateSession {
+        session: Session,
+    },
     ContestWelcome {
         contest_id: String,
         rules: Rules,

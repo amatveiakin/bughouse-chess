@@ -1,8 +1,8 @@
+use bughouse_chess::session::Session;
 use tide::StatusCode;
 
 use bughouse_console::auth;
 use bughouse_console::http_server_state::*;
-use bughouse_console::session::*;
 
 pub const OAUTH_CSRF_COOKIE_NAME: &str = "oauth-csrf-state";
 
@@ -83,12 +83,15 @@ pub async fn handle_login<DB: Send + Sync + 'static>(
     resp.set_status(StatusCode::TemporaryRedirect);
     resp.insert_header(http_types::headers::LOCATION, redirect_url.as_str());
 
+    // Original motivation:
     // Using a separate cookie for oauth csrf state because the session
     // cookie has SameSite::Strict policy (and we want to keep that),
     // which prevents browsers from setting the session cookie upon
     // redirect.
     // This will use the default, which is SameSite::Lax on most browsers,
     // which should still be good enough.
+    // Update: this is no longer the case.
+    // TODO: move csrf_toke into tide's session.
     let mut csrf_cookie =
         http_types::cookies::Cookie::new(OAUTH_CSRF_COOKIE_NAME, csrf_state.secret().to_owned());
     csrf_cookie.set_http_only(true);
@@ -103,7 +106,7 @@ pub async fn handle_login<DB: Send + Sync + 'static>(
 //   in 3...2...1... or something similar.
 //   To send to the "desired location", pass the desired URL as a parameter
 //   into /login and propagate it to callback_url.
-pub async fn handle_session<DB>(mut req: tide::Request<HttpServerState<DB>>) -> tide::Result {
+pub async fn handle_session<DB>(req: tide::Request<HttpServerState<DB>>) -> tide::Result {
     let (auth_code, request_csrf_state) = req.query::<auth::NewSessionQuery>()?.parse();
     let Some(oauth_csrf_state_cookie) = req.cookie(OAUTH_CSRF_COOKIE_NAME) else {
                 return Err(tide::Error::from_str(
@@ -141,27 +144,36 @@ pub async fn handle_session<DB>(mut req: tide::Request<HttpServerState<DB>>) -> 
         .user_info(callback_url_str, auth_code)
         .await?;
 
-    get_session_mut(&mut req)?.insert(
-        "data",
+    let session_id = get_session_id(&req)?;
+    let mut session_store = req.state().session_store.lock().unwrap();
+    session_store.set(
+        session_id,
         Session {
             logged_in: true,
             user_info: user_info.clone(),
         },
-    )?;
-
+    );
     Ok(format!("You are now logged in. UserInfo: \n{:?}", user_info).into())
 }
 
-pub async fn handle_logout<DB>(mut req: tide::Request<HttpServerState<DB>>) -> tide::Result {
-    get_session_mut(&mut req)?.remove("data");
+pub async fn handle_logout<DB>(req: tide::Request<HttpServerState<DB>>) -> tide::Result {
+    let session_id = get_session_id(&req)?;
+    let mut session_store = req.state().session_store.lock().unwrap();
+    session_store.update_if_exists(&session_id, Session::logout);
     Ok("You are now logged out.".into())
 }
 
 pub async fn handle_mysession<DB>(req: tide::Request<HttpServerState<DB>>) -> tide::Result {
-    match get_session(&req)?.get::<Session>("data") {
-        None => Ok("You are not logged in.".into()),
-        Some(Session { user_info, .. }) => {
-            Ok(format!("You are logged in. UserInfo: {user_info:?}").into())
-        }
+    let session_id = get_session_id(&req)?;
+    let session_store = req.state().session_store.lock().unwrap();
+    match session_store.get(&session_id) {
+        None
+        | Some(Session {
+            logged_in: false, ..
+        }) => Ok("You are not logged in.".into()),
+        Some(Session {
+            user_info,
+            logged_in: true,
+        }) => Ok(format!("You are logged in. UserInfo: {user_info:?}").into()),
     }
 }

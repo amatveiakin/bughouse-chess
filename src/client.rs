@@ -21,6 +21,7 @@ use crate::pgn::BughouseExportFormat;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Participant, Faction};
 use crate::rules::{Rules, FIRST_GAME_COUNTDOWN_DURATION};
+use crate::session::Session;
 use crate::scores::Scores;
 
 
@@ -129,6 +130,7 @@ pub struct ClientState {
     notable_event_queue: VecDeque<NotableEvent>,
     meter_box: MeterBox,
     ping_meter: Meter,
+    session: Session,
 }
 
 const LOW_TIME_WARNING_THRESHOLDS: &[Duration] = &[
@@ -160,6 +162,7 @@ impl ClientState {
             notable_event_queue: VecDeque::new(),
             meter_box,
             ping_meter,
+            session: Session::default(),
         }
     }
 
@@ -369,6 +372,9 @@ impl ClientState {
                         return Err(internal_error!("Got error from server: {}", message));
                     },
                 }
+            },
+            UpdateSession { session } => {
+                self.session = session;
             },
             ContestWelcome{ contest_id, rules } => {
                 let my_name = match &self.contest_state {
