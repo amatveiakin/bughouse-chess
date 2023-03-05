@@ -63,10 +63,7 @@ where
         id: &K,
         subscriber_tx: impl Fn(&V) + Send + 'static,
     ) -> SubscriptionId {
-        match self.entries.entry(id.clone()) {
-            hash_map::Entry::Vacant(v) => v.insert(Entry::default()).subscribe(subscriber_tx),
-            hash_map::Entry::Occupied(mut o) => o.get_mut().subscribe(subscriber_tx),
-        }
+        self.entries.entry(id.clone()).or_default().subscribe(subscriber_tx)
     }
 
     pub fn unsubscribe(&mut self, id: &K, subscription_id: SubscriptionId) {
