@@ -113,18 +113,33 @@ fn get_en_passant_target(grid: &Grid, turn: Turn) -> Option<Coord> {
     None
 }
 
+// Shows which squares are revealed by a given piece in fog-of-war variant.
+//
+// Similar to `legal_move_destinations`, but treats pawns differently:
+//   - When there is a piece in front of a pawn, the piece is not shown, because that would
+//     be new information that you arguably shouldn't have.
+//   - When there is no piece diagonally from a pawn, the square not reachable but revealed.
+//     Reasoning: the fact that a pawn cannot capture implies that the square is empty, thus
+//     showing it gives no new information and is a purely visual change. (Ok, technically,
+//     it's not 100% visual. It could potentially reduce information, because you no longer
+//     see en passant opportunities.)
+fn visibility_from(rules: &ChessRules, grid: &Grid, from: Coord, en_passant_target: Option<Coord>) -> Vec<Coord> {
+    // Improvement potential: Don't iterate over all squares.
+    Coord::all().filter(|&to| {
+        let capture = get_capture(grid, from, to, en_passant_target);
+        let capturing = if capture.is_some() { Capturing::Yes } else { Capturing::Maybe };
+        generic_reachability(rules, grid, from, to, capturing).ok()
+    }).collect()
+}
+
 fn legal_move_destinations(rules: &ChessRules, grid: &Grid, from: Coord, en_passant_target: Option<Coord>)
     -> Vec<Coord>
 {
     // Improvement potential: Don't iterate over all squares.
-    let mut moves = Vec::new();
-    for to in Coord::all() {
-        let capture_or = get_capture(grid, from, to, en_passant_target);
-        if reachability(rules, grid, from, to, capture_or.is_some()).ok() {
-            moves.push(to);
-        }
-    }
-    moves
+    Coord::all().filter(|&to| {
+        let capture = get_capture(grid, from, to, en_passant_target);
+        reachability(rules, grid, from, to, capture.is_some()).ok()
+    }).collect()
 }
 
 // Generates two kinds of castling moves: moving the king onto a neighboring rook and moving the
@@ -251,8 +266,8 @@ fn generic_reachability(rules: &ChessRules, grid: &Grid, from: Coord, to: Coord,
         Impossible => Impossible,
         Reachable => {
             if let Some(dst_piece) = grid[to] {
-                if dst_piece.force == grid[from].unwrap().force {
-                    let src_piece = grid[from].unwrap();
+                let src_piece = grid[from].unwrap();
+                if dst_piece.force == src_piece.force {
                     if combine_pieces(rules, src_piece, dst_piece).is_some() {
                         return Reachable;
                     } else {
@@ -742,7 +757,7 @@ impl Board {
             if let Some(piece) = self.grid[from] {
                 if piece.force == force {
                     ret.insert(from);
-                    ret.extend(legal_move_destinations(&self.chess_rules, &self.grid, from, self.en_passant_target));
+                    ret.extend(visibility_from(&self.chess_rules, &self.grid, from, self.en_passant_target));
                 }
             }
         }
