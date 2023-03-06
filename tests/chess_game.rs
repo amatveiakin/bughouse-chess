@@ -108,3 +108,13 @@ fn king_capture() {
     replay_log(&mut game, "1.Nc3 a6 2.Nd5 a5 3.N×c7 a4 4.N×e8").unwrap();
     assert_eq!(game.status(), ChessGameStatus::Victory(Force::White, VictoryReason::Checkmate));
 }
+
+#[test]
+fn fog_of_war_en_passant() {
+    let rules = ChessRules {
+        chess_variant: ChessVariant::FogOfWar,
+        ..ChessRules::classic_blitz()
+    };
+    let mut game = chess_with_rules(rules);
+    replay_log(&mut game, "1.e4 a6 2.e5 d5 3.×d6").unwrap();
+}

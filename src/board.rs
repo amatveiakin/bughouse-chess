@@ -803,8 +803,8 @@ impl Board {
 
         match mode {
             TurnMode::Normal => {
+                self.en_passant_target = get_en_passant_target(&self.grid, turn);
                 if self.chess_rules.enable_check_and_mate() {
-                    self.en_passant_target = get_en_passant_target(&self.grid, turn);
                     let opponent_king_pos = find_king(&self.grid, force.opponent()).unwrap();
                     if self.is_bughouse() {
                         if is_bughouse_mate_to(&self.chess_rules, &mut self.grid, opponent_king_pos, self.en_passant_target) {
