@@ -32,9 +32,10 @@ mod database;
 mod game_stats;
 mod history_graphs;
 mod http_server_state;
+mod persistence;
 mod server_main;
 mod session_store;
-mod sqlx_server_hooks;
+mod database_server_hooks;
 mod stats_handlers_tide;
 mod stress_test;
 

@@ -17,7 +17,7 @@ pub type HttpServerState<DB> = Arc<HttpServerStateImpl<DB>>;
 
 impl<DB> crate::stats_handlers_tide::SuitableServerState for HttpServerState<DB>
 where
-    DB: Sync + Send + 'static + crate::database::DatabaseReader,
+    DB: Sync + Send + 'static + crate::persistence::DatabaseReader,
 {
     type DB = DB;
 

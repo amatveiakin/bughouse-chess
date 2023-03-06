@@ -10,7 +10,7 @@ use skillratings::{
 };
 use time::OffsetDateTime;
 
-use bughouse_chess::persistence::GameResultRow;
+use crate::persistence::GameResultRow;
 
 type Rating = WengLinRating;
 
