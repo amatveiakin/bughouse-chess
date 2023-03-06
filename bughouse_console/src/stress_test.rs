@@ -2,8 +2,9 @@
 // to a virtual server and execute random actions on the clients. Verify that the server
 // and the clients do not panic.
 
-use std::cell::RefCell;
 use std::{io, panic};
+use std::cell::RefCell;
+use std::time::Duration;
 
 use instant::Instant;
 use rand::prelude::*;
@@ -62,11 +63,41 @@ thread_local! {
     static TEST_STATE: RefCell<TestState> = RefCell::new(TestState::default());
 }
 
-fn default_bughouse_game() -> BughouseGame {
+fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
+    loop {
+        let rules = Rules {
+            contest_rules: ContestRules::unrated(),
+            chess_rules: ChessRules {
+                starting_position: if rng.gen::<bool>() { StartingPosition::Classic } else { StartingPosition::FischerRandom },
+                chess_variant: if rng.gen::<bool>() { ChessVariant::Standard } else { ChessVariant::FogOfWar },
+                fairy_pieces: if rng.gen::<bool>() { FairyPieces::NoFairy } else { FairyPieces::Accolade },
+                time_control: TimeControl{ starting_time: Duration::from_secs(300) }
+
+            },
+            bughouse_rules: BughouseRules {
+                teaming: if rng.gen::<bool>() { Teaming::FixedTeams } else { Teaming::IndividualMode },
+                min_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)).unwrap(),
+                max_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)).unwrap(),
+                drop_aggression: match rng.gen_range(0..4) {
+                    0 => DropAggression::NoCheck,
+                    1 => DropAggression::NoChessMate,
+                    2 => DropAggression::NoBughouseMate,
+                    3 => DropAggression::MateAllowed,
+                    _ => unreachable!(),
+                },
+            },
+        };
+        if rules.verify().is_ok() {
+            return rules;
+        }
+    }
+}
+
+fn bughouse_game(rules: Rules) -> BughouseGame {
     BughouseGame::new(
-        ContestRules::unrated(),
-        ChessRules::classic_blitz(),
-        BughouseRules::chess_com(),
+        rules.contest_rules,
+        rules.chess_rules,
+        rules.bughouse_rules,
         &sample_bughouse_players()
     )
 }
@@ -247,7 +278,7 @@ pub fn bughouse_game_test() -> io::Result<()> {
         let mut total_turns = 0;
         let mut successful_turns = 0;
         for _ in 0..GAMES_PER_BATCH {
-            let mut game = default_bughouse_game();
+            let mut game = bughouse_game(random_rules(rng));
             for _ in 0..TURNS_PER_GAME {
                 let ret = game.try_turn(
                     random_board(rng),
@@ -303,7 +334,7 @@ pub fn altered_game_test() -> io::Result<()> {
                     force: random_force(rng),
                 })
             );
-            let mut alt_game = AlteredGame::new(participant, default_bughouse_game());
+            let mut alt_game = AlteredGame::new(participant, bughouse_game(random_rules(rng)));
             for _ in 0..ACTIONS_PER_GAME {
                 let Some(action) = random_action(&alt_game, rng) else {
                     break;
