@@ -504,6 +504,7 @@ dependencies = [
  "async-std",
  "async-tungstenite",
  "bughouse_chess",
+ "censor",
  "clap",
  "console",
  "crossterm",
@@ -531,6 +532,8 @@ dependencies = [
  "tide-jsx",
  "time 0.3.17",
  "tungstenite",
+ "unicode-normalization",
+ "unicode-segmentation",
  "url",
  "uuid",
 ]
@@ -575,6 +578,15 @@ name = "cc"
 version = "1.0.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9f73505338f7d905b19d18738976aae232eb46b8efc15554ffc56deb5d9ebe4"
+
+[[package]]
+name = "censor"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d41e3b9fdbb9b3edc10dc66a06dc255822f699c432e19403fb966e6d60e0dec4"
+dependencies = [
+ "once_cell",
+]
 
 [[package]]
 name = "cfg-if"
@@ -3398,9 +3410,9 @@ dependencies = [
 
 [[package]]
 name = "unicode-segmentation"
-version = "1.10.0"
+version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fdbf052a0783de01e944a6ce7a8cb939e295b1e7be835a1112c3b9a7f047a5a"
+checksum = "1dd624098567895118886609431a7c3b8f516e41d30e0643f03d94592a147e36"
 
 [[package]]
 name = "unicode-width"

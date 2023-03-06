@@ -8,6 +8,7 @@ edition = "2021"
 anyhow = "1.0.68"
 async-std = { version = "1.6.5", features = ["tokio1"] }
 async-tungstenite = "0.19.0"
+censor = "0.3.0"
 clap = { version = "4.0.29", features = ["cargo"] }
 console = "0.15.2"
 crossterm = "0.25.0"
@@ -35,6 +36,8 @@ tide = "0.16.0"
 tide-jsx = "0.4.0"
 time = "0.3.17"
 tungstenite = "0.18.0"
+unicode-normalization = "0.1.22"
+unicode-segmentation = "1.10.1"
 url = "2.3.1"
 uuid = { version = "1.2.2", features = ["v4"] }
 

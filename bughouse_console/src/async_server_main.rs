@@ -24,6 +24,7 @@ use crate::database;
 use crate::http_server_state::*;
 use crate::network::{self, CommunicationError};
 use crate::persistence::DatabaseReader;
+use crate::prod_server_helpers::ProdServerHelpers;
 use crate::server_main::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
 use crate::session_store::*;
 use crate::database_server_hooks::*;
@@ -301,8 +302,11 @@ pub fn run(config: ServerConfig) {
     };
 
     thread::spawn(move || {
-        let mut server_state =
-            ServerState::new(clients_copy, hooks.map(|h| h as Box<dyn ServerHooks>));
+        let mut server_state = ServerState::new(
+            clients_copy,
+            Box::new(ProdServerHelpers{}),
+            hooks.map(|h| h as Box<dyn ServerHooks>)
+        );
 
         for event in rx {
             server_state.apply_event(event);

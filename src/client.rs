@@ -356,6 +356,11 @@ impl ClientState {
                             If you still can't connect, please try again in a few seconds.\
                         ")));
                     },
+                    BughouseServerRejection::InvalidPlayerName{ player_name, reason } => {
+                        return Err(EventError::IgnorableError(format!(
+                            "Name {player_name} is invalid: {reason}"
+                        )));
+                    },
                     BughouseServerRejection::NoSuchContest{ contest_id } => {
                         return Err(EventError::IgnorableError(format!(
                             "Contest {contest_id} does not exist."

@@ -16,8 +16,9 @@ use bughouse_chess::server_hooks::ServerHooks;
 use bughouse_chess::*;
 
 use crate::database;
-use crate::network::{self, CommunicationError};
 use crate::database_server_hooks::*;
+use crate::network::{self, CommunicationError};
+use crate::prod_server_helpers::ProdServerHelpers;
 
 #[derive(Debug, Clone)]
 pub enum DatabaseOptions {
@@ -162,7 +163,7 @@ pub fn run(config: ServerConfig) {
                 Some(Box::new(h) as Box<dyn ServerHooks>)
             }
         };
-        let mut server_state = ServerState::new(clients_copy, hooks);
+        let mut server_state = ServerState::new(clients_copy, Box::new(ProdServerHelpers{}), hooks);
 
         for event in rx {
             server_state.apply_event(event);

@@ -33,6 +33,7 @@ mod game_stats;
 mod history_graphs;
 mod http_server_state;
 mod persistence;
+mod prod_server_helpers;
 mod server_main;
 mod session_store;
 mod database_server_hooks;

@@ -30,6 +30,7 @@ use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Participant, Team, Faction};
 use crate::rules::{Teaming, Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
+use crate::server_helpers::ServerHelpers;
 use crate::server_hooks::{ServerHooks, NoopServerHooks};
 
 
@@ -235,6 +236,7 @@ struct Contest {
 
 struct Context<'a, 'b> {
     clients: &'b mut MutexGuard<'a, Clients>,
+    helpers: &'a mut dyn ServerHelpers,
     hooks: &'a mut dyn ServerHooks,
     disable_countdown: bool,
 }
@@ -255,6 +257,7 @@ type EventResult = Result<(), BughouseServerRejection>;
 pub struct ServerState {
     // Optimization potential: Lock-free map instead of Mutex<HashMap>.
     clients: Arc<Mutex<Clients>>,
+    helpers: Box<dyn ServerHelpers>,
     hooks: Box<dyn ServerHooks>,
     // TODO: Remove special test paths, use proper mock clock instead.
     disable_countdown: bool,  // for tests
@@ -264,10 +267,12 @@ pub struct ServerState {
 impl ServerState {
     pub fn new(
         clients: Arc<Mutex<Clients>>,
+        helpers: Box<dyn ServerHelpers>,
         hooks: Option<Box<dyn ServerHooks>>,
     ) -> Self {
         ServerState {
             clients,
+            helpers,
             hooks: hooks.unwrap_or_else(|| Box::new(NoopServerHooks{})),
             disable_countdown: false,
             core: CoreServerState::new(),
@@ -287,6 +292,7 @@ impl ServerState {
         // to `Context`.
         let mut ctx = Context {
             clients: &mut clients,
+            helpers: self.helpers.as_mut(),
             hooks: self.hooks.as_mut(),
             disable_countdown: self.disable_countdown,
         };
@@ -706,10 +712,8 @@ impl Contest {
             if self.participants.find_by_name(&player_name).is_some() {
                 return Err(BughouseServerRejection::PlayerAlreadyExists{ player_name });
             }
-            if !is_valid_player_name(&player_name) {
-                // This is unexpected, because the client must have checked player name according
-                // to the same rules.
-                return Err(unknown_error!("Invalid player name: \"{}\"", player_name))
+            if let Err(reason) = ctx.helpers.validate_player_name(&player_name) {
+                return Err(BughouseServerRejection::InvalidPlayerName{ player_name, reason });
             }
             if !matches!(execution, Execution::Running) {
                 return Err(BughouseServerRejection::ShuttingDown);
@@ -1190,17 +1194,6 @@ impl Contest {
                 },
             }
         }).flatten().collect_vec()
-    }
-}
-
-fn is_valid_player_name(name: &str) -> bool {
-    // TODO: Convert to NFC (here and in the web client).
-    const MAX_NAME_LENGTH: usize = 16;
-    if name.is_empty() || name.chars().count() > MAX_NAME_LENGTH {
-        false
-    } else {
-        // Must be in sync with web name input checkers.
-        name.chars().all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_')
     }
 }
 

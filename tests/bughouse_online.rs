@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use itertools::Itertools;
 
 use bughouse_chess::*;
+use bughouse_chess::server_helpers::TestServerHelpers;
 use common::*;
 
 
@@ -54,7 +55,7 @@ impl Server {
     fn new() -> Self {
         let clients = Arc::new(Mutex::new(server::Clients::new()));
         let clients_copy = Arc::clone(&clients);
-        let mut state = server::ServerState::new(clients_copy, None);
+        let mut state = server::ServerState::new(clients_copy, Box::new(TestServerHelpers{}), None);
         state.TEST_disable_countdown();
         Server{ clients, state }
     }

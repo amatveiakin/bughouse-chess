@@ -21,6 +21,11 @@ pub enum BughouseServerRejection {
     NoSuchContest{ contest_id: String },
     // Cannot join contest: there already is a player with this name and an active client.
     PlayerAlreadyExists{ player_name: String },
+    // Cannot create account or join as a guest with a given name.
+    InvalidPlayerName {
+        player_name: String,
+        reason: String,
+    },
     // Server is shutting down for maintenance.
     ShuttingDown,
     // Internal error. Should be investigated.
