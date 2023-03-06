@@ -4,12 +4,12 @@ use tide::{Request, Response, StatusCode};
 use tide_jsx::*;
 use time::OffsetDateTime;
 
-use crate::database::{self, DatabaseReader};
 use crate::game_stats::{GroupStats, RawStats};
 use crate::history_graphs;
+use crate::persistence::{self, DatabaseReader};
 
 pub trait SuitableServerState: Sync + Send + Clone + 'static {
-    type DB: Sync + Send + database::DatabaseReader;
+    type DB: Sync + Send + DatabaseReader;
     fn db(&self) -> &Self::DB;
     fn static_content_url_prefix(&self) -> &str;
 }
@@ -45,7 +45,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
     }
 
     async fn handle_games(req: Request<ST>) -> tide::Result {
-        let games = database::DatabaseReader::finished_games(
+        let games = DatabaseReader::finished_games(
             req.state().db(),
             OffsetDateTime::UNIX_EPOCH..OffsetDateTime::now_utc(),
             /*only_rated=*/ false,
@@ -114,7 +114,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
 
     async fn hanle_pgn(req: Request<ST>) -> tide::Result {
         let rowid = req.param("rowid")?.parse()?;
-        let p = req.state().db().pgn(database::RowId { id: rowid }).await?;
+        let p = req.state().db().pgn(persistence::RowId { id: rowid }).await?;
         let mut resp = Response::new(StatusCode::Ok);
         resp.insert_header(
             "Content-Disposition",

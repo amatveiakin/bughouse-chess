@@ -31,7 +31,6 @@ pub mod fen;
 pub mod janitor;
 pub mod lobby;
 pub mod meter;
-pub mod persistence;
 pub mod ping_pong;
 pub mod pgn;
 pub mod server;

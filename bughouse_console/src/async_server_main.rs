@@ -23,9 +23,10 @@ use crate::auth_handlers_tide::*;
 use crate::database;
 use crate::http_server_state::*;
 use crate::network::{self, CommunicationError};
+use crate::persistence::DatabaseReader;
 use crate::server_main::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
 use crate::session_store::*;
-use crate::sqlx_server_hooks::*;
+use crate::database_server_hooks::*;
 
 async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
     peer_addr: String,
@@ -43,16 +44,17 @@ async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync +
     let session_store_subscription_id = session_id.as_ref().map(|session_id| {
         // Subscribe the client to all updates to the session in session store.
         let my_client_tx = client_tx.clone();
-        http_server_state.session_store.lock().unwrap().subscribe(
-            &session_id,
-            move |s| {
+        http_server_state
+            .session_store
+            .lock()
+            .unwrap()
+            .subscribe(&session_id, move |s| {
                 // Send the entire session data to the client.
                 // We can perform some mapping here if we want to hide
                 // some of the state from the client.
                 let _ =
                     my_client_tx.send(BughouseServerEvent::UpdateSession { session: s.clone() });
-            },
-        )
+            })
     });
 
     let client_id = clients
@@ -130,7 +132,7 @@ async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync +
     Ok(())
 }
 
-fn run_tide<DB: Sync + Send + 'static + database::DatabaseReader>(
+fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     config: ServerConfig,
     db: DB,
     clients: Arc<Mutex<Clients>>,
@@ -186,9 +188,7 @@ fn run_tide<DB: Sync + Send + 'static + database::DatabaseReader>(
     app.at(AUTH_LOGOUT_URL_PATH).get(handle_logout);
     app.at(AUTH_MYSESSION_URL_PATH).get(handle_mysession);
 
-    crate::stats_handlers_tide::Handlers::<HttpServerState<DB>>::register_handlers(
-        &mut app,
-    );
+    crate::stats_handlers_tide::Handlers::<HttpServerState<DB>>::register_handlers(&mut app);
 
     app.at("/")
         .get(move |req: tide::Request<HttpServerState<_>>| {
@@ -285,14 +285,19 @@ pub fn run(config: ServerConfig) {
 
     let hooks = match config.database_options.clone() {
         DatabaseOptions::NoDatabase => None,
-        DatabaseOptions::Sqlite(address) => Some(Box::new(
-            SqlxServerHooks::<sqlx::Sqlite>::new(address.as_str())
-                .unwrap_or_else(|err| panic!("Cannot connect to SQLite DB {address}:\n{err}")),
-        ) as Box<dyn ServerHooks + Send>),
-        DatabaseOptions::Postgres(address) => Some(Box::new(
-            SqlxServerHooks::<sqlx::Postgres>::new(address.as_str())
-                .unwrap_or_else(|err| panic!("Cannot connect to Postgres DB {address}:\n{err}")),
-        ) as Box<dyn ServerHooks + Send>),
+        DatabaseOptions::Sqlite(address) => {
+            let db = database::SqlxDatabase::<sqlx::Sqlite>::new(&address)
+                .expect(format!("Cannot connect to SQLite DB {address}").as_str());
+            let h = DatabaseServerHooks::new(db).expect("Cannot initialize hooks");
+            Some(Box::new(h) as Box<dyn ServerHooks + Send>)
+        }
+
+        DatabaseOptions::Postgres(address) => {
+            let db = database::SqlxDatabase::<sqlx::Postgres>::new(&address)
+                .expect(format!("Cannot connect to Postgres DB {address}").as_str());
+            let h = DatabaseServerHooks::new(db).expect("Cannot initialize hooks");
+            Some(Box::new(h) as Box<dyn ServerHooks + Send>)
+        }
     };
 
     thread::spawn(move || {

@@ -1,3 +1,11 @@
+// TODO: Move SQL writes to a separate thread (https://crates.io/crates/sqlx should
+//   do this automatically).
+// TODO: Cache compiled SQL queries (should be easy with https://crates.io/crates/sqlx).
+// TODO: Benchmark SQL write speed.
+// TODO: More structured way to map data between Rust types and SQL;
+//   consider https://crates.io/crates/sea-orm.
+// TODO: insert a consistent row id, not to rely on implementation-specific
+//   columns, such as ROWID in sqlite.
 // TODO: streaming support + APIs.
 use std::ops::Range;
 
@@ -6,28 +14,19 @@ use sqlx::prelude::*;
 use tide::utils::async_trait;
 use time::{OffsetDateTime, PrimitiveDateTime};
 
-use bughouse_chess::persistence::*;
+use bughouse_chess::{my_git_version, BughouseClientPerformance};
 
-#[derive(Copy, Clone, Debug)]
-pub struct RowId {
-    pub id: i64,
-}
-
-#[async_trait]
-pub trait DatabaseReader {
-    async fn finished_games(
-        &self,
-        game_end_time_range: Range<OffsetDateTime>,
-        only_rated: bool,
-    ) -> Result<Vec<(RowId, GameResultRow)>, anyhow::Error>;
-    async fn pgn(&self, rowid: RowId) -> Result<String, anyhow::Error>;
-}
+use crate::persistence::*;
 
 pub struct UnimplementedDatabase {}
 
 #[async_trait]
 impl DatabaseReader for UnimplementedDatabase {
-    async fn finished_games( &self, _: Range<OffsetDateTime>, _: bool) -> Result<Vec<(RowId, GameResultRow)>, anyhow::Error> {
+    async fn finished_games(
+        &self,
+        _: Range<OffsetDateTime>,
+        _: bool,
+    ) -> Result<Vec<(RowId, GameResultRow)>, anyhow::Error> {
         Err(anyhow::Error::msg("finished_games() unimplemented"))
     }
     async fn pgn(&self, _: RowId) -> Result<String, anyhow::Error> {
@@ -49,8 +48,10 @@ impl<DB: sqlx::Database> Clone for SqlxDatabase<DB> {
 
 impl SqlxDatabase<sqlx::Sqlite> {
     pub fn new(db_address: &str) -> Result<Self, anyhow::Error> {
-        let options = sqlx::sqlite::SqlitePoolOptions::new();
-        let pool = async_std::task::block_on(options.connect(&format!("{db_address}")))?;
+        let options = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(db_address)
+            .create_if_missing(true);
+        let pool = async_std::task::block_on(sqlx::SqlitePool::connect_with(options))?;
         Ok(Self { pool })
     }
 }
@@ -169,5 +170,175 @@ where
             .await?
             .try_get("game_pgn")
             .map_err(anyhow::Error::from)
+    }
+}
+
+trait HasRowidColumnDefinition {
+    const ROWID_COLUMN_DEFINITION: &'static str;
+}
+
+impl HasRowidColumnDefinition for sqlx::Sqlite {
+    const ROWID_COLUMN_DEFINITION: &'static str = "";
+}
+
+impl HasRowidColumnDefinition for sqlx::Postgres {
+    const ROWID_COLUMN_DEFINITION: &'static str = "rowid BIGSERIAL PRIMARY KEY,";
+}
+
+#[async_trait]
+impl<DB> DatabaseWriter for SqlxDatabase<DB>
+where
+    DB: sqlx::Database + HasRowidColumnDefinition,
+    String: Type<DB> + for<'q> Encode<'q, DB>,
+    i64: Type<DB> + for<'q> Encode<'q, DB>,
+    Option<i64>: Type<DB> + for<'q> Encode<'q, DB>,
+    Option<OffsetDateTime>: Type<DB> + for<'q> Encode<'q, DB>,
+    bool: Type<DB> + for<'q> Encode<'q, DB>,
+    for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
+    for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
+{
+    async fn create_tables(&self) -> anyhow::Result<()> {
+        // TODO: Include contest_id in finished_games.
+        let rowid_column_definition = DB::ROWID_COLUMN_DEFINITION;
+        sqlx::query(
+            format!(
+                "CREATE TABLE IF NOT EXISTS finished_games (
+                {rowid_column_definition}
+                git_version TEXT,
+                invocation_id TEXT,
+                game_start_time TIMESTAMP,
+                game_end_time TIMESTAMP,
+                player_red_a TEXT,
+                player_red_b TEXT,
+                player_blue_a TEXT,
+                player_blue_b TEXT,
+                result TEXT,
+                game_pgn TEXT,
+                rated BOOLEAN DEFAULT TRUE)",
+            )
+            .as_str(),
+        )
+        .execute(&self.pool)
+        .await?;
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS client_performance (
+            git_version TEXT,
+            invocation_id TEXT,
+            user_agent TEXT,
+            time_zone TEXT,
+            ping_p50 INTEGER,
+            ping_p90 INTEGER,
+            ping_p99 INTEGER,
+            ping_n INTEGER,
+            turn_confirmation_p50 INTEGER,
+            turn_confirmation_p90 INTEGER,
+            turn_confirmation_p99 INTEGER,
+            turn_confirmation_n INTEGER,
+            process_outgoing_events_p99 INTEGER,
+            process_notable_events_p99 INTEGER,
+            refresh_p99 INTEGER,
+            update_state_p50 INTEGER,
+            update_state_p90 INTEGER,
+            update_state_p99 INTEGER,
+            update_state_n INTEGER,
+            update_clock_p99 INTEGER,
+            update_drag_state_p99 INTEGER)",
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+    async fn add_finished_game(&self, row: GameResultRow) -> anyhow::Result<()> {
+        sqlx::query(
+            "INSERT INTO finished_games (
+            git_version,
+            invocation_id,
+            game_start_time,
+            game_end_time,
+            player_red_a,
+            player_red_b,
+            player_blue_a,
+            player_blue_b,
+            result,
+            game_pgn,
+            rated)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+        )
+        .bind(row.git_version)
+        .bind(row.invocation_id)
+        .bind(row.game_start_time)
+        .bind(row.game_end_time)
+        .bind(row.player_red_a)
+        .bind(row.player_red_b)
+        .bind(row.player_blue_a)
+        .bind(row.player_blue_b)
+        .bind(row.result)
+        .bind(row.game_pgn)
+        .bind(row.rated)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+    async fn add_client_performance(
+        &self,
+        perf: &BughouseClientPerformance,
+        invocation_id: &str,
+    ) -> anyhow::Result<()> {
+        let stats = &perf.stats;
+        let ping = stats.get("ping");
+        let turn_confirmation = stats.get("turn_confirmation");
+        let process_outgoing_events = stats.get("process_outgoing_events");
+        let process_notable_events = stats.get("process_notable_events");
+        let refresh = stats.get("refresh");
+        let update_state = stats.get("update_state");
+        let update_clock = stats.get("update_clock");
+        let update_drag_state = stats.get("update_drag_state");
+        sqlx::query(
+            "INSERT INTO client_performance (
+                git_version,
+                invocation_id,
+                user_agent,
+                time_zone,
+                ping_p50,
+                ping_p90,
+                ping_p99,
+                ping_n,
+                turn_confirmation_p50,
+                turn_confirmation_p90,
+                turn_confirmation_p99,
+                turn_confirmation_n,
+                process_outgoing_events_p99,
+                process_notable_events_p99,
+                refresh_p99,
+                update_state_p50,
+                update_state_p90,
+                update_state_p99,
+                update_state_n,
+                update_clock_p99,
+                update_drag_state_p99)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)")
+                .bind(my_git_version!().to_owned())
+                .bind(invocation_id.to_owned())
+                .bind(perf.user_agent.clone())
+                .bind(perf.time_zone.clone())
+                .bind(ping.map(|s| s.p50 as i64))
+                .bind(ping.map(|s| s.p90 as i64))
+                .bind(ping.map(|s| s.p99 as i64))
+                .bind(ping.map(|s| s.num_values as i64))
+                .bind(turn_confirmation.map(|s| s.p50 as i64))
+                .bind(turn_confirmation.map(|s| s.p90 as i64))
+                .bind(turn_confirmation.map(|s| s.p99 as i64))
+                .bind(turn_confirmation.map(|s| s.num_values as i64))
+                .bind(process_outgoing_events.map(|s| s.p99 as i64))
+                .bind(process_notable_events.map(|s| s.p99 as i64))
+                .bind(refresh.map(|s| s.p99 as i64))
+                .bind(update_state.map(|s| s.p50 as i64))
+                .bind(update_state.map(|s| s.p90 as i64))
+                .bind(update_state.map(|s| s.p99 as i64))
+                .bind(update_state.map(|s| s.num_values as i64))
+                .bind(update_clock.map(|s| s.p99 as i64))
+                .bind(update_drag_state.map(|s| s.p99 as i64))
+            .execute(&self.pool).await?;
+        Ok(())
     }
 }

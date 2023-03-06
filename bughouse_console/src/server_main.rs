@@ -3,20 +3,21 @@
 //   Problem. Adding client via event is a potential race condition in case the
 //   first TCP message from the client arrives earlier.
 
-use std::net::{TcpStream, TcpListener};
-use std::sync::{Arc, Mutex, mpsc};
+use std::net::{TcpListener, TcpStream};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use log::{info, warn};
 use tungstenite::protocol;
 
-use bughouse_chess::*;
 use bughouse_chess::server::*;
 use bughouse_chess::server_hooks::ServerHooks;
+use bughouse_chess::*;
 
+use crate::database;
 use crate::network::{self, CommunicationError};
-use crate::sqlx_server_hooks::*;
+use crate::database_server_hooks::*;
 
 #[derive(Debug, Clone)]
 pub enum DatabaseOptions {
@@ -56,48 +57,62 @@ fn to_debug_string<T: std::fmt::Debug>(v: T) -> String {
     format!("{v:?}")
 }
 
-fn handle_connection(stream: TcpStream, clients: &Arc<Mutex<Clients>>, tx: mpsc::Sender<IncomingEvent>)
-    -> Result<(), String>
-{
+fn handle_connection(
+    stream: TcpStream,
+    clients: &Arc<Mutex<Clients>>,
+    tx: mpsc::Sender<IncomingEvent>,
+) -> Result<(), String> {
     let peer_addr = stream.peer_addr().map_err(to_debug_string)?;
     info!("Client connected: {}", peer_addr);
     let mut socket_in = tungstenite::accept(stream).map_err(to_debug_string)?;
     let mut socket_out = network::clone_websocket(&socket_in, protocol::Role::Server);
     let (client_tx, client_rx) = mpsc::channel();
-    let client_id = clients.lock().unwrap().add_client(client_tx, peer_addr.to_string());
+    let client_id = clients
+        .lock()
+        .unwrap()
+        .add_client(client_tx, peer_addr.to_string());
     let clients_remover1 = Arc::clone(&clients);
     let clients_remover2 = Arc::clone(&clients);
     // Rust-upgrade (https://github.com/rust-lang/rust/issues/90470):
     //   Use `JoinHandle.is_running` in order to join the read/write threads in a
     //   non-blocking way.
-    thread::spawn(move || {
-        loop {
-            match network::read_obj(&mut socket_in) {
-                Ok(ev) => {
-                    tx.send(IncomingEvent::Network(client_id, ev)).unwrap();
-                },
-                Err(err) => {
-                    if let Some(logging_id) = clients_remover1.lock().unwrap().remove_client(client_id) {
-                        match err {
-                            CommunicationError::ConnectionClosed => info!("Client {} disconnected", logging_id),
-                            err => warn!("Client {} disconnected due to read error: {:?}", logging_id, err),
+    thread::spawn(move || loop {
+        match network::read_obj(&mut socket_in) {
+            Ok(ev) => {
+                tx.send(IncomingEvent::Network(client_id, ev)).unwrap();
+            }
+            Err(err) => {
+                if let Some(logging_id) = clients_remover1.lock().unwrap().remove_client(client_id)
+                {
+                    match err {
+                        CommunicationError::ConnectionClosed => {
+                            info!("Client {} disconnected", logging_id)
                         }
+                        err => warn!(
+                            "Client {} disconnected due to read error: {:?}",
+                            logging_id, err
+                        ),
                     }
-                    return;
-                },
+                }
+                return;
             }
         }
     });
     thread::spawn(move || {
         for ev in client_rx {
             match network::write_obj(&mut socket_out, &ev) {
-                Ok(()) => {},
+                Ok(()) => {}
                 Err(err) => {
-                    if let Some(logging_id) = clients_remover2.lock().unwrap().remove_client(client_id) {
-                        warn!("Client {} disconnected due to write error: {:?}", logging_id, err);
+                    if let Some(logging_id) =
+                        clients_remover2.lock().unwrap().remove_client(client_id)
+                    {
+                        warn!(
+                            "Client {} disconnected due to write error: {:?}",
+                            logging_id, err
+                        );
                     }
                     return;
-                },
+                }
             }
         }
     });
@@ -105,10 +120,16 @@ fn handle_connection(stream: TcpStream, clients: &Arc<Mutex<Clients>>, tx: mpsc:
 }
 
 pub fn run(config: ServerConfig) {
-    assert_eq!(config.auth_options, AuthOptions::NoAuth,
-        "Auth is not supported by this server implementation.");
-    assert_eq!(config.session_options, SessionOptions::NoSessions,
-        "Sessions are not supported by this server implementation.");
+    assert_eq!(
+        config.auth_options,
+        AuthOptions::NoAuth,
+        "Auth is not supported by this server implementation."
+    );
+    assert_eq!(
+        config.session_options,
+        SessionOptions::NoSessions,
+        "Sessions are not supported by this server implementation."
+    );
 
     let (tx, rx) = mpsc::channel();
     let tx_tick = tx.clone();
@@ -119,33 +140,29 @@ pub fn run(config: ServerConfig) {
     ctrlc::set_handler(move || tx_terminate.send(IncomingEvent::Terminate).unwrap())
         .expect("Error setting Ctrl-C handler");
 
-    thread::spawn(move || {
-        loop {
-            thread::sleep(Duration::from_millis(100));
-            tx_tick.send(IncomingEvent::Tick).unwrap();
-        }
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_millis(100));
+        tx_tick.send(IncomingEvent::Tick).unwrap();
     });
 
     thread::spawn(move || {
-        let hooks = match config.database_options {
+        let hooks = match config.database_options.clone() {
             DatabaseOptions::NoDatabase => None,
-            DatabaseOptions::Sqlite(address) =>
-                Some(Box::new(
-                    SqlxServerHooks::<sqlx::Sqlite>::new(address.as_str()).unwrap_or_else(
-                            |err| panic!("Cannot connect to SQLite DB {address}:\n{err}")))
-                    as Box<dyn ServerHooks>
-                ),
-            DatabaseOptions::Postgres(address) =>
-                Some(Box::new(
-                    SqlxServerHooks::<sqlx::Postgres>::new(address.as_str()).unwrap_or_else(
-                            |err| panic!("Cannot connect to Postgres DB {address}:\n{err}")))
-                    as Box<dyn ServerHooks>
-                ),
+            DatabaseOptions::Sqlite(address) => {
+                let db = database::SqlxDatabase::<sqlx::Sqlite>::new(&address)
+                    .expect(format!("Cannot connect to SQLite DB {address}").as_str());
+                let h = DatabaseServerHooks::new(db).expect("Cannot initialize hooks");
+                Some(Box::new(h) as Box<dyn ServerHooks>)
+            }
+
+            DatabaseOptions::Postgres(address) => {
+                let db = database::SqlxDatabase::<sqlx::Postgres>::new(&address)
+                    .expect(format!("Cannot connect to Postgres DB {address}").as_str());
+                let h = DatabaseServerHooks::new(db).expect("Cannot initialize hooks");
+                Some(Box::new(h) as Box<dyn ServerHooks>)
+            }
         };
-        let mut server_state = ServerState::new(
-            clients_copy,
-            hooks
-        );
+        let mut server_state = ServerState::new(clients_copy, hooks);
 
         for event in rx {
             server_state.apply_event(event);
@@ -155,17 +172,18 @@ pub fn run(config: ServerConfig) {
 
     let listener = TcpListener::bind(("0.0.0.0", network::PORT)).unwrap();
     info!("Starting bughouse server version {}...", my_git_version!());
-    info!("Listening to connections on {}...", listener.local_addr().unwrap());
+    info!(
+        "Listening to connections on {}...",
+        listener.local_addr().unwrap()
+    );
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => {
-                match handle_connection(stream, &clients, tx.clone()) {
-                    Ok(()) => {},
-                    Err(err) => {
-                        warn!("{}", err);
-                    }
+            Ok(stream) => match handle_connection(stream, &clients, tx.clone()) {
+                Ok(()) => {}
+                Err(err) => {
+                    warn!("{}", err);
                 }
-            }
+            },
             Err(err) => {
                 warn!("Cannot establish connection: {}", err);
             }
