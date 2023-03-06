@@ -49,7 +49,7 @@ body.observer {
   background-color: #333333;
 }
 body.active-player {
-  background: radial-gradient(circle farthest-corner, #1c3a0c 90%, #295313 100%);
+  background: radial-gradient(circle farthest-corner, #1c3a0c 85%, #295313 100%);
   background-attachment: fixed;
 }
 
