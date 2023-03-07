@@ -28,9 +28,11 @@ impl<ST: SuitableServerState> Handlers<ST> {
         app.at("/dyn/stats/:duration")
             .get(Self::handle_stats_with_duration);
         app.at("/dyn/history")
-            .get(|req| Self::handle_history(req, history_graphs::XAxis::Timestamp));
+            .get(|req| Self::handle_history(req, history_graphs::XAxis::Date));
         app.at("/dyn/history/pergame")
             .get(|req| Self::handle_history(req, history_graphs::XAxis::UpdateIndex));
+        app.at("/dyn/history/pertime")
+            .get(|req| Self::handle_history(req, history_graphs::XAxis::Timestamp));
 
         app.with(tide::log::LogMiddleware::new());
 
@@ -114,7 +116,11 @@ impl<ST: SuitableServerState> Handlers<ST> {
 
     async fn hanle_pgn(req: Request<ST>) -> tide::Result {
         let rowid = req.param("rowid")?.parse()?;
-        let p = req.state().db().pgn(persistence::RowId { id: rowid }).await?;
+        let p = req
+            .state()
+            .db()
+            .pgn(persistence::RowId { id: rowid })
+            .await?;
         let mut resp = Response::new(StatusCode::Ok);
         resp.insert_header(
             "Content-Disposition",
@@ -304,6 +310,17 @@ impl<ST: SuitableServerState> Handlers<ST> {
             all_stats.update(&game)?;
         }
 
+        if x_axis == crate::history_graphs::XAxis::Date {
+            all_stats
+                .per_player
+                .values_mut()
+                .for_each(keep_last_point_per_date);
+            all_stats
+                .per_team
+                .values_mut()
+                .for_each(keep_last_point_per_date);
+        }
+
         let players_history_graph_html =
             history_graphs::players_rating_graph_html(&all_stats, x_axis);
         let teams_history_graph_html = history_graphs::teams_elo_graph_html(&all_stats, x_axis);
@@ -440,4 +457,24 @@ fn format_timestamp_date_and_time(maybe_ts: Option<OffsetDateTime>) -> Option<(S
         ))
         .ok()?;
     Some((date, time))
+}
+
+fn keep_last_point_per_date(points: &mut Vec<RawStats>) {
+    if points.is_empty() {
+        return;
+    }
+    let n = points.len();
+    let mut j = 0;
+    let mut prev_date = None;
+    for i in 1..n {
+        let date = points[i].last_update.map(OffsetDateTime::date);
+        if prev_date.is_some() && date != prev_date {
+            points[j] = points[i - 1];
+            j += 1;
+        }
+        prev_date = date;
+    }
+    points[j] = *points.last().unwrap();
+    j += 1;
+    points.truncate(j);
 }

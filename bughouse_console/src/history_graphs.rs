@@ -52,10 +52,18 @@ fn get_timestamp_for_plotly(stats: &RawStats) -> Option<String> {
         .ok()
 }
 
-#[derive(Clone, Copy)]
+fn get_date_for_plotly(stats: &RawStats) -> Option<String> {
+    stats
+        .last_update?
+        .format(time::macros::format_description!("[year]-[month]-[day]"))
+        .ok()
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum XAxis {
     Timestamp,
     UpdateIndex,
+    Date,
 }
 
 pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxis) -> String {
@@ -175,5 +183,6 @@ fn make_xs<'a, I: Iterator<Item = &'a RawStats>>(stats: I, x_axis: XAxis) -> Vec
         XAxis::UpdateIndex => stats
             .map(|s| format!("{}", s.update_index))
             .collect::<Vec<_>>(),
+        XAxis::Date => stats.filter_map(get_date_for_plotly).collect::<Vec<_>>(),
     }
 }
