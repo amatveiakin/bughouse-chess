@@ -99,12 +99,9 @@ const menu_pages = document.getElementsByClassName('menu-page');
 const create_contest_button = document.getElementById('create-contest-button');
 const join_contest_button = document.getElementById('join-contest-button');
 const about_button = document.getElementById('about-button');
-const cc_back_button = document.getElementById('cc-back-button');
 const cc_player_name = document.getElementById('cc-player-name');
-const jc_back_button = document.getElementById('jc-back-button');
 const jc_player_name = document.getElementById('jc-player-name');
 const jc_contest_id = document.getElementById('jc-contest-id');
-const about_back_button = document.getElementById('about-back-button');
 
 const ready_button = document.getElementById('ready-button');
 const resign_button = document.getElementById('resign-button');
@@ -112,6 +109,8 @@ const export_button = document.getElementById('export-button');
 const volume_button = document.getElementById('volume-button');
 
 const svg_defs = document.getElementById('svg-defs');
+
+const menu_page_stack = [];
 
 const loading_tracker = new class {
     #resources_required = 0;
@@ -239,13 +238,12 @@ menu_dialog.addEventListener('cancel', (event) => event.preventDefault());
 create_contest_button.addEventListener('click', on_create_contest_submenu);
 join_contest_button.addEventListener('click', on_join_contest_submenu);
 about_button.addEventListener('click', on_about);
-// Improvement potential: Add "page stack" concept, make all buttons with "back-button" class pop page.
-cc_back_button.addEventListener('click', show_start_page);
-jc_back_button.addEventListener('click', show_start_page);
-about_back_button.addEventListener('click', show_start_page);
 menu_create_contest_page.addEventListener('submit', on_create_contest_confirm);
 menu_join_contest_page.addEventListener('submit', on_join_contest_confirm);
 
+for (const button of document.querySelectorAll('.back-button')) {
+    button.addEventListener('click', pop_menu_page);
+}
 for (const button of document.querySelectorAll('[data-suburl]')) {
     button.addEventListener('click', go_to_suburl);
 }
@@ -385,7 +383,7 @@ function get_args(args_array, expected_args) {
 function on_document_keydown(event) {
     if (menu_dialog.open) {
         if (event.key === 'Escape') {
-            show_start_page();
+            pop_menu_page();
         }
     } else {
         let isPrintableKey = event.key.length === 1;  // https://stackoverflow.com/a/38802011/3092679
@@ -514,7 +512,7 @@ function process_notable_events() {
             const url = new URL(window.location);
             url.searchParams.set(SearchParams.contest_id, js_event.contest_id);
             window.history.pushState({}, '', url);
-            show_menu_page(menu_lobby_page);
+            push_menu_page(menu_lobby_page);
         } else if (js_event_type == 'JsEventGameStarted') {
             close_menu();
         } else if (js_event_type == 'JsEventGameOver') {
@@ -866,7 +864,15 @@ function hide_menu_pages(execute_on_hide = true) {
     }
 }
 
-function show_menu_page(page) {
+function push_menu_page(page) {
+    menu_page_stack.push(page);
+    hide_menu_pages();
+    page.style.display = 'block';
+}
+
+function pop_menu_page() {
+    menu_page_stack.pop();
+    const page = menu_page_stack.at(-1) || menu_start_page;
     hide_menu_pages();
     page.style.display = 'block';
 }
@@ -876,22 +882,18 @@ function close_menu() {
     menu_dialog.close();
 }
 
-function show_start_page() {
-    show_menu_page(menu_start_page);
-}
-
 function init_menu() {
     const search_params = new URLSearchParams(window.location.search);
     const contest_id = search_params.get(SearchParams.contest_id);
     hide_menu_pages(false);
     menu_dialog.showModal();
     if (contest_id) {
-        show_menu_page(menu_join_contest_page);
+        push_menu_page(menu_join_contest_page);
         jc_contest_id.value = contest_id;
         jc_player_name.value = window.localStorage.getItem(Storage.player_name);
         jc_player_name.focus();
     } else {
-        show_menu_page(menu_start_page);
+        pop_menu_page();  // will show start page by default
     }
 }
 
@@ -1016,19 +1018,19 @@ function go_to_suburl(event) {
 }
 
 function on_create_contest_submenu(event) {
-    show_menu_page(menu_create_contest_page);
+    push_menu_page(menu_create_contest_page);
     cc_player_name.value = window.localStorage.getItem(Storage.player_name);
     cc_player_name.focus();
 }
 
 function on_join_contest_submenu(event) {
-    show_menu_page(menu_join_contest_page);
+    push_menu_page(menu_join_contest_page);
     jc_player_name.value = window.localStorage.getItem(Storage.player_name);
     jc_contest_id.focus();
 }
 
 function on_about(event) {
-    show_menu_page(menu_about_page);
+    push_menu_page(menu_about_page);
 }
 
 function on_create_contest_confirm(event) {

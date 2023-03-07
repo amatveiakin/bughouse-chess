@@ -176,6 +176,7 @@ body.symmetric #page {
   width: 100%;
   display: flex;
   flex-direction: row;
+  justify-content: space-between;
   gap: 0.5em;
 }
 .flex-equisized {
@@ -730,6 +731,10 @@ dialog button:active {
   height: 2em;
   width: 2em;
   border-radius: 0.3em;
+}
+.back-button.back-button-large {
+  padding: 0 0.6em;
+  width: unset;
 }
 
 dialog select, dialog input {

@@ -222,7 +222,7 @@
 
       <form id="menu-create-contest-page" class="menu-page" action="javascript:;">
         <div class="align-left">
-          <button type="button" id="cc-back-button" class="back-button" title="Go back">🡨</button>
+          <button type="button" class="back-button" title="Go back">🡨</button>
         </div>
         <div class="menu-page-body">
           <!-- `pattern` and `maxlength` must be in sync with join contest player name field and with `is_valid_player_name` -->
@@ -409,7 +409,7 @@
 
       <form id="menu-join-contest-page" class="menu-page" action="javascript:;">
         <div class="align-left">
-          <button type="button" id="jc-back-button" class="back-button" title="Go back">🡨</button>
+          <button type="button" class="back-button" title="Go back">🡨</button>
         </div>
         <div class="menu-page-body">
           <label for="jc-contest-id">Contest ID</label>
@@ -434,7 +434,7 @@
 
       <div id="menu-about-page" class="menu-page">
         <div class="align-left">
-          <button type="button" id="about-back-button" class="back-button" title="Go back">🡨</button>
+          <button type="button" class="back-button" title="Go back">🡨</button>
         </div>
         <div id="about-text" class="scrollable">
           <p>
@@ -491,7 +491,10 @@
       </div>
 
       <div id="menu-lobby-page" class="menu-page">
-        <div id="lobby-contest">Contest <span id="lobby-contest-id"></span></div>
+        <div class="flex-row">
+          <div id="lobby-contest">Contest <span id="lobby-contest-id"></span></div>
+          <button type="button" class="back-button back-button-large" title="Go back">Leave</button>
+        </div>
         <div id="lobby-rules"></div>
         <hr>
         <div id="lobby-participants"></div>
