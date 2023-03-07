@@ -230,12 +230,12 @@ document.addEventListener('paste', on_paste);
 const command_input = document.getElementById('command');
 command_input.addEventListener('keydown', on_command_keydown);
 
-ready_button.addEventListener('click', function() { execute_command('/ready'); });
+ready_button.addEventListener('click', () => execute_command('/ready'));
 resign_button.addEventListener('click', request_resign);
-export_button.addEventListener('click', function() { execute_command('/save'); });
+export_button.addEventListener('click', () => execute_command('/save'));
 volume_button.addEventListener('click', next_volume);
 
-menu_dialog.addEventListener('cancel', function(event) { event.preventDefault(); });
+menu_dialog.addEventListener('cancel', (event) => event.preventDefault());
 create_contest_button.addEventListener('click', on_create_contest_submenu);
 join_contest_button.addEventListener('click', on_join_contest_submenu);
 about_button.addEventListener('click', on_about);
@@ -640,7 +640,7 @@ function set_up_drag_and_drop() {
 
     for (const board of ['primary', 'secondary']) {
         const svg = document.getElementById(`board-${board}`);
-        svg.addEventListener('contextmenu', function(event) { cancel_preturn(event, board); });
+        svg.addEventListener('contextmenu', (event) => cancel_preturn(event, board));
     }
     document.addEventListener('contextmenu', cancel_drag);
 
@@ -807,7 +807,7 @@ function set_up_chalk_drawing() {
         svg.addEventListener('mouseup', mouse_up);
         svg.addEventListener('mouseleave', mouse_leave);
         svg.addEventListener('click', mouse_click);
-        svg.addEventListener('contextmenu', function(event) { event.preventDefault(); });
+        svg.addEventListener('contextmenu', (event) => event.preventDefault());
     }
 }
 
@@ -933,7 +933,7 @@ function simple_dialog(message, buttons) {
         dialog.appendChild(button_box);
         // Delay `showModal`. If it's called directly, then the dialog gets `Enter` key press if it
         // was the trigger, e.g. if the dialog displays an error processing command line instruction.
-        setTimeout(function() { dialog.showModal(); });
+        setTimeout(() => dialog.showModal());
     });
 }
 
