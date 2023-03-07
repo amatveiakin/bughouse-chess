@@ -26,6 +26,11 @@ pub enum BughouseServerRejection {
         player_name: String,
         reason: String,
     },
+    // Registered user kicked out of a contest, because they joined in another client (e.g. another
+    // browser tab). We never send this for guest users, because we cannot be sure if it's them or not.
+    JoinedInAnotherClient,
+    // Guest user kicked out of a contest, because a registered user with the same name has joined.
+    NameClashWithRegisteredUser,
     // Server is shutting down for maintenance.
     ShuttingDown,
     // Internal error. Should be investigated.

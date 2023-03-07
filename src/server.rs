@@ -204,6 +204,12 @@ impl Clients {
             }
         }
     }
+
+    fn find_participant(&self, participant_id: ParticipantId) -> Option<ClientId> {
+        self.map.iter().find_map(
+            |(&id, c)| if c.participant_id == Some(participant_id) { Some(id) } else { None }
+        )
+    }
 }
 
 impl ops::Index<ClientId> for Clients {
@@ -671,14 +677,22 @@ impl Contest {
         if let Some(ref game_state) = self.game_state {
             let existing_participant_id = self.participants.find_by_name(&player_name);
             if let Some(existing_participant_id) = existing_participant_id {
-                let existing_client_id = ctx.clients.map.iter().find_map(
-                    |(&id, c)| if c.participant_id == Some(existing_participant_id) { Some(id) } else { None }
-                );
-                if let Some(existing_client_id) = existing_client_id {
-                    if ctx.clients[existing_client_id].connection_monitor.status(now) == PassiveConnectionStatus::Healthy {
-                        return Err(BughouseServerRejection::PlayerAlreadyExists{ player_name });
-                    } else {
+                if let Some(existing_client_id) = ctx.clients.find_participant(existing_participant_id) {
+                    // TODO(accounts): Set `is_registered_user` and `is_existing_user_registered`.
+                    let is_registered_user = false;
+                    let is_existing_user_registered = false;
+                    // If both users are registered and have the same user name, then we know for sure
+                    // this is the same user. If both are guests, we can only guess. There is no way to
+                    // be certain, because guest accounts are inherently non-exclusive.
+                    let both_registered = is_registered_user && is_existing_user_registered;
+                    let both_guests = !is_registered_user && !is_existing_user_registered;
+                    if both_registered {
+                        ctx.clients[existing_client_id].send_rejection(BughouseServerRejection::JoinedInAnotherClient);
                         ctx.clients.remove_client(existing_client_id);
+                    } else if both_guests && !ctx.clients[existing_client_id].connection_monitor.status(now).is_healthy() {
+                        ctx.clients.remove_client(existing_client_id);
+                    } else {
+                        return Err(BughouseServerRejection::PlayerAlreadyExists{ player_name });
                     }
                 } else {
                     if !matches!(execution, Execution::Running) {
@@ -708,9 +722,26 @@ impl Contest {
             ctx.clients[client_id].send(BughouseServerEvent::ChalkboardUpdated{ chalkboard });
             Ok(())
         } else {
-            // TODO: Allow to kick players from the lobby when the old client is offline (even temporary).
-            if self.participants.find_by_name(&player_name).is_some() {
-                return Err(BughouseServerRejection::PlayerAlreadyExists{ player_name });
+            let existing_participant_id = self.participants.find_by_name(&player_name);
+            if let Some(existing_participant_id) = existing_participant_id {
+                if let Some(existing_client_id) = ctx.clients.find_participant(existing_participant_id) {
+                    // TODO(accounts): Set `is_registered_user` and `is_existing_user_registered`.
+                    let is_registered_user = false;
+                    if is_registered_user {
+                        let is_existing_user_registered = false;
+                        let rejection = if is_existing_user_registered {
+                            BughouseServerRejection::JoinedInAnotherClient  // this is us
+                        } else {
+                            BughouseServerRejection::NameClashWithRegisteredUser
+                        };
+                        ctx.clients[existing_client_id].send_rejection(rejection);
+                        ctx.clients.remove_client(existing_client_id);
+                    } else if !ctx.clients[existing_client_id].connection_monitor.status(now).is_healthy() {
+                        ctx.clients.remove_client(existing_client_id);
+                    } else {
+                        return Err(BughouseServerRejection::PlayerAlreadyExists{ player_name });
+                    }
+                }
             }
             if let Err(reason) = ctx.helpers.validate_player_name(&player_name) {
                 return Err(BughouseServerRejection::InvalidPlayerName{ player_name, reason });

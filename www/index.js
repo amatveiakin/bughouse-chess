@@ -6,6 +6,7 @@ import './main.css';
 import * as wasm from 'bughouse-chess';
 
 import favicon from '../assets/favicon.png';
+import google_logo from '../assets/google-logo.png';
 
 import white_pawn from '../assets/pieces/white-pawn.png';
 import white_knight from '../assets/pieces/white-knight.png';
@@ -90,11 +91,22 @@ const connection_info = document.getElementById('connection-info');
 
 const menu_dialog = document.getElementById('menu-dialog');
 const menu_start_page = document.getElementById('menu-start-page');
+const menu_authorization_page = document.getElementById('menu-authorization-page');
+const menu_login_page = document.getElementById('menu-login-page');
+const menu_signup_page = document.getElementById('menu-signup-page');
 const menu_create_contest_page = document.getElementById('menu-create-contest-page');
 const menu_join_contest_page = document.getElementById('menu-join-contest-page');
 const menu_about_page = document.getElementById('menu-about-page');
 const menu_lobby_page = document.getElementById('menu-lobby-page');
 const menu_pages = document.getElementsByClassName('menu-page');
+
+const logged_in_user_bar = document.getElementById('logged-in-user-bar');
+const guest_user_bar = document.getElementById('guest-user-bar');
+const authorization_button = document.getElementById('authorization-button');
+const log_out_button = document.getElementById('log-out-button');
+const sign_with_google_button = document.getElementById('sign-with-google-button');
+const begin_login_button = document.getElementById('begin-login-button');
+const begin_signup_button = document.getElementById('begin-signup-button');
 
 const create_contest_button = document.getElementById('create-contest-button');
 const join_contest_button = document.getElementById('join-contest-button');
@@ -152,6 +164,7 @@ set_favicon();
 
 const FOG_TILE_SIZE = 1.2;
 load_svg_images([
+    { path: google_logo, symbol: 'google-logo' },
     { path: white_pawn, symbol: 'white-pawn' },
     { path: white_knight, symbol: 'white-knight' },
     { path: white_bishop, symbol: 'white-bishop' },
@@ -200,6 +213,12 @@ let wasm_client_object = make_wasm_client();
 let wasm_client_panicked = false;
 let socket = make_socket();
 
+// Logged in user name.
+// If playing as a registered user, is non-null and coincides with player name.
+// If playing as a guest, is null.
+let user_name = null;
+update_account_info();
+
 let audio_context = null;
 
 // Parameters and data structures for the audio logic. Our goal is to make short and
@@ -235,9 +254,16 @@ export_button.addEventListener('click', () => execute_command('/save'));
 volume_button.addEventListener('click', next_volume);
 
 menu_dialog.addEventListener('cancel', (event) => event.preventDefault());
+authorization_button.addEventListener('click', () => push_menu_page(menu_authorization_page));
+log_out_button.addEventListener('click', test_logout);
+sign_with_google_button.addEventListener('click',  sign_with_google);
+begin_login_button.addEventListener('click',  () => push_menu_page(menu_login_page));
+begin_signup_button.addEventListener('click',  () => push_menu_page(menu_signup_page));
+menu_login_page.addEventListener('submit', test_login);
+menu_signup_page.addEventListener('submit', test_signup);
 create_contest_button.addEventListener('click', on_create_contest_submenu);
 join_contest_button.addEventListener('click', on_join_contest_submenu);
-about_button.addEventListener('click', on_about);
+about_button.addEventListener('click', () => push_menu_page(menu_about_page));
 menu_create_contest_page.addEventListener('submit', on_create_contest_confirm);
 menu_join_contest_page.addEventListener('submit', on_join_contest_confirm);
 
@@ -269,6 +295,15 @@ function with_error_handling(f) {
             command_result.innerText = e.msg;
         } else if (e?.constructor?.name == 'IgnorableError') {
             ignorable_error_dialog(e.message);
+        } else if (e?.constructor?.name == 'KickedFromContest') {
+            ignorable_error_dialog(e.message);
+            // Need to recreate the socket because server aborts the connection here.
+            // If this turns out to be buggy, could do
+            //   ignorable_error_dialog(e.message).then(() => location.reload());
+            // instead.
+            socket = make_socket();
+            push_menu_page(menu_join_contest_page);
+            menu_dialog.showModal();
         } else if (e?.constructor?.name == 'FatalError') {
             fatal_error_dialog(e.message);
         } else if (e?.constructor?.name == 'RustError') {
@@ -864,6 +899,12 @@ function hide_menu_pages(execute_on_hide = true) {
     }
 }
 
+function reset_menu_to_start_page(page) {
+    menu_page_stack.length = 0;
+    hide_menu_pages();
+    menu_start_page.style.display = 'block';
+}
+
 function push_menu_page(page) {
     menu_page_stack.push(page);
     hide_menu_pages();
@@ -893,7 +934,7 @@ function init_menu() {
         jc_player_name.value = window.localStorage.getItem(Storage.player_name);
         jc_player_name.focus();
     } else {
-        pop_menu_page();  // will show start page by default
+        reset_menu_to_start_page();
     }
 }
 
@@ -940,11 +981,11 @@ function simple_dialog(message, buttons) {
 }
 
 function ignorable_error_dialog(message) {
-    simple_dialog(message, [new MyButton('Ok', MyButton.HIDE)]);
+    return simple_dialog(message, [new MyButton('Ok', MyButton.HIDE)]);
 }
 
 function fatal_error_dialog(message) {
-    simple_dialog(message);
+    return simple_dialog(message);
 }
 
 function make_svg_image(symbol_id, size) {
@@ -1017,6 +1058,68 @@ function go_to_suburl(event) {
     window.open(url, '_blank').focus();
 }
 
+function update_account_info() {
+    const is_registered_user = !!user_name;
+    if (is_registered_user) {
+        logged_in_user_bar.style.display = null;
+        guest_user_bar.style.display = 'None';
+    } else {
+        logged_in_user_bar.style.display = 'None';
+        guest_user_bar.style.display = null;
+    }
+    for (const node of document.querySelectorAll('.logged-in-as-account')) {
+        node.classList.toggle('account-user', is_registered_user);
+        node.classList.toggle('account-guest', !is_registered_user);
+        node.textContent = is_registered_user ? user_name : 'Guest';
+    }
+    for (const node of document.querySelectorAll('.guest-player-name')) {
+        node.style.display = is_registered_user ? 'None' : null;
+    }
+}
+
+async function test_signup(event) {
+    const data = new FormData(event.target);
+    if (data.get('password') != data.get('confirm-password')) {
+        ignorable_error_dialog('Passwords do not match!');
+        return;
+    }
+    if (!data.get('email')) {
+        const ret = await simple_dialog(
+            'Without an email you will not be able to restore your account ' +
+            'if you forget your password. Continue?',
+            [
+                new MyButton('Go back', MyButton.HIDE),
+                new MyButton('Proceed without email', MyButton.DO),
+            ]
+        );
+        if (ret != MyButton.DO) {
+            return;
+        }
+    }
+    // TODO(accounts): Actually sign up.
+    user_name = data.get('user-name');
+    update_account_info();
+    reset_menu_to_start_page();
+}
+
+function sign_with_google(event) {
+    location.href = '/auth/login';
+}
+
+function test_login(event) {
+    const data = new FormData(event.target);
+    // TODO(accounts): Actually log in.
+    user_name = data.get('user-name');
+    update_account_info();
+    reset_menu_to_start_page();
+}
+
+function test_logout(event) {
+    // TODO(accounts): Actually log out.
+    user_name = null;
+    update_account_info();
+}
+
 function on_create_contest_submenu(event) {
     push_menu_page(menu_create_contest_page);
     cc_player_name.value = window.localStorage.getItem(Storage.player_name);
@@ -1027,10 +1130,6 @@ function on_join_contest_submenu(event) {
     push_menu_page(menu_join_contest_page);
     jc_player_name.value = window.localStorage.getItem(Storage.player_name);
     jc_contest_id.focus();
-}
-
-function on_about(event) {
-    push_menu_page(menu_about_page);
 }
 
 function on_create_contest_confirm(event) {

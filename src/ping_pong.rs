@@ -51,6 +51,12 @@ pub enum ActiveConnectionStatus {
     SendPing,
 }
 
+impl PassiveConnectionStatus {
+    pub fn is_healthy(self) -> bool {
+        self == PassiveConnectionStatus::Healthy
+    }
+}
+
 impl PassiveConnectionMonitor {
     pub fn new(now: Instant) -> Self {
         PassiveConnectionMonitor {

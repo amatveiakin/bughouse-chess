@@ -160,6 +160,9 @@ body.symmetric #page {
 #command { grid-area: command; }
 #button-panel { grid-area: button-panel; }
 
+.inline-block {
+  display: inline-block;
+}
 .align-left {
   width: 100%;
   text-align: left;
@@ -177,7 +180,13 @@ body.symmetric #page {
   display: flex;
   flex-direction: row;
   justify-content: space-between;
+  align-items: center;
   gap: 0.5em;
+}
+.flex-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 .flex-equisized {
   flex-basis: 0;
@@ -600,7 +609,7 @@ dialog ::-webkit-scrollbar-thumb {
 
 .tooltip {
   position: relative;
-  display: flex;
+  display: inline-flex;
   justify-content: center;
   align-items: center;
   text-align: center;
@@ -612,7 +621,7 @@ dialog ::-webkit-scrollbar-thumb {
   visibility: hidden;
   text-align: initial;
   font-size: 90%;
-  width: 15em;
+  width: 18em;
   background-color: var(--color-dialog-tooltip);
   padding: 0 1em;
   border-radius: 0.5em;
@@ -622,6 +631,7 @@ dialog ::-webkit-scrollbar-thumb {
   left: 100%;
   margin-left: 1.8em;
   opacity: 0;
+  box-shadow: 0.1em 0.1em 0.3em #00000080;
   transition: opacity .3s;
   transform: translate(0, -50%) translate(0, 2em);
 }
@@ -750,15 +760,32 @@ dialog select, dialog input {
   background-color: #f0e8dc;
 }
 
-/* The point of `:not(:placeholder-shown)` is to not make the cursor red if the input field is blank.
+/* Filter by `[type=text]` to avoid highlighting short passwords.
+   The point of `:not(:placeholder-shown)` is to not make the cursor red if the input field is blank.
    Here `:placeholder-shown` is an emptiness marker. Could switch to `:blank` if it's standardized. */
-dialog input:invalid:not(:placeholder-shown) {
+dialog input[type=text]:invalid:not(:placeholder-shown) {
   color: red;
 }
 
 #jc-contest-id:not(:placeholder-shown) {
   /* This is of course a purely visual change. Actual input should be uppercased in JS. */
   text-transform: uppercase;
+}
+
+#google-logo {
+  height: 1em;
+  filter: url(#google-logo-shadow);
+  margin-right: 0.2em;
+  transform: translateY(0.1em);
+}
+.logged-in-as-prefix {
+  font-size: 80%;
+}
+.account-guest {
+  font-style: italic;
+}
+.account-user {
+  font-weight: bold;
 }
 
 #about-text {
@@ -781,7 +808,7 @@ dialog input:invalid:not(:placeholder-shown) {
   min-width: 10em;
   font-size: 110%;
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto;
   column-gap: 0.5em;
   row-gap: 0.5em;
   align-items: center;
@@ -844,6 +871,10 @@ dialog input:invalid:not(:placeholder-shown) {
 .lobby-icon {
   width: 2em;
   height: 2em;
+}
+.lobby-icon.registered-user-icon {
+  width: 1em;
+  height: 1em;
 }
 .lobby-name.lobby-me {
   text-shadow: -0.05em -0.05em 0.1em #ffffff40, 0.05em 0.05em 0.1em #00000040;

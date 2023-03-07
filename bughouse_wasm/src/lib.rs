@@ -83,6 +83,9 @@ pub struct RustError { pub message: String }
 pub struct IgnorableError { pub message: String }
 
 #[wasm_bindgen(getter_with_clone)]
+pub struct KickedFromContest { pub message: String }
+
+#[wasm_bindgen(getter_with_clone)]
 pub struct FatalError { pub message: String }
 
 macro_rules! rust_error {
@@ -550,6 +553,7 @@ impl WebClient {
         self.state.process_server_event(server_event).map_err(|err| {
             match err {
                 EventError::IgnorableError(message) => IgnorableError{ message }.into(),
+                EventError::KickedFromContest(message) => KickedFromContest{ message }.into(),
                 EventError::FatalError(message) => FatalError{ message }.into(),
                 EventError::InternalEvent(message) => rust_error!("{message}"),
             }
@@ -1129,6 +1133,21 @@ fn add_lobby_participant_node(p: &Participant, is_me: bool, parent: &web_sys::El
     let add_relation_class = |node: &web_sys::Element| {
         node.class_list().add_1(if is_me { "lobby-me" } else { "lobby-other" })
     };
+    {
+        // TODO(accounts): Set `is_registered_user`.
+        let is_registered_user = false;
+        let registered_user_node = match is_registered_user {
+            false => make_menu_icon(&[])?,
+            true => make_menu_icon(&["registered-user"])?,
+        };
+        registered_user_node.class_list().add_1("registered-user-icon")?;
+        if is_registered_user {
+            let title_node = document.create_svg_element("title")?;
+            title_node.set_text_content(Some("This is a registered user account."));
+            registered_user_node.append_child(&title_node)?;
+        }
+        parent.append_child(&registered_user_node)?;
+    }
     {
         let name_node = document.create_element("div")?;
         name_node.set_attribute("class", "lobby-name")?;

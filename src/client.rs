@@ -47,6 +47,8 @@ pub enum NotableEvent {
 pub enum EventError {
     // An action has failed. Inform the user and continue.
     IgnorableError(String),
+    // The client has been kicked from the contest, but can rejoin.
+    KickedFromContest(String),
     // The client cannot continue operating, but *not* an internal error.
     FatalError(String),
     // Internal logic error. Should be debugged (or demoted). Could be ignored for now.
@@ -343,40 +345,56 @@ impl ClientState {
 
     // Improvement potential: Split into functions like `CoreServerState.on_client_event` does.
     pub fn process_server_event(&mut self, event: BughouseServerEvent) -> Result<(), EventError> {
+        // TODO: Fix the messages containing "browser tab" for the console client.
         use BughouseServerEvent::*;
         let now = Instant::now();
         match event {
             Rejection(rejection) => {
-                match rejection {
+                let error = match rejection {
+                    BughouseServerRejection::NoSuchContest{ contest_id } => {
+                        EventError::IgnorableError(format!(
+                            "Contest {contest_id} does not exist."
+                        ))
+                    },
                     BughouseServerRejection::PlayerAlreadyExists{ player_name } => {
-                        // TODO: Fix the message ("browser tab" part) for the console client.
-                        return Err(EventError::IgnorableError(format!("\
+                        EventError::IgnorableError(format!("\
                             Cannot join: player {player_name} already exists. If this is you, \
                             make sure you are not connected to the same game in another browser tab. \
                             If you still can't connect, please try again in a few seconds.\
-                        ")));
+                        "))
                     },
                     BughouseServerRejection::InvalidPlayerName{ player_name, reason } => {
-                        return Err(EventError::IgnorableError(format!(
+                        EventError::IgnorableError(format!(
                             "Name {player_name} is invalid: {reason}"
-                        )));
+                        ))
                     },
-                    BughouseServerRejection::NoSuchContest{ contest_id } => {
-                        return Err(EventError::IgnorableError(format!(
-                            "Contest {contest_id} does not exist."
-                        )));
+                    BughouseServerRejection::JoinedInAnotherClient => {
+                        EventError::KickedFromContest("\
+                            You have joined the contest in another browser tab. Only one tab per \
+                            contest can be active at a time.
+                        ".to_owned())
+                    },
+                    BughouseServerRejection::NameClashWithRegisteredUser => {
+                        EventError::KickedFromContest("\
+                            A registered user with the same name has joined. Registered users have \
+                            priority over name selection. Please choose another name and join again.
+                        ".to_owned())
                     },
                     BughouseServerRejection::ShuttingDown => {
-                        return Err(EventError::FatalError("\
+                        EventError::FatalError("\
                             The server is shutting down for maintenance. \
                             We'll be back soon (usually within 15 minutes). \
                             Please come back later!\
-                        ".to_owned()));
+                        ".to_owned())
                     },
                     BughouseServerRejection::UnknownError{ message } => {
-                        return Err(internal_error!("Got error from server: {}", message));
+                        internal_error!("Got error from server: {}", message)
                     },
+                };
+                if matches!(error, EventError::KickedFromContest(_)) {
+                    self.contest_state = ContestState::NotConnected;
                 }
+                return Err(error);
             },
             UpdateSession { session } => {
                 self.session = session;
