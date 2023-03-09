@@ -1,4 +1,5 @@
 // TODO: streaming support + APIs.
+use itertools::Itertools;
 use tide::http::Mime;
 use tide::{Request, Response, StatusCode};
 use tide_jsx::*;
@@ -460,21 +461,9 @@ fn format_timestamp_date_and_time(maybe_ts: Option<OffsetDateTime>) -> Option<(S
 }
 
 fn keep_last_point_per_date(points: &mut Vec<RawStats>) {
-    if points.is_empty() {
-        return;
-    }
-    let n = points.len();
-    let mut j = 0;
-    let mut prev_date = None;
-    for i in 1..n {
-        let date = points[i].last_update.map(OffsetDateTime::date);
-        if prev_date.is_some() && date != prev_date {
-            points[j] = points[i - 1];
-            j += 1;
-        }
-        prev_date = date;
-    }
-    points[j] = *points.last().unwrap();
-    j += 1;
-    points.truncate(j);
+    *points = points.into_iter()
+      .filter(|p| p.last_update.is_some())
+      .group_by(|p| p.last_update.unwrap().date()).into_iter()
+      .map(|(_, group)| *group.last().unwrap())
+      .collect();
 }
