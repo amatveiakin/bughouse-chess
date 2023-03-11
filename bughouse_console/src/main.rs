@@ -33,6 +33,8 @@ mod game_stats;
 mod history_graphs;
 mod http_server_state;
 mod persistence;
+mod private_database;
+mod private_persistence;
 mod prod_server_helpers;
 mod server_main;
 mod session_store;
@@ -70,6 +72,8 @@ fn main() -> io::Result<()> {
                 .about("Run as server")
                 .arg(arg!(--"sqlite-db" [DB] "Path to an sqlite database file"))
                 .arg(arg!(--"postgres-db" [DB] "Address of a postgres database"))
+                .arg(arg!(--"private-sqlite-db" [DB] "Path to the private sqlite database file"))
+                .arg(arg!(--"private-postgres-db" [DB] "Address of the private postgres database"))
                 .arg(arg!(--"auth" [AUTH_OPTION] "Either NoAuth or Google. The latter enables authentication using Google OAuth2. Reads GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env variables"))
                 .arg(arg!(--"auth-callback-is-https" "Upgrade the auth callback address to https. This can be useful when the server is behind a https proxy such as Apache."))
                 .arg(arg!(--"enable-sessions" "Whether to enable the tide session middleware."))
@@ -94,6 +98,7 @@ fn main() -> io::Result<()> {
         Some(("server", sub_matches)) => {
             server_main::run(server_main::ServerConfig {
                 database_options: database_options_from_args(sub_matches),
+                private_database_options: DatabaseOptions::NoDatabase,
                 auth_options: server_main::AuthOptions::NoAuth,
                 session_options: server_main::SessionOptions::NoSessions,
                 static_content_url_prefix: String::new(),
@@ -119,6 +124,7 @@ fn main() -> io::Result<()> {
                 .unwrap_or(String::new());
             async_server_main::run(server_main::ServerConfig {
                 database_options: database_options_from_args(sub_matches),
+                private_database_options: private_database_options_from_args(sub_matches),
                 auth_options,
                 session_options,
                 static_content_url_prefix,
@@ -131,7 +137,7 @@ fn main() -> io::Result<()> {
                 contest_id: sub_matches.get_one::<String>("contest_id").unwrap().clone(),
                 player_name: sub_matches.get_one::<String>("player_name").unwrap().clone(),
             })
-        },
+        }
         Some(("stress-test", sub_matches)) => {
             stress_test::run(stress_test::StressTestConfig {
                 target: sub_matches.get_one::<String>("target").unwrap().clone(),
@@ -142,10 +148,19 @@ fn main() -> io::Result<()> {
 }
 
 fn database_options_from_args(args: &clap::ArgMatches) -> DatabaseOptions {
-    match (
+    database_options(
         args.get_one::<String>("sqlite-db"),
-        args.get_one::<String>("postgres-db"),
-    ) {
+        args.get_one::<String>("postgres-db"))
+}
+
+fn private_database_options_from_args(args: &clap::ArgMatches) -> DatabaseOptions {
+    database_options(
+        args.get_one::<String>("private-sqlite-db"),
+        args.get_one::<String>("private-postgres-db"))
+}
+
+fn database_options(sqlite: Option<&String>, postgres: Option<&String>) -> DatabaseOptions {
+    match (sqlite, postgres) {
         (None, None) => DatabaseOptions::NoDatabase,
         (Some(_), Some(_)) => panic!("Sqlite and postgres can not be specified simultanously."),
         (Some(db), None) => DatabaseOptions::Sqlite(db.clone()),

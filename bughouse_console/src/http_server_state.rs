@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use http_types::StatusCode;
 
+use crate::private_persistence::PrivateDatabaseRW;
 use crate::session_store::{SessionId, SessionStore};
 
 pub struct HttpServerStateImpl<DB> {
@@ -9,6 +10,7 @@ pub struct HttpServerStateImpl<DB> {
     pub sessions_enabled: bool,
     pub auth_callback_is_https: bool,
     pub db: DB,
+    pub private_db: Box<dyn PrivateDatabaseRW>,
     pub static_content_url_prefix: String,
     pub session_store: Mutex<SessionStore>,
 }
