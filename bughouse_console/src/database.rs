@@ -35,7 +35,7 @@ impl DatabaseReader for UnimplementedDatabase {
 }
 
 pub struct SqlxDatabase<DB: sqlx::Database> {
-    pool: sqlx::Pool<DB>,
+    pub pool: sqlx::Pool<DB>,
 }
 
 impl<DB: sqlx::Database> Clone for SqlxDatabase<DB> {
@@ -173,7 +173,7 @@ where
     }
 }
 
-trait HasRowidColumnDefinition {
+pub trait HasRowidColumnDefinition {
     const ROWID_COLUMN_DEFINITION: &'static str;
 }
 
