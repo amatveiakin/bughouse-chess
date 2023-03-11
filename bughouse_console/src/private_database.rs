@@ -120,29 +120,7 @@ where
 }
 
 #[async_trait]
-impl<DB> PrivateDatabaseRW for SqlxDatabase<DB>
-where
-    DB: sqlx::Database + HasRowidColumnDefinition,
-    String: Type<DB> + for<'q> Encode<'q, DB>,
-    Option<String>: Type<DB> + for<'q> Encode<'q, DB>,
-    i64: Type<DB> + for<'q> Encode<'q, DB>,
-    Option<i64>: Type<DB> + for<'q> Encode<'q, DB>,
-    OffsetDateTime: Type<DB> + for<'q> Encode<'q, DB> + for<'q> sqlx::Decode<'q, DB>,
-    Option<OffsetDateTime>: Type<DB> + for<'q> Encode<'q, DB>,
-    bool: Type<DB> + for<'q> Encode<'q, DB>,
-    for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
-    for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
-    for<'q> i64: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
-    for<'q> String: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
-    for<'q> bool: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
-    for<'q> OffsetDateTime: sqlx::Type<DB> + sqlx::Encode<'q, DB>,
-    for<'q> PrimitiveDateTime: sqlx::Type<DB> + sqlx::Decode<'q, DB>,
-    for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
-    for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
-    for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
-    usize: sqlx::ColumnIndex<DB::Row>,
-{
-}
+impl<D: PrivateDatabaseReader + PrivateDatabaseWriter + Send + Sync> PrivateDatabaseRW for D {}
 
 #[async_trait]
 impl PrivateDatabaseReader for UnimplementedDatabase {
@@ -180,6 +158,3 @@ impl PrivateDatabaseWriter for UnimplementedDatabase {
         ))
     }
 }
-
-#[async_trait]
-impl PrivateDatabaseRW for UnimplementedDatabase {}
