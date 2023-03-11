@@ -1,4 +1,3 @@
-use log::error;
 use sqlx::prelude::*;
 use tide::utils::async_trait;
 use time::{OffsetDateTime, PrimitiveDateTime};
@@ -52,7 +51,7 @@ where
             .ok_or(anyhow::Error::msg("failed to parse registration method"))?,
         })
     }
-    async fn account_by_user_name(&self, user_name: &str) -> Result<Account, anyhow::Error> {
+    async fn account_by_user_name(&self, _user_name: &str) -> Result<Account, anyhow::Error> {
         todo!()
     }
 }
@@ -111,8 +110,8 @@ where
     }
     async fn update_account_txn(
         &self,
-        id: AccountId,
-        f: &(dyn FnOnce(&mut Account) + Send + Sync),
+        _id: AccountId,
+        _f: &(dyn FnOnce(&mut Account) + Send + Sync),
     ) -> anyhow::Result<()> {
         Err(anyhow::Error::msg(
             "create_account is unimplemented in UnimplementedDatabase",
@@ -147,12 +146,12 @@ where
 
 #[async_trait]
 impl PrivateDatabaseReader for UnimplementedDatabase {
-    async fn account_by_email(&self, email: &str) -> Result<Account, anyhow::Error> {
+    async fn account_by_email(&self, _email: &str) -> Result<Account, anyhow::Error> {
         Err(anyhow::Error::msg(
             "account_by_email is unimplemented in UnimplementedDatabase",
         ))
     }
-    async fn account_by_user_name(&self, email: &str) -> Result<Account, anyhow::Error> {
+    async fn account_by_user_name(&self, _user_name: &str) -> Result<Account, anyhow::Error> {
         Err(anyhow::Error::msg(
             "account_by_user_name is unimplemented in UnimplementedDatabase",
         ))
@@ -166,15 +165,15 @@ impl PrivateDatabaseWriter for UnimplementedDatabase {
             "create_table is unimplemented in UnimplementedDatabase",
         ))
     }
-    async fn create_account(&self, account: Account) -> anyhow::Result<()> {
+    async fn create_account(&self, _account: Account) -> anyhow::Result<()> {
         Err(anyhow::Error::msg(
             "create_account is unimplemented in UnimplementedDatabase",
         ))
     }
     async fn update_account_txn(
         &self,
-        id: AccountId,
-        f: &(dyn FnOnce(&mut Account) + Send + Sync),
+        _id: AccountId,
+        _f: &(dyn FnOnce(&mut Account) + Send + Sync),
     ) -> anyhow::Result<()> {
         Err(anyhow::Error::msg(
             "create_account is unimplemented in UnimplementedDatabase",

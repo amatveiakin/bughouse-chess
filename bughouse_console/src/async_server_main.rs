@@ -25,7 +25,7 @@ use crate::database_server_hooks::*;
 use crate::http_server_state::*;
 use crate::network::{self, CommunicationError};
 use crate::persistence::DatabaseReader;
-use crate::private_persistence::{Account, AccountId, PrivateDatabaseRW, RegistrationMethod};
+use crate::private_persistence::PrivateDatabaseRW;
 use crate::prod_server_helpers::ProdServerHelpers;
 use crate::server_main::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
 use crate::session_store::*;
@@ -305,7 +305,7 @@ pub fn run(config: ServerConfig) {
     };
 
     let private_database = make_database(&config.private_database_options).unwrap();
-    async_std::task::block_on(private_database.create_tables()).map_err(|err| {
+    let _ = async_std::task::block_on(private_database.create_tables()).map_err(|err| {
         error!("Failed to create tables: {}", err);
         // Proceed even if table creation failed.
     });
@@ -313,8 +313,8 @@ pub fn run(config: ServerConfig) {
     thread::spawn(move || {
         let mut server_state = ServerState::new(
             clients_copy,
-            Box::new(ProdServerHelpers{}),
-            hooks.map(|h| h as Box<dyn ServerHooks>)
+            Box::new(ProdServerHelpers {}),
+            hooks.map(|h| h as Box<dyn ServerHooks>),
         );
 
         for event in rx {
