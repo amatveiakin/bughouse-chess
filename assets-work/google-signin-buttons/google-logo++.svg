@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="10" height="10" version="1.1" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+ <defs>
+  <filter id="filter2253" color-interpolation-filters="sRGB">
+   <feGaussianBlur result="blur" stdDeviation="0.3 0.3"/>
+  </filter>
+ </defs>
+ <metadata>
+  <rdf:RDF>
+   <cc:Work rdf:about="">
+    <dc:format>image/svg+xml</dc:format>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:title>btn_google_dark_normal_ios</dc:title>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <!-- Generator: Sketch 3.3.3 (12081) - http://www.bohemiancoding.com/sketch -->
+ <title>btn_google_dark_normal_ios</title>
+ <desc>Created with Sketch.</desc>
+ <rect x=".86956" y=".86956" width="8.2609" height="8.2609" rx=".21739" fill="#fff" fill-opacity=".8" filter="url(#filter2253)"/>
+ <g stroke-width="1.2">
+  <path d="m7.2618 5.0535c0-0.16649-0.01494-0.32656-0.042684-0.48024h-2.2112v0.9082h1.2636c-0.054432 0.29347-0.21984 0.54214-0.46849 0.70862v0.58909h0.75876c0.44395-0.40873 0.70007-1.0106 0.70007-1.7256z" fill="#4285f4"/>
+  <path d="m5.0078 7.3478c0.63391 0 1.1654-0.21024 1.5539-0.56882l-0.75876-0.58909c-0.21024 0.14087-0.47916 0.22411-0.79505 0.22411-0.61151 0-1.1291-0.413-1.3138-0.96796h-0.78438v0.60829c0.38632 0.76733 1.1803 1.2935 2.0981 1.2935z" fill="#34a853"/>
+  <path d="m3.6941 5.446c-0.046956-0.14087-0.073636-0.29134-0.073636-0.44609s0.026676-0.30522 0.073632-0.44609v-0.60829h-0.78438c-0.15901 0.31696-0.24972 0.67553-0.24972 1.0544s0.090708 0.73742 0.24972 1.0544z" fill="#fbbc05"/>
+  <path d="m5.0078 3.586c0.34471 0 0.65418 0.11845 0.89753 0.35111l0.6734-0.6734c-0.4066-0.37886-0.93806-0.61151-1.5709-0.61151-0.9178 0-1.7118 0.52613-2.0981 1.2935l0.78438 0.60829c0.18462-0.55495 0.7022-0.96796 1.3138-0.96796z" fill="#ea4335"/>
+ </g>
+</svg>

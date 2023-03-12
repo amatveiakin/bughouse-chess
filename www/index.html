@@ -70,9 +70,8 @@
             sodipodi:nodetypes="cccccccccc" />
         </symbol>
 
-        <filter id="google-logo-shadow">
-          <feDropShadow dx=-0.5 dy=-0.5 stdDeviation=1 flood-color="#000000" flood-opacity=0.5 />
-          <feDropShadow dx=0.5 dy=0.5 stdDeviation=1 flood-color="#ffffff" flood-opacity=0.5 />
+        <filter id="google-logo-background">
+          <feGaussianBlur result="blur" stdDeviation="0.2 0.2"/>
         </filter>
         <filter id="icon-shadow">
           <feDropShadow dx=0 dy=0 stdDeviation=0.5 flood-color="#c4dc5c" flood-opacity=1 />
@@ -267,15 +266,18 @@
             <button type="button" class="back-button" title="Go back">🡨</button>
           </div>
           <button id="sign-with-google-button" class="big-button">
-            <svg id="google-logo" viewBox="0 0 186.69 190.5" xmlns="http://www.w3.org/2000/svg">
-              <g transform="translate(1184.6 765.17)">
-                <path d="m-1089.3-687.24v36.888h51.262c-2.251 11.863-9.006 21.908-19.137 28.662l30.913 23.986c18.011-16.625 28.402-41.044 28.402-70.052 0-6.754-0.606-13.249-1.732-19.483z" fill="#4285f4"/>
-                <path d="m-1142.7-651.79-6.972 5.337-24.679 19.223c15.673 31.086 47.796 52.561 85.03 52.561 25.717 0 47.278-8.486 63.038-23.033l-30.913-23.986c-8.486 5.715-19.31 9.179-32.125 9.179-24.765 0-45.806-16.712-53.34-39.226z" fill="#34a853"/>
-                <path d="m-1174.4-712.61c-6.494 12.815-10.217 27.276-10.217 42.689s3.723 29.874 10.217 42.689c0 0.086 31.693-24.592 31.693-24.592-1.905-5.715-3.031-11.776-3.031-18.098s1.126-12.383 3.031-18.098z" fill="#fbbc05"/>
-                <path d="m-1089.3-727.24c14.028 0 26.497 4.849 36.455 14.201l27.276-27.276c-16.539-15.413-38.013-24.852-63.731-24.852-37.234 0-69.359 21.388-85.032 52.561l31.692 24.592c7.533-22.514 28.575-39.226 53.34-39.226z" fill="#ea4335"/>
-              </g>
-            </svg>
-            Sign with Google
+            <div class="flex-row">
+              <svg id="google-logo" viewBox="0 0 10 10">
+                <rect x=".86956" y=".86956" width="8.2609" height="8.2609" rx="1.5" fill="#fff" fill-opacity=".85" filter="url(#google-logo-background)"/>
+                <g>
+                 <path d="m7.2618 5.0535c0-0.16649-0.01494-0.32656-0.042684-0.48024h-2.2112v0.9082h1.2636c-0.054432 0.29347-0.21984 0.54214-0.46849 0.70862v0.58909h0.75876c0.44395-0.40873 0.70007-1.0106 0.70007-1.7256z" fill="#4285f4"/>
+                 <path d="m5.0078 7.3478c0.63391 0 1.1654-0.21024 1.5539-0.56882l-0.75876-0.58909c-0.21024 0.14087-0.47916 0.22411-0.79505 0.22411-0.61151 0-1.1291-0.413-1.3138-0.96796h-0.78438v0.60829c0.38632 0.76733 1.1803 1.2935 2.0981 1.2935z" fill="#34a853"/>
+                 <path d="m3.6941 5.446c-0.046956-0.14087-0.073636-0.29134-0.073636-0.44609s0.026676-0.30522 0.073632-0.44609v-0.60829h-0.78438c-0.15901 0.31696-0.24972 0.67553-0.24972 1.0544s0.090708 0.73742 0.24972 1.0544z" fill="#fbbc05"/>
+                 <path d="m5.0078 3.586c0.34471 0 0.65418 0.11845 0.89753 0.35111l0.6734-0.6734c-0.4066-0.37886-0.93806-0.61151-1.5709-0.61151-0.9178 0-1.7118 0.52613-2.0981 1.2935l0.78438 0.60829c0.18462-0.55495 0.7022-0.96796 1.3138-0.96796z" fill="#ea4335"/>
+                </g>
+              </svg>
+              <span class="flex-equisized">Sign in with Google</span>
+            </div>
           </button>
           <button id="begin-login-button" class="big-button">Log in</button>
           <button id="begin-signup-button" class="big-button">Sign up</button>

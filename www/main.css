@@ -704,7 +704,7 @@ dialog hr:after {
 
 dialog button {
   display: inline-block;
-  padding: 0.5em 1em;
+  padding: 0.5em 1em;  /* if changed, adjust `translateX` in `#google-logo` */
   margin: 0.35em 0;
   border: 0;
   font-size: 1em;
@@ -775,8 +775,7 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 #google-logo {
   height: 1em;
   filter: url(#google-logo-shadow);
-  margin-right: 0.2em;
-  transform: translateY(0.1em);
+  transform: translateX(-0.4em) scale(200%);
 }
 .logged-in-as-prefix {
   font-size: 80%;

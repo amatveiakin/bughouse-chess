@@ -6,7 +6,6 @@ import './main.css';
 import * as wasm from 'bughouse-chess';
 
 import favicon from '../assets/favicon.png';
-import google_logo from '../assets/google-logo.png';
 
 import white_pawn from '../assets/pieces/white-pawn.png';
 import white_knight from '../assets/pieces/white-knight.png';
@@ -164,7 +163,6 @@ set_favicon();
 
 const FOG_TILE_SIZE = 1.2;
 load_svg_images([
-    { path: google_logo, symbol: 'google-logo' },
     { path: white_pawn, symbol: 'white-pawn' },
     { path: white_knight, symbol: 'white-knight' },
     { path: white_bishop, symbol: 'white-bishop' },
