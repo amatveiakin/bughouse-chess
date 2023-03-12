@@ -49,7 +49,7 @@ pub trait PrivateDatabaseWriter {
     async fn update_account_txn(
         &self,
         id: AccountId,
-        f: &(dyn FnOnce(&mut Account) + Send + Sync),
+        f: Box<dyn for<'a>FnOnce(&'a mut Account) + Send>,
     ) -> anyhow::Result<()>;
 }
 
