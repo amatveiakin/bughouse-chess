@@ -14,11 +14,11 @@ impl RegistrationMethod {
             Self::GoogleOAuth => "GoogleOAuth",
         }.to_owned()
     }
-    pub fn try_from_string(s: String) -> Option<Self> {
+    pub fn try_from_string(s: String) -> anyhow::Result<Self> {
         match s.as_str() {
-            "Password" => Some(Self::Password),
-            "GoogleOAuth" => Some(Self::GoogleOAuth),
-            _ => None,
+            "Password" => Ok(Self::Password),
+            "GoogleOAuth" => Ok(Self::GoogleOAuth),
+            _ => Err(anyhow::Error::msg(format!("failed to parse '{s}' as RegistrationMethod"))),
         }
     }
 }
