@@ -47,8 +47,7 @@ where
             password_hash: row.try_get("password_hash")?,
             registration_method: RegistrationMethod::try_from_string(
                 row.try_get("registration_method")?,
-            )
-            .ok_or(anyhow::Error::msg("failed to parse registration method"))?,
+            )?,
         })
     }
     async fn account_by_user_name(&self, user_name: &str) -> Result<Account, anyhow::Error> {
@@ -79,8 +78,7 @@ where
             password_hash: row.try_get("password_hash")?,
             registration_method: RegistrationMethod::try_from_string(
                 row.try_get("registration_method")?,
-            )
-            .ok_or(anyhow::Error::msg("failed to parse registration method"))?,
+            )?,
         })
     }
 }
@@ -169,8 +167,7 @@ where
             password_hash: row.try_get("password_hash")?,
             registration_method: RegistrationMethod::try_from_string(
                 row.try_get("registration_method")?,
-            )
-            .ok_or(anyhow::Error::msg("failed to parse registration method"))?,
+            )?,
         };
         f(&mut account);
         txn.execute(
