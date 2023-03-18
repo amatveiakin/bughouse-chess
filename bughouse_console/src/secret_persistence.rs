@@ -37,13 +37,13 @@ pub struct Account {
 }
 
 #[async_trait]
-pub trait PrivateDatabaseReader {
+pub trait SecretDatabaseReader {
     async fn account_by_email(&self, email: &str) -> Result<Account, anyhow::Error>;
     async fn account_by_user_name(&self, user_name: &str) -> Result<Account, anyhow::Error>;
 }
 
 #[async_trait]
-pub trait PrivateDatabaseWriter {
+pub trait SecretDatabaseWriter {
     async fn create_tables(&self) -> anyhow::Result<()>;
     async fn create_account(&self, account: Account) -> anyhow::Result<()>;
     async fn update_account_txn(
@@ -54,4 +54,4 @@ pub trait PrivateDatabaseWriter {
 }
 
 #[async_trait]
-pub trait PrivateDatabaseRW: PrivateDatabaseWriter + PrivateDatabaseReader + Send + Sync {}
+pub trait SecretDatabaseRW: SecretDatabaseWriter + SecretDatabaseReader + Send + Sync {}

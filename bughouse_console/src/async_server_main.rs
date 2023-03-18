@@ -25,7 +25,7 @@ use crate::database_server_hooks::*;
 use crate::http_server_state::*;
 use crate::network::{self, CommunicationError};
 use crate::persistence::DatabaseReader;
-use crate::private_persistence::PrivateDatabaseRW;
+use crate::secret_persistence::SecretDatabaseRW;
 use crate::prod_server_helpers::ProdServerHelpers;
 use crate::server_main::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
 use crate::session_store::*;
@@ -137,7 +137,7 @@ async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync +
 fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     config: ServerConfig,
     db: DB,
-    private_db: Box<dyn PrivateDatabaseRW>,
+    secret_db: Box<dyn SecretDatabaseRW>,
     clients: Arc<Mutex<Clients>>,
     tx: mpsc::SyncSender<IncomingEvent>,
 ) {
@@ -152,7 +152,7 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
         google_auth,
         auth_callback_is_https,
         db,
-        private_db,
+        secret_db,
         static_content_url_prefix: config.static_content_url_prefix,
         session_store: Mutex::new(SessionStore::new()),
     }));
@@ -304,8 +304,8 @@ pub fn run(config: ServerConfig) {
         }
     };
 
-    let private_database = make_database(&config.private_database_options).unwrap();
-    let _ = async_std::task::block_on(private_database.create_tables()).map_err(|err| {
+    let secret_database = make_database(&config.secret_database_options).unwrap();
+    let _ = async_std::task::block_on(secret_database.create_tables()).map_err(|err| {
         error!("Failed to create tables: {}", err);
         // Proceed even if table creation failed.
     });
@@ -327,28 +327,28 @@ pub fn run(config: ServerConfig) {
         DatabaseOptions::NoDatabase => run_tide(
             config,
             database::UnimplementedDatabase {},
-            private_database,
+            secret_database,
             clients,
             tx,
         ),
         DatabaseOptions::Sqlite(address) => run_tide(
             config,
             database::SqlxDatabase::<sqlx::Sqlite>::new(&address).unwrap(),
-            private_database,
+            secret_database,
             clients,
             tx,
         ),
         DatabaseOptions::Postgres(address) => run_tide(
             config,
             database::SqlxDatabase::<sqlx::Postgres>::new(&address).unwrap(),
-            private_database,
+            secret_database,
             clients,
             tx,
         ),
     }
 }
 
-fn make_database(options: &DatabaseOptions) -> anyhow::Result<Box<dyn PrivateDatabaseRW>> {
+fn make_database(options: &DatabaseOptions) -> anyhow::Result<Box<dyn SecretDatabaseRW>> {
     Ok(match options {
         DatabaseOptions::NoDatabase => Box::new(database::UnimplementedDatabase {}),
         DatabaseOptions::Sqlite(address) => {

@@ -3,10 +3,10 @@ use tide::utils::async_trait;
 use time::{OffsetDateTime, PrimitiveDateTime};
 
 use crate::database::*;
-use crate::private_persistence::*;
+use crate::secret_persistence::*;
 
 #[async_trait]
-impl<DB> PrivateDatabaseReader for SqlxDatabase<DB>
+impl<DB> SecretDatabaseReader for SqlxDatabase<DB>
 where
     DB: sqlx::Database,
     for<'q> i64: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
@@ -84,7 +84,7 @@ where
 }
 
 #[async_trait]
-impl<DB> PrivateDatabaseWriter for SqlxDatabase<DB>
+impl<DB> SecretDatabaseWriter for SqlxDatabase<DB>
 where
     DB: sqlx::Database + HasRowidColumnDefinition,
     for<'q> String: Type<DB> + Encode<'q, DB> + Decode<'q, DB>,
@@ -194,10 +194,10 @@ where
 }
 
 #[async_trait]
-impl<D: PrivateDatabaseReader + PrivateDatabaseWriter + Send + Sync> PrivateDatabaseRW for D {}
+impl<D: SecretDatabaseReader + SecretDatabaseWriter + Send + Sync> SecretDatabaseRW for D {}
 
 #[async_trait]
-impl PrivateDatabaseReader for UnimplementedDatabase {
+impl SecretDatabaseReader for UnimplementedDatabase {
     async fn account_by_email(&self, _email: &str) -> Result<Account, anyhow::Error> {
         Err(anyhow::Error::msg(
             "account_by_email is unimplemented in UnimplementedDatabase",
@@ -211,7 +211,7 @@ impl PrivateDatabaseReader for UnimplementedDatabase {
 }
 
 #[async_trait]
-impl PrivateDatabaseWriter for UnimplementedDatabase {
+impl SecretDatabaseWriter for UnimplementedDatabase {
     async fn create_tables(&self) -> anyhow::Result<()> {
         Err(anyhow::Error::msg(
             "create_table is unimplemented in UnimplementedDatabase",

@@ -49,7 +49,7 @@ pub enum SessionOptions {
 #[derive(Debug)]
 pub struct ServerConfig {
     pub database_options: DatabaseOptions,
-    pub private_database_options: DatabaseOptions,
+    pub secret_database_options: DatabaseOptions,
     pub auth_options: AuthOptions,
     pub session_options: SessionOptions,
     pub static_content_url_prefix: String,
