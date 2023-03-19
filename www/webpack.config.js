@@ -40,5 +40,8 @@ module.exports = {
     proxy: {
       '/dyn': 'http://127.0.0.1:14361',
     },
+    proxy: {
+      '/auth': 'http://127.0.0.1:14361',
+    },
   },
 };
