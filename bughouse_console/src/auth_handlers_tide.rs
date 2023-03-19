@@ -1,4 +1,4 @@
-use bughouse_chess::session::Session;
+use bughouse_chess::session::{RegistrationMethod, Session, UserInfo, GoogleOAuthRegisteringInfo};
 use tide::StatusCode;
 
 use crate::auth;
@@ -133,7 +133,7 @@ pub async fn handle_session<DB>(req: tide::Request<HttpServerState<DB>>) -> tide
     let callback_url_str = callback_url.as_str().trim_end_matches('?').to_owned();
     println!("{callback_url_str}");
 
-    let user_info = req
+    let email = req
         .state()
         .google_auth
         .as_ref()
@@ -141,19 +141,39 @@ pub async fn handle_session<DB>(req: tide::Request<HttpServerState<DB>>) -> tide
             StatusCode::NotImplemented,
             "Google auth is not enabled.",
         ))?
-        .user_info(callback_url_str, auth_code)
+        .email(callback_url_str, auth_code)
         .await?;
 
+    let account = req
+        .state()
+        .secret_db
+        .account_by_email(&email)
+        .await?;
+
+    let session = match account {
+        None => Session::GoogleOAuthRegistering(GoogleOAuthRegisteringInfo {
+            email
+        }),
+        Some(account) => {
+            if account.registration_method != RegistrationMethod::GoogleOAuth {
+                return Err(tide::Error::from_str(
+                    StatusCode::Forbidden,
+                    "Cannot log in with Google: another authentification method was used during sign-up"
+                ));
+            }
+            Session::LoggedIn(UserInfo {
+                user_name: account.user_name,
+                email: Some(email),
+                registration_method: RegistrationMethod::GoogleOAuth,
+            })
+        },
+    };
+
+    let ret = format!("Session info: \n{:?}", session);
     let session_id = get_session_id(&req)?;
     let mut session_store = req.state().session_store.lock().unwrap();
-    session_store.set(
-        session_id,
-        Session {
-            logged_in: true,
-            user_info: user_info.clone(),
-        },
-    );
-    Ok(format!("You are now logged in. UserInfo: \n{:?}", user_info).into())
+    session_store.set(session_id, session);
+    Ok(ret.into())
 }
 
 pub async fn handle_logout<DB>(req: tide::Request<HttpServerState<DB>>) -> tide::Result {
@@ -167,13 +187,13 @@ pub async fn handle_mysession<DB>(req: tide::Request<HttpServerState<DB>>) -> ti
     let session_id = get_session_id(&req)?;
     let session_store = req.state().session_store.lock().unwrap();
     match session_store.get(&session_id) {
-        None
-        | Some(Session {
-            logged_in: false, ..
-        }) => Ok("You are not logged in.".into()),
-        Some(Session {
-            user_info,
-            logged_in: true,
-        }) => Ok(format!("You are logged in. UserInfo: {user_info:?}").into()),
+        None | Some(Session::LoggedOut) => Ok("You are not logged in.".into()),
+        Some(Session::GoogleOAuthRegistering(registration_info)) =>
+            Ok(format!(
+                "You are currently signing up with Google in. \
+                GoogleOAuthRegisteringInfo: {registration_info:?}"
+            ).into()),
+        Some(Session::LoggedIn(user_info)) =>
+            Ok(format!("You are logged in. UserInfo: {user_info:?}").into()),
     }
 }

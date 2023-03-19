@@ -2,6 +2,8 @@ use sqlx::prelude::*;
 use tide::utils::async_trait;
 use time::{OffsetDateTime, PrimitiveDateTime};
 
+use bughouse_chess::session::RegistrationMethod;
+
 use crate::database::*;
 use crate::secret_persistence::*;
 
@@ -19,11 +21,10 @@ where
     for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
     usize: sqlx::ColumnIndex<DB::Row>,
 {
-    async fn account_by_email(&self, email: &str) -> Result<Account, anyhow::Error> {
-        // TODO: handle NOT_FOUND separately from other errors.
+    async fn account_by_email(&self, email: &str) -> Result<Option<Account>, anyhow::Error> {
         let row = self
             .pool
-            .fetch_one(
+            .fetch_optional(
                 sqlx::query::<DB>(
                     "SELECT
                         rowid,
@@ -39,22 +40,14 @@ where
                 .bind(email.to_owned()),
             )
             .await?;
-        Ok(Account {
-            id: Some(AccountId(row.try_get("rowid")?)),
-            creation_time: row.try_get("creation_time")?,
-            user_name: row.try_get("user_name")?,
-            email: row.try_get("email")?,
-            password_hash: row.try_get("password_hash")?,
-            registration_method: RegistrationMethod::try_from_string(
-                row.try_get("registration_method")?,
-            )?,
-        })
+        row_to_account(row)
     }
-    async fn account_by_user_name(&self, user_name: &str) -> Result<Account, anyhow::Error> {
+
+    async fn account_by_user_name(&self, user_name: &str) -> Result<Option<Account>, anyhow::Error> {
         // TODO: handle NOT_FOUND separately from other errors.
         let row = self
             .pool
-            .fetch_one(
+            .fetch_optional(
                 sqlx::query::<DB>(
                     "SELECT
                         rowid,
@@ -70,16 +63,36 @@ where
                 .bind(user_name.to_owned()),
             )
             .await?;
-        Ok(Account {
-            id: Some(AccountId(row.try_get("rowid")?)),
+        row_to_account(row)
+    }
+}
+
+fn row_to_account<DB>(row: Option<DB::Row>) -> Result<Option<Account>, anyhow::Error>
+where
+    // TODO: Deduplicate trait requirements.
+    DB: sqlx::Database,
+    for<'q> i64: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
+    for<'q> String: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
+    for<'q> bool: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
+    for<'q> OffsetDateTime: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
+    for<'q> PrimitiveDateTime: sqlx::Type<DB> + sqlx::Decode<'q, DB>,
+    for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
+    for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
+    for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
+    usize: sqlx::ColumnIndex<DB::Row>,
+{
+    match row {
+        Some(row) => Ok(Some(Account {
+            id: AccountId(row.try_get("rowid")?),
             creation_time: row.try_get("creation_time")?,
             user_name: row.try_get("user_name")?,
             email: row.try_get("email")?,
             password_hash: row.try_get("password_hash")?,
             registration_method: RegistrationMethod::try_from_string(
                 row.try_get("registration_method")?,
-            )?,
-        })
+            ).map_err(anyhow::Error::msg)?,
+        })),
+        None => Ok(None),
     }
 }
 
@@ -117,6 +130,7 @@ where
         .await?;
         Ok(())
     }
+
     async fn create_account(&self, account: Account) -> anyhow::Result<()> {
         sqlx::query(
             "INSERT INTO accounts(
@@ -136,6 +150,8 @@ where
         .await?;
         Ok(())
     }
+
+    // Updates account atomically. Fails if the account does not exist.
     async fn update_account_txn(
         &self,
         id: AccountId,
@@ -160,14 +176,14 @@ where
             )
             .await?;
         let mut account = Account {
-            id: Some(AccountId(row.try_get("rowid")?)),
+            id: AccountId(row.try_get("rowid")?),
             creation_time: row.try_get("creation_time")?,
             user_name: row.try_get("user_name")?,
             email: row.try_get("email")?,
             password_hash: row.try_get("password_hash")?,
             registration_method: RegistrationMethod::try_from_string(
                 row.try_get("registration_method")?,
-            )?,
+            ).map_err(anyhow::Error::msg)?,
         };
         f(&mut account);
         txn.execute(
@@ -198,12 +214,12 @@ impl<D: SecretDatabaseReader + SecretDatabaseWriter + Send + Sync> SecretDatabas
 
 #[async_trait]
 impl SecretDatabaseReader for UnimplementedDatabase {
-    async fn account_by_email(&self, _email: &str) -> Result<Account, anyhow::Error> {
+    async fn account_by_email(&self, _email: &str) -> Result<Option<Account>, anyhow::Error> {
         Err(anyhow::Error::msg(
             "account_by_email is unimplemented in UnimplementedDatabase",
         ))
     }
-    async fn account_by_user_name(&self, _user_name: &str) -> Result<Account, anyhow::Error> {
+    async fn account_by_user_name(&self, _user_name: &str) -> Result<Option<Account>, anyhow::Error> {
         Err(anyhow::Error::msg(
             "account_by_user_name is unimplemented in UnimplementedDatabase",
         ))

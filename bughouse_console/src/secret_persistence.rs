@@ -1,35 +1,16 @@
 use tide::utils::async_trait;
 use time::OffsetDateTime;
 
-#[derive(Debug, Clone, Copy)]
-pub enum RegistrationMethod {
-    Password,
-    GoogleOAuth,
-}
+use bughouse_chess::session::RegistrationMethod;
 
-impl RegistrationMethod {
-    pub fn to_string(self) -> String {
-        match self {
-            Self::Password => "Password",
-            Self::GoogleOAuth => "GoogleOAuth",
-        }.to_owned()
-    }
-    pub fn try_from_string(s: String) -> anyhow::Result<Self> {
-        match s.as_str() {
-            "Password" => Ok(Self::Password),
-            "GoogleOAuth" => Ok(Self::GoogleOAuth),
-            _ => Err(anyhow::Error::msg(format!("failed to parse '{s}' as RegistrationMethod"))),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct AccountId(pub i64);
 
 #[derive(Debug, Clone)]
 pub struct Account {
-    pub id: Option<AccountId>,
-    pub user_name: Option<String>,
+    pub id: AccountId,
+    pub user_name: String,
     pub email: Option<String>,
     pub password_hash: Option<String>,
     pub registration_method: RegistrationMethod,
@@ -38,8 +19,8 @@ pub struct Account {
 
 #[async_trait]
 pub trait SecretDatabaseReader {
-    async fn account_by_email(&self, email: &str) -> Result<Account, anyhow::Error>;
-    async fn account_by_user_name(&self, user_name: &str) -> Result<Account, anyhow::Error>;
+    async fn account_by_email(&self, email: &str) -> Result<Option<Account>, anyhow::Error>;
+    async fn account_by_user_name(&self, user_name: &str) -> Result<Option<Account>, anyhow::Error>;
 }
 
 #[async_trait]

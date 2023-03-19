@@ -10,7 +10,6 @@ use serde::Deserialize;
 use std::env;
 use url::Url;
 
-use bughouse_chess::session::UserInfo;
 
 #[derive(Clone)]
 pub struct GoogleAuth {
@@ -19,11 +18,10 @@ pub struct GoogleAuth {
 
 // Internal Google-specific user info struct, used for
 // deserializing user info JSON responses from the API.
-// https://cloud.google.com/identity-platform/docs/reference/rest/v1/UserInfo
+// https://any-api.com/googleapis_com/oauth2/docs/userinfo/oauth2_userinfo_get
 #[derive(Deserialize)]
 struct GoogleUserInfo {
     email: String,
-    name: Option<String>,
 }
 
 // Internal OAuth-specific (Google-specific?) structure of the redirected
@@ -77,11 +75,11 @@ impl GoogleAuth {
             .clone()
             .set_redirect_uri(RedirectUrl::new(callback_url)?)
             .authorize_url(CsrfToken::new_random)
-            .add_scope(Scope::new("openid profile email".to_owned()))
+            .add_scope(Scope::new("email".to_owned()))
             .url())
     }
 
-    pub async fn user_info(&self, callback_url: String, code: AuthorizationCode) -> anyhow::Result<UserInfo> {
+    pub async fn email(&self, callback_url: String, code: AuthorizationCode) -> anyhow::Result<String> {
         let token_response = self
             .client
             .clone()
@@ -96,9 +94,6 @@ impl GoogleAuth {
         .await.context("requesting user info failed")?
         .json::<GoogleUserInfo>()
         .await.context("getting user info JSON failed")?;
-        Ok(UserInfo {
-            email: Some(response.email),
-            name: response.name,
-        })
+        Ok(response.email)
     }
 }
