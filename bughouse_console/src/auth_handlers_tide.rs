@@ -154,7 +154,10 @@ pub async fn handle_session<DB: Send + Sync + 'static>(
             if account.registration_method != RegistrationMethod::GoogleOAuth {
                 return Err(tide::Error::from_str(
                     StatusCode::Forbidden,
-                    "Cannot log in with Google: another authentification method was used during sign-up"
+                    format!(
+                        "Cannot log in with Google: '{}' authentification method was used during sign-up.",
+                        account.registration_method.to_string()
+                    )
                 ));
             }
             Session::LoggedIn(UserInfo {
