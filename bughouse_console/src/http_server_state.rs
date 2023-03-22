@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use http_types::StatusCode;
+use url::Url;
 
 use crate::secret_persistence::SecretDatabaseRW;
 use crate::session_store::{SessionId, SessionStore};
@@ -29,6 +30,20 @@ where
 
     fn static_content_url_prefix(&self) -> &str {
         &self.static_content_url_prefix
+    }
+}
+
+impl<DB> HttpServerStateImpl<DB> {
+    pub fn upgrade_auth_callback(&self, callback: &mut Url) -> tide::Result<()> {
+        if self.auth_callback_is_https {
+            callback.set_scheme("https").map_err(|()| {
+                anyhow::Error::msg(format!(
+                    "Failed to change URL scheme '{}' to 'https' for redirection.",
+                    callback.scheme()
+                ))
+            })?;
+        }
+        Ok(())
     }
 }
 

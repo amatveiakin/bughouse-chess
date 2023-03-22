@@ -60,14 +60,7 @@ pub async fn handle_login<DB: Send + Sync + 'static>(
 ) -> tide::Result {
     let mut callback_url = req.url().clone();
     callback_url.set_path(AUTH_SESSION_URL_PATH);
-    if req.state().auth_callback_is_https {
-        callback_url.set_scheme("https").map_err(|()| {
-            anyhow::Error::msg(format!(
-                "Failed to change URL scheme '{}' to 'https' for redirection.",
-                callback_url.scheme()
-            ))
-        })?;
-    }
+    req.state().upgrade_auth_callback(&mut callback_url)?;
     println!("{callback_url}");
     let (redirect_url, csrf_state) = req
         .state()
@@ -124,14 +117,7 @@ pub async fn handle_session<DB: Send + Sync + 'static>(
 
     let mut callback_url = req.url().clone();
     callback_url.set_query(Some(""));
-    if req.state().auth_callback_is_https {
-        callback_url.set_scheme("https").map_err(|()| {
-            anyhow::Error::msg(format!(
-                "Failed to change URL scheme '{}' to 'https' for redirection.",
-                callback_url.scheme()
-            ))
-        })?;
-    }
+    req.state().upgrade_auth_callback(&mut callback_url)?;
     let callback_url_str = callback_url.as_str().trim_end_matches('?').to_owned();
     println!("{callback_url_str}");
 
