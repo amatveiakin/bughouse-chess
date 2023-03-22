@@ -31,14 +31,14 @@ pub struct UserInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GoogleOAuthRegisteringInfo {
+pub struct GoogleOAuthRegistrationInfo {
     pub email: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Session {
     LoggedOut,
-    GoogleOAuthRegistering(GoogleOAuthRegisteringInfo),
+    GoogleOAuthRegistering(GoogleOAuthRegistrationInfo),
     LoggedIn(UserInfo),
 }
 
@@ -49,6 +49,12 @@ impl Default for Session {
 }
 
 impl Session {
+    pub fn user_info(&self) -> Option<&UserInfo> {
+        match self {
+            Session::LoggedOut | Session::GoogleOAuthRegistering(_) => None,
+            Session::LoggedIn(session) => Some(&session),
+        }
+    }
     pub fn logout(&mut self) {
         *self = Session::LoggedOut;
     }

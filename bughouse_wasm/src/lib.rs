@@ -23,6 +23,7 @@ use bughouse_chess::*;
 use bughouse_chess::client::*;
 use bughouse_chess::lobby::*;
 use bughouse_chess::meter::*;
+use bughouse_chess::session::*;
 
 
 type JsResult<T> = Result<T, JsValue>;
@@ -128,6 +129,12 @@ impl JsMeter {
 #[wasm_bindgen]
 pub struct JsEventNoop {}  // in contrast to `null`, indicates that event list is not over
 
+#[wasm_bindgen]
+pub struct JsEventUpdateSession {}
+
+#[wasm_bindgen(getter_with_clone)]
+pub struct JsEventGoogleOAuthRegistration { pub email: String }
+
 #[wasm_bindgen(getter_with_clone)]
 pub struct JsEventContestStarted { pub contest_id: String }
 
@@ -172,6 +179,10 @@ impl WebClient {
 
     pub fn current_turnaround_time(&self) -> Option<f64> {
         self.state.current_turnaround_time().map(|t| t.as_secs_f64())
+    }
+
+    pub fn user_name(&self) -> Option<String> {
+        self.state.user_name()
     }
 
     pub fn observer_status(&self) -> String {
@@ -563,6 +574,19 @@ impl WebClient {
 
     pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
         match self.state.next_notable_event() {
+            Some(NotableEvent::SessionUpdated(session)) => {
+                match session {
+                    Session::LoggedOut => {
+                        Ok(JsEventUpdateSession{}.into())
+                    },
+                    Session::GoogleOAuthRegistering(GoogleOAuthRegistrationInfo{ email }) => {
+                        Ok(JsEventGoogleOAuthRegistration{ email }.into())
+                    },
+                    Session::LoggedIn(_) => {
+                        Ok(JsEventUpdateSession{}.into())
+                    },
+                }
+            },
             Some(NotableEvent::ContestStarted(contest_id)) => {
                 let rules_node = web_document().get_existing_element_by_id("lobby-rules")?;
                 rules_node.set_text_content(Some(&self.state.contest().unwrap().rules.to_human_readable()));

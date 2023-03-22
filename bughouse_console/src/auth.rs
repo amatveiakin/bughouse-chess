@@ -1,4 +1,10 @@
-use anyhow::Context;
+use std::env;
+
+use anyhow::{anyhow, Context};
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    Argon2
+};
 use oauth2::{basic::BasicClient, TokenResponse};
 // Alternatively, this can be oauth2::curl::http_client or a custom.
 use oauth2::reqwest::async_http_client;
@@ -7,9 +13,25 @@ use oauth2::{
     Scope, TokenUrl,
 };
 use serde::Deserialize;
-use std::env;
 use url::Url;
 
+
+// Hash password to PHC string ($argon2id$v=19$...). It incorporates the salt too.
+pub fn hash_password(password: &str) -> anyhow::Result<String> {
+    let argon2 = Argon2::default();
+    let salt = SaltString::generate(&mut OsRng);
+    let hash = argon2.hash_password(password.as_bytes(), &salt)
+        .map_err(|err| anyhow!(err))
+        .context("Error computing password hash.")?;
+    Ok(hash.to_string())
+}
+
+pub fn verify_password(password: &str, password_hash: &str) -> anyhow::Result<bool> {
+    let parsed_hash = PasswordHash::new(&password_hash)
+        .map_err(|err| anyhow!(err))
+        .context("Error parsing password hash.")?;
+    Ok(Argon2::default().verify_password(password.as_bytes(), &parsed_hash).is_ok())
+}
 
 #[derive(Clone)]
 pub struct GoogleAuth {

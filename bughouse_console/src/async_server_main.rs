@@ -187,10 +187,13 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
         Ok(res)
     }));
 
-    app.at(AUTH_LOGIN_URL_PATH).get(handle_login);
-    app.at(AUTH_SESSION_URL_PATH).get(handle_session);
-    app.at(AUTH_LOGOUT_URL_PATH).get(handle_logout);
-    app.at(AUTH_MYSESSION_URL_PATH).get(handle_mysession);
+    app.at(AUTH_SIGNUP_PATH).post(handle_signup);
+    app.at(AUTH_LOGIN_PATH).post(handle_login);
+    app.at(AUTH_LOGOUT_PATH).post(handle_logout);
+    app.at(AUTH_SIGN_WITH_GOOGLE_PATH).post(handle_sign_with_google);
+    app.at(AUTH_CONTINUE_SIGN_WITH_GOOGLE_PATH).get(handle_continue_sign_with_google);
+    app.at(AUTH_FINISH_SIGNUP_WITH_GOOGLE_PATH).post(handle_finish_signup_with_google);
+    app.at(AUTH_MYSESSION_PATH).get(handle_mysession);
 
     crate::stats_handlers_tide::Handlers::<HttpServerState<DB>>::register_handlers(&mut app);
 

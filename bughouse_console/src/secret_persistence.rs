@@ -26,7 +26,14 @@ pub trait SecretDatabaseReader {
 #[async_trait]
 pub trait SecretDatabaseWriter {
     async fn create_tables(&self) -> anyhow::Result<()>;
-    async fn create_account(&self, account: Account) -> anyhow::Result<()>;
+    async fn create_account(
+        &self,
+        user_name: String,
+        email: Option<String>,
+        password_hash: Option<String>,
+        registration_method: RegistrationMethod,
+        creation_time: OffsetDateTime,
+    ) -> anyhow::Result<()>;
     async fn update_account_txn(
         &self,
         id: AccountId,

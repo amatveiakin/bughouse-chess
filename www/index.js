@@ -93,6 +93,7 @@ const menu_start_page = document.getElementById('menu-start-page');
 const menu_authorization_page = document.getElementById('menu-authorization-page');
 const menu_login_page = document.getElementById('menu-login-page');
 const menu_signup_page = document.getElementById('menu-signup-page');
+const menu_signup_with_google_page = document.getElementById('menu-signup-with-google-page');
 const menu_create_contest_page = document.getElementById('menu-create-contest-page');
 const menu_join_contest_page = document.getElementById('menu-join-contest-page');
 const menu_about_page = document.getElementById('menu-about-page');
@@ -101,6 +102,7 @@ const menu_pages = document.getElementsByClassName('menu-page');
 
 const logged_in_user_bar = document.getElementById('logged-in-user-bar');
 const guest_user_bar = document.getElementById('guest-user-bar');
+const signup_with_google_email = document.getElementById('signup-with-google-email');
 const authorization_button = document.getElementById('authorization-button');
 const log_out_button = document.getElementById('log-out-button');
 const sign_with_google_button = document.getElementById('sign-with-google-button');
@@ -211,12 +213,6 @@ let wasm_client_object = make_wasm_client();
 let wasm_client_panicked = false;
 let socket = make_socket();
 
-// Logged in user name.
-// If playing as a registered user, is non-null and coincides with player name.
-// If playing as a guest, is null.
-let user_name = null;
-update_account_info();
-
 let audio_context = null;
 
 // Parameters and data structures for the audio logic. Our goal is to make short and
@@ -240,6 +236,8 @@ let drag_element = null;
 
 const Meter = make_meters();
 
+update_session();
+
 document.addEventListener('keydown', on_document_keydown);
 document.addEventListener('paste', on_paste);
 
@@ -253,12 +251,13 @@ volume_button.addEventListener('click', next_volume);
 
 menu_dialog.addEventListener('cancel', (event) => event.preventDefault());
 authorization_button.addEventListener('click', () => push_menu_page(menu_authorization_page));
-log_out_button.addEventListener('click', test_logout);
+log_out_button.addEventListener('click', log_out);
 sign_with_google_button.addEventListener('click',  sign_with_google);
 begin_login_button.addEventListener('click',  () => push_menu_page(menu_login_page));
 begin_signup_button.addEventListener('click',  () => push_menu_page(menu_signup_page));
-menu_login_page.addEventListener('submit', test_login);
-menu_signup_page.addEventListener('submit', test_signup);
+menu_login_page.addEventListener('submit', log_in);
+menu_signup_page.addEventListener('submit', sign_up);
+menu_signup_with_google_page.addEventListener('submit', sign_up_with_google);
 create_contest_button.addEventListener('click', on_create_contest_submenu);
 join_contest_button.addEventListener('click', on_join_contest_submenu);
 about_button.addEventListener('click', () => push_menu_page(menu_about_page));
@@ -541,6 +540,12 @@ function process_notable_events() {
         const js_event_type = js_event?.constructor?.name;
         if (js_event_type == 'JsEventNoop') {
             // Noop, but other events might be coming.
+        } else if (js_event_type == 'JsEventUpdateSession') {
+            reset_menu_to_start_page();
+            update_session();
+        } else if (js_event_type == 'JsEventGoogleOAuthRegistration') {
+            signup_with_google_email.textContent = js_event.email;
+            push_menu_page(menu_signup_with_google_page);
         } else if (js_event_type == 'JsEventContestStarted') {
             const url = new URL(window.location);
             url.searchParams.set(SearchParams.contest_id, js_event.contest_id);
@@ -1056,7 +1061,8 @@ function go_to_suburl(event) {
     window.open(url, '_blank').focus();
 }
 
-function update_account_info() {
+function update_session() {
+    const user_name = wasm_client().user_name();
     const is_registered_user = !!user_name;
     if (is_registered_user) {
         logged_in_user_bar.style.display = null;
@@ -1075,12 +1081,33 @@ function update_account_info() {
     }
 }
 
-async function test_signup(event) {
+// Encodes `FormData` as application/x-www-form-urlencoded (the default is multipart/form-data).
+function as_x_www_form_urlencoded(form_data) {
+    return new URLSearchParams(form_data);
+}
+
+async function process_authentification_request(request) {
+    // TODO: Loading animation.
+    let response;
+    try {
+        response = await fetch(request);
+    } catch (e) {
+        await ignorable_error_dialog(`Network error: ${e}`);
+        return;
+    }
+    if (!response.ok) {
+        await ignorable_error_dialog(await response.text());
+    }
+    // Ignore OK status, just wait for `UpdateSession` socket event.
+}
+
+async function sign_up(event) {
     const data = new FormData(event.target);
-    if (data.get('password') != data.get('confirm-password')) {
+    if (data.get('confirm_password') != data.get('password')) {
         ignorable_error_dialog('Passwords do not match!');
         return;
     }
+    data.delete('confirm_password');
     if (!data.get('email')) {
         const ret = await simple_dialog(
             'Without an email you will not be able to restore your account ' +
@@ -1094,28 +1121,37 @@ async function test_signup(event) {
             return;
         }
     }
-    // TODO(accounts): Actually sign up.
-    user_name = data.get('user-name');
-    update_account_info();
-    reset_menu_to_start_page();
+    process_authentification_request(new Request('auth/signup', {
+        method: 'POST',
+        body: as_x_www_form_urlencoded(data),
+    }));
+}
+
+function sign_up_with_google(event) {
+    const data = new FormData(event.target);
+    process_authentification_request(new Request('auth/finish-signup-with-google', {
+        method: 'POST',
+        body: as_x_www_form_urlencoded(data),
+    }));
 }
 
 function sign_with_google(event) {
     location.href = '/auth/login';
 }
 
-function test_login(event) {
+async function log_in(event) {
     const data = new FormData(event.target);
-    // TODO(accounts): Actually log in.
-    user_name = data.get('user-name');
-    update_account_info();
-    reset_menu_to_start_page();
+    process_authentification_request(new Request('auth/login', {
+        method: 'POST',
+        body: as_x_www_form_urlencoded(data),
+    }));
 }
 
-function test_logout(event) {
-    // TODO(accounts): Actually log out.
-    user_name = null;
-    update_account_info();
+function log_out(event) {
+    const request = new Request('auth/logout', {
+        method: 'POST',
+    });
+    fetch(request);
 }
 
 function on_create_contest_submenu(event) {

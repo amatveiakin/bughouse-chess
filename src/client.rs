@@ -34,6 +34,7 @@ pub enum SubjectiveGameResult {
 
 #[derive(Clone, Debug)]
 pub enum NotableEvent {
+    SessionUpdated(Session),
     ContestStarted(String),  // contains ContestID
     GameStarted,
     GameOver(SubjectiveGameResult),
@@ -166,6 +167,12 @@ impl ClientState {
             ping_meter,
             session: Session::default(),
         }
+    }
+
+    // For a registered user: `Some`, always coincides with player name.
+    // For a guest player: `None`.
+    pub fn user_name(&self) -> Option<String> {
+        self.session.user_info().map(|u| u.user_name.clone())
     }
 
     pub fn contest(&self) -> Option<&Contest> {
@@ -397,7 +404,8 @@ impl ClientState {
                 return Err(error);
             },
             UpdateSession { session } => {
-                self.session = session;
+                self.session = session.clone();
+                self.notable_event_queue.push_back(NotableEvent::SessionUpdated(session));
             },
             ContestWelcome{ contest_id, rules } => {
                 let my_name = match &self.contest_state {

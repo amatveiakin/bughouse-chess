@@ -131,7 +131,14 @@ where
         Ok(())
     }
 
-    async fn create_account(&self, account: Account) -> anyhow::Result<()> {
+    async fn create_account(
+        &self,
+        user_name: String,
+        email: Option<String>,
+        password_hash: Option<String>,
+        registration_method: RegistrationMethod,
+        creation_time: OffsetDateTime,
+    ) -> anyhow::Result<()> {
         sqlx::query(
             "INSERT INTO accounts(
                 creation_time,
@@ -141,11 +148,11 @@ where
                 registration_method)
             VALUES ($1, $2, $3, $4, $5)",
         )
-        .bind(account.creation_time)
-        .bind(account.user_name)
-        .bind(account.email)
-        .bind(account.password_hash)
-        .bind(account.registration_method.to_string())
+        .bind(creation_time)
+        .bind(user_name)
+        .bind(email)
+        .bind(password_hash)
+        .bind(registration_method.to_string())
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -233,7 +240,14 @@ impl SecretDatabaseWriter for UnimplementedDatabase {
             "create_table is unimplemented in UnimplementedDatabase",
         ))
     }
-    async fn create_account(&self, _account: Account) -> anyhow::Result<()> {
+    async fn create_account(
+        &self,
+        _user_name: String,
+        _email: Option<String>,
+        _password_hash: Option<String>,
+        _registration_method: RegistrationMethod,
+        _creation_time: OffsetDateTime,
+    ) -> anyhow::Result<()> {
         Err(anyhow::Error::msg(
             "create_account is unimplemented in UnimplementedDatabase",
         ))

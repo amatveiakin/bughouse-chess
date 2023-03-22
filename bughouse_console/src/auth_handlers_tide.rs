@@ -1,15 +1,40 @@
-use bughouse_chess::session::{GoogleOAuthRegisteringInfo, RegistrationMethod, Session, UserInfo};
+use oauth2::AuthorizationCode;
+use serde::Deserialize;
 use tide::StatusCode;
+use time::OffsetDateTime;
+
+use bughouse_chess::session::{GoogleOAuthRegistrationInfo, RegistrationMethod, Session, UserInfo};
 
 use crate::auth;
 use crate::http_server_state::*;
 
 pub const OAUTH_CSRF_COOKIE_NAME: &str = "oauth-csrf-state";
 
-pub const AUTH_LOGIN_URL_PATH: &str = "/auth/login";
-pub const AUTH_SESSION_URL_PATH: &str = "/auth/session";
-pub const AUTH_LOGOUT_URL_PATH: &str = "/auth/logout";
-pub const AUTH_MYSESSION_URL_PATH: &str = "/auth/mysession";
+pub const AUTH_SIGNUP_PATH: &str = "/auth/signup";
+pub const AUTH_LOGIN_PATH: &str = "/auth/login";
+pub const AUTH_LOGOUT_PATH: &str = "/auth/logout";
+pub const AUTH_SIGN_WITH_GOOGLE_PATH: &str = "/auth/sign-with-google";
+pub const AUTH_CONTINUE_SIGN_WITH_GOOGLE_PATH: &str = "/auth/continue-sign-with-google";
+pub const AUTH_FINISH_SIGNUP_WITH_GOOGLE_PATH: &str = "/auth/finish-signup-with-google";
+pub const AUTH_MYSESSION_PATH: &str = "/auth/mysession";
+
+#[derive(Deserialize)]
+struct SignupData {
+  user_name: String,
+  email: String,  // optional; empty string means none
+  password: String,
+}
+
+#[derive(Deserialize)]
+struct LoginData {
+  user_name: String,
+  password: String,
+}
+
+#[derive(Deserialize)]
+struct FinishSignupWithGoogleData {
+  user_name: String,
+}
 
 pub fn check_origin<T>(req: &tide::Request<T>) -> tide::Result<()> {
     let origin = req.header(http_types::headers::ORIGIN).map_or(
@@ -52,16 +77,121 @@ pub fn check_origin<T>(req: &tide::Request<T>) -> tide::Result<()> {
     Ok(())
 }
 
+pub fn check_google_csrf<T>(req: &tide::Request<T>) -> tide::Result<AuthorizationCode> {
+    let (auth_code, request_csrf_state) = req.query::<auth::NewSessionQuery>()?.parse();
+    let Some(oauth_csrf_state_cookie) = req.cookie(OAUTH_CSRF_COOKIE_NAME) else {
+        return Err(tide::Error::from_str(
+            StatusCode::Forbidden, "Missing CSRF token cookie.",
+        ));
+    };
+    if oauth_csrf_state_cookie.value() != request_csrf_state.secret() {
+        return Err(tide::Error::from_str(
+            StatusCode::Forbidden,
+            "Non-matching CSRF token.",
+        ));
+    }
+    Ok(auth_code)
+}
+
+pub async fn handle_signup<DB: Send + Sync + 'static>(
+    mut req: tide::Request<HttpServerState<DB>>,
+) -> tide::Result {
+    let SignupData{ user_name, email, password } = req.body_form().await?;
+    let email = if email.is_empty() { None } else { Some(email) };
+
+    let existing_account = req.state().secret_db.account_by_user_name(&user_name).await?;
+    if existing_account.is_some() {
+        return Err(tide::Error::from_str(
+            StatusCode::Forbidden,
+            format!("User '{}' already exists.", &user_name),
+        ));
+    };
+
+    let password_hash = auth::hash_password(&password)
+        .map_err(|err| tide::Error::new(StatusCode::InternalServerError, err))?;
+
+    // TODO: Confirm email if not empty.
+    req.state().secret_db.create_account(
+        user_name.clone(),
+        email.clone(),
+        Some(password_hash),
+        RegistrationMethod::Password,
+        OffsetDateTime::now_utc(),
+    ).await.map_err(|err| tide::Error::new(StatusCode::InternalServerError, err))?;
+
+    let session = Session::LoggedIn(UserInfo {
+        user_name,
+        email,
+        registration_method: RegistrationMethod::Password,
+    });
+    let session_id = get_session_id(&req)?;
+    req.state().session_store.lock().unwrap().set(session_id, session);
+
+    let mut resp: tide::Response = req.into();
+    resp.set_status(StatusCode::Ok);
+    Ok(resp)
+}
+
+pub async fn handle_login<DB: Send + Sync + 'static>(
+    mut req: tide::Request<HttpServerState<DB>>,
+) -> tide::Result {
+    let form_data: LoginData = req.body_form().await?;
+    let account = req.state().secret_db.account_by_user_name(&form_data.user_name).await?;
+    let Some(account) = account else {
+        return Err(tide::Error::from_str(
+            StatusCode::Forbidden,
+            format!("User '{}' does not exist.", &form_data.user_name),
+        ));
+    };
+
+    if account.registration_method != RegistrationMethod::Password {
+        return Err(tide::Error::from_str(
+            StatusCode::Forbidden,
+            format!(
+                "Cannot log in: {} authentification method was used during sign-up.",
+                account.registration_method.to_string()
+            )
+        ));
+    }
+    let Some(password_hash) = account.password_hash else {
+        return Err(tide::Error::from_str(
+            StatusCode::InternalServerError,
+            "Cannot verify password."
+        ));
+    };
+    // TODO: Update password hash on login:
+    //   https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#upgrading-the-work-factor
+    let password_ok = auth::verify_password(&form_data.password, &password_hash)
+        .map_err(|err| tide::Error::new(StatusCode::InternalServerError, err))?;
+    if !password_ok {
+        return Err(tide::Error::from_str(
+            StatusCode::Forbidden,
+            "Invalid password."
+        ));
+    }
+
+    let session = Session::LoggedIn(UserInfo {
+        user_name: account.user_name,
+        email: account.email,
+        registration_method: RegistrationMethod::Password,
+    });
+    let session_id = get_session_id(&req)?;
+    req.state().session_store.lock().unwrap().set(session_id, session);
+
+    let mut resp: tide::Response = req.into();
+    resp.set_status(StatusCode::Ok);
+    Ok(resp)
+}
+
 // Initiates authentication process (e.g. with OAuth).
 // TODO: this page should probably display some privacy considerations
 //   and link to OAuth providers instead of just redirecting.
-pub async fn handle_login<DB: Send + Sync + 'static>(
+pub async fn handle_sign_with_google<DB: Send + Sync + 'static>(
     req: tide::Request<HttpServerState<DB>>,
 ) -> tide::Result {
     let mut callback_url = req.url().clone();
-    callback_url.set_path(AUTH_SESSION_URL_PATH);
+    callback_url.set_path(AUTH_CONTINUE_SIGN_WITH_GOOGLE_PATH);
     req.state().upgrade_auth_callback(&mut callback_url)?;
-    println!("{callback_url}");
     let (redirect_url, csrf_state) = req
         .state()
         .google_auth
@@ -92,34 +222,22 @@ pub async fn handle_login<DB: Send + Sync + 'static>(
     Ok(resp)
 }
 
-// The "callback" handler of the authentication process.
+// The "callback" handler of the Google authentication process.
 // TODO: send the user to either the main page or their desider location.
 //   HTTP redirect doesn't work because the session cookies do
 //   not survive it, hence, some JS needs to be served that sends back
 //   in 3...2...1... or something similar.
 //   To send to the "desired location", pass the desired URL as a parameter
-//   into /login and propagate it to callback_url.
-pub async fn handle_session<DB: Send + Sync + 'static>(
+//   into /sign-with-google and propagate it to callback_url.
+pub async fn handle_continue_sign_with_google<DB: Send + Sync + 'static>(
     req: tide::Request<HttpServerState<DB>>,
 ) -> tide::Result {
-    let (auth_code, request_csrf_state) = req.query::<auth::NewSessionQuery>()?.parse();
-    let Some(oauth_csrf_state_cookie) = req.cookie(OAUTH_CSRF_COOKIE_NAME) else {
-                return Err(tide::Error::from_str(
-                    StatusCode::Forbidden, "Missing CSRF token cookie.",
-                ));
-            };
-    if oauth_csrf_state_cookie.value() != request_csrf_state.secret() {
-        return Err(tide::Error::from_str(
-            StatusCode::Forbidden,
-            "Non-matching CSRF token.",
-        ));
-    }
+    let auth_code = check_google_csrf(&req)?;
 
     let mut callback_url = req.url().clone();
     callback_url.set_query(Some(""));
     req.state().upgrade_auth_callback(&mut callback_url)?;
     let callback_url_str = callback_url.as_str().trim_end_matches('?').to_owned();
-    println!("{callback_url_str}");
 
     let email = req
         .state()
@@ -135,13 +253,13 @@ pub async fn handle_session<DB: Send + Sync + 'static>(
     let account = req.state().secret_db.account_by_email(&email).await?;
 
     let session = match account {
-        None => Session::GoogleOAuthRegistering(GoogleOAuthRegisteringInfo { email }),
+        None => Session::GoogleOAuthRegistering(GoogleOAuthRegistrationInfo { email }),
         Some(account) => {
             if account.registration_method != RegistrationMethod::GoogleOAuth {
                 return Err(tide::Error::from_str(
                     StatusCode::Forbidden,
                     format!(
-                        "Cannot log in with Google: '{}' authentification method was used during sign-up.",
+                        "Cannot log in with Google: {} authentification method was used during sign-up.",
                         account.registration_method.to_string()
                     )
                 ));
@@ -155,15 +273,59 @@ pub async fn handle_session<DB: Send + Sync + 'static>(
     };
 
     let session_id = get_session_id(&req)?;
-    req.state()
-        .session_store
-        .lock()
-        .unwrap()
-        .set(session_id, session);
+    req.state().session_store.lock().unwrap().set(session_id, session);
 
     let mut resp: tide::Response = req.into();
     resp.set_status(StatusCode::TemporaryRedirect);
     resp.insert_header(http_types::headers::LOCATION, "/");
+    Ok(resp)
+}
+
+pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
+    mut req: tide::Request<HttpServerState<DB>>,
+) -> tide::Result {
+    check_google_csrf(&req)?;
+    let FinishSignupWithGoogleData{ user_name } = req.body_form().await?;
+
+    let existing_account = req.state().secret_db.account_by_user_name(&user_name).await?;
+    if existing_account.is_some() {
+        return Err(tide::Error::from_str(
+            StatusCode::Forbidden,
+            format!("User '{}' already exists.", &user_name)
+        ));
+    };
+
+    let session_id = get_session_id(&req)?;
+    let email = {
+        let session_store = req.state().session_store.lock().unwrap();
+        match session_store.get(&session_id) {
+            Some(Session::GoogleOAuthRegistering(GoogleOAuthRegistrationInfo{ email })) => email.clone(),
+            _ => {
+                return Err(tide::Error::from_str(
+                    StatusCode::Forbidden,
+                    format!("Error creating account with Google.")
+                ));
+            }
+        }
+    };
+
+    req.state().secret_db.create_account(
+        user_name.clone(),
+        Some(email.clone()),
+        None,
+        RegistrationMethod::GoogleOAuth,
+        OffsetDateTime::now_utc(),
+    ).await.map_err(|err| tide::Error::new(StatusCode::InternalServerError, err))?;
+
+    let session = Session::LoggedIn(UserInfo {
+        user_name,
+        email: Some(email),
+        registration_method: RegistrationMethod::GoogleOAuth,
+    });
+    req.state().session_store.lock().unwrap().set(session_id, session);
+
+    let mut resp: tide::Response = req.into();
+    resp.set_status(StatusCode::Ok);
     Ok(resp)
 }
 
