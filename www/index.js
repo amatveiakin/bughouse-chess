@@ -1166,7 +1166,7 @@ function sign_up_with_google(event) {
 }
 
 function sign_with_google(event) {
-    location.href = '/auth/login';
+    location.href = '/auth/sign-with-google';
 }
 
 async function log_in(event) {

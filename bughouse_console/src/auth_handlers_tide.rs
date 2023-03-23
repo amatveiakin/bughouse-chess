@@ -277,6 +277,7 @@ pub async fn handle_continue_sign_with_google<DB: Send + Sync + 'static>(
     };
 
     let session_id = get_session_id(&req)?;
+    log::info!("Continue sign in, session {:?}", session_id);
     req.state().session_store.lock().unwrap().set(session_id, session);
 
     let mut resp: tide::Response = req.into();
@@ -288,7 +289,6 @@ pub async fn handle_continue_sign_with_google<DB: Send + Sync + 'static>(
 pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
     mut req: tide::Request<HttpServerState<DB>>,
 ) -> tide::Result {
-    check_google_csrf(&req)?;
     let FinishSignupWithGoogleData{ user_name } = req.body_form().await?;
 
     validate_player_name(&user_name)
@@ -303,6 +303,7 @@ pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
     };
 
     let session_id = get_session_id(&req)?;
+    log::info!("Finish sign in, session {:?}, user name {:?}", session_id, user_name);
     let email = {
         let session_store = req.state().session_store.lock().unwrap();
         match session_store.get(&session_id) {

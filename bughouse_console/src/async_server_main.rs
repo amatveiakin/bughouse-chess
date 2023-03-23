@@ -30,7 +30,7 @@ use crate::secret_persistence::SecretDatabaseRW;
 use crate::prod_server_helpers::ProdServerHelpers;
 use crate::server_main::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
 
-async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
+async fn handle_connection<DB: Sync + Send + 'static, S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
     peer_addr: String,
     stream: WebSocketStream<S>,
     tx: mpsc::SyncSender<IncomingEvent>,
@@ -63,8 +63,21 @@ async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync +
         .lock()
         .unwrap()
         .add_client(client_tx, session_id.clone(), peer_addr.to_string());
-    let clients_remover1 = Arc::clone(&clients);
-    let clients_remover2 = Arc::clone(&clients);
+    let clients_remover = Arc::clone(&clients);
+    let remove_client1 = move |client_id| {
+        match (session_id, session_store_subscription_id) {
+            (Some(session_id), Some(session_store_subscription_id)) => {
+                http_server_state
+                    .session_store
+                    .lock()
+                    .unwrap()
+                    .unsubscribe(&session_id, session_store_subscription_id);
+            }
+        _ => {}
+    };
+        clients_remover.lock().unwrap().remove_client(client_id)
+    };
+    let remove_client2 = remove_client1.clone();
     async_std::task::spawn(async move {
         loop {
             match network::read_obj_async(&mut stream_rx).await {
@@ -72,9 +85,7 @@ async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync +
                     tx.send(IncomingEvent::Network(client_id, ev)).unwrap();
                 }
                 Err(err) => {
-                    if let Some(logging_id) =
-                        clients_remover1.lock().unwrap().remove_client(client_id)
-                    {
+                    if let Some(logging_id) = remove_client1(client_id) {
                         match err {
                             CommunicationError::ConnectionClosed => {
                                 info!("Client {} disconnected", logging_id)
@@ -104,9 +115,7 @@ async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync +
             match async_std::task::block_on(network::write_obj_async(&mut stream_tx, &ev)) {
                 Ok(()) => {}
                 Err(err) => {
-                    if let Some(logging_id) =
-                        clients_remover2.lock().unwrap().remove_client(client_id)
-                    {
+                    if let Some(logging_id) = remove_client2(client_id) {
                         warn!(
                             "Client {} disconnected due to write error: {:?}",
                             logging_id, err
@@ -121,16 +130,6 @@ async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync +
     // This instead of just running the loop to completion or join() on the
     // thread for the same reason of not blocking the async executor thread.
     done_rx.recv().await.unwrap();
-    match (session_id, session_store_subscription_id) {
-        (Some(session_id), Some(session_store_subscription_id)) => {
-            http_server_state
-                .session_store
-                .lock()
-                .unwrap()
-                .unsubscribe(&session_id, session_store_subscription_id);
-        }
-        _ => {}
-    };
     Ok(())
 }
 
@@ -191,7 +190,7 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     app.at(AUTH_SIGNUP_PATH).post(handle_signup);
     app.at(AUTH_LOGIN_PATH).post(handle_login);
     app.at(AUTH_LOGOUT_PATH).post(handle_logout);
-    app.at(AUTH_SIGN_WITH_GOOGLE_PATH).post(handle_sign_with_google);
+    app.at(AUTH_SIGN_WITH_GOOGLE_PATH).get(handle_sign_with_google);
     app.at(AUTH_CONTINUE_SIGN_WITH_GOOGLE_PATH).get(handle_continue_sign_with_google);
     app.at(AUTH_FINISH_SIGNUP_WITH_GOOGLE_PATH).post(handle_finish_signup_with_google);
     app.at(AUTH_MYSESSION_PATH).get(handle_mysession);
