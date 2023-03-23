@@ -7,6 +7,7 @@ use bughouse_chess::session::{GoogleOAuthRegistrationInfo, RegistrationMethod, S
 
 use crate::auth;
 use crate::http_server_state::*;
+use crate::prod_server_helpers::validate_player_name;
 
 pub const OAUTH_CSRF_COOKIE_NAME: &str = "oauth-csrf-state";
 
@@ -98,6 +99,9 @@ pub async fn handle_signup<DB: Send + Sync + 'static>(
 ) -> tide::Result {
     let SignupData{ user_name, email, password } = req.body_form().await?;
     let email = if email.is_empty() { None } else { Some(email) };
+
+    validate_player_name(&user_name)
+        .map_err(|err| tide::Error::from_str(StatusCode::Forbidden, err))?;
 
     let existing_account = req.state().secret_db.account_by_user_name(&user_name).await?;
     if existing_account.is_some() {
@@ -286,6 +290,9 @@ pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
 ) -> tide::Result {
     check_google_csrf(&req)?;
     let FinishSignupWithGoogleData{ user_name } = req.body_form().await?;
+
+    validate_player_name(&user_name)
+        .map_err(|err| tide::Error::from_str(StatusCode::Forbidden, err))?;
 
     let existing_account = req.state().secret_db.account_by_user_name(&user_name).await?;
     if existing_account.is_some() {
