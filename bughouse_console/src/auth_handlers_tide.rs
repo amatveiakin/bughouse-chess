@@ -340,6 +340,9 @@ pub async fn handle_mysession<DB>(req: tide::Request<HttpServerState<DB>>) -> ti
     let session_id = get_session_id(&req)?;
     let session_store = req.state().session_store.lock().unwrap();
     match session_store.get(&session_id) {
+        Some(Session::Unknown) => {
+            panic!("Session::Unknown is a client-only state. Should never happen on server.");
+        }
         None | Some(Session::LoggedOut) => Ok("You are not logged in.".into()),
         Some(Session::GoogleOAuthRegistering(registration_info)) => Ok(format!(
             "You are currently signing up with Google in. \

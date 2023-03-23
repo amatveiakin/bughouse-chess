@@ -34,7 +34,7 @@ pub enum SubjectiveGameResult {
 
 #[derive(Clone, Debug)]
 pub enum NotableEvent {
-    SessionUpdated(Session),
+    SessionUpdated,
     ContestStarted(String),  // contains ContestID
     GameStarted,
     GameOver(SubjectiveGameResult),
@@ -165,16 +165,11 @@ impl ClientState {
             notable_event_queue: VecDeque::new(),
             meter_box,
             ping_meter,
-            session: Session::default(),
+            session: Session::Unknown,
         }
     }
 
-    // For a registered user: `Some`, always coincides with player name.
-    // For a guest player: `None`.
-    pub fn user_name(&self) -> Option<String> {
-        self.session.user_info().map(|u| u.user_name.clone())
-    }
-
+    pub fn session(&self) -> &Session { &self.session }
     pub fn contest(&self) -> Option<&Contest> {
         if let ContestState::Connected(ref c) = self.contest_state { Some(c) } else { None }
     }
@@ -404,8 +399,8 @@ impl ClientState {
                 return Err(error);
             },
             UpdateSession { session } => {
-                self.session = session.clone();
-                self.notable_event_queue.push_back(NotableEvent::SessionUpdated(session));
+                self.session = session;
+                self.notable_event_queue.push_back(NotableEvent::SessionUpdated);
             },
             ContestWelcome{ contest_id, rules } => {
                 let my_name = match &self.contest_state {

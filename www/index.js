@@ -102,6 +102,7 @@ const menu_pages = document.getElementsByClassName('menu-page');
 
 const logged_in_user_bar = document.getElementById('logged-in-user-bar');
 const guest_user_bar = document.getElementById('guest-user-bar');
+const guest_user_tooltip = document.getElementById('guest-user-tooltip');
 const signup_with_google_email = document.getElementById('signup-with-google-email');
 const authorization_button = document.getElementById('authorization-button');
 const log_out_button = document.getElementById('log-out-button');
@@ -540,12 +541,8 @@ function process_notable_events() {
         const js_event_type = js_event?.constructor?.name;
         if (js_event_type == 'JsEventNoop') {
             // Noop, but other events might be coming.
-        } else if (js_event_type == 'JsEventUpdateSession') {
-            reset_menu_to_start_page();
+        } else if (js_event_type == 'JsEventSessionUpdated') {
             update_session();
-        } else if (js_event_type == 'JsEventGoogleOAuthRegistration') {
-            signup_with_google_email.textContent = js_event.email;
-            push_menu_page(menu_signup_with_google_page);
         } else if (js_event_type == 'JsEventContestStarted') {
             const url = new URL(window.location);
             url.searchParams.set(SearchParams.contest_id, js_event.contest_id);
@@ -560,7 +557,7 @@ function process_notable_events() {
         } else if (js_event_type == 'JsEventGameExportReady') {
             download(js_event.content, 'game.pgn');
         } else if (js_event_type != null) {
-            throw 'Unexpected notable event: ' + js_event.toString();
+            throw 'Unexpected notable event: ' + js_event_type;
         }
     }
 }
@@ -1062,22 +1059,46 @@ function go_to_suburl(event) {
 }
 
 function update_session() {
-    const user_name = wasm_client().user_name();
-    const is_registered_user = !!user_name;
-    if (is_registered_user) {
-        logged_in_user_bar.style.display = null;
-        guest_user_bar.style.display = 'None';
-    } else {
-        logged_in_user_bar.style.display = 'None';
-        guest_user_bar.style.display = null;
+    reset_menu_to_start_page();
+    const session = wasm_client().session();
+    let is_registered_user = null;
+    let is_guest = null;
+    let user_name = null;
+    switch (session.status) {
+        case 'unknown':
+        case 'google_oauth_registering': {
+            is_registered_user = false;
+            is_guest = false;
+            user_name = '...';
+            break;
+        }
+        case 'logged_out': {
+            is_registered_user = false;
+            is_guest = true;
+            user_name = 'Guest';
+            break;
+        }
+        case 'logged_in': {
+            is_registered_user = true;
+            is_guest = false;
+            user_name = session.user_name;
+            break;
+        }
     }
+    logged_in_user_bar.style.display = is_registered_user ? null : 'None';
+    guest_user_bar.style.display = !is_registered_user ? null : 'None';
+    guest_user_tooltip.style.display = is_guest ? null : 'None';
     for (const node of document.querySelectorAll('.logged-in-as-account')) {
         node.classList.toggle('account-user', is_registered_user);
-        node.classList.toggle('account-guest', !is_registered_user);
-        node.textContent = is_registered_user ? user_name : 'Guest';
+        node.classList.toggle('account-guest', is_guest);
+        node.textContent = user_name;
     }
     for (const node of document.querySelectorAll('.guest-player-name')) {
         node.style.display = is_registered_user ? 'None' : null;
+    }
+    if (session.status == 'google_oauth_registering') {
+        signup_with_google_email.textContent = session.email;
+        push_menu_page(menu_signup_with_google_page);
     }
 }
 

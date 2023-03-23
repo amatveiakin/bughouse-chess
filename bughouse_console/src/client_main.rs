@@ -253,7 +253,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
         client_state.refresh();
         while let Some(event) = client_state.next_notable_event() {
             match event {
-                NotableEvent::SessionUpdated(..) => {},
+                NotableEvent::SessionUpdated => {},
                 NotableEvent::ContestStarted(..) => {
                     // TODO: Display contest ID to the user.
                 }

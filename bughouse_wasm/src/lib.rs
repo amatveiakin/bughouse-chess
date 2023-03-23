@@ -126,14 +126,18 @@ impl JsMeter {
     }
 }
 
+#[wasm_bindgen(getter_with_clone)]
+pub struct JsSession {
+    pub status: String,
+    pub user_name: String,
+    pub email: String,
+}
+
 #[wasm_bindgen]
 pub struct JsEventNoop {}  // in contrast to `null`, indicates that event list is not over
 
 #[wasm_bindgen]
-pub struct JsEventUpdateSession {}
-
-#[wasm_bindgen(getter_with_clone)]
-pub struct JsEventGoogleOAuthRegistration { pub email: String }
+pub struct JsEventSessionUpdated {}
 
 #[wasm_bindgen(getter_with_clone)]
 pub struct JsEventContestStarted { pub contest_id: String }
@@ -173,16 +177,30 @@ impl WebClient {
         })
     }
 
+    pub fn session(&self) -> JsResult<JsValue> {
+        let (status, user_name, email) = match self.state.session() {
+            Session::Unknown =>
+                ("unknown", String::new(), String::new()),
+            Session::LoggedOut =>
+                ("logged_out", String::new(), String::new()),
+            Session::LoggedIn(UserInfo{ user_name, email, .. }) =>
+                ("logged_in", user_name.clone(), email.clone().unwrap_or(String::new())),
+            Session::GoogleOAuthRegistering(GoogleOAuthRegistrationInfo{ email }) =>
+                ("google_oauth_registering", String::new(), email.clone()),
+        };
+        Ok(JsSession {
+            status: status.to_owned(),
+            user_name,
+            email
+        }.into())
+    }
+
     pub fn meter(&mut self, name: String) -> JsMeter {
         JsMeter::new(self.state.meter(name))
     }
 
     pub fn current_turnaround_time(&self) -> Option<f64> {
         self.state.current_turnaround_time().map(|t| t.as_secs_f64())
-    }
-
-    pub fn user_name(&self) -> Option<String> {
-        self.state.user_name()
     }
 
     pub fn observer_status(&self) -> String {
@@ -574,18 +592,8 @@ impl WebClient {
 
     pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
         match self.state.next_notable_event() {
-            Some(NotableEvent::SessionUpdated(session)) => {
-                match session {
-                    Session::LoggedOut => {
-                        Ok(JsEventUpdateSession{}.into())
-                    },
-                    Session::GoogleOAuthRegistering(GoogleOAuthRegistrationInfo{ email }) => {
-                        Ok(JsEventGoogleOAuthRegistration{ email }.into())
-                    },
-                    Session::LoggedIn(_) => {
-                        Ok(JsEventUpdateSession{}.into())
-                    },
-                }
+            Some(NotableEvent::SessionUpdated) => {
+                Ok(JsEventSessionUpdated {}.into())
             },
             Some(NotableEvent::ContestStarted(contest_id)) => {
                 let rules_node = web_document().get_existing_element_by_id("lobby-rules")?;
