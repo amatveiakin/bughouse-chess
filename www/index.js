@@ -1170,14 +1170,14 @@ function on_create_contest_confirm(event) {
     with_error_handling(function() {
         const data = new FormData(event.target);
         wasm_client().new_contest(
-            data.get('player-name'),
+            data.get('player_name'),
             data.get('teaming'),
-            data.get('starting-position'),
-            data.get('chess-variant'),
-            data.get('fairy-pieces'),
-            data.get('starting-time'),
-            data.get('drop-aggression'),
-            data.get('pawn-drop-ranks'),
+            data.get('starting_position'),
+            data.get('chess_variant'),
+            data.get('fairy_pieces'),
+            data.get('starting_time'),
+            data.get('drop_aggression'),
+            data.get('pawn_drop_ranks'),
             data.get('rating'),
         );
         update();
@@ -1188,8 +1188,8 @@ function on_join_contest_confirm(event) {
     with_error_handling(function() {
         const data = new FormData(event.target);
         wasm_client().join(
-            data.get('contest-id').toUpperCase(),
-            data.get('player-name'),
+            data.get('contest_id').toUpperCase(),
+            data.get('player_name'),
         );
         update();
     });

@@ -418,7 +418,7 @@
           <!-- TODO: Visually separate player name from contest params. -->
           <!-- TODO: Add presets (default and chess.com). -->
           <label for="cc-player-name" class="guest-player-name">Player name</label>
-          <input type="text" id="cc-player-name" name="player-name" class="guest-player-name"
+          <input type="text" id="cc-player-name" name="player_name" class="guest-player-name"
             placeholder="&nbsp;" spellcheck="false" required
             maxlength="16" pattern="[\p{L}\p{N}_-]+"
             title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
@@ -453,7 +453,7 @@
           </div>
 
           <label for="cc-starting-position">Starting position</label>
-          <select id="cc-starting-position" name="starting-position">
+          <select id="cc-starting-position" name="starting_position">
             <option value="classic">Classic</option>
             <option value="fischer-random" selected>Fischer random</option>
           </select>
@@ -475,7 +475,7 @@
           </div>
 
           <label for="cc-chess-variant">Variant</label>
-          <select id="cc-chess-variant" name="chess-variant">
+          <select id="cc-chess-variant" name="chess_variant">
             <option value="standard" selected>Standard</option>
             <option value="fog-of-war">Fog of war</option>
           </select>
@@ -494,7 +494,7 @@
           </div>
 
           <label for="cc-fairy-pieces">Fairy pieces</label>
-          <select id="cc-fairy-pieces" name="fairy-pieces">
+          <select id="cc-fairy-pieces" name="fairy_pieces">
             <option value="no-fairy" selected>No fairy</option>
             <option value="accolade">Accolade</option>
           </select>
@@ -514,7 +514,7 @@
           </div>
 
           <label for="cc-starting-time">Starting time</label>
-          <input type="text" id="cc-starting-time" name="starting-time"
+          <input type="text" id="cc-starting-time" name="starting_time"
             placeholder="m:ss" spellcheck="false" autocomplete="off" required
             value="5:00" pattern="[0-9]+:[0-5][0-9]"
             title="Starting time in “m:ss” format." />
@@ -525,7 +525,7 @@
             </div>
 
           <label for="cc-drop-aggression">Drop aggression</label>
-          <select id="cc-drop-aggression" name="drop-aggression">
+          <select id="cc-drop-aggression" name="drop_aggression">
             <option value="no-check">No check</option>
             <option value="no-chess-mate" selected>No chess mate</option>
             <option value="no-bughouse-mate">No bughouse mate</option>
@@ -555,7 +555,7 @@
           </div>
 
           <label for="cc-pawn-drop-ranks">Pawn drop ranks</label>
-          <input type="text" id="cc-pawn-drop-ranks" name="pawn-drop-ranks"
+          <input type="text" id="cc-pawn-drop-ranks" name="pawn_drop_ranks"
             placeholder="min-max" spellcheck="false" autocomplete="off" required
             value="2-6" pattern="1-[1-7]|2-[2-7]|3-[3-7]|4-[4-7]|5-[5-7]|6-[6-7]|7-[7-7]"
             title="Allowed pawn drop ranks in “min-max” format. Limitations: 1 ≤ min ≤ max ≤ 7" />
@@ -603,7 +603,7 @@
         </div>
         <div class="menu-page-body">
           <label for="jc-contest-id">Contest ID</label>
-          <input type="text" id="jc-contest-id" name="contest-id"
+          <input type="text" id="jc-contest-id" name="contest_id"
             placeholder="&nbsp;" spellcheck="false" autocomplete="off" required
             maxlength="10" pattern="[a-zA-Z0-9]*"
             title="Contest ID consists of Latin letters and numbers" />
@@ -611,7 +611,7 @@
 
           <!-- `pattern` and `maxlength` must be in sync with join contest player name field and with `is_valid_player_name` -->
           <label for="jc-player-name" class="guest-player-name">Player name</label>
-          <input type="text" id="jc-player-name" name="player-name" class="guest-player-name"
+          <input type="text" id="jc-player-name" name="player_name" class="guest-player-name"
             placeholder="&nbsp;" spellcheck="false" required
             maxlength="16" pattern="[\p{L}\p{N}_-]+"
             title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
