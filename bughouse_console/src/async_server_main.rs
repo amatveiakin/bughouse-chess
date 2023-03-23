@@ -16,6 +16,7 @@ use tide::StatusCode;
 use tungstenite::protocol;
 
 use bughouse_chess::server_hooks::ServerHooks;
+use bughouse_chess::session_store::*;
 use bughouse_chess::{server::*, BughouseServerEvent};
 
 use crate::auth;
@@ -28,7 +29,6 @@ use crate::persistence::DatabaseReader;
 use crate::secret_persistence::SecretDatabaseRW;
 use crate::prod_server_helpers::ProdServerHelpers;
 use crate::server_main::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
-use crate::session_store::*;
 
 async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
     peer_addr: String,
@@ -62,7 +62,7 @@ async fn handle_connection<DB, S: AsyncRead + AsyncWrite + Unpin + Send + Sync +
     let client_id = clients
         .lock()
         .unwrap()
-        .add_client(client_tx, peer_addr.to_string());
+        .add_client(client_tx, session_id.clone(), peer_addr.to_string());
     let clients_remover1 = Arc::clone(&clients);
     let clients_remover2 = Arc::clone(&clients);
     async_std::task::spawn(async move {
@@ -138,6 +138,7 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     config: ServerConfig,
     db: DB,
     secret_db: Box<dyn SecretDatabaseRW>,
+    session_store: Arc<Mutex<SessionStore>>,
     clients: Arc<Mutex<Clients>>,
     tx: mpsc::SyncSender<IncomingEvent>,
 ) {
@@ -154,7 +155,7 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
         db,
         secret_db,
         static_content_url_prefix: config.static_content_url_prefix,
-        session_store: Mutex::new(SessionStore::new()),
+        session_store,
     }));
 
     if app.state().sessions_enabled {
@@ -313,9 +314,13 @@ pub fn run(config: ServerConfig) {
         // Proceed even if table creation failed.
     });
 
+    let session_store = Arc::new(Mutex::new(SessionStore::new()));
+    let session_store_copy = Arc::clone(&session_store);
+
     thread::spawn(move || {
         let mut server_state = ServerState::new(
             clients_copy,
+            session_store_copy,
             Box::new(ProdServerHelpers {}),
             hooks.map(|h| h as Box<dyn ServerHooks>),
         );
@@ -331,6 +336,7 @@ pub fn run(config: ServerConfig) {
             config,
             database::UnimplementedDatabase {},
             secret_database,
+            session_store,
             clients,
             tx,
         ),
@@ -338,6 +344,7 @@ pub fn run(config: ServerConfig) {
             config,
             database::SqlxDatabase::<sqlx::Sqlite>::new(&address).unwrap(),
             secret_database,
+            session_store,
             clients,
             tx,
         ),
@@ -345,6 +352,7 @@ pub fn run(config: ServerConfig) {
             config,
             database::SqlxDatabase::<sqlx::Postgres>::new(&address).unwrap(),
             secret_database,
+            session_store,
             clients,
             tx,
         ),

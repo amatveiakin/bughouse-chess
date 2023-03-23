@@ -3,8 +3,9 @@ use std::sync::{Arc, Mutex};
 use http_types::StatusCode;
 use url::Url;
 
+use bughouse_chess::session_store::{SessionId, SessionStore};
+
 use crate::secret_persistence::SecretDatabaseRW;
-use crate::session_store::{SessionId, SessionStore};
 
 pub struct HttpServerStateImpl<DB> {
     pub google_auth: Option<crate::auth::GoogleAuth>,
@@ -13,7 +14,7 @@ pub struct HttpServerStateImpl<DB> {
     pub db: DB,
     pub secret_db: Box<dyn SecretDatabaseRW>,
     pub static_content_url_prefix: String,
-    pub session_store: Mutex<SessionStore>,
+    pub session_store: Arc<Mutex<SessionStore>>,
 }
 
 pub type HttpServerState<DB> = Arc<HttpServerStateImpl<DB>>;

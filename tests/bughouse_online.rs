@@ -15,6 +15,7 @@ use itertools::Itertools;
 
 use bughouse_chess::*;
 use bughouse_chess::server_helpers::TestServerHelpers;
+use bughouse_chess::session_store::SessionStore;
 use common::*;
 
 
@@ -55,13 +56,16 @@ impl Server {
     fn new() -> Self {
         let clients = Arc::new(Mutex::new(server::Clients::new()));
         let clients_copy = Arc::clone(&clients);
-        let mut state = server::ServerState::new(clients_copy, Box::new(TestServerHelpers{}), None);
+        let session_store = Arc::new(Mutex::new(SessionStore::new()));
+        let mut state = server::ServerState::new(
+            clients_copy, session_store, Box::new(TestServerHelpers{}), None
+        );
         state.TEST_disable_countdown();
         Server{ clients, state }
     }
 
     fn add_client(&mut self, events_tx: mpsc::Sender<BughouseServerEvent>) -> server::ClientId {
-        self.clients.lock().unwrap().add_client(events_tx, "client".to_owned())
+        self.clients.lock().unwrap().add_client(events_tx, None, "client".to_owned())
     }
 
     fn send_network_event(&mut self, id: server::ClientId, event: BughouseClientEvent) {

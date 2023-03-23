@@ -37,7 +37,6 @@ mod secret_database;
 mod secret_persistence;
 mod prod_server_helpers;
 mod server_main;
-mod session_store;
 mod database_server_hooks;
 mod stats_handlers_tide;
 mod stress_test;

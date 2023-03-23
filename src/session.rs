@@ -50,6 +50,12 @@ impl Default for Session {
 }
 
 impl Session {
+    pub fn user_info(&self) -> Option<&UserInfo> {
+        match self {
+            Session::Unknown | Session::LoggedOut | Session::GoogleOAuthRegistering(_) => None,
+            Session::LoggedIn(user_info) => Some(&user_info),
+        }
+    }
     pub fn logout(&mut self) {
         *self = Session::LoggedOut;
     }

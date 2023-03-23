@@ -37,6 +37,7 @@ pub mod server;
 pub mod server_helpers;
 pub mod server_hooks;
 pub mod session;
+pub mod session_store;
 pub mod test_util;
 pub mod util;
 

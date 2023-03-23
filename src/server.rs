@@ -32,6 +32,8 @@ use crate::rules::{Teaming, Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
 use crate::server_helpers::ServerHelpers;
 use crate::server_hooks::{ServerHooks, NoopServerHooks};
+use crate::session::Session;
+use crate::session_store::{SessionId, SessionStore};
 
 
 const DOUBLE_TERMINATION_ABORT_THRESHOLD: Duration = Duration::from_secs(1);
@@ -141,6 +143,7 @@ pub struct Client {
     events_tx: mpsc::Sender<BughouseServerEvent>,
     contest_id: Option<ContestId>,
     participant_id: Option<ParticipantId>,
+    session_id: Option<SessionId>,
     logging_id: String,
     connection_monitor: PassiveConnectionMonitor,
 }
@@ -162,14 +165,16 @@ pub struct Clients {
 impl Clients {
     pub fn new() -> Self { Clients{ map: HashMap::new(), next_id: 1 } }
 
-    pub fn add_client(&mut self, events_tx: mpsc::Sender<BughouseServerEvent>, logging_id: String)
-        -> ClientId
-    {
+    pub fn add_client(
+        &mut self, events_tx: mpsc::Sender<BughouseServerEvent>,
+        session_id: Option<SessionId>, logging_id: String
+    ) -> ClientId {
         let now = Instant::now();
         let client = Client {
             events_tx,
             contest_id: None,
             participant_id: None,
+            session_id,
             logging_id,
             connection_monitor: PassiveConnectionMonitor::new(now),
         };
@@ -242,6 +247,7 @@ struct Contest {
 
 struct Context<'a, 'b> {
     clients: &'b mut MutexGuard<'a, Clients>,
+    session_store: &'b mut MutexGuard<'a, SessionStore>,
     helpers: &'a mut dyn ServerHelpers,
     hooks: &'a mut dyn ServerHooks,
     disable_countdown: bool,
@@ -263,6 +269,7 @@ type EventResult = Result<(), BughouseServerRejection>;
 pub struct ServerState {
     // Optimization potential: Lock-free map instead of Mutex<HashMap>.
     clients: Arc<Mutex<Clients>>,
+    session_store: Arc<Mutex<SessionStore>>,
     helpers: Box<dyn ServerHelpers>,
     hooks: Box<dyn ServerHooks>,
     // TODO: Remove special test paths, use proper mock clock instead.
@@ -273,11 +280,13 @@ pub struct ServerState {
 impl ServerState {
     pub fn new(
         clients: Arc<Mutex<Clients>>,
+        session_store: Arc<Mutex<SessionStore>>,
         helpers: Box<dyn ServerHelpers>,
         hooks: Option<Box<dyn ServerHooks>>,
     ) -> Self {
         ServerState {
             clients,
+            session_store,
             helpers,
             hooks: hooks.unwrap_or_else(|| Box::new(NoopServerHooks{})),
             disable_countdown: false,
@@ -289,15 +298,18 @@ impl ServerState {
         // Lock clients for the entire duration of the function. This means simpler and
         // more predictable event processing, e.g. it gives a guarantee that all broadcasts
         // from a single `apply_event` reach the same set of clients.
+        // Similar for session_store.
         //
-        // Improvement potential. Rethink this approach. With multiple parallel contests this
-        // global mutex may become a bottleneck.
+        // TODO: Rethink this approach. This is almost a GIL. It makes the server de facto
+        // single-threaded.
         let mut clients = self.clients.lock().unwrap();
+        let mut session_store = self.session_store.lock().unwrap();
 
         // Improvement potential. Consider adding commonly used things like `now` and `execution`
         // to `Context`.
         let mut ctx = Context {
             clients: &mut clients,
+            session_store: &mut session_store,
             helpers: self.helpers.as_mut(),
             hooks: self.hooks.as_mut(),
             disable_countdown: self.disable_countdown,
@@ -674,13 +686,26 @@ impl Contest {
     ) -> EventResult {
         assert!(ctx.clients[client_id].contest_id.is_none());
         assert!(ctx.clients[client_id].participant_id.is_none());
+
+        let registered_user_name = ctx.clients[client_id].session_id
+            .as_ref()
+            .and_then(|id| ctx.session_store.get(&id))
+            .and_then(Session::user_info)
+            .map(|u| &u.user_name);
+        let is_registered_user = registered_user_name.is_some();
+        if let Some(registered_user_name) = registered_user_name {
+            if player_name != *registered_user_name {
+                return Err(unknown_error!(
+                    "Name mismatch: player name = {player_name}, user name = {registered_user_name}."
+                ));
+            }
+        }
+
         if let Some(ref game_state) = self.game_state {
             let existing_participant_id = self.participants.find_by_name(&player_name);
             if let Some(existing_participant_id) = existing_participant_id {
                 if let Some(existing_client_id) = ctx.clients.find_participant(existing_participant_id) {
-                    // TODO(accounts): Set `is_registered_user` and `is_existing_user_registered`.
-                    let is_registered_user = false;
-                    let is_existing_user_registered = false;
+                    let is_existing_user_registered = self.participants[existing_participant_id].is_registered_user;
                     // If both users are registered and have the same user name, then we know for sure
                     // this is the same user. If both are guests, we can only guess. There is no way to
                     // be certain, because guest accounts are inherently non-exclusive.
@@ -704,7 +729,8 @@ impl Contest {
                 // Improvement potential. Allow joining mid-game in individual mode.
                 //   Q. How to balance score in this case?
                 self.participants.add_participant(Participant {
-                    name: player_name.clone(),
+                    name: player_name,
+                    is_registered_user,
                     faction: Faction::Observer,
                     games_played: 0,
                     is_online: true,
@@ -725,10 +751,8 @@ impl Contest {
             let existing_participant_id = self.participants.find_by_name(&player_name);
             if let Some(existing_participant_id) = existing_participant_id {
                 if let Some(existing_client_id) = ctx.clients.find_participant(existing_participant_id) {
-                    // TODO(accounts): Set `is_registered_user` and `is_existing_user_registered`.
-                    let is_registered_user = false;
                     if is_registered_user {
-                        let is_existing_user_registered = false;
+                        let is_existing_user_registered = self.participants[existing_participant_id].is_registered_user;
                         let rejection = if is_existing_user_registered {
                             BughouseServerRejection::JoinedInAnotherClient  // this is us
                         } else {
@@ -756,6 +780,7 @@ impl Contest {
             ctx.clients[client_id].contest_id = Some(self.contest_id.clone());
             let participant_id = self.participants.add_participant(Participant {
                 name: player_name,
+                is_registered_user,
                 faction: Faction::Random,
                 games_played: 0,
                 is_online: true,

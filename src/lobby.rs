@@ -117,6 +117,7 @@ mod tests {
     fn make_participant(faction: Faction, is_ready: bool) -> Participant {
         Participant {
             name: "player".to_owned(),
+            is_registered_user: false,
             faction,
             games_played: 0,
             is_online: true,

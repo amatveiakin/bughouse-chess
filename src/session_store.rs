@@ -2,7 +2,7 @@ use std::collections::hash_map;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use bughouse_chess::session::*;
+use crate::session::*;
 
 
 // Stores session data and updates subscribers on any changes.

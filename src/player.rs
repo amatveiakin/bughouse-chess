@@ -27,8 +27,9 @@ pub enum Faction {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Participant {
-    pub name: String,      // fixed for the entire contest
-    pub faction: Faction,  // fixed for the entire contest
+    pub name: String,              // fixed for the entire contest
+    pub is_registered_user: bool,  // fixed for the entire contest
+    pub faction: Faction,          // fixed for the entire contest
     pub games_played: u32,
     pub is_online: bool,
     pub is_ready: bool,

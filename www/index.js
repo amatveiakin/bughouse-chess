@@ -899,16 +899,33 @@ function hide_menu_pages(execute_on_hide = true) {
     }
 }
 
-function reset_menu_to_start_page(page) {
+function reset_menu(page) {
     menu_page_stack.length = 0;
     hide_menu_pages();
-    menu_start_page.style.display = 'block';
+
+    const search_params = new URLSearchParams(window.location.search);
+    const contest_id = search_params.get(SearchParams.contest_id);
+    if (contest_id) {
+        push_menu_page(menu_join_contest_page);
+        jc_contest_id.value = contest_id;
+        jc_player_name.value = window.localStorage.getItem(Storage.player_name);
+    } else {
+        menu_start_page.style.display = 'block';
+    }
 }
 
 function push_menu_page(page) {
     menu_page_stack.push(page);
     hide_menu_pages();
     page.style.display = 'block';
+
+    // Focus first empty input, if any:
+    for (const input of page.getElementsByTagName('input')) {
+        if (!input.disabled != 'none' && !input.value) {
+            input.focus();
+            break;
+        }
+    }
 }
 
 function pop_menu_page() {
@@ -924,18 +941,9 @@ function close_menu() {
 }
 
 function init_menu() {
-    const search_params = new URLSearchParams(window.location.search);
-    const contest_id = search_params.get(SearchParams.contest_id);
     hide_menu_pages(false);
     menu_dialog.showModal();
-    if (contest_id) {
-        push_menu_page(menu_join_contest_page);
-        jc_contest_id.value = contest_id;
-        jc_player_name.value = window.localStorage.getItem(Storage.player_name);
-        jc_player_name.focus();
-    } else {
-        reset_menu_to_start_page();
-    }
+    reset_menu();
 }
 
 // Shows a dialog with a message and buttons.
@@ -1059,7 +1067,7 @@ function go_to_suburl(event) {
 }
 
 function update_session() {
-    reset_menu_to_start_page();
+    reset_menu();
     const session = wasm_client().session();
     let is_registered_user = null;
     let is_guest = null;
@@ -1094,7 +1102,8 @@ function update_session() {
         node.textContent = user_name;
     }
     for (const node of document.querySelectorAll('.guest-player-name')) {
-        node.style.display = is_registered_user ? 'None' : null;
+        node.style.display = is_guest ? null : 'None';
+        node.disabled = !is_guest;
     }
     if (session.status == 'google_oauth_registering') {
         signup_with_google_email.textContent = session.email;
@@ -1178,13 +1187,11 @@ function log_out(event) {
 function on_create_contest_submenu(event) {
     push_menu_page(menu_create_contest_page);
     cc_player_name.value = window.localStorage.getItem(Storage.player_name);
-    cc_player_name.focus();
 }
 
 function on_join_contest_submenu(event) {
     push_menu_page(menu_join_contest_page);
     jc_player_name.value = window.localStorage.getItem(Storage.player_name);
-    jc_contest_id.focus();
 }
 
 function on_create_contest_confirm(event) {

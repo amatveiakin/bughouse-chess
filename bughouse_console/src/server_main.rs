@@ -13,6 +13,7 @@ use tungstenite::protocol;
 
 use bughouse_chess::server::*;
 use bughouse_chess::server_hooks::ServerHooks;
+use bughouse_chess::session_store::SessionStore;
 use bughouse_chess::*;
 
 use crate::database;
@@ -72,7 +73,7 @@ fn handle_connection(
     let client_id = clients
         .lock()
         .unwrap()
-        .add_client(client_tx, peer_addr.to_string());
+        .add_client(client_tx, None, peer_addr.to_string());
     let clients_remover1 = Arc::clone(&clients);
     let clients_remover2 = Arc::clone(&clients);
     // Rust-upgrade (https://github.com/rust-lang/rust/issues/90470):
@@ -164,7 +165,13 @@ pub fn run(config: ServerConfig) {
                 Some(Box::new(h) as Box<dyn ServerHooks>)
             }
         };
-        let mut server_state = ServerState::new(clients_copy, Box::new(ProdServerHelpers{}), hooks);
+        let session_store = Arc::new(Mutex::new(SessionStore::new()));
+        let mut server_state = ServerState::new(
+            clients_copy,
+            session_store,
+            Box::new(ProdServerHelpers{}),
+            hooks,
+        );
 
         for event in rx {
             server_state.apply_event(event);

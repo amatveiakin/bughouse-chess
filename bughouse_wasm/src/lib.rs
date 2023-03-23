@@ -260,9 +260,14 @@ impl WebClient {
         self.state.first_game_countdown_left().map(|d| d.as_secs_f64().ceil() as u32)
     }
 
+    fn finalize_player_name(&self, player_name: Option<String>) -> JsResult<String> {
+        player_name
+            .or_else(|| self.state.session().user_info().map(|u| u.user_name.clone()))
+            .ok_or(rust_error!("Player name is required if not a registered user"))
+    }
     pub fn new_contest(
         &mut self,
-        player_name: &str,
+        player_name: Option<String>,
         teaming: &str,
         starting_position: &str,
         chess_variant: &str,
@@ -347,12 +352,15 @@ impl WebClient {
         if let Err(message) = rules.verify() {
             return Err(IgnorableError{ message }.into());
         }
-        self.state.new_contest(rules, player_name.to_owned());
+        let player_name = self.finalize_player_name(player_name)?;
+        self.state.new_contest(rules, player_name);
         Ok(())
     }
 
-    pub fn join(&mut self, contest_id: String, my_name: String) {
-        self.state.join(contest_id, my_name);
+    pub fn join(&mut self, contest_id: String, player_name: Option<String>) -> JsResult<()> {
+        let player_name = self.finalize_player_name(player_name)?;
+        self.state.join(contest_id, player_name);
+        Ok(())
     }
     pub fn resign(&mut self) {
         self.state.resign();
@@ -1166,14 +1174,12 @@ fn add_lobby_participant_node(p: &Participant, is_me: bool, parent: &web_sys::El
         node.class_list().add_1(if is_me { "lobby-me" } else { "lobby-other" })
     };
     {
-        // TODO(accounts): Set `is_registered_user`.
-        let is_registered_user = false;
-        let registered_user_node = match is_registered_user {
+        let registered_user_node = match p.is_registered_user {
             false => make_menu_icon(&[])?,
             true => make_menu_icon(&["registered-user"])?,
         };
         registered_user_node.class_list().add_1("registered-user-icon")?;
-        if is_registered_user {
+        if p.is_registered_user {
             let title_node = document.create_svg_element("title")?;
             title_node.set_text_content(Some("This is a registered user account."));
             registered_user_node.append_child(&title_node)?;
