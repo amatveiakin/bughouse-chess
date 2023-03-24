@@ -288,7 +288,6 @@ pub async fn handle_continue_sign_with_google<DB: Send + Sync + 'static>(
 pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
     mut req: tide::Request<HttpServerState<DB>>,
 ) -> tide::Result {
-    check_google_csrf(&req)?;
     let FinishSignupWithGoogleData{ user_name } = req.body_form().await?;
 
     validate_player_name(&user_name)
