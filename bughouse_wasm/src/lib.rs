@@ -131,6 +131,7 @@ pub struct JsSession {
     pub status: String,
     pub user_name: String,
     pub email: String,
+    pub registration_method: String,
 }
 
 #[wasm_bindgen]
@@ -178,20 +179,32 @@ impl WebClient {
     }
 
     pub fn session(&self) -> JsResult<JsValue> {
-        let (status, user_name, email) = match self.state.session() {
-            Session::Unknown =>
-                ("unknown", String::new(), String::new()),
-            Session::LoggedOut =>
-                ("logged_out", String::new(), String::new()),
-            Session::LoggedIn(UserInfo{ user_name, email, .. }) =>
-                ("logged_in", user_name.clone(), email.clone().unwrap_or(String::new())),
-            Session::GoogleOAuthRegistering(GoogleOAuthRegistrationInfo{ email }) =>
-                ("google_oauth_registering", String::new(), email.clone()),
+        use Session::*;
+        let status = match self.state.session() {
+            Unknown => "unknown",
+            LoggedOut => "logged_out",
+            LoggedIn(_) => "logged_in",
+            GoogleOAuthRegistering(_) => "google_oauth_registering",
+        };
+        let user_name = match self.state.session() {
+            Unknown | LoggedOut | GoogleOAuthRegistering(_) => String::new(),
+            LoggedIn(UserInfo{ user_name, .. }) => user_name.clone(),
+        };
+        let email = match self.state.session() {
+            Unknown | LoggedOut => String::new(),
+            LoggedIn(UserInfo{ email, .. }) => email.clone().unwrap_or(String::new()),
+            GoogleOAuthRegistering(GoogleOAuthRegistrationInfo{ email }) => email.clone(),
+        };
+        let registration_method = match self.state.session() {
+            Unknown | LoggedOut => String::new(),
+            GoogleOAuthRegistering(_) => RegistrationMethod::GoogleOAuth.to_string(),
+            LoggedIn(UserInfo{ registration_method, .. }) => registration_method.to_string(),
         };
         Ok(JsSession {
             status: status.to_owned(),
             user_name,
-            email
+            email,
+            registration_method,
         }.into())
     }
 

@@ -98,6 +98,9 @@ const menu_authorization_page = document.getElementById('menu-authorization-page
 const menu_login_page = document.getElementById('menu-login-page');
 const menu_signup_page = document.getElementById('menu-signup-page');
 const menu_signup_with_google_page = document.getElementById('menu-signup-with-google-page');
+const menu_view_account_page = document.getElementById('menu-view-account-page');
+const menu_change_account_page = document.getElementById('menu-change-account-page');
+const menu_delete_account_page = document.getElementById('menu-delete-account-page');
 const menu_create_contest_page = document.getElementById('menu-create-contest-page');
 const menu_join_contest_page = document.getElementById('menu-join-contest-page');
 const menu_about_page = document.getElementById('menu-about-page');
@@ -108,15 +111,18 @@ const cookie_banner = document.getElementById('cookie-banner');
 const accept_essential_cookies_button = document.getElementById('accept-essential-cookies-button');
 const accept_all_cookies_button = document.getElementById('accept-all-cookies-button');
 
-const logged_in_user_bar = document.getElementById('logged-in-user-bar');
+const registered_user_bar = document.getElementById('registered-user-bar');
+const view_account_button = document.getElementById('view-account-button');
 const guest_user_bar = document.getElementById('guest-user-bar');
 const guest_user_tooltip = document.getElementById('guest-user-tooltip');
-const signup_with_google_email = document.getElementById('signup-with-google-email');
 const authorization_button = document.getElementById('authorization-button');
 const log_out_button = document.getElementById('log-out-button');
 const sign_with_google_button = document.getElementById('sign-with-google-button');
 const begin_login_button = document.getElementById('begin-login-button');
 const begin_signup_button = document.getElementById('begin-signup-button');
+const view_account_change_button = document.getElementById('view-account-change-button');
+const view_account_delete_button = document.getElementById('view-account-delete-button');
+const change_account_email = document.getElementById('change-account-email');
 
 const create_contest_button = document.getElementById('create-contest-button');
 const join_contest_button = document.getElementById('join-contest-button');
@@ -262,14 +268,19 @@ volume_button.addEventListener('click', next_volume);
 accept_essential_cookies_button.addEventListener('click', on_accept_essential_cookies);
 accept_all_cookies_button.addEventListener('click', on_accept_all_cookies);
 menu_dialog.addEventListener('cancel', (event) => event.preventDefault());
+view_account_button.addEventListener('click', () => push_menu_page(menu_view_account_page));
 authorization_button.addEventListener('click', () => push_menu_page(menu_authorization_page));
 log_out_button.addEventListener('click', log_out);
 sign_with_google_button.addEventListener('click',  sign_with_google);
 begin_login_button.addEventListener('click',  () => push_menu_page(menu_login_page));
 begin_signup_button.addEventListener('click',  () => push_menu_page(menu_signup_page));
+view_account_change_button.addEventListener('click', () => push_menu_page(menu_change_account_page));
+view_account_delete_button.addEventListener('click', () => push_menu_page(menu_delete_account_page));
 menu_login_page.addEventListener('submit', log_in);
 menu_signup_page.addEventListener('submit', sign_up);
 menu_signup_with_google_page.addEventListener('submit', sign_up_with_google);
+menu_change_account_page.addEventListener('submit', change_account);
+menu_delete_account_page.addEventListener('submit', delete_account);
 create_contest_button.addEventListener('click', on_create_contest_submenu);
 join_contest_button.addEventListener('click', on_join_contest_submenu);
 about_button.addEventListener('click', () => push_menu_page(menu_about_page));
@@ -1054,8 +1065,12 @@ function simple_dialog(message, buttons) {
     });
 }
 
-function ignorable_error_dialog(message) {
+function info_dialog(message) {
     return simple_dialog(message, [new MyButton('Ok', MyButton.HIDE)]);
+}
+
+function ignorable_error_dialog(message) {
+    return info_dialog(message);
 }
 
 function fatal_error_dialog(message) {
@@ -1135,6 +1150,7 @@ function go_to_suburl(event) {
 function update_session() {
     reset_menu();
     const session = wasm_client().session();
+    const using_password_auth = session.registration_method == 'Password';
     let is_registered_user = null;
     let is_guest = null;
     let user_name = null;
@@ -1159,20 +1175,28 @@ function update_session() {
             break;
         }
     }
-    logged_in_user_bar.style.display = is_registered_user ? null : 'None';
+    registered_user_bar.style.display = is_registered_user ? null : 'None';
     guest_user_bar.style.display = !is_registered_user ? null : 'None';
     guest_user_tooltip.style.display = is_guest ? null : 'None';
+    view_account_change_button.style.display = using_password_auth ? null : 'None';
     for (const node of document.querySelectorAll('.logged-in-as-account')) {
         node.classList.toggle('account-user', is_registered_user);
         node.classList.toggle('account-guest', is_guest);
         node.textContent = user_name;
+    }
+    change_account_email.value = session.email;
+    for (const node of document.querySelectorAll('.logged-in-as-email')) {
+        node.textContent = session.email || '—';
+    }
+    for (const node of document.querySelectorAll('.registered-user-password')) {
+        node.style.display = using_password_auth ? null : 'None';
+        node.disabled = !using_password_auth;
     }
     for (const node of document.querySelectorAll('.guest-player-name')) {
         node.style.display = is_guest ? null : 'None';
         node.disabled = !is_guest;
     }
     if (session.status == 'google_oauth_registering') {
-        signup_with_google_email.textContent = session.email;
         push_menu_page(menu_signup_with_google_page);
     }
 }
@@ -1182,7 +1206,7 @@ function as_x_www_form_urlencoded(form_data) {
     return new URLSearchParams(form_data);
 }
 
-async function process_authentification_request(request) {
+async function process_authentification_request(request, success_message) {
     // TODO: Loading animation.
     let response;
     try {
@@ -1192,6 +1216,9 @@ async function process_authentification_request(request) {
         return;
     }
     if (response.ok) {
+        if (success_message) {
+            await info_dialog(success_message);
+        }
         // Emulate a navigation to indicate that the form has been submitted to password managers:
         // https://www.chromium.org/developers/design-documents/create-amazing-password-forms/#make-sure-form-submission-is-clear
         window.history.replaceState({});
@@ -1264,6 +1291,27 @@ function log_out(event) {
     process_authentification_request(new Request('auth/logout', {
         method: 'POST',
     }));
+}
+
+async function change_account(event) {
+    const data = new FormData(event.target);
+    if (data.get('confirm_new_password') != data.get('new_password')) {
+        ignorable_error_dialog('Passwords do not match!');
+        return;
+    }
+    data.delete('confirm_new_password');
+    process_authentification_request(new Request('auth/change-account', {
+        method: 'POST',
+        body: as_x_www_form_urlencoded(data),
+    }), 'Account changes applied.');
+}
+
+async function delete_account(event) {
+    const data = new FormData(event.target);
+    process_authentification_request(new Request('auth/delete-account', {
+        method: 'POST',
+        body: as_x_www_form_urlencoded(data),
+    }), 'Account deleted.');
 }
 
 function on_create_contest_submenu(event) {

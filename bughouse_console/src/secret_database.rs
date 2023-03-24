@@ -1,6 +1,6 @@
 use sqlx::prelude::*;
 use tide::utils::async_trait;
-use time::{OffsetDateTime, PrimitiveDateTime};
+use time::OffsetDateTime;
 
 use bughouse_chess::session::RegistrationMethod;
 
@@ -15,7 +15,6 @@ where
     for<'q> String: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'q> bool: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'q> OffsetDateTime: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
-    for<'q> PrimitiveDateTime: sqlx::Type<DB> + sqlx::Decode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
     for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
     for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
@@ -28,7 +27,9 @@ where
                 sqlx::query::<DB>(
                     "SELECT
                         rowid,
+                        deleted,
                         creation_time,
+                        deletion_time,
                         user_name,
                         email,
                         password_hash,
@@ -40,7 +41,7 @@ where
                 .bind(email.to_owned()),
             )
             .await?;
-        row_to_account(row)
+        row.map(row_to_account).transpose()
     }
 
     async fn account_by_user_name(&self, user_name: &str) -> Result<Option<Account>, anyhow::Error> {
@@ -51,7 +52,9 @@ where
                 sqlx::query::<DB>(
                     "SELECT
                         rowid,
+                        deleted,
                         creation_time,
+                        deletion_time,
                         user_name,
                         email,
                         password_hash,
@@ -63,11 +66,11 @@ where
                 .bind(user_name.to_owned()),
             )
             .await?;
-        row_to_account(row)
+        row.map(row_to_account).transpose()
     }
 }
 
-fn row_to_account<DB>(row: Option<DB::Row>) -> Result<Option<Account>, anyhow::Error>
+fn row_to_account<DB>(row: DB::Row) -> Result<Account, anyhow::Error>
 where
     // TODO: Deduplicate trait requirements.
     DB: sqlx::Database,
@@ -75,25 +78,33 @@ where
     for<'q> String: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'q> bool: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'q> OffsetDateTime: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
-    for<'q> PrimitiveDateTime: sqlx::Type<DB> + sqlx::Decode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
     for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
     for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
     usize: sqlx::ColumnIndex<DB::Row>,
 {
-    match row {
-        Some(row) => Ok(Some(Account {
-            id: AccountId(row.try_get("rowid")?),
-            creation_time: row.try_get("creation_time")?,
-            user_name: row.try_get("user_name")?,
-            email: row.try_get("email")?,
-            password_hash: row.try_get("password_hash")?,
-            registration_method: RegistrationMethod::try_from_string(
-                row.try_get("registration_method")?,
-            ).map_err(anyhow::Error::msg)?,
-        })),
-        None => Ok(None),
+    let id = AccountId(row.try_get("rowid")?);
+    let creation_time = row.try_get("creation_time")?;
+    let user_name = row.try_get("user_name")?;
+    let deleted: bool = row.try_get("deleted")?;
+    if deleted {
+        return Ok(Account::Deleted(DeletedAccount {
+            id,
+            user_name,
+            creation_time,
+            deletion_time: row.try_get("deletion_time")?,
+        }));
     }
+    Ok(Account::Live(LiveAccount {
+        id,
+        creation_time,
+        user_name,
+        email: row.try_get("email")?,
+        password_hash: row.try_get("password_hash")?,
+        registration_method: RegistrationMethod::try_from_string(
+            row.try_get("registration_method")?,
+        ).map_err(anyhow::Error::msg)?,
+    }))
 }
 
 #[async_trait]
@@ -106,10 +117,11 @@ where
     Option<i64>: Type<DB> + for<'q> Encode<'q, DB>,
     for<'q> OffsetDateTime: Type<DB> + Encode<'q, DB> + Decode<'q, DB>,
     Option<OffsetDateTime>: Type<DB> + for<'q> Encode<'q, DB>,
-    bool: Type<DB> + for<'q> Encode<'q, DB>,
+    for<'q> bool: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
     for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
     for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
+    usize: sqlx::ColumnIndex<DB::Row>,
 {
     async fn create_tables(&self) -> anyhow::Result<()> {
         let rowid_column_definition = DB::ROWID_COLUMN_DEFINITION;
@@ -117,7 +129,9 @@ where
             format!(
                 "CREATE TABLE IF NOT EXISTS accounts (
                 {rowid_column_definition}
+                deleted BOOLEAN DEFAULT FALSE,
                 creation_time TIMESTAMP,
+                deletion_time TIMESTAMP,
                 user_name TEXT UNIQUE,
                 email TEXT UNIQUE,
                 password_hash TEXT,
@@ -162,7 +176,7 @@ where
     async fn update_account_txn(
         &self,
         id: AccountId,
-        f: Box<dyn for<'a> FnOnce(&'a mut Account) + Send>,
+        f: Box<dyn for<'a> FnOnce(&'a mut LiveAccount) -> anyhow::Result<()> + Send>,
     ) -> anyhow::Result<()> {
         let mut txn = self.pool.begin().await?;
         let row = txn
@@ -170,7 +184,9 @@ where
                 sqlx::query::<DB>(
                     "SELECT
                         rowid,
+                        deleted,
                         creation_time,
+                        deletion_time,
                         user_name,
                         email,
                         password_hash,
@@ -182,17 +198,11 @@ where
                 .bind(id.0),
             )
             .await?;
-        let mut account = Account {
-            id: AccountId(row.try_get("rowid")?),
-            creation_time: row.try_get("creation_time")?,
-            user_name: row.try_get("user_name")?,
-            email: row.try_get("email")?,
-            password_hash: row.try_get("password_hash")?,
-            registration_method: RegistrationMethod::try_from_string(
-                row.try_get("registration_method")?,
-            ).map_err(anyhow::Error::msg)?,
+        let account = row_to_account(row)?;
+        let Account::Live(mut live_account) = account else {
+            return Err(anyhow::anyhow!("Cannot update deleted account."));
         };
-        f(&mut account);
+        f(&mut live_account)?;
         txn.execute(
             sqlx::query(
                 "UPDATE accounts SET
@@ -203,11 +213,64 @@ where
                     registration_method=$5
                 WHERE rowid=$6",
             )
-            .bind(account.creation_time)
-            .bind(account.user_name)
-            .bind(account.email)
-            .bind(account.password_hash)
-            .bind(account.registration_method.to_string())
+            .bind(live_account.creation_time)
+            .bind(live_account.user_name)
+            .bind(live_account.email)
+            .bind(live_account.password_hash)
+            .bind(live_account.registration_method.to_string())
+            .bind(id.0),
+        )
+        .await?;
+        txn.commit().await?;
+        Ok(())
+    }
+
+    async fn delete_account_txn(
+        &self,
+        id: AccountId,
+        f: Box<dyn FnOnce(LiveAccount) -> anyhow::Result<DeletedAccount> + Send>,
+    ) -> anyhow::Result<()> {
+
+        let mut txn = self.pool.begin().await?;
+        let row = txn
+            .fetch_one(
+                sqlx::query::<DB>(
+                    "SELECT
+                        rowid,
+                        deleted,
+                        creation_time,
+                        deletion_time,
+                        user_name,
+                        email,
+                        password_hash,
+                        registration_method
+                     FROM accounts
+                     WHERE
+                        rowid=$1",
+                )
+                .bind(id.0),
+            )
+            .await?;
+        let account = row_to_account(row)?;
+        let Account::Live(live_account) = account else {
+            return Err(anyhow::anyhow!("Cannot delete deleted account."));
+        };
+        let deleted_account = f(live_account)?;
+        txn.execute(
+            sqlx::query(
+                "UPDATE accounts SET
+                    deleted=TRUE,
+                    creation_time=$1,
+                    deletion_time=$2,
+                    user_name=$3,
+                    email=NULL,
+                    password_hash=NULL,
+                    registration_method=NULL
+                WHERE rowid=$4",
+            )
+            .bind(deleted_account.creation_time)
+            .bind(deleted_account.deletion_time)
+            .bind(deleted_account.user_name)
             .bind(id.0),
         )
         .await?;
@@ -255,10 +318,19 @@ impl SecretDatabaseWriter for UnimplementedDatabase {
     async fn update_account_txn(
         &self,
         _id: AccountId,
-        _f: Box<dyn for<'a> FnOnce(&'a mut Account) + Send>,
+        _f: Box<dyn for<'a> FnOnce(&'a mut LiveAccount) -> anyhow::Result<()> + Send>,
     ) -> anyhow::Result<()> {
         Err(anyhow::Error::msg(
             "create_account is unimplemented in UnimplementedDatabase",
+        ))
+    }
+    async fn delete_account_txn(
+        &self,
+        _id: AccountId,
+        _f: Box<dyn FnOnce(LiveAccount) -> anyhow::Result<DeletedAccount> + Send>,
+    ) -> anyhow::Result<()> {
+        Err(anyhow::Error::msg(
+            "delete_account is unimplemented in UnimplementedDatabase",
         ))
     }
 }

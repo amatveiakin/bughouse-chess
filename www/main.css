@@ -724,6 +724,7 @@ dialog {
 }
 
 #menu-dialog {
+  min-width: 18em;
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
@@ -746,6 +747,7 @@ dialog::backdrop {
 .menu-page-body {
   display: grid;
   grid-template-columns: auto auto auto;
+  grid-auto-rows: minmax(2em, auto);
 }
 
 label {
@@ -753,6 +755,11 @@ label {
   align-items: center;
   /* Note: prefer padding over `column-gap`, because this way the entire line is clickable. */
   padding-right: 1em;
+}
+.fixed-form-value {
+  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
 }
 
 dialog hr {
@@ -787,15 +794,20 @@ dialog button:hover {
 .big-button:hover {
   background-color: #eaac73;
 }
-.back-button {
+
+.big-button.danger-button {
+  text-shadow: 0.05em 0.05em 0.05em #f37676;
+  background-color: #f06a6a;
+}
+.big-button.danger-button:hover {
+  background-color: #f37676;
+}
+
+.square-button {
   padding: 0;
   height: 2em;
   width: 2em;
   border-radius: 0.3em;
-}
-.back-button.back-button-large {
-  padding: 0 0.6em;
-  width: unset;
 }
 
 dialog select, dialog input {
@@ -836,6 +848,10 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 }
 .account-user {
   font-weight: bold;
+}
+#account-deletion-warning {
+  width: 24em;
+  padding: 0.4em 0 1em 0;
 }
 
 #about-text {

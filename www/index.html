@@ -253,13 +253,14 @@
             to work. If there is no meaningful placeholder text, use "&nbsp;" -->
       <div id="menu-start-page" class="menu-page">
         <div id="account-info-bar">
-          <div id="logged-in-user-bar" class="flex-row" style="display:none">
-            <span>
+          <div id="registered-user-bar" class="flex-row" style="display:none">
+            <span class="flex-equisized">
               <div class="inline-block">
                 <span class="logged-in-as-prefix">Welcome,</span><br>
                 <span class="logged-in-as-account"></span>
               </div>
             </span>
+            <button id="view-account-button" class="square-button" title="Account settings">👤︎</button>
             <button id="log-out-button">Log out</button>
           </div>
           <div id="guest-user-bar" class="flex-row">
@@ -306,7 +307,7 @@
       <form id="menu-authorization-page" class="menu-page" action="javascript:;">
         <div class="flex-col">
           <div class="align-left">
-            <button type="button" class="back-button" title="Go back">🡨</button>
+            <button type="button" class="square-button back-button" title="Go back">🡨</button>
           </div>
           <button id="sign-with-google-button" class="big-button">
             <div class="flex-row">
@@ -330,7 +331,7 @@
 
       <form id="menu-login-page" class="menu-page" action="javascript:;">
         <div class="align-left">
-          <button type="button" class="back-button" title="Go back">🡨</button>
+          <button type="button" class="square-button back-button" title="Go back">🡨</button>
         </div>
         <div class="menu-page-body">
           <label for="login-user-name">Account name</label>
@@ -352,7 +353,7 @@
 
       <form id="menu-signup-page" class="menu-page" action="javascript:;">
         <div class="align-left">
-          <button type="button" class="back-button" title="Go back">🡨</button>
+          <button type="button" class="square-button back-button" title="Go back">🡨</button>
         </div>
         <div class="menu-page-body">
           <label for="signup-user-name">Account name *</label>
@@ -406,7 +407,7 @@
 
       <form id="menu-signup-with-google-page" class="menu-page" action="javascript:;">
         <div class="align-left">
-          <button type="button" class="back-button" title="Go back">🡨</button>
+          <button type="button" class="square-button back-button" title="Go back">🡨</button>
         </div>
         <div class="menu-page-body">
           <label for="signup-with-google-user-name">Account name *</label>
@@ -428,17 +429,110 @@
           </div>
 
           <label for="signup-with-google-email">Email</label>
-          <div id="signup-with-google-email"></div>
-          <div class="tooltip"></div>
+          <div id="signup-with-google-email" class="logged-in-as-email fixed-form-value"></div>
+          <div></div>
         </div>
         <div class="align-center">
           <button id="signup-with-google-confirm-button" class="big-button">Create account</button>
         </div>
       </form>
 
+      <form id="menu-view-account-page" class="menu-page" action="javascript:;">
+        <div class="align-left">
+          <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        </div>
+        <div class="menu-page-body">
+          <label for="view-account-user-name">Account name</label>
+          <div id="view-account-user-name" class="logged-in-as-account fixed-form-value"></div>
+          <div></div>
+
+          <label for="view-account-email">Email</label>
+          <div id="view-account-email" class="logged-in-as-email fixed-form-value"></div>
+          <div></div>
+
+          <label for="view-account-password" class="registered-user-password">Password</label>
+          <div id="view-account-password" class="registered-user-password">••••••••</div>
+          <div class="registered-user-password"></div>
+        </div>
+        <div class="flex-row">
+          <button id="view-account-change-button" class="flex-equisized">Change info</button>
+          <button id="view-account-delete-button" class="flex-equisized">Delete account</button>
+        </div>
+      </form>
+
+      <form id="menu-change-account-page" class="menu-page" action="javascript:;">
+        <div class="align-left">
+          <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        </div>
+        <div class="menu-page-body">
+          <label for="change-account-user-name">Account name</label>
+          <div id="change-account-user-name" class="logged-in-as-account fixed-form-value"></div>
+          <div></div>
+
+          <label for="change-account-current-password">Current password</label>
+          <input type="password" id="change-account-current-password" name="current_password"
+            placeholder="&nbsp;" autocomplete="current-password" required />
+          <div></div>
+
+          <label for="change-account-email">Email</label>
+          <input type="email" id="change-account-email" name="email"
+            placeholder="no email" autocomplete="email" />
+          <div class="tooltip">
+            <div class="tooltip-text">
+              <p>
+                Your email (optional; clear the field to remove). We do not send spam.
+                The email is only used in order to restore your account if you forget your password.
+              </p>
+            </div>
+          </div>
+
+          <label for="change-account-new-password">New password</label>
+          <input type="password" id="change-account-new-password" name="new_password"
+            placeholder="keep current password" minlength="8" autocomplete="new-password" />
+          <div class="tooltip">
+            <div class="tooltip-text">
+              <p>
+                New password (leave empty to keep the current password).
+                Must be at least 8 characters long. Case-sensitive.
+              </p>
+            </div>
+          </div>
+
+          <label for="change-account-confirm-new-password">Confirm new password</label>
+          <input type="password" id="change-account-confirm-new-password" name="confirm_new_password"
+            placeholder="keep current password" minlength="8" autocomplete="new-password" />
+          <div></div>
+        </div>
+        <div class="align-center">
+          <button id="change-account-confirm-button" class="big-button">Update account</button>
+        </div>
+      </form>
+
+      <form id="menu-delete-account-page" class="menu-page" action="javascript:;">
+        <div class="align-left">
+          <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        </div>
+        <div id="account-deletion-warning">
+          You are about to delete your bughouse.pro account,
+          <span id="view-account-user-name" class="logged-in-as-account fixed-form-value"></span>.
+          This action cannot be undone!
+          <span class="registered-user-password">Type your password below in order to continue.</span>
+          <!-- TODO: Some kind of confirmation for those logged in with Google. -->
+        </div>
+        <div class="menu-page-body">
+          <label for="delete-account-password">Password</label>
+          <input type="password" id="delete-account-password" name="password"
+            placeholder="&nbsp;" autocomplete="current-password" required />
+          <div></div>
+        </div>
+        <div class="align-center">
+          <button id="delete-account-confirm-button" class="big-button danger-button">☠ Delete account</button>
+        </div>
+      </form>
+
       <form id="menu-create-contest-page" class="menu-page" action="javascript:;">
         <div class="flex-row">
-          <button type="button" class="back-button" title="Go back">🡨</button>
+          <button type="button" class="square-button back-button" title="Go back">🡨</button>
           <div class="flex-equisized"></div>
           <div class="logged-in-as">
             <span class="logged-in-as-prefix">Playing as</span>
@@ -628,7 +722,7 @@
 
       <form id="menu-join-contest-page" class="menu-page" action="javascript:;">
         <div class="flex-row">
-          <button type="button" class="back-button" title="Go back">🡨</button>
+          <button type="button" class="square-button back-button" title="Go back">🡨</button>
           <div class="flex-equisized"></div>
           <div class="logged-in-as">
             <span class="logged-in-as-prefix">Playing as</span>
@@ -658,7 +752,7 @@
 
       <div id="menu-about-page" class="menu-page">
         <div class="align-left">
-          <button type="button" class="back-button" title="Go back">🡨</button>
+          <button type="button" class="square-button back-button" title="Go back">🡨</button>
         </div>
         <div id="about-text" class="scrollable">
           <p>
@@ -718,7 +812,7 @@
         <div class="flex-row">
           <div id="lobby-contest">Contest <span id="lobby-contest-id"></span></div>
           <!-- TODO: Allow to leave contest (don't forget to send the message to the server) -->
-          <!-- <button type="button" class="back-button back-button-large" title="Go back">Leave</button> -->
+          <!-- <button type="button" class="back-button" title="Go back">Leave</button> -->
         </div>
         <div id="lobby-rules"></div>
         <hr>

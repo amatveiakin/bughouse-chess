@@ -8,7 +8,7 @@ use bughouse_chess::session::RegistrationMethod;
 pub struct AccountId(pub i64);
 
 #[derive(Debug, Clone)]
-pub struct Account {
+pub struct LiveAccount {
     pub id: AccountId,
     pub user_name: String,
     pub email: Option<String>,
@@ -16,6 +16,29 @@ pub struct Account {
     pub registration_method: RegistrationMethod,
     pub creation_time: OffsetDateTime,
 }
+
+#[derive(Debug, Clone)]
+pub struct DeletedAccount {
+    pub id: AccountId,
+    pub user_name: String,
+    pub creation_time: OffsetDateTime,
+    pub deletion_time: OffsetDateTime,
+}
+
+pub enum Account {
+    Live(LiveAccount),
+    Deleted(DeletedAccount),
+}
+
+impl Account {
+    pub fn live(self) -> Option<LiveAccount> {
+        match self {
+            Account::Live(live) => Some(live),
+            Account::Deleted(_) => None,
+        }
+    }
+}
+
 
 #[async_trait]
 pub trait SecretDatabaseReader {
@@ -37,7 +60,12 @@ pub trait SecretDatabaseWriter {
     async fn update_account_txn(
         &self,
         id: AccountId,
-        f: Box<dyn for<'a>FnOnce(&'a mut Account) + Send>,
+        f: Box<dyn for<'a> FnOnce(&'a mut LiveAccount) -> anyhow::Result<()> + Send>,
+    ) -> anyhow::Result<()>;
+    async fn delete_account_txn(
+        &self,
+        id: AccountId,
+        f: Box<dyn FnOnce(LiveAccount) -> anyhow::Result<DeletedAccount> + Send>,
     ) -> anyhow::Result<()>;
 }
 

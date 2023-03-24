@@ -194,6 +194,8 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     app.at(AUTH_SIGN_WITH_GOOGLE_PATH).get(handle_sign_with_google);
     app.at(AUTH_CONTINUE_SIGN_WITH_GOOGLE_PATH).get(handle_continue_sign_with_google);
     app.at(AUTH_FINISH_SIGNUP_WITH_GOOGLE_PATH).post(handle_finish_signup_with_google);
+    app.at(AUTH_CHANGE_ACCOUNT_PATH).post(handle_change_account);
+    app.at(AUTH_DELETE_ACCOUNT_PATH).post(handle_delete_account);
     app.at(AUTH_MYSESSION_PATH).get(handle_mysession);
 
     crate::stats_handlers_tide::Handlers::<HttpServerState<DB>>::register_handlers(&mut app);
