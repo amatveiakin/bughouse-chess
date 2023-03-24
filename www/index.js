@@ -75,6 +75,7 @@ log_time();  // start the counter
 
 // Improvement potential. Similarly group other global variables.
 const Storage = {
+    cookies_accepted: 'cookies-accepted',  // values: null, "essential", "all"
     player_name: 'player-name',
 };
 
@@ -83,11 +84,14 @@ const SearchParams = {
     server: 'server',
 };
 
+const page_element = document.getElementById('page');
 const git_version = document.getElementById('git-version');
+const command_input = document.getElementById('command');
 const command_result = document.getElementById('command-result');
 const loading_status = document.getElementById('loading-status');
 const connection_info = document.getElementById('connection-info');
 
+const menu_backdrop = document.getElementById('menu-backdrop');
 const menu_dialog = document.getElementById('menu-dialog');
 const menu_start_page = document.getElementById('menu-start-page');
 const menu_authorization_page = document.getElementById('menu-authorization-page');
@@ -99,6 +103,10 @@ const menu_join_contest_page = document.getElementById('menu-join-contest-page')
 const menu_about_page = document.getElementById('menu-about-page');
 const menu_lobby_page = document.getElementById('menu-lobby-page');
 const menu_pages = document.getElementsByClassName('menu-page');
+
+const cookie_banner = document.getElementById('cookie-banner');
+const accept_essential_cookies_button = document.getElementById('accept-essential-cookies-button');
+const accept_all_cookies_button = document.getElementById('accept-all-cookies-button');
 
 const logged_in_user_bar = document.getElementById('logged-in-user-bar');
 const guest_user_bar = document.getElementById('guest-user-bar');
@@ -163,6 +171,10 @@ const loading_tracker = new class {
 };
 
 set_favicon();
+
+window.dataLayer = window.dataLayer || [];
+function gtag() { window.dataLayer.push(arguments); }
+update_cookie_policy();
 
 const FOG_TILE_SIZE = 1.2;
 load_svg_images([
@@ -242,7 +254,6 @@ update_session();
 document.addEventListener('keydown', on_document_keydown);
 document.addEventListener('paste', on_paste);
 
-const command_input = document.getElementById('command');
 command_input.addEventListener('keydown', on_command_keydown);
 
 ready_button.addEventListener('click', () => execute_command('/ready'));
@@ -250,6 +261,8 @@ resign_button.addEventListener('click', request_resign);
 export_button.addEventListener('click', () => execute_command('/save'));
 volume_button.addEventListener('click', next_volume);
 
+accept_essential_cookies_button.addEventListener('click', on_accept_essential_cookies);
+accept_all_cookies_button.addEventListener('click', on_accept_all_cookies);
 menu_dialog.addEventListener('cancel', (event) => event.preventDefault());
 authorization_button.addEventListener('click', () => push_menu_page(menu_authorization_page));
 log_out_button.addEventListener('click', log_out);
@@ -300,8 +313,8 @@ function with_error_handling(f) {
             //   ignorable_error_dialog(e.message).then(() => location.reload());
             // instead.
             socket = make_socket();
+            open_menu();
             push_menu_page(menu_join_contest_page);
-            menu_dialog.showModal();
         } else if (e?.constructor?.name == 'FatalError') {
             fatal_error_dialog(e.message);
         } else if (e?.constructor?.name == 'RustError') {
@@ -844,6 +857,25 @@ function set_up_chalk_drawing() {
     }
 }
 
+function update_cookie_policy() {
+    const is_analytics_ok = window.localStorage.getItem(Storage.cookies_accepted) == 'all';
+    const show_banner = window.localStorage.getItem(Storage.cookies_accepted) == null;
+    gtag('consent', 'update', {
+        'analytics_storage': is_analytics_ok ? 'granted' : 'denied'
+    });
+    cookie_banner.style.display = show_banner ? null : 'None';
+}
+
+function on_accept_essential_cookies() {
+    window.localStorage.setItem(Storage.cookies_accepted, 'essential');
+    update_cookie_policy();
+}
+
+function on_accept_all_cookies() {
+    window.localStorage.setItem(Storage.cookies_accepted, 'all');
+    update_cookie_policy();
+}
+
 function set_up_menu_pointers() {
     function is_cycle_forward(event) { return event.button == 0 || event.changedTouches?.length >= 1; }
     function is_cycle_backward(event) { return event.button == 2; }
@@ -938,12 +970,30 @@ function pop_menu_page() {
 function close_menu() {
     hide_menu_pages();  // hide the pages to execute "on hide" handlers
     menu_dialog.close();
+    menu_backdrop.style.display = 'None';
+    for (const element of page_element.getElementsByTagName('*')) {
+        if ('disabled' in element) {
+            element.disabled = false;
+        }
+    }
+}
+
+function open_menu() {
+    reset_menu();
+    // The "`show` + manual backdrop + disable the rest of the page" combo emulates `showModal`.
+    // We cannot use `showModal` because of the cookie banner.
+    menu_dialog.show();
+    menu_backdrop.style.display = null;
+    for (const element of page_element.getElementsByTagName('*')) {
+        if ('disabled' in element) {
+            element.disabled = true;
+        }
+    }
 }
 
 function init_menu() {
     hide_menu_pages(false);
-    menu_dialog.showModal();
-    reset_menu();
+    open_menu();
 }
 
 // Shows a dialog with a message and buttons.

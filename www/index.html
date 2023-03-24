@@ -11,10 +11,18 @@
     <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
 
     <!-- Google tag (gtag.js) -->
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() { window.dataLayer.push(arguments); }
+      gtag('consent', 'default', {
+        'ad_storage': 'denied',
+        'analytics_storage': 'denied',
+      });
+    </script>
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-26BX8YNNLS"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
+      function gtag() { window.dataLayer.push(arguments); }
       gtag('js', new Date());
       gtag('config', 'G-26BX8YNNLS');
     </script>
@@ -218,6 +226,28 @@
       <div id="connection-info"></div>
     </div>
 
+    <div id="cookie-banner" class="flex-row" style="display:none;">
+      <div id="cookie-warning" class="flex-equisized">
+        This website uses cookies in order to function:
+        <ul>
+          <li>
+            <b>Essential cookies</b> are required to provide basic features, such as secure log-in
+            (always active);
+          </li>
+          <li>
+            <b>Performance cookies</b> are used to collect anonymous statistics that helps us improve
+            our website (if you are ok with that).
+          </li>
+        </ul>
+        We do <i>not</i> use cookies for advertising.
+      </div>
+      <div class="flex-col">
+        <button id="accept-essential-cookies-button">Essential cookies only</button>
+        <button id="accept-all-cookies-button">Accept all cookies</button>
+      </div>
+    </div>
+
+    <div id="menu-backdrop"></div>
     <dialog id="menu-dialog">
       <!-- All input fields must have a non-empty placeholder for the `:placeholder-shown` css trick
             to work. If there is no meaningful placeholder text, use "&nbsp;" -->

@@ -607,6 +607,59 @@ dialog ::-webkit-scrollbar-thumb {
   color: #6e0000;
 }
 
+#cookie-banner {
+  width: 100%;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  z-index: 110;
+  padding: 1em 2em;
+  box-sizing: border-box;
+  background: #1b4f00;
+  box-shadow: 0 0 0.4em #000000c0;
+}
+#cookie-warning {
+  margin-right: 1em;
+}
+#cookie-warning ul {
+  margin: 0.3em 0;
+}
+#cookie-warning li {
+  margin: 0.1em 0;
+}
+#cookie-banner button {
+  width: 100%;
+  white-space: pre;
+  background-color: #95b883;
+}
+#cookie-banner button:hover {
+  background-color: #a6c497;
+}
+#accept-all-cookies-button {
+  font-weight: bold;
+}
+
+button {
+  display: inline-block;
+  padding: 0.5em 1em;  /* if changed, adjust `translateX` in `#google-logo` */
+  margin: 0.35em 0;
+  border: 0;
+  font-size: 1em;
+  text-align: center;
+  color: #101010;
+  border-radius: 0.5em;
+  background-image: linear-gradient(to top left,
+                                    rgba(0, 0, 0, 0.1),
+                                    rgba(0, 0, 0, 0.1) 30%,
+                                    rgba(0, 0, 0, 0));
+  box-shadow: inset 2px 2px 3px rgba(255, 255, 255, .6),
+              inset -2px -2px 3px rgba(0, 0, 0, .6);
+}
+button:active {
+  box-shadow: inset -2px -2px 3px rgba(255, 255, 255, .6),
+              inset 2px 2px 3px rgba(0, 0, 0, .6);
+}
+
 .tooltip {
   position: relative;
   display: inline-flex;
@@ -670,6 +723,22 @@ dialog {
   overflow: visible;  /* allow tooltips go outside of the page area */
 }
 
+#menu-dialog {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 100;
+}
+#menu-backdrop {
+  background: #000000a0;
+  z-index: 80;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
 dialog::backdrop {
   background: #000000a0;
 }
@@ -703,28 +772,10 @@ dialog hr:after {
 }
 
 dialog button {
-  display: inline-block;
-  padding: 0.5em 1em;  /* if changed, adjust `translateX` in `#google-logo` */
-  margin: 0.35em 0;
-  border: 0;
-  font-size: 1em;
-  text-align: center;
-  color: #101010;
-  border-radius: 0.5em;
   background-color: #eed5ae;
-  background-image: linear-gradient(to top left,
-                                    rgba(0, 0, 0, 0.1),
-                                    rgba(0, 0, 0, 0.1) 30%,
-                                    rgba(0, 0, 0, 0));
-  box-shadow: inset 2px 2px 3px rgba(255, 255, 255, .6),
-              inset -2px -2px 3px rgba(0, 0, 0, .6);
 }
 dialog button:hover {
   background-color: #f3debd;
-}
-dialog button:active {
-  box-shadow: inset -2px -2px 3px rgba(255, 255, 255, .6),
-              inset 2px 2px 3px rgba(0, 0, 0, .6);
 }
 
 .big-button {
@@ -931,9 +982,12 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 .icon-button {
   box-sizing: border-box;
   padding: 0;
+  margin: 0;
   border: none;
   border-radius: calc(var(--sq-size-primary) * 0.2);  /* for hover hightlight */
   background-color: transparent;
+  background-image: none;
+  box-shadow: none;
   width: calc(var(--sq-size-primary) * 0.6);
   height: calc(var(--sq-size-primary) * 0.6);
   cursor: pointer;
