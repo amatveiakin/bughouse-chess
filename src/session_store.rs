@@ -67,12 +67,9 @@ where
     }
 
     pub fn unsubscribe(&mut self, id: &K, subscription_id: SubscriptionId) {
-        if let Some(e) = self.entries.get_mut(id) {
-            e.unsubscribe(subscription_id);
-            if !e.has_subscribers() {
-                self.entries.remove(&id);
-            }
-        }
+        self.entries
+            .get_mut(id)
+            .map(|e| e.unsubscribe(subscription_id));
     }
 
     pub fn update_if_exists<F: FnOnce(&mut V)>(&mut self, id: &K, f: F) {
@@ -94,9 +91,6 @@ impl<V> Entry<V> {
     fn update(&mut self, value: V) {
         self.value = value;
         self.update_subscribers();
-    }
-    fn has_subscribers(&self) -> bool {
-        !self.subscriber_tx.is_empty()
     }
     fn update_subscribers(&mut self) {
         for subscriber_tx in self.subscriber_tx.values() {
