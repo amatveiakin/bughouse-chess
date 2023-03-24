@@ -700,6 +700,7 @@ impl Contest {
                 ));
             }
         }
+        // TODO(google-auth): Reject guest users in rated games.
 
         if let Some(ref game_state) = self.game_state {
             let existing_participant_id = self.participants.find_by_name(&player_name);

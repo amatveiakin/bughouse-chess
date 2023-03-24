@@ -271,9 +271,12 @@
               <div id="guest-user-tooltip" class="tooltip">
                 <div class="tooltip-text">
                   <p>
+                    <!-- TODO(google-auth): Update tooltip. -->
                     Bughouse.pro is free and available to everybody. As a guest, you can create or
-                    join <i>unrated</i> games without limitations. Please log in if you want to
-                    play rated. In the future we plan to add more features for registered users,
+                    join <i>unrated</i> games without limitations.
+                    For now guest users can play rated games as well, but this is going to change.
+                    Consider logging in if you want to play rated.
+                    In the future we plan to add more features for registered users,
                     such as friends-only games and easier access to your game history.
                   </p>
                 </div>
@@ -316,7 +319,8 @@
                  <path d="m5.0078 3.586c0.34471 0 0.65418 0.11845 0.89753 0.35111l0.6734-0.6734c-0.4066-0.37886-0.93806-0.61151-1.5709-0.61151-0.9178 0-1.7118 0.52613-2.0981 1.2935l0.78438 0.60829c0.18462-0.55495 0.7022-0.96796 1.3138-0.96796z" fill="#ea4335"/>
                 </g>
               </svg>
-              <span class="flex-equisized">Sign in with Google</span>
+              <!-- TODO(google-auth): Remove "(beta)" and font-size override. -->
+              <span class="flex-equisized" style="font-size: 95%;">Sign in with Google<sup>(beta)</sup></span>
             </div>
           </button>
           <button id="begin-login-button" class="big-button">Log in</button>
