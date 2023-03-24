@@ -121,8 +121,6 @@ const begin_signup_button = document.getElementById('begin-signup-button');
 const create_contest_button = document.getElementById('create-contest-button');
 const join_contest_button = document.getElementById('join-contest-button');
 const about_button = document.getElementById('about-button');
-const cc_player_name = document.getElementById('cc-player-name');
-const jc_player_name = document.getElementById('jc-player-name');
 const jc_contest_id = document.getElementById('jc-contest-id');
 
 const ready_button = document.getElementById('ready-button');
@@ -912,11 +910,19 @@ function set_up_menu_pointers() {
     menu.addEventListener('contextmenu', context_menu);
 }
 
+function find_player_name_input(page) {
+    for (const input of page.getElementsByTagName('input')) {
+        if (input.name == 'player_name' || input.name == 'user_name') {
+            return input;
+        }
+    }
+    return null;
+}
+
 function on_hide_menu_page(page) {
-    if (page === menu_create_contest_page) {
-        window.localStorage.setItem(Storage.player_name, cc_player_name.value);
-    } else if (page === menu_join_contest_page) {
-        window.localStorage.setItem(Storage.player_name, jc_player_name.value);
+    const player_name_input = find_player_name_input(page);
+    if (player_name_input) {
+        window.localStorage.setItem(Storage.player_name, player_name_input.value);
     }
     for (const input of page.getElementsByTagName('input')) {
         if (input.type == 'password') {
@@ -943,9 +949,8 @@ function reset_menu(page) {
     const search_params = new URLSearchParams(window.location.search);
     const contest_id = search_params.get(SearchParams.contest_id);
     if (contest_id) {
-        push_menu_page(menu_join_contest_page);
         jc_contest_id.value = contest_id;
-        jc_player_name.value = window.localStorage.getItem(Storage.player_name);
+        push_menu_page(menu_join_contest_page);
     } else {
         menu_start_page.style.display = 'block';
     }
@@ -956,6 +961,11 @@ function push_menu_page(page) {
     hide_menu_pages();
     page.style.display = 'block';
 
+    // Auto fill player name:
+    const player_name_input = find_player_name_input(page);
+    if (player_name_input) {
+        player_name_input.value = window.localStorage.getItem(Storage.player_name);
+    }
     // Focus first empty input, if any:
     for (const input of page.getElementsByTagName('input')) {
         if (!input.disabled != 'none' && !input.value) {
@@ -1244,12 +1254,10 @@ function log_out(event) {
 
 function on_create_contest_submenu(event) {
     push_menu_page(menu_create_contest_page);
-    cc_player_name.value = window.localStorage.getItem(Storage.player_name);
 }
 
 function on_join_contest_submenu(event) {
     push_menu_page(menu_join_contest_page);
-    jc_player_name.value = window.localStorage.getItem(Storage.player_name);
 }
 
 function on_create_contest_confirm(event) {
