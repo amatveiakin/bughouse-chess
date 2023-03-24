@@ -331,14 +331,14 @@
         <div class="menu-page-body">
           <label for="login-user-name">Account name</label>
           <input type="text" id="login-user-name" name="user_name"
-            placeholder="&nbsp;" spellcheck="false" required
+            placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
             maxlength="16" pattern="[\p{L}\p{N}_-]+"
             title="User name may contain letters, numbers, underscores ('_') and dashes ('-')" />
           <div></div>
 
           <label for="login-password">Password</label>
           <input type="password" id="login-password" name="password"
-            placeholder="&nbsp;" required />
+            placeholder="&nbsp;" autocomplete="current-password" required />
           <div></div>
         </div>
         <div class="align-center">
@@ -353,7 +353,7 @@
         <div class="menu-page-body">
           <label for="signup-user-name">Account name *</label>
           <input type="text" id="signup-user-name" name="user_name"
-            placeholder="&nbsp;" spellcheck="false" required
+            placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
             maxlength="16" pattern="[\p{L}\p{N}_-]+"
             title="User name may contain letters, numbers, underscores ('_') and dashes ('-')" />
           <div class="tooltip">
@@ -371,7 +371,7 @@
 
           <label for="signup-email">Email</label>
           <input type="email" id="signup-email" name="email"
-            placeholder="&nbsp;" pattern="[^@]+@[^@]+" />
+            placeholder="&nbsp;" pattern="[^@]+@[^@]+" autocomplete="email" />
           <div class="tooltip">
             <div class="tooltip-text">
               <p>
@@ -383,7 +383,7 @@
 
           <label for="signup-password">Password *</label>
           <input type="password" id="signup-password" name="password"
-            placeholder="&nbsp;" minlength="8" required />
+            placeholder="&nbsp;" minlength="8" autocomplete="new-password" required />
           <div class="tooltip">
             <div class="tooltip-text">
               <p>Password (required). Must be at least 8 characters long. Case-sensitive.</p>
@@ -392,7 +392,7 @@
 
           <label for="signup-confirm-password">Confirm password *</label>
           <input type="password" id="signup-confirm-password" name="confirm_password"
-            placeholder="&nbsp;" required />
+            placeholder="&nbsp;" minlength="8" autocomplete="new-password" required />
           <div></div>
         </div>
         <div class="align-center">
@@ -407,7 +407,7 @@
         <div class="menu-page-body">
           <label for="signup-with-google-user-name">Account name *</label>
           <input type="text" id="signup-with-google-user-name" name="user_name"
-            placeholder="&nbsp;" spellcheck="false" required
+            placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
             maxlength="16" pattern="[\p{L}\p{N}_-]+"
             title="User name may contain letters, numbers, underscores ('_') and dashes ('-')" />
           <div class="tooltip">

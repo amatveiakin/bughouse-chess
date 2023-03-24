@@ -918,6 +918,11 @@ function on_hide_menu_page(page) {
     } else if (page === menu_join_contest_page) {
         window.localStorage.setItem(Storage.player_name, jc_player_name.value);
     }
+    for (const input of page.getElementsByTagName('input')) {
+        if (input.type == 'password') {
+            input.value = '';
+        }
+    }
 }
 
 function hide_menu_pages(execute_on_hide = true) {
@@ -1175,10 +1180,14 @@ async function process_authentification_request(request) {
         await ignorable_error_dialog(`Network error: ${e}`);
         return;
     }
-    if (!response.ok) {
+    if (response.ok) {
+        // Emulate a navigation to indicate that the form has been submitted to password managers:
+        // https://www.chromium.org/developers/design-documents/create-amazing-password-forms/#make-sure-form-submission-is-clear
+        window.history.replaceState({});
+        // Now wait for `UpdateSession` socket event...
+    } else {
         await ignorable_error_dialog(await response.text());
     }
-    // Ignore OK status, just wait for `UpdateSession` socket event.
 }
 
 async function sign_up(event) {
@@ -1228,10 +1237,9 @@ async function log_in(event) {
 }
 
 function log_out(event) {
-    const request = new Request('auth/logout', {
+    process_authentification_request(new Request('auth/logout', {
         method: 'POST',
-    });
-    fetch(request);
+    }));
 }
 
 function on_create_contest_submenu(event) {
