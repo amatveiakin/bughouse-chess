@@ -395,6 +395,13 @@ function make_meters() {
     };
 }
 
+function on_socket_close(event) {
+    // TODO: Report socket errors.
+    // TODO: Reconnect automatically.
+    console.error('WebSocket closed: ', event);
+    fatal_error_dialog('Connection lost. Please reload the page.');
+}
+
 function make_socket() {
     const socket = new WebSocket(server_websocket_address());
     socket.addEventListener('message', function(event) {
@@ -403,13 +410,13 @@ function make_socket() {
     socket.addEventListener('open', function(event) {
         loading_tracker.connected();
     });
-    socket.addEventListener('close', (event) => {
-        // TODO: Report socket errors.
-        // TODO: Reconnect automatically.
-        console.error('WebSocket closed: ', event);
-        fatal_error_dialog('Connection lost. Please reload the page.');
-    });
+    socket.addEventListener('close', on_socket_close);
     return socket;
+}
+
+function page_redirect(href) {
+    socket.removeEventListener('close', on_socket_close);
+    location.href = href;
 }
 
 function on_server_event(event) {
@@ -1275,7 +1282,7 @@ async function sign_with_google(event) {
         ]
     );
     if (ret == MyButton.DO) {
-        location.href = '/auth/sign-with-google';
+        page_redirect('/auth/sign-with-google');
     }
 }
 
