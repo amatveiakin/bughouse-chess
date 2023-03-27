@@ -1269,20 +1269,7 @@ function sign_up_with_google(event) {
 }
 
 async function sign_with_google(event) {
-    // TODO(google-auth): Remove the dialog.
-    const ret = await simple_dialog(
-        '“Sign in with Google” feature is currently in beta mode. You will be able to use it ' +
-        'only if are part of the beta testing program. Otherwise, please either sign up with ' +
-        'password (note: you will not be able to change login method later!) or wait until ' +
-        'the beta period is over (probably a few days).',
-        [
-            new MyButton('Cancel', MyButton.HIDE),
-            new MyButton('Continue; I am a registered beta tester', MyButton.DO),
-        ]
-    );
-    if (ret == MyButton.DO) {
-        page_redirect('/auth/sign-with-google');
-    }
+    page_redirect('/auth/sign-with-google');
 }
 
 async function log_in(event) {
