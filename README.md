@@ -136,6 +136,8 @@ Add this to `/etc/apache2/sites-available/<site>`:
     ProxyRequests Off
     ProxyPass /dyn http://localhost:14361/dyn
     ProxyPassReverse /dyn http://localhost:14361/dyn
+    ProxyPass /auth http://localhost:14361/auth
+    ProxyPassReverse /auth http://localhost:14361/auth
     ProxyPass /ws ws://localhost:14361 keepalive=On
     ProxyPassReverse /ws ws://localhost:14361
 
@@ -157,6 +159,12 @@ Add this to `/etc/apache2/sites-available/<site>`:
     AddOutputFilterByType DEFLATE text/javascript
     AddOutputFilterByType DEFLATE text/plain
 </VirtualHost>
+```
+
+And apply Apache config changes:
+
+```
+sudo service apache2 reload
 ```
 
 Clone the repo:
