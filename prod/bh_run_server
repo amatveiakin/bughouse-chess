@@ -3,4 +3,4 @@
 export RUST_BACKTRACE=1
 export RUST_LOG=INFO
 #export RUST_LOG_STYLE=always
-cd "$BUGHOUSE_ROOT" && cargo build -r --package bughouse_console && ./target/release/bughouse_console async-server --sqlite-db ~/bughouse.db |& tee -i ~/server_log/`date +%Y%m%d-%H%M%S`.txt
+cd "$BUGHOUSE_ROOT" && cargo build -r --package bughouse_console && ./target/release/bughouse_console async-server --sqlite-db bughouse.db --secret-sqlite-db bughouse-secret.db --enable-sessions --auth Google |& tee -i ~/server_log/`date +%Y%m%d-%H%M%S`.txt
