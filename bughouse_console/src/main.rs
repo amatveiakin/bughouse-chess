@@ -27,6 +27,7 @@ pub mod tui;
 mod async_server_main;
 mod auth;
 mod auth_handlers_tide;
+mod censor;
 mod client_main;
 mod database;
 mod game_stats;

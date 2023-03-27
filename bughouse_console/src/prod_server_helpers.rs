@@ -4,6 +4,8 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use bughouse_chess::server_helpers::ServerHelpers;
 
+use crate::censor::profanity_censor;
+
 
 pub fn validate_player_name(name: &str) -> Result<(), String> {
     let name = name.nfc().collect::<String>();
@@ -19,7 +21,7 @@ pub fn validate_player_name(name: &str) -> Result<(), String> {
     if len > MAX_NAME_LENGTH {
         return Err(format!("Maximum name length is {MAX_NAME_LENGTH}."));
     }
-    if (Censor::Standard + Censor::Sex).check(&name) {
+    if profanity_censor().check(&name) {
         return Err(format!("Player name must not contain profanity."));
     }
     if Censor::custom(["admin", "guest"]).check(&name) {
