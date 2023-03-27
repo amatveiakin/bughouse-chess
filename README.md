@@ -22,7 +22,6 @@ Folder structure:
   The server part is responsible for the game engine and dynamic HTML content.
   It does not serve static HTML content.
 - `/bughouse_wasm` — WASM (WebAssembly) bindings for the web client.
-- `/bughouse_webserver` — Stand-alone dynamic HTML content server (obsolete).
 - `/www` — Web client based on the abovementioned WASM bindings.
 
 
@@ -90,19 +89,37 @@ apply after a page refresh. Changes to Rust code must be recompiled via
 `wasm-pack` (see above).
 
 
-## Full Apache-based server setup
+## Full Ubuntu/Apache server setup
 
-Serve static content:
+Install tools and libraries:
 
 ```
-cd bughouse_wasm && wasm-pack build && cd ../www && npm run build
-sudo cp dist/* /var/www/<site>
+apt update
+apt install curl npm pkg-config libssl-dev apache2
+curl https://sh.rustup.rs -sSf | sh -s -- -y
+cargo install wasm-pack
 ```
+
+Move Certbot data. On the old server:
+
+```
+tar zpcvf backup-letsencrypt.tar.gz /etc/letsencrypt/
+```
+
+Copy data to the new server. On the new server:
+
+```
+tar zxvf backup-letsencrypt.tar.gz -C /
+```
+
+Configure Cerbot as usual:
+https://certbot.eff.org/instructions?ws=apache&os=ubuntufocal
 
 Install Apache modules:
 
 ```
-sudo a2enmod proxy proxy_http proxy_wstunnel headers deflate
+a2enmod proxy proxy_http proxy_wstunnel headers deflate
+systemctl restart apache2
 ```
 
 Configure Apache:
@@ -142,12 +159,36 @@ Add this to `/etc/apache2/sites-available/<site>`:
 </VirtualHost>
 ```
 
-Run game server:
+Clone the repo:
 
 ```
-export RUST_BACKTRACE=1
-export RUST_LOG=INFO
-cargo run -r --package bughouse_console -- server --sqlite-db <DB>
+git clone https://github.com/amatveiakin/bughouse-chess.git
+```
+
+Add to `.bashrc`:
+```
+export BUGHOUSE_ROOT=<path-to-bughouse-chess>
+export PATH="$BUGHOUSE_ROOT/prod:$PATH"
+```
+
+Install npm packages:
+
+```
+cd "$BUGHOUSE_ROOT/www" && npm install
+```
+
+Serve static content:
+
+```
+bh_deploy_web
+```
+
+Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` environment variables.
+
+Run game server (e.g. in `screen`):
+
+```
+bh_run_server
 ```
 
 
