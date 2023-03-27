@@ -44,14 +44,14 @@ struct FinishSignupWithGoogleData {
 
 #[derive(Deserialize)]
 struct ChangeAccountData {
-    current_password: String,  // must be present to authorize any changes
-    email: String,             // empty string means remove / don't add
-    new_password: String,      // empty string means keep old password
+    current_password: String,      // must be present to authorize any changes
+    email: Option<String>,         // empty string means remove / don't add
+    new_password: Option<String>,  // empty string means keep old password
 }
 
 #[derive(Deserialize)]
 struct DeleteAccountData {
-    password: String,  // must be present to authorize deletion
+    password: Option<String>,  // must be present to authorize deletion
 }
 
 
@@ -369,9 +369,9 @@ pub async fn handle_change_account<DB: Send + Sync + 'static>(
     mut req: tide::Request<HttpServerState<DB>>,
 ) -> tide::Result {
     let ChangeAccountData{ current_password, email, new_password } = req.body_form().await?;
-    let email = if email.is_empty() { None } else { Some(email) };
+    let email = email.filter(|s| !s.is_empty());
     let email_copy = email.clone();
-    let new_password = if new_password.is_empty() { None } else { Some(new_password) };
+    let new_password = new_password.filter(|s| !s.is_empty());
 
     let session_id = get_session_id(&req)?;
     let user_name = {
@@ -448,7 +448,7 @@ pub async fn handle_delete_account<DB: Send + Sync + 'static>(
 
     req.state().secret_db.delete_account_txn(account_id, Box::new(move |account| -> anyhow::Result<DeletedAccount> {
         if account.registration_method == RegistrationMethod::Password {
-            authorize_access_by_password(&password, &account)?;
+            authorize_access_by_password(&password.unwrap_or_default(), &account)?;
         }
         Ok(DeletedAccount {
             id: account.id,

@@ -1185,7 +1185,6 @@ function update_session() {
     registered_user_bar.style.display = is_registered_user ? null : 'None';
     guest_user_bar.style.display = !is_registered_user ? null : 'None';
     guest_user_tooltip.style.display = is_guest ? null : 'None';
-    view_account_change_button.style.display = using_password_auth ? null : 'None';
     for (const node of document.querySelectorAll('.logged-in-as-account')) {
         node.classList.toggle('account-user', is_registered_user);
         node.classList.toggle('account-guest', is_guest);
@@ -1195,7 +1194,7 @@ function update_session() {
     for (const node of document.querySelectorAll('.logged-in-as-email')) {
         node.textContent = session.email || '—';
     }
-    for (const node of document.querySelectorAll('.registered-user-password')) {
+    for (const node of document.querySelectorAll('.logged-in-with-password')) {
         node.style.display = using_password_auth ? null : 'None';
         node.disabled = !using_password_auth;
     }

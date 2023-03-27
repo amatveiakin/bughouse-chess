@@ -450,12 +450,12 @@
           <div id="view-account-email" class="logged-in-as-email fixed-form-value"></div>
           <div></div>
 
-          <label for="view-account-password" class="registered-user-password">Password</label>
-          <div id="view-account-password" class="registered-user-password">••••••••</div>
-          <div class="registered-user-password"></div>
+          <label for="view-account-password" class="logged-in-with-password">Password</label>
+          <div id="view-account-password" class="logged-in-with-password">••••••••</div>
+          <div class="logged-in-with-password"></div>
         </div>
         <div class="flex-row">
-          <button id="view-account-change-button" class="flex-equisized">Change info</button>
+          <button id="view-account-change-button" class="flex-equisized logged-in-with-password">Change info</button>
           <button id="view-account-delete-button" class="flex-equisized">Delete account</button>
         </div>
       </form>
@@ -516,14 +516,14 @@
           You are about to delete your bughouse.pro account,
           <span id="view-account-user-name" class="logged-in-as-account fixed-form-value"></span>.
           This action cannot be undone!
-          <span class="registered-user-password">Type your password below in order to continue.</span>
+          <span class="logged-in-with-password">Type your password below in order to continue.</span>
           <!-- TODO: Some kind of confirmation for those logged in with Google. -->
         </div>
         <div class="menu-page-body">
-          <label for="delete-account-password">Password</label>
-          <input type="password" id="delete-account-password" name="password"
+          <label for="delete-account-password" class="logged-in-with-password">Password</label>
+          <input type="password" id="delete-account-password" name="password" class="logged-in-with-password"
             placeholder="&nbsp;" autocomplete="current-password" required />
-          <div></div>
+          <div class="logged-in-with-password"></div>
         </div>
         <div class="align-center">
           <button id="delete-account-confirm-button" class="big-button danger-button">☠ Delete account</button>
