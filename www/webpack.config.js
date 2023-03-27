@@ -9,7 +9,7 @@ module.exports = {
   },
   mode: "development",
   plugins: [
-    new CopyWebpackPlugin({ patterns: ['index.html'] }),
+    new CopyWebpackPlugin({ patterns: ['*.html'] }),
     new CopyWebpackPlugin({
       patterns: [
         { from: "./node_modules/@jstable/jstable/dist/jstable.min.js",
