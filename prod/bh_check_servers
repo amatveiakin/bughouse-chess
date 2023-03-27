@@ -1,0 +1,3 @@
+#!/bin/bash
+
+ps -A | grep --color=always bughouse

@@ -1,0 +1,3 @@
+#!/bin/bash
+
+cd "$BUGHOUSE_ROOT" && git fetch && git checkout origin/main -B main
