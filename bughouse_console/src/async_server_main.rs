@@ -200,17 +200,20 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
 
     crate::stats_handlers_tide::Handlers::<HttpServerState<DB>>::register_handlers(&mut app);
 
+    let allowed_origin = config.allowed_origin;
+
     app.at("/")
         .get(move |req: tide::Request<HttpServerState<_>>| {
             let mytx = tx.clone();
             let myclients = clients.clone();
+            let allowed_origin = allowed_origin.clone();
             async move {
                 if req.state().sessions_enabled {
                     // When the sessions are enabled, we might be using the session
                     // cookie for authentication.
                     // We should be checking request origin in that case to
                     // preven CSRF, to which websockets are inherently vulnerable.
-                    check_origin(&req)?;
+                    check_origin(&req, &allowed_origin)?;
                 }
                 let peer_addr = req.peer_addr().map_or_else(
                     || {

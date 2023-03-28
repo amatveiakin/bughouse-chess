@@ -78,6 +78,8 @@ fn main() -> io::Result<()> {
                 .arg(arg!(--"auth-callback-is-https" "Upgrade the auth callback address to https. This can be useful when the server is behind a https proxy such as Apache."))
                 .arg(arg!(--"enable-sessions" "Whether to enable the tide session middleware."))
                 .arg(arg!(--"static-content-url-prefix" [URL_PREFIX] "Prefix of URLs where static content is served. Generated links referencing static content are based on this URL"))
+                .arg(arg!(--"allowed-origin" [ORIGIN] "Allowed origin for websocket requests or * for skipping the check. Only use * for testing")
+                    .default_value("https://bughouse.pro"))
         )
         .subcommand(
             Command::new("client")
@@ -102,6 +104,7 @@ fn main() -> io::Result<()> {
                 auth_options: server_main::AuthOptions::NoAuth,
                 session_options: server_main::SessionOptions::NoSessions,
                 static_content_url_prefix: String::new(),
+                allowed_origin: server_main::AllowedOrigin::Any,
             });
             Ok(())
         }
@@ -118,6 +121,13 @@ fn main() -> io::Result<()> {
             } else {
                 crate::server_main::SessionOptions::NoSessions
             };
+
+            let allowed_origin = match sub_matches.get_one::<String>("allowed-origin").map(String::as_str) {
+                None => panic!("--allowed-origin must be specified"),
+                Some("*") => crate::server_main::AllowedOrigin::Any,
+                Some(o) => crate::server_main::AllowedOrigin::ThisSite(o.to_owned()),
+            };
+
             let static_content_url_prefix = sub_matches
                 .get_one::<String>("static-content-url-prefix")
                 .cloned()
@@ -128,6 +138,7 @@ fn main() -> io::Result<()> {
                 auth_options,
                 session_options,
                 static_content_url_prefix,
+                allowed_origin,
             });
             Ok(())
         }
