@@ -47,6 +47,12 @@ pub enum SessionOptions {
     WithSecret(Vec<u8>),
 }
 
+#[derive(Debug, Clone)]
+pub enum AllowedOrigin {
+    Any,
+    ThisSite(String),
+}
+
 #[derive(Debug)]
 pub struct ServerConfig {
     pub database_options: DatabaseOptions,
@@ -54,6 +60,7 @@ pub struct ServerConfig {
     pub auth_options: AuthOptions,
     pub session_options: SessionOptions,
     pub static_content_url_prefix: String,
+    pub allowed_origin: AllowedOrigin,
 }
 
 fn to_debug_string<T: std::fmt::Debug>(v: T) -> String {

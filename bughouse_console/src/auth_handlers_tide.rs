@@ -11,6 +11,7 @@ use crate::http_server_state::*;
 use crate::prod_server_helpers::validate_player_name;
 use crate::secret_persistence::DeletedAccount;
 use crate::secret_persistence::{Account, LiveAccount};
+use crate::server_main::AllowedOrigin;
 
 pub const OAUTH_CSRF_COOKIE_NAME: &str = "oauth-csrf-state";
 
@@ -54,8 +55,11 @@ struct DeleteAccountData {
     password: Option<String>,  // must be present to authorize deletion
 }
 
-
-pub fn check_origin<T>(req: &tide::Request<T>) -> tide::Result<()> {
+pub fn check_origin<T>(req: &tide::Request<T>, allowed_origin: &AllowedOrigin) -> tide::Result<()> {
+    let allowed_origin = match allowed_origin {
+        AllowedOrigin::Any => return Ok(()),
+        AllowedOrigin::ThisSite(o) => o,
+    };
     let origin = req.header(http_types::headers::ORIGIN).map_or(
         Err(tide::Error::from_str(
             StatusCode::Forbidden,
@@ -64,36 +68,13 @@ pub fn check_origin<T>(req: &tide::Request<T>) -> tide::Result<()> {
         |origins| Ok(origins.last().as_str()),
     )?;
 
-    // Derive the allowed origin from this request's URL.
-    // For this to work, both the websocket endpoint and originating
-    // web page need to be hosted on the same host and port.
-    // If that changes, we'll need to check the Origin header against
-    // an allow-list.
-    if req.url().origin().ascii_serialization() != origin {
-        if req.url().host() == Some(url::Host::Domain("localhost")) {
-            let host = req.header(http_types::headers::HOST).map_or(
-                Err(tide::Error::from_str(
-                    StatusCode::Forbidden,
-                    "Failed to get Host header of the localhost websocket request.",
-                )),
-                |origins| Ok(origins.last().as_str()),
-            )?;
-            if host == "localhost" || host.starts_with("localhost:") {
-                return Ok(());
-            }
-            return Err(tide::Error::from_str(
-                StatusCode::Forbidden,
-                "Request to localhost from non-localhost origin.",
-            ));
-        }
-
-        return Err(tide::Error::from_str(
-            StatusCode::Forbidden,
-            "Origin header on the websocket request does not match
-                 the expected host",
-        ));
+    if origin == allowed_origin {
+        return Ok(());
     }
-    Ok(())
+    Err(tide::Error::from_str(
+        StatusCode::Forbidden,
+        "Origin of the websocket request does not match the expected value.",
+    ))
 }
 
 pub fn check_google_csrf<T>(req: &tide::Request<T>) -> tide::Result<AuthorizationCode> {
