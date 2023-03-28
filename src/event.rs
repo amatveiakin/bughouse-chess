@@ -31,6 +31,8 @@ pub enum BughouseServerRejection {
     JoinedInAnotherClient,
     // Guest user kicked out of a contest, because a registered user with the same name has joined.
     NameClashWithRegisteredUser,
+    // Trying to participate in a rated contest with a guest account.
+    GuestInRatedContest,
     // Server is shutting down for maintenance.
     ShuttingDown,
     // Internal error. Should be investigated.

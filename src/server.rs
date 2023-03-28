@@ -700,7 +700,10 @@ impl Contest {
                 ));
             }
         }
-        // TODO(google-auth): Reject guest users in rated games.
+        // Improvement potential: Reject earlier if a guest is trying to create a rated contest.
+        if self.rules.contest_rules.rated && !is_registered_user {
+            return Err(BughouseServerRejection::GuestInRatedContest);
+        }
 
         if let Some(ref game_state) = self.game_state {
             let existing_participant_id = self.participants.find_by_name(&player_name);

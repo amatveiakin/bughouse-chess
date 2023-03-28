@@ -382,6 +382,12 @@ impl ClientState {
                             priority over name selection. Please choose another name and join again.
                         ".to_owned())
                     },
+                    BughouseServerRejection::GuestInRatedContest => {
+                        EventError::IgnorableError("\
+                            Guests cannot join rated contests. Please register an account and join \
+                            again.
+                        ".to_owned())
+                    },
                     BughouseServerRejection::ShuttingDown => {
                         EventError::FatalError("\
                             The server is shutting down for maintenance. \
