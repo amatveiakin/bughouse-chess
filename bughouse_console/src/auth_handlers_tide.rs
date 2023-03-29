@@ -11,7 +11,7 @@ use crate::http_server_state::*;
 use crate::prod_server_helpers::validate_player_name;
 use crate::secret_persistence::DeletedAccount;
 use crate::secret_persistence::{Account, LiveAccount};
-use crate::server_main::AllowedOrigin;
+use crate::server_config::AllowedOrigin;
 
 pub const OAUTH_CSRF_COOKIE_NAME: &str = "oauth-csrf-state";
 

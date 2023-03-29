@@ -28,7 +28,7 @@ use crate::network::{self, CommunicationError};
 use crate::persistence::DatabaseReader;
 use crate::secret_persistence::SecretDatabaseRW;
 use crate::prod_server_helpers::ProdServerHelpers;
-use crate::server_main::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
+use crate::server_config::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
 
 async fn handle_connection<DB: Sync + Send + 'static, S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
     peer_addr: String,

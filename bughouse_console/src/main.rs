@@ -37,7 +37,7 @@ mod persistence;
 mod secret_database;
 mod secret_persistence;
 mod prod_server_helpers;
-mod server_main;
+mod server_config;
 mod database_server_hooks;
 mod stats_handlers_tide;
 mod stress_test;
@@ -46,7 +46,7 @@ use std::io;
 
 use clap::{arg, Command};
 
-use server_main::DatabaseOptions;
+use server_config::DatabaseOptions;
 
 fn main() -> io::Result<()> {
     env_logger::Builder::new()
@@ -97,42 +97,31 @@ fn main() -> io::Result<()> {
         .get_matches();
 
     match matches.subcommand() {
-        Some(("server", sub_matches)) => {
-            server_main::run(server_main::ServerConfig {
-                database_options: database_options_from_args(sub_matches),
-                secret_database_options: DatabaseOptions::NoDatabase,
-                auth_options: server_main::AuthOptions::NoAuth,
-                session_options: server_main::SessionOptions::NoSessions,
-                static_content_url_prefix: String::new(),
-                allowed_origin: server_main::AllowedOrigin::Any,
-            });
-            Ok(())
-        }
         Some(("async-server", sub_matches)) => {
             let auth_options = match sub_matches.get_one::<String>("auth").map(String::as_str) {
-                None | Some("NoAuth") => server_main::AuthOptions::NoAuth,
-                Some("Google") => server_main::AuthOptions::GoogleAuthFromEnv {
+                None | Some("NoAuth") => server_config::AuthOptions::NoAuth,
+                Some("Google") => server_config::AuthOptions::GoogleAuthFromEnv {
                     callback_is_https: sub_matches.get_flag("auth-callback-is-https"),
                 },
                 Some(a) => panic!("Unrecognized auth option {a}"),
             };
             let session_options = if sub_matches.get_flag("enable-sessions") {
-                crate::server_main::SessionOptions::WithNewRandomSecret
+                crate::server_config::SessionOptions::WithNewRandomSecret
             } else {
-                crate::server_main::SessionOptions::NoSessions
+                crate::server_config::SessionOptions::NoSessions
             };
 
             let allowed_origin = match sub_matches.get_one::<String>("allowed-origin").map(String::as_str) {
                 None => panic!("--allowed-origin must be specified"),
-                Some("*") => crate::server_main::AllowedOrigin::Any,
-                Some(o) => crate::server_main::AllowedOrigin::ThisSite(o.to_owned()),
+                Some("*") => crate::server_config::AllowedOrigin::Any,
+                Some(o) => crate::server_config::AllowedOrigin::ThisSite(o.to_owned()),
             };
 
             let static_content_url_prefix = sub_matches
                 .get_one::<String>("static-content-url-prefix")
                 .cloned()
                 .unwrap_or(String::new());
-            async_server_main::run(server_main::ServerConfig {
+            async_server_main::run(server_config::ServerConfig {
                 database_options: database_options_from_args(sub_matches),
                 secret_database_options: secret_database_options_from_args(sub_matches),
                 auth_options,
