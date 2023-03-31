@@ -85,7 +85,6 @@ const SearchParams = {
 };
 
 const page_element = document.getElementById('page');
-const git_version = document.getElementById('git-version');
 const command_input = document.getElementById('command');
 const command_result = document.getElementById('command-result');
 const loading_status = document.getElementById('loading-status');
@@ -103,7 +102,6 @@ const menu_change_account_page = document.getElementById('menu-change-account-pa
 const menu_delete_account_page = document.getElementById('menu-delete-account-page');
 const menu_create_contest_page = document.getElementById('menu-create-contest-page');
 const menu_join_contest_page = document.getElementById('menu-join-contest-page');
-const menu_about_page = document.getElementById('menu-about-page');
 const menu_lobby_page = document.getElementById('menu-lobby-page');
 const menu_pages = document.getElementsByClassName('menu-page');
 
@@ -126,7 +124,6 @@ const change_account_email = document.getElementById('change-account-email');
 
 const create_contest_button = document.getElementById('create-contest-button');
 const join_contest_button = document.getElementById('join-contest-button');
-const about_button = document.getElementById('about-button');
 const jc_contest_id = document.getElementById('jc-contest-id');
 
 const ready_button = document.getElementById('ready-button');
@@ -220,7 +217,7 @@ init_menu();
 
 wasm.set_panic_hook();
 wasm.init_page();
-git_version.innerText = wasm.git_version();
+console.log('bughouse.pro client version:', wasm.git_version());
 
 set_up_drag_and_drop();
 set_up_chalk_drawing();
@@ -283,7 +280,6 @@ menu_change_account_page.addEventListener('submit', change_account);
 menu_delete_account_page.addEventListener('submit', delete_account);
 create_contest_button.addEventListener('click', on_create_contest_submenu);
 join_contest_button.addEventListener('click', on_join_contest_submenu);
-about_button.addEventListener('click', () => push_menu_page(menu_about_page));
 menu_create_contest_page.addEventListener('submit', on_create_contest_confirm);
 menu_join_contest_page.addEventListener('submit', on_join_contest_confirm);
 

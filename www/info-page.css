@@ -1,4 +1,8 @@
 body {
+  --color-background: #ead7ba;
+}
+
+body {
   font-size: 11pt;
   font-family: "Arial";
   max-width: 42em;
@@ -9,6 +13,7 @@ body {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
+  background-color: var(--color-background);
 }
 
 p {
@@ -19,10 +24,32 @@ h1 {
   padding-top: 12pt;
   font-size: 20pt;
   padding-bottom: 4pt;
+  color: #7a4a1e;
 }
 
 h2 {
   padding-top: 10pt;
-  font-size: 16pt;
+  font-size: 14pt;
   padding-bottom: 0;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #ab8562;
+  margin: 1.2em 0;
+  overflow: visible;
+  text-align: center;
+  height: 0;
+  width: 75%;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+}
+hr:after {
+  background: var(--color-background);
+  color: #785636;
+  content: '♞';
+  padding: 0 0.4em;
+  position: relative;
+  top: -0.85em;
 }
