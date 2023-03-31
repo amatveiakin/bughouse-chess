@@ -1,0 +1,28 @@
+body {
+  font-size: 11pt;
+  font-family: "Arial";
+  max-width: 42em;
+  margin: 0;
+  padding: 1em;
+  box-sizing: border-box;
+  width: 100%;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+p {
+  margin: 0.6em 0;
+}
+
+h1 {
+  padding-top: 12pt;
+  font-size: 20pt;
+  padding-bottom: 4pt;
+}
+
+h2 {
+  padding-top: 10pt;
+  font-size: 16pt;
+  padding-bottom: 0;
+}

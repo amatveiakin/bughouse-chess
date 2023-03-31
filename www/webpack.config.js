@@ -10,6 +10,7 @@ module.exports = {
   mode: "development",
   plugins: [
     new CopyWebpackPlugin({ patterns: ['*.html'] }),
+    new CopyWebpackPlugin({ patterns: ['info-page.css'] }),
     new CopyWebpackPlugin({
       patterns: [
         { from: "./node_modules/@jstable/jstable/dist/jstable.min.js",
@@ -21,7 +22,7 @@ module.exports = {
   module: {
     rules: [
       {
-        test: /\.css$/,
+        test: /main\.css$/,
         use: [
           'style-loader',
           'css-loader'

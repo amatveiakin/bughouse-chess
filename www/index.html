@@ -1,834 +1,837 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8">
-    <meta name="description" content="Online bughouse chess server">
-    <meta name="keywords" content="bughouse, bughouse chess, Siamese chess, tandem chess, transfer chess, swap chess">
-    <meta name="author" content="Andrei Matveiakin">
-    <title>Bughouse chess</title>
-  </head>
-  <body>
-    <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
 
-    <!-- Google tag (gtag.js) -->
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag() { window.dataLayer.push(arguments); }
-      gtag('consent', 'default', {
-        'ad_storage': 'denied',
-        'analytics_storage': 'denied',
-      });
-    </script>
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-26BX8YNNLS"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag() { window.dataLayer.push(arguments); }
-      gtag('js', new Date());
-      gtag('config', 'G-26BX8YNNLS');
-    </script>
+<head>
+  <meta content="text/html; charset=UTF-8">
+  <meta name="description" content="Online bughouse chess server">
+  <meta name="keywords" content="bughouse, bughouse chess, Siamese chess, tandem chess, transfer chess, swap chess">
+  <meta name="author" content="Andrei Matveiakin">
+  <title>Bughouse chess</title>
+</head>
 
-    <script src="./bootstrap.js" type="module"></script>
+<body>
+  <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
 
-    <!-- Note. Cannot use "display: none" because of a Firefox bug:
-         https://bugzilla.mozilla.org/show_bug.cgi?id=376027 -->
-    <svg width="0" height="0" style="position: absolute">
-      <defs id="svg-defs">
-        <symbol id="registered-user">
-          <!-- <path id="path" d="m40.489 25.142c7.2751-2.7949 4.5466-13.648-3.1644-12.709-7.711 0.93906-7.7549 12.13-0.021639 13.097l-2.943 17.81-14.189-6.323c5.7204-5.3229-0.9512-14.371-7.7224-10.528-6.7712 3.8429-2.4236 14.21 5.0794 12.028l7.392 25.343 7.644 12.508-7.644 1.352v9.9h50.262v-9.9l-7.742-1.358 7.64-12.5 7.392-25.342c7.5331 2.198 11.904-8.2133 5.1044-12.072-6.8-3.8592-13.497 5.232-7.7474 10.572l-14.189 6.32-2.94-17.81c7.7333-0.96719 7.6893-12.158-0.021639-13.097-7.711-0.93906-10.439 9.914-3.1644 12.709l-9.514 15.558z" fill="#159fea"/>
-          <path d="m37.091 58.232 10.77 10.77 17.195-17.195" fill="none" stroke="#fff" stroke-width="7"/> -->
-          <path id="path" d="m4.047 2.5141a0.66 0.66 0 1 0-0.3186 0.0388l-0.2943 2.381-1.4189-1.2323a0.6575 0.6575 0 1 0-0.2643 0.15l0.7392 2.5343 0.7644 1.2508-0.7644 0.1352v0.99h5.0262v-0.99l-0.7742-0.1358 0.764-1.25 0.7392-2.5342a0.66 0.66 0 1 0-0.2643-0.15l-1.4189 1.232-0.294-2.381a0.66 0.66 0 1 0-0.3186-0.0388l-0.9514 2.1558z" stroke-width=".1"/>
-        </symbol>
+  <!-- Google tag (gtag.js) -->
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { window.dataLayer.push(arguments); }
+    gtag('consent', 'default', {
+      'ad_storage': 'denied',
+      'analytics_storage': 'denied',
+    });
+  </script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-26BX8YNNLS"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { window.dataLayer.push(arguments); }
+    gtag('js', new Date());
+    gtag('config', 'G-26BX8YNNLS');
+  </script>
 
-        <radialGradient id="faction-red-gradient" cx="3.9267" cy="3.3585" r="3.4093" gradientTransform="matrix(-.1146 .84997 -1.0222 -.13782 7.776 .43219)" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#ffafaf" offset="0"/>
-          <stop stop-color="#cb0000" offset="1"/>
-        </radialGradient>
-        <symbol id="faction-red">
-          <circle cx="5" cy="5" r="3.5164" fill="url(#faction-red-gradient)"/>
-        </symbol>
-        <radialGradient id="faction-blue-gradient" cx="3.3836" cy=".70436" r="3.0134" gradientTransform="matrix(-.2759 3.7305 -1.4061 -.10399 5.8869 -15.657)" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#8080ff" offset="0"/>
-          <stop stop-color="#0000e8" offset="1"/>
-        </radialGradient>
-        <symbol id="faction-blue">
-          <rect transform="rotate(45)" x="3.963" y="-3.1081" width="6.2162" height="6.2162" fill="url(#faction-blue-gradient)"/>
-        </symbol>
-        <symbol id="faction-random">
-          <rect transform="matrix(.7061 .70811 -.25745 .96629 0 0)" x="2.7099" y="-.011564" width="4.3367" height="4.3367" fill="#dbdbdb" stroke="#000" stroke-linejoin="bevel" stroke-width=".237"/>
-          <rect transform="matrix(-.96629 .25745 -.70811 -.7061 0 0)" x="-4.3252" y="-7.0467" width="4.3367" height="4.3367" fill="#f4f4f4" stroke="#000" stroke-linejoin="bevel" stroke-width=".237"/>
-          <rect transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" x="7.0582" y="-11.395" width="4.3367" height="4.3367" fill="#c3c3c3" stroke="#000" stroke-linejoin="bevel" stroke-width=".237"/>
-          <circle transform="matrix(.7061 .70811 -.25745 .96629 0 0)" cx="4.8783" cy="2.1568" r=".39052"/>
-          <circle transform="matrix(-.96629 .25745 -.70811 -.7061 0 0)" cx="-3.2416" cy="-5.9631" r=".39052"/>
-          <circle transform="matrix(-.96629 .25745 -.70811 -.7061 0 0)" cx="-2.1568" cy="-4.8783" r=".39052"/>
-          <circle transform="matrix(-.96629 .25745 -.70811 -.7061 0 0)" cx="-1.072" cy="-3.7935" r=".39052"/>
-          <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="8.1418" cy="-10.311" r=".39052"/>
-          <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="10.311" cy="-10.311" r=".39052"/>
-          <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="9.2266" cy="-9.2266" r=".39052"/>
-          <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="8.1418" cy="-8.1418" r=".39052"/>
-          <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="10.311" cy="-8.1418" r=".39052"/>
-        </symbol>
-        <symbol id="faction-observer">
-          <ellipse cx="3.2668" cy="5" rx="1.9963" ry="3.2489" fill="#fff" stroke="#000" stroke-linejoin="bevel" stroke-width=".3"/>
-          <circle cx="2.573" cy="4.948" r=".83036"/>
-          <circle cx="2.7855" cy="4.5745" r=".32224" fill="#fff"/>
-          <ellipse cx="6.7332" cy="5" rx="1.9963" ry="3.2489" fill="#fff" stroke="#000" stroke-linejoin="bevel" stroke-width=".3"/>
-          <circle cx="6.0395" cy="4.948" r=".83036"/>
-          <circle cx="6.252" cy="4.5745" r=".32224" fill="#fff"/>
-        </symbol>
+  <script src="./bootstrap.js" type="module"></script>
 
-        <symbol id="readiness-checkbox">
-          <rect
-            style="fill:none;stroke-width:0.4"
-            width="6.8" height="6.8" x="1.6" y="1.6" ry="0.8" />
-        </symbol>
-        <symbol id="readiness-checkmark">
-          <path
-            style="fill:none;stroke-width:0.6;stroke-linejoin:miter;stroke-miterlimit:4"
-            d="m 2.709561,4.5122919 c 0.4485028,0.8339431 0.7905735,1.8026437 1.1275222,2.6521436 0,0 0.1038835,0.1746166 0.192985,0.193073 0.093101,0.019291 0.270922,0.015018 0.3584346,-0.086292 C 5.7977495,5.26227 6.790862,2.777499 7.8933261,0.79319363 L 7.7826679,0.84283693 C 6.7062234,2.849886 5.6932692,5.0471417 4.5856085,6.8504341 4.2080204,7.4898828 4.3659627,6.9230289 4.1212491,7.0039093 3.6603713,6.1540468 3.3781129,5.1395962 3.1187998,4.2792776 Z"
-            sodipodi:nodetypes="cccccccccc" />
-        </symbol>
+  <!-- Note. Cannot use "display: none" because of a Firefox bug:
+        https://bugzilla.mozilla.org/show_bug.cgi?id=376027 -->
+  <svg width="0" height="0" style="position: absolute">
+    <defs id="svg-defs">
+      <symbol id="registered-user">
+        <!-- <path id="path" d="m40.489 25.142c7.2751-2.7949 4.5466-13.648-3.1644-12.709-7.711 0.93906-7.7549 12.13-0.021639 13.097l-2.943 17.81-14.189-6.323c5.7204-5.3229-0.9512-14.371-7.7224-10.528-6.7712 3.8429-2.4236 14.21 5.0794 12.028l7.392 25.343 7.644 12.508-7.644 1.352v9.9h50.262v-9.9l-7.742-1.358 7.64-12.5 7.392-25.342c7.5331 2.198 11.904-8.2133 5.1044-12.072-6.8-3.8592-13.497 5.232-7.7474 10.572l-14.189 6.32-2.94-17.81c7.7333-0.96719 7.6893-12.158-0.021639-13.097-7.711-0.93906-10.439 9.914-3.1644 12.709l-9.514 15.558z" fill="#159fea"/>
+        <path d="m37.091 58.232 10.77 10.77 17.195-17.195" fill="none" stroke="#fff" stroke-width="7"/> -->
+        <path id="path" d="m4.047 2.5141a0.66 0.66 0 1 0-0.3186 0.0388l-0.2943 2.381-1.4189-1.2323a0.6575 0.6575 0 1 0-0.2643 0.15l0.7392 2.5343 0.7644 1.2508-0.7644 0.1352v0.99h5.0262v-0.99l-0.7742-0.1358 0.764-1.25 0.7392-2.5342a0.66 0.66 0 1 0-0.2643-0.15l-1.4189 1.232-0.294-2.381a0.66 0.66 0 1 0-0.3186-0.0388l-0.9514 2.1558z" stroke-width=".1"/>
+      </symbol>
 
-        <filter id="google-logo-background">
-          <feGaussianBlur result="blur" stdDeviation="0.2 0.2"/>
-        </filter>
-        <filter id="icon-shadow">
-          <feDropShadow dx=0 dy=0 stdDeviation=0.5 flood-color="#c4dc5c" flood-opacity=1 />
-        </filter>
-        <filter id="board-shadow">
-          <feDropShadow dx=0.04 dy=0.04 stdDeviation=0.05 flood-color="#000000" flood-opacity=0.6 />
-        </filter>
-        <filter id="reserve-shadow">
-          <feDropShadow dx=0 dy=0 stdDeviation=0.1 flood-color="#8eab6d" flood-opacity=1 />
-        </filter>
-        <filter id="reserve-shadow-gray">
-          <feDropShadow dx=0 dy=0 stdDeviation=0.1 flood-color="#a2a2a2" flood-opacity=1 />
-        </filter>
-        <radialGradient id="drag-start-gradient">
-          <stop offset="0%" stop-color="#ffffff" stop-opacity=0.5 />
-          <stop offset="30%" stop-color="#ffffff" stop-opacity=0 />
-        </radialGradient>
-        <radialGradient id="drag-over-gradient" r="75%">
-          <stop offset="70%" stop-color="#ffffff" stop-opacity=0 />
-          <stop offset="100%" stop-color="#ffffff" stop-opacity=0.7 />
-        </radialGradient>
-        <radialGradient id="legal-move-gradient">
-          <stop offset="0%" stop-color="#e2b17f" stop-opacity=1 />
-          <stop offset="10%" stop-color="#e2b17f" stop-opacity=1 />
-          <stop offset="30%" stop-color="#e2b17f" stop-opacity=0 />
-        </radialGradient>
-      </defs>
-    </svg>
+      <radialGradient id="faction-red-gradient" cx="3.9267" cy="3.3585" r="3.4093" gradientTransform="matrix(-.1146 .84997 -1.0222 -.13782 7.776 .43219)" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#ffafaf" offset="0"/>
+        <stop stop-color="#cb0000" offset="1"/>
+      </radialGradient>
+      <symbol id="faction-red">
+        <circle cx="5" cy="5" r="3.5164" fill="url(#faction-red-gradient)"/>
+      </symbol>
+      <radialGradient id="faction-blue-gradient" cx="3.3836" cy=".70436" r="3.0134" gradientTransform="matrix(-.2759 3.7305 -1.4061 -.10399 5.8869 -15.657)" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#8080ff" offset="0"/>
+        <stop stop-color="#0000e8" offset="1"/>
+      </radialGradient>
+      <symbol id="faction-blue">
+        <rect transform="rotate(45)" x="3.963" y="-3.1081" width="6.2162" height="6.2162" fill="url(#faction-blue-gradient)"/>
+      </symbol>
+      <symbol id="faction-random">
+        <rect transform="matrix(.7061 .70811 -.25745 .96629 0 0)" x="2.7099" y="-.011564" width="4.3367" height="4.3367" fill="#dbdbdb" stroke="#000" stroke-linejoin="bevel" stroke-width=".237"/>
+        <rect transform="matrix(-.96629 .25745 -.70811 -.7061 0 0)" x="-4.3252" y="-7.0467" width="4.3367" height="4.3367" fill="#f4f4f4" stroke="#000" stroke-linejoin="bevel" stroke-width=".237"/>
+        <rect transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" x="7.0582" y="-11.395" width="4.3367" height="4.3367" fill="#c3c3c3" stroke="#000" stroke-linejoin="bevel" stroke-width=".237"/>
+        <circle transform="matrix(.7061 .70811 -.25745 .96629 0 0)" cx="4.8783" cy="2.1568" r=".39052"/>
+        <circle transform="matrix(-.96629 .25745 -.70811 -.7061 0 0)" cx="-3.2416" cy="-5.9631" r=".39052"/>
+        <circle transform="matrix(-.96629 .25745 -.70811 -.7061 0 0)" cx="-2.1568" cy="-4.8783" r=".39052"/>
+        <circle transform="matrix(-.96629 .25745 -.70811 -.7061 0 0)" cx="-1.072" cy="-3.7935" r=".39052"/>
+        <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="8.1418" cy="-10.311" r=".39052"/>
+        <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="10.311" cy="-10.311" r=".39052"/>
+        <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="9.2266" cy="-9.2266" r=".39052"/>
+        <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="8.1418" cy="-8.1418" r=".39052"/>
+        <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="10.311" cy="-8.1418" r=".39052"/>
+      </symbol>
+      <symbol id="faction-observer">
+        <ellipse cx="3.2668" cy="5" rx="1.9963" ry="3.2489" fill="#fff" stroke="#000" stroke-linejoin="bevel" stroke-width=".3"/>
+        <circle cx="2.573" cy="4.948" r=".83036"/>
+        <circle cx="2.7855" cy="4.5745" r=".32224" fill="#fff"/>
+        <ellipse cx="6.7332" cy="5" rx="1.9963" ry="3.2489" fill="#fff" stroke="#000" stroke-linejoin="bevel" stroke-width=".3"/>
+        <circle cx="6.0395" cy="4.948" r=".83036"/>
+        <circle cx="6.252" cy="4.5745" r=".32224" fill="#fff"/>
+      </symbol>
 
-    <div id="page">
-      <svg id="board-primary" shape-rendering="crispEdges"></svg>
-      <svg id="reserve-primary-top"></svg>
-      <svg id="reserve-primary-bottom"></svg>
-      <div id="player-name-container-primary-top" class="player-name-container">
-        <div id="player-name-primary-top" class="player-name"></div>
-      </div>
-      <div id="player-name-container-primary-bottom" class="player-name-container">
-        <div id="player-name-primary-bottom" class="player-name"></div>
-      </div>
-      <div id="clock-container-primary-top" class="clock-container">
-        <div id="clock-primary-top" class="clock clock-inactive">-:--</div>
-      </div>
-      <div id="clock-container-primary-bottom" class="clock-container">
-        <div id="clock-primary-bottom" class="clock clock-inactive">-:--</div>
-      </div>
-      <div id="turn-log-container-primary" class="turn-log-container">
-        <div id="turn-log-scroll-area-primary" class="turn-log-scroll-area">
-          <div id="turn-log-primary" class="turn-log"></div>
-        </div>
-      </div>
+      <symbol id="readiness-checkbox">
+        <rect
+          style="fill:none;stroke-width:0.4"
+          width="6.8" height="6.8" x="1.6" y="1.6" ry="0.8" />
+      </symbol>
+      <symbol id="readiness-checkmark">
+        <path
+          style="fill:none;stroke-width:0.6;stroke-linejoin:miter;stroke-miterlimit:4"
+          d="m 2.709561,4.5122919 c 0.4485028,0.8339431 0.7905735,1.8026437 1.1275222,2.6521436 0,0 0.1038835,0.1746166 0.192985,0.193073 0.093101,0.019291 0.270922,0.015018 0.3584346,-0.086292 C 5.7977495,5.26227 6.790862,2.777499 7.8933261,0.79319363 L 7.7826679,0.84283693 C 6.7062234,2.849886 5.6932692,5.0471417 4.5856085,6.8504341 4.2080204,7.4898828 4.3659627,6.9230289 4.1212491,7.0039093 3.6603713,6.1540468 3.3781129,5.1395962 3.1187998,4.2792776 Z"
+          sodipodi:nodetypes="cccccccccc" />
+      </symbol>
 
-      <div id="score-team"></div>
-      <div id="participant-container">
-        <div id="score-individual-container">
-          <div id="score-individual"></div>
-        </div>
-        <div id="observers"></div>
-      </div>
+      <filter id="google-logo-background">
+        <feGaussianBlur result="blur" stdDeviation="0.2 0.2"/>
+      </filter>
+      <filter id="icon-shadow">
+        <feDropShadow dx=0 dy=0 stdDeviation=0.5 flood-color="#c4dc5c" flood-opacity=1 />
+      </filter>
+      <filter id="board-shadow">
+        <feDropShadow dx=0.04 dy=0.04 stdDeviation=0.05 flood-color="#000000" flood-opacity=0.6 />
+      </filter>
+      <filter id="reserve-shadow">
+        <feDropShadow dx=0 dy=0 stdDeviation=0.1 flood-color="#8eab6d" flood-opacity=1 />
+      </filter>
+      <filter id="reserve-shadow-gray">
+        <feDropShadow dx=0 dy=0 stdDeviation=0.1 flood-color="#a2a2a2" flood-opacity=1 />
+      </filter>
+      <radialGradient id="drag-start-gradient">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity=0.5 />
+        <stop offset="30%" stop-color="#ffffff" stop-opacity=0 />
+      </radialGradient>
+      <radialGradient id="drag-over-gradient" r="75%">
+        <stop offset="70%" stop-color="#ffffff" stop-opacity=0 />
+        <stop offset="100%" stop-color="#ffffff" stop-opacity=0.7 />
+      </radialGradient>
+      <radialGradient id="legal-move-gradient">
+        <stop offset="0%" stop-color="#e2b17f" stop-opacity=1 />
+        <stop offset="10%" stop-color="#e2b17f" stop-opacity=1 />
+        <stop offset="30%" stop-color="#e2b17f" stop-opacity=0 />
+      </radialGradient>
+    </defs>
+  </svg>
 
-      <svg id="board-secondary" shape-rendering="crispEdges"></svg>
-      <svg id="reserve-secondary-top"></svg>
-      <svg id="reserve-secondary-bottom"></svg>
-      <div id="player-name-container-secondary-top" class="player-name-container">
-        <div id="player-name-secondary-top" class="player-name"></div>
-      </div>
-      <div id="player-name-container-secondary-bottom" class="player-name-container">
-        <div id="player-name-secondary-bottom" class="player-name"></div>
-      </div>
-      <div id="clock-container-secondary-top" class="clock-container">
-        <div id="clock-secondary-top" class="clock clock-inactive">-:--</div>
-      </div>
-      <div id="clock-container-secondary-bottom" class="clock-container">
-        <div id="clock-secondary-bottom" class="clock clock-inactive">-:--</div>
-      </div>
-      <div id="turn-log-container-secondary" class="turn-log-container">
-        <div id="turn-log-scroll-area-secondary" class="turn-log-scroll-area">
-          <div id="turn-log-secondary" class="turn-log"></div>
-        </div>
-      </div>
-
-      <div id="info-container">
-        <div id="info-subcontainer">
-          <div id="command-result"></div>
-          <div id="game-message"></div>
-          <div id="loading-status"></div>
-        </div>
-      </div>
-      <input id="command">
-      <div id="button-panel">
-        <div class="button-subpanel">
-          <button id="ready-button" class="icon-button" style="display:none">
-            <svg class="icon-button-svg" viewBox="0 0 10 10">
-              <path d="m4.1334 8.2689c-0.77778-0.77777-1.5556-1.5555-2.3333-2.3333 0.1493-0.1493 0.29861-0.29861 0.44792-0.44791 0.62847 0.62846 1.2569 1.2569 1.8854 1.8854 1.3333-1.3333 2.6667-2.6666 4-3.9999 0.14931 0.1493 0.29861 0.29861 0.44792 0.44791-1.4826 1.4826-2.9653 2.9652-4.4479 4.4478z"/>
-              <path d="m6.2294 3.0909c0.01842 0.54665-0.22743 1.1986-0.80717 1.3495-0.48177 0.14227-1.0568-0.07703-1.2531-0.55577-0.22143-0.53254-0.22412-1.1869 0.06314-1.6957 0.39082-0.66193 1.5268-0.60811 1.8338 0.10586 0.11976 0.24649 0.1636 0.52394 0.1633 0.79609zm-0.46902 0c0.01085-0.37245-0.12581-0.87232-0.56349-0.92058-0.37587-0.06616-0.667 0.28036-0.69772 0.62792-0.05242 0.40494-0.03753 0.91998 0.34026 1.1699 0.35844 0.21343 0.81745-0.06012 0.87328-0.45501 0.0339-0.13799 0.04777-0.28033 0.047679-0.42226z"/>
-              <path d="m2.6557 4.0404c0.19522-0.02057 0.42346-0.03379 0.56283-0.19037 0.06445-0.11574 0.05711-0.27594 0.02988-0.39936-0.0546-0.02472-0.11921 0.0022-0.17926-0.0065h-0.34129v-0.41395h0.95703v0.9836c-0.34826 0.41306-0.96775 0.5822-1.4741 0.38703-0.21398-0.08194-0.39447-0.24277-0.49525-0.4494-0.24039-0.45737-0.2179-1.004-0.09942-1.4932 0.12149-0.44463 0.57818-0.7665 1.0377-0.73251 0.43488-0.03305 0.88664 0.26274 0.98362 0.69688-0.14115 0.0519-0.2823 0.1038-0.42345 0.1557-0.06942-0.3036-0.41896-0.46357-0.7077-0.3989-0.19231 0.03378-0.35115 0.1793-0.4143 0.36226-0.14797 0.36126-0.1246 0.77739 0.0089 1.1391 0.09426 0.21361 0.31711 0.372 0.55482 0.35969z"/>
-            </svg>
-          </button>
-          <button id="resign-button" class="icon-button" style="display:none">
-            <svg class="icon-button-svg" viewBox="0 0 10 10">
-              <path d="m2.5039 2.2396s0.7439-0.44739 1.3612-0.55761c0.61731-0.11022 1.6756 0.18357 2.29 0.081159 0.61438-0.10241 1.3501-0.51711 1.3501-0.51711l0.5951 2.9956s-0.73572 0.41469-1.3501 0.51711c-0.61438 0.10241-1.6727-0.19137-2.29-0.081159-0.61731 0.11022-1.3612 0.55761-1.3612 0.55761z"/>
-              <path d="m2.8711 2.166-0.73438 0.14648 1.332 6.7051 0.73438-0.14648-1.332-6.7051z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="button-subpanel">
-          <button id="export-button" class="icon-button">
-            <svg class="icon-button-svg" viewBox="0 0 10 10">
-              <path d="m4.5078 4.0552v1.8204h-0.84961l1.3418 1.6965 1.3418-1.6965h-0.84961v-1.8204z"/>
-              <path d="m1.75 7.3965v1.8281h6.5v-1.8281h-0.69922v1.1289h-5.1016v-1.1289z"/>
-              <g transform="matrix(.95594 0 0 .938 15.5 -.7372)">
-              <g transform="matrix(1 0 -.3102 .43462 -13.053 1.6848)">
-              <rect x="0" y="1" width="1" height="1"/> <rect x="0" y="3" width="1" height="1"/> <rect x="0" y="5" width="1" height="1"/>
-              <rect x="1" y="0" width="1" height="1"/> <rect x="1" y="2" width="1" height="1"/> <rect x="1" y="4" width="1" height="1"/>
-              <rect x="2" y="1" width="1" height="1"/> <rect x="2" y="3" width="1" height="1"/> <rect x="2" y="5" width="1" height="1"/>
-              <rect x="3" y="0" width="1" height="1"/> <rect x="3" y="2" width="1" height="1"/> <rect x="3" y="4" width="1" height="1"/>
-              <rect x="4" y="1" width="1" height="1"/> <rect x="4" y="3" width="1" height="1"/> <rect x="4" y="5" width="1" height="1"/>
-              <rect x="5" y="0" width="1" height="1"/> <rect x="5" y="2" width="1" height="1"/> <rect x="5" y="4" width="1" height="1"/>
-              </g>
-              </g>
-            </svg>
-          </button>
-          <button id="volume-button" class="icon-button">
-            <svg class="icon-button-svg" viewBox="0 0 10 10">
-              <path d="m4.459 1.8633a0.10001 0.10001 0 0 0-0.074219 0.035156l-1.291 1.5117h-1.2305a0.10001 0.10001 0 0 0-0.099609 0.099609v2.9805a0.10001 0.10001 0 0 0 0.099609 0.099609h1.2305l1.291 1.5117a0.10001 0.10001 0 0 0 0.17578-0.064453v-6.0742a0.10001 0.10001 0 0 0-0.10156-0.099609z"/>
-              <path id="volume-1" d="m5.4414 2.9492a0.175 0.175 0 0 0-0.14062 0.085937 0.175 0.175 0 0 0 0.060547 0.24023c0.46431 0.27729 0.80025 0.97217 0.78906 1.748-0.011187 0.77587-0.36491 1.4484-0.83398 1.6973a0.175 0.175 0 0 0-0.074219 0.23633 0.175 0.175 0 0 0 0.23828 0.072266c0.62692-0.33263 1.0069-1.1234 1.0195-2 0.012639-0.87657-0.34497-1.688-0.95898-2.0547a0.175 0.175 0 0 0-0.099609-0.025391z"/>
-              <path id="volume-2" d="m6.4609 2.3008a0.2 0.2 0 0 0-0.17188 0.087891 0.2 0.2 0 0 0 0.050781 0.27734c0.53936 0.36946 0.94094 1.3144 0.92773 2.3652-0.01321 1.0509-0.43734 1.9663-0.98047 2.2969a0.2 0.2 0 0 0-0.068359 0.27539 0.2 0.2 0 0 0 0.27539 0.066406c0.73024-0.4444 1.1594-1.4816 1.1738-2.6328 0.014472-1.1512-0.38808-2.2124-1.1016-2.7012a0.2 0.2 0 0 0-0.10547-0.035156z"/>
-              <path id="volume-3" d="m7.6934 1.5996a0.225 0.225 0 0 0-0.17188 0.080078 0.225 0.225 0 0 0 0.025391 0.31641c0.54326 0.46347 0.97069 1.6916 0.95703 3.0449-0.013659 1.3533-0.46682 2.5436-1.0098 2.9551a0.225 0.225 0 0 0-0.044922 0.31445 0.225 0.225 0 0 0 0.31641 0.042969c0.75582-0.57287 1.1729-1.8627 1.1875-3.3066 0.014574-1.444-0.37872-2.7659-1.1133-3.3926a0.225 0.225 0 0 0-0.14648-0.054688z"/>
-              <path id="volume-mute" style="display:none" d="m5.6738 3.5879-0.35352 0.35352 1.0586 1.0586-1.0586 1.0586 0.35352 0.35352 1.0586-1.0605 1.0586 1.0586 0.35352-0.35352-1.0586-1.0586 1.0566-1.0566-0.35352-0.35352-1.0566 1.0566z"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <div id="connection-info"></div>
+  <div id="page">
+    <svg id="board-primary" shape-rendering="crispEdges"></svg>
+    <svg id="reserve-primary-top"></svg>
+    <svg id="reserve-primary-bottom"></svg>
+    <div id="player-name-container-primary-top" class="player-name-container">
+      <div id="player-name-primary-top" class="player-name"></div>
     </div>
-
-    <div id="cookie-banner" class="flex-row" style="display:none;">
-      <div id="cookie-warning" class="flex-equisized">
-        This website uses cookies in order to function:
-        <ul>
-          <li>
-            <b>Essential cookies</b> are required to provide basic features, such as secure log-in
-            (always active);
-          </li>
-          <li>
-            <b>Performance cookies</b> are used to collect anonymous statistics that helps us improve
-            our website (if you are ok with that).
-          </li>
-        </ul>
-        We do <i>not</i> use cookies for advertising.
-      </div>
-      <div class="flex-col">
-        <button id="accept-essential-cookies-button">Essential cookies only</button>
-        <button id="accept-all-cookies-button">Accept all cookies</button>
+    <div id="player-name-container-primary-bottom" class="player-name-container">
+      <div id="player-name-primary-bottom" class="player-name"></div>
+    </div>
+    <div id="clock-container-primary-top" class="clock-container">
+      <div id="clock-primary-top" class="clock clock-inactive">-:--</div>
+    </div>
+    <div id="clock-container-primary-bottom" class="clock-container">
+      <div id="clock-primary-bottom" class="clock clock-inactive">-:--</div>
+    </div>
+    <div id="turn-log-container-primary" class="turn-log-container">
+      <div id="turn-log-scroll-area-primary" class="turn-log-scroll-area">
+        <div id="turn-log-primary" class="turn-log"></div>
       </div>
     </div>
 
-    <div id="menu-backdrop"></div>
-    <dialog id="menu-dialog">
-      <!-- All input fields must have a non-empty placeholder for the `:placeholder-shown` css trick
-            to work. If there is no meaningful placeholder text, use "&nbsp;" -->
-      <div id="menu-start-page" class="menu-page">
-        <div id="account-info-bar">
-          <div id="registered-user-bar" class="flex-row" style="display:none">
-            <span class="flex-equisized">
-              <div class="inline-block">
-                <span class="logged-in-as-prefix">Welcome,</span><br>
-                <span class="logged-in-as-account"></span>
-              </div>
-            </span>
-            <button id="view-account-button" class="square-button" title="Account settings">👤︎</button>
-            <button id="log-out-button">Log out</button>
-          </div>
-          <div id="guest-user-bar" class="flex-row">
-            <span>
-              <div class="inline-block">
-                <span class="logged-in-as-prefix">Playing as</span><br>
-                <span class="logged-in-as-account">Guest</span>
-              </div>
-              <div id="guest-user-tooltip" class="tooltip">
-                <div class="tooltip-text">
-                  <p>
-                    Bughouse.pro is free and available to everybody. As a guest, you can create or
-                    join <i>unrated</i> games without limitations. Please log in to play rated.
-                    In the future we plan to add more features for registered users,
-                    such as friends-only games and easier access to your game history.
-                  </p>
-                </div>
-              </div>
-            </span>
-            <button id="authorization-button">Sign in</button>
-          </div>
-        </div>
-        <div style="height: 0.4em"></div>
-        <div class="align-center">
-          <button id="create-contest-button" class="big-button">Create contest</button>
-        </div>
-        <div class="align-center">
-          <button id="join-contest-button" class="big-button">Join contest</button>
-        </div>
-        <div style="height: 0.4em"></div>
-        <div class="flex-row">
-          <button data-suburl="/dyn/stats" class="flex-equisized">Leaderboard</button>
-          <button data-suburl="/dyn/history" class="flex-equisized">Rating history</button>
-        </div>
-        <div class="flex-row">
-          <button data-suburl="/dyn/games" class="flex-equisized">Game archive</button>
-          <button id="about-button" class="flex-equisized">About</button>
-        </div>
+    <div id="score-team"></div>
+    <div id="participant-container">
+      <div id="score-individual-container">
+        <div id="score-individual"></div>
       </div>
+      <div id="observers"></div>
+    </div>
 
-      <form id="menu-authorization-page" class="menu-page" action="javascript:;">
-        <div class="flex-col">
-          <div class="align-left">
-            <button type="button" class="square-button back-button" title="Go back">🡨</button>
-          </div>
-          <button id="sign-with-google-button" class="big-button">
-            <div class="flex-row">
-              <svg id="google-logo" viewBox="0 0 10 10">
-                <rect x=".86956" y=".86956" width="8.2609" height="8.2609" rx="1.5" fill="#fff" fill-opacity=".85" filter="url(#google-logo-background)"/>
-                <g>
-                 <path d="m7.2618 5.0535c0-0.16649-0.01494-0.32656-0.042684-0.48024h-2.2112v0.9082h1.2636c-0.054432 0.29347-0.21984 0.54214-0.46849 0.70862v0.58909h0.75876c0.44395-0.40873 0.70007-1.0106 0.70007-1.7256z" fill="#4285f4"/>
-                 <path d="m5.0078 7.3478c0.63391 0 1.1654-0.21024 1.5539-0.56882l-0.75876-0.58909c-0.21024 0.14087-0.47916 0.22411-0.79505 0.22411-0.61151 0-1.1291-0.413-1.3138-0.96796h-0.78438v0.60829c0.38632 0.76733 1.1803 1.2935 2.0981 1.2935z" fill="#34a853"/>
-                 <path d="m3.6941 5.446c-0.046956-0.14087-0.073636-0.29134-0.073636-0.44609s0.026676-0.30522 0.073632-0.44609v-0.60829h-0.78438c-0.15901 0.31696-0.24972 0.67553-0.24972 1.0544s0.090708 0.73742 0.24972 1.0544z" fill="#fbbc05"/>
-                 <path d="m5.0078 3.586c0.34471 0 0.65418 0.11845 0.89753 0.35111l0.6734-0.6734c-0.4066-0.37886-0.93806-0.61151-1.5709-0.61151-0.9178 0-1.7118 0.52613-2.0981 1.2935l0.78438 0.60829c0.18462-0.55495 0.7022-0.96796 1.3138-0.96796z" fill="#ea4335"/>
-                </g>
-              </svg>
-              <span class="flex-equisized">Sign in with Google</span>
+    <svg id="board-secondary" shape-rendering="crispEdges"></svg>
+    <svg id="reserve-secondary-top"></svg>
+    <svg id="reserve-secondary-bottom"></svg>
+    <div id="player-name-container-secondary-top" class="player-name-container">
+      <div id="player-name-secondary-top" class="player-name"></div>
+    </div>
+    <div id="player-name-container-secondary-bottom" class="player-name-container">
+      <div id="player-name-secondary-bottom" class="player-name"></div>
+    </div>
+    <div id="clock-container-secondary-top" class="clock-container">
+      <div id="clock-secondary-top" class="clock clock-inactive">-:--</div>
+    </div>
+    <div id="clock-container-secondary-bottom" class="clock-container">
+      <div id="clock-secondary-bottom" class="clock clock-inactive">-:--</div>
+    </div>
+    <div id="turn-log-container-secondary" class="turn-log-container">
+      <div id="turn-log-scroll-area-secondary" class="turn-log-scroll-area">
+        <div id="turn-log-secondary" class="turn-log"></div>
+      </div>
+    </div>
+
+    <div id="info-container">
+      <div id="info-subcontainer">
+        <div id="command-result"></div>
+        <div id="game-message"></div>
+        <div id="loading-status"></div>
+      </div>
+    </div>
+    <input id="command">
+    <div id="button-panel">
+      <div class="button-subpanel">
+        <button id="ready-button" class="icon-button" style="display:none">
+          <svg class="icon-button-svg" viewBox="0 0 10 10">
+            <path d="m4.1334 8.2689c-0.77778-0.77777-1.5556-1.5555-2.3333-2.3333 0.1493-0.1493 0.29861-0.29861 0.44792-0.44791 0.62847 0.62846 1.2569 1.2569 1.8854 1.8854 1.3333-1.3333 2.6667-2.6666 4-3.9999 0.14931 0.1493 0.29861 0.29861 0.44792 0.44791-1.4826 1.4826-2.9653 2.9652-4.4479 4.4478z"/>
+            <path d="m6.2294 3.0909c0.01842 0.54665-0.22743 1.1986-0.80717 1.3495-0.48177 0.14227-1.0568-0.07703-1.2531-0.55577-0.22143-0.53254-0.22412-1.1869 0.06314-1.6957 0.39082-0.66193 1.5268-0.60811 1.8338 0.10586 0.11976 0.24649 0.1636 0.52394 0.1633 0.79609zm-0.46902 0c0.01085-0.37245-0.12581-0.87232-0.56349-0.92058-0.37587-0.06616-0.667 0.28036-0.69772 0.62792-0.05242 0.40494-0.03753 0.91998 0.34026 1.1699 0.35844 0.21343 0.81745-0.06012 0.87328-0.45501 0.0339-0.13799 0.04777-0.28033 0.047679-0.42226z"/>
+            <path d="m2.6557 4.0404c0.19522-0.02057 0.42346-0.03379 0.56283-0.19037 0.06445-0.11574 0.05711-0.27594 0.02988-0.39936-0.0546-0.02472-0.11921 0.0022-0.17926-0.0065h-0.34129v-0.41395h0.95703v0.9836c-0.34826 0.41306-0.96775 0.5822-1.4741 0.38703-0.21398-0.08194-0.39447-0.24277-0.49525-0.4494-0.24039-0.45737-0.2179-1.004-0.09942-1.4932 0.12149-0.44463 0.57818-0.7665 1.0377-0.73251 0.43488-0.03305 0.88664 0.26274 0.98362 0.69688-0.14115 0.0519-0.2823 0.1038-0.42345 0.1557-0.06942-0.3036-0.41896-0.46357-0.7077-0.3989-0.19231 0.03378-0.35115 0.1793-0.4143 0.36226-0.14797 0.36126-0.1246 0.77739 0.0089 1.1391 0.09426 0.21361 0.31711 0.372 0.55482 0.35969z"/>
+          </svg>
+        </button>
+        <button id="resign-button" class="icon-button" style="display:none">
+          <svg class="icon-button-svg" viewBox="0 0 10 10">
+            <path d="m2.5039 2.2396s0.7439-0.44739 1.3612-0.55761c0.61731-0.11022 1.6756 0.18357 2.29 0.081159 0.61438-0.10241 1.3501-0.51711 1.3501-0.51711l0.5951 2.9956s-0.73572 0.41469-1.3501 0.51711c-0.61438 0.10241-1.6727-0.19137-2.29-0.081159-0.61731 0.11022-1.3612 0.55761-1.3612 0.55761z"/>
+            <path d="m2.8711 2.166-0.73438 0.14648 1.332 6.7051 0.73438-0.14648-1.332-6.7051z"/>
+          </svg>
+        </button>
+      </div>
+      <div class="button-subpanel">
+        <button id="export-button" class="icon-button">
+          <svg class="icon-button-svg" viewBox="0 0 10 10">
+            <path d="m4.5078 4.0552v1.8204h-0.84961l1.3418 1.6965 1.3418-1.6965h-0.84961v-1.8204z"/>
+            <path d="m1.75 7.3965v1.8281h6.5v-1.8281h-0.69922v1.1289h-5.1016v-1.1289z"/>
+            <g transform="matrix(.95594 0 0 .938 15.5 -.7372)">
+            <g transform="matrix(1 0 -.3102 .43462 -13.053 1.6848)">
+            <rect x="0" y="1" width="1" height="1"/> <rect x="0" y="3" width="1" height="1"/> <rect x="0" y="5" width="1" height="1"/>
+            <rect x="1" y="0" width="1" height="1"/> <rect x="1" y="2" width="1" height="1"/> <rect x="1" y="4" width="1" height="1"/>
+            <rect x="2" y="1" width="1" height="1"/> <rect x="2" y="3" width="1" height="1"/> <rect x="2" y="5" width="1" height="1"/>
+            <rect x="3" y="0" width="1" height="1"/> <rect x="3" y="2" width="1" height="1"/> <rect x="3" y="4" width="1" height="1"/>
+            <rect x="4" y="1" width="1" height="1"/> <rect x="4" y="3" width="1" height="1"/> <rect x="4" y="5" width="1" height="1"/>
+            <rect x="5" y="0" width="1" height="1"/> <rect x="5" y="2" width="1" height="1"/> <rect x="5" y="4" width="1" height="1"/>
+            </g>
+            </g>
+          </svg>
+        </button>
+        <button id="volume-button" class="icon-button">
+          <svg class="icon-button-svg" viewBox="0 0 10 10">
+            <path d="m4.459 1.8633a0.10001 0.10001 0 0 0-0.074219 0.035156l-1.291 1.5117h-1.2305a0.10001 0.10001 0 0 0-0.099609 0.099609v2.9805a0.10001 0.10001 0 0 0 0.099609 0.099609h1.2305l1.291 1.5117a0.10001 0.10001 0 0 0 0.17578-0.064453v-6.0742a0.10001 0.10001 0 0 0-0.10156-0.099609z"/>
+            <path id="volume-1" d="m5.4414 2.9492a0.175 0.175 0 0 0-0.14062 0.085937 0.175 0.175 0 0 0 0.060547 0.24023c0.46431 0.27729 0.80025 0.97217 0.78906 1.748-0.011187 0.77587-0.36491 1.4484-0.83398 1.6973a0.175 0.175 0 0 0-0.074219 0.23633 0.175 0.175 0 0 0 0.23828 0.072266c0.62692-0.33263 1.0069-1.1234 1.0195-2 0.012639-0.87657-0.34497-1.688-0.95898-2.0547a0.175 0.175 0 0 0-0.099609-0.025391z"/>
+            <path id="volume-2" d="m6.4609 2.3008a0.2 0.2 0 0 0-0.17188 0.087891 0.2 0.2 0 0 0 0.050781 0.27734c0.53936 0.36946 0.94094 1.3144 0.92773 2.3652-0.01321 1.0509-0.43734 1.9663-0.98047 2.2969a0.2 0.2 0 0 0-0.068359 0.27539 0.2 0.2 0 0 0 0.27539 0.066406c0.73024-0.4444 1.1594-1.4816 1.1738-2.6328 0.014472-1.1512-0.38808-2.2124-1.1016-2.7012a0.2 0.2 0 0 0-0.10547-0.035156z"/>
+            <path id="volume-3" d="m7.6934 1.5996a0.225 0.225 0 0 0-0.17188 0.080078 0.225 0.225 0 0 0 0.025391 0.31641c0.54326 0.46347 0.97069 1.6916 0.95703 3.0449-0.013659 1.3533-0.46682 2.5436-1.0098 2.9551a0.225 0.225 0 0 0-0.044922 0.31445 0.225 0.225 0 0 0 0.31641 0.042969c0.75582-0.57287 1.1729-1.8627 1.1875-3.3066 0.014574-1.444-0.37872-2.7659-1.1133-3.3926a0.225 0.225 0 0 0-0.14648-0.054688z"/>
+            <path id="volume-mute" style="display:none" d="m5.6738 3.5879-0.35352 0.35352 1.0586 1.0586-1.0586 1.0586 0.35352 0.35352 1.0586-1.0605 1.0586 1.0586 0.35352-0.35352-1.0586-1.0586 1.0566-1.0566-0.35352-0.35352-1.0566 1.0566z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="connection-info"></div>
+  </div>
+
+  <div id="cookie-banner" class="flex-row" style="display:none;">
+    <div id="cookie-warning" class="flex-equisized">
+      This website uses cookies in order to function:
+      <ul>
+        <li>
+          <b>Essential cookies</b> are required to provide basic features, such as secure log-in
+          (always active);
+        </li>
+        <li>
+          <b>Performance cookies</b> are used to collect anonymous statistics that helps us improve
+          our website (if you are ok with that).
+        </li>
+      </ul>
+      We do <i>not</i> use cookies for advertising.
+    </div>
+    <div class="flex-col">
+      <button id="accept-essential-cookies-button">Essential cookies only</button>
+      <button id="accept-all-cookies-button">Accept all cookies</button>
+    </div>
+  </div>
+
+  <div id="menu-backdrop"></div>
+  <dialog id="menu-dialog">
+    <!-- All input fields must have a non-empty placeholder for the `:placeholder-shown` css trick
+          to work. If there is no meaningful placeholder text, use "&nbsp;" -->
+    <div id="menu-start-page" class="menu-page">
+      <div id="account-info-bar">
+        <div id="registered-user-bar" class="flex-row" style="display:none">
+          <span class="flex-equisized">
+            <div class="inline-block">
+              <span class="logged-in-as-prefix">Welcome,</span><br>
+              <span class="logged-in-as-account"></span>
             </div>
-          </button>
-          <button id="begin-login-button" class="big-button">Log in</button>
-          <button id="begin-signup-button" class="big-button">Sign up</button>
+          </span>
+          <button id="view-account-button" class="square-button" title="Account settings">👤︎</button>
+          <button id="log-out-button">Log out</button>
         </div>
-      </form>
-
-      <form id="menu-login-page" class="menu-page" action="javascript:;">
-        <div class="align-left">
-          <button type="button" class="square-button back-button" title="Go back">🡨</button>
-        </div>
-        <div class="menu-page-body">
-          <label for="login-user-name">Account name</label>
-          <input type="text" id="login-user-name" name="user_name"
-            placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
-            maxlength="16" pattern="[\p{L}\p{N}_-]+"
-            title="User name may contain letters, numbers, underscores ('_') and dashes ('-')" />
-          <div></div>
-
-          <label for="login-password">Password</label>
-          <input type="password" id="login-password" name="password"
-            placeholder="&nbsp;" autocomplete="current-password" required />
-          <div></div>
-        </div>
-        <div class="align-center">
-          <button id="login-confirm-button" class="big-button">Log in</button>
-        </div>
-      </form>
-
-      <form id="menu-signup-page" class="menu-page" action="javascript:;">
-        <div class="align-left">
-          <button type="button" class="square-button back-button" title="Go back">🡨</button>
-        </div>
-        <div class="menu-page-body">
-          <label for="signup-user-name">Account name *</label>
-          <input type="text" id="signup-user-name" name="user_name"
-            placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
-            maxlength="16" pattern="[\p{L}\p{N}_-]+"
-            title="User name may contain letters, numbers, underscores ('_') and dashes ('-')" />
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>
-                Account name (required). Your unique public identifier at bughouse.pro.
-                May contain letters, numbers, underscores and dashes. Case-sensitive.
-              </p>
-              <p>
-                If you played on bughouse.pro earlier, use the same name in order to keep your
-                rating and game history!
-              </p>
+        <div id="guest-user-bar" class="flex-row">
+          <span>
+            <div class="inline-block">
+              <span class="logged-in-as-prefix">Playing as</span><br>
+              <span class="logged-in-as-account">Guest</span>
             </div>
-          </div>
-
-          <label for="signup-email">Email</label>
-          <input type="email" id="signup-email" name="email"
-            placeholder="&nbsp;" autocomplete="email" />
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>
-                Your email (optional). We do not send spam.
-                The email is only used in order to restore your account if you forget your password.
-              </p>
-            </div>
-          </div>
-
-          <label for="signup-password">Password *</label>
-          <input type="password" id="signup-password" name="password"
-            placeholder="&nbsp;" minlength="8" autocomplete="new-password" required />
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>Password (required). Must be at least 8 characters long. Case-sensitive.</p>
-            </div>
-          </div>
-
-          <label for="signup-confirm-password">Confirm password *</label>
-          <input type="password" id="signup-confirm-password" name="confirm_password"
-            placeholder="&nbsp;" minlength="8" autocomplete="new-password" required />
-          <div></div>
-        </div>
-        <div class="align-center">
-          <button id="signup-confirm-button" class="big-button">Create account</button>
-        </div>
-      </form>
-
-      <form id="menu-signup-with-google-page" class="menu-page" action="javascript:;">
-        <div class="align-left">
-          <button type="button" class="square-button back-button" title="Go back">🡨</button>
-        </div>
-        <div class="menu-page-body">
-          <label for="signup-with-google-user-name">Account name *</label>
-          <input type="text" id="signup-with-google-user-name" name="user_name"
-            placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
-            maxlength="16" pattern="[\p{L}\p{N}_-]+"
-            title="User name may contain letters, numbers, underscores ('_') and dashes ('-')" />
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>
-                Account name (required). Your unique public identifier at bughouse.pro.
-                May contain letters, numbers, underscores and dashes. Case-sensitive.
-              </p>
-              <p>
-                If you played on bughouse.pro earlier, use the same name in order to keep your
-                rating and game history!
-              </p>
-            </div>
-          </div>
-
-          <label for="signup-with-google-email">Email</label>
-          <div id="signup-with-google-email" class="logged-in-as-email fixed-form-value"></div>
-          <div></div>
-        </div>
-        <div class="align-center">
-          <button id="signup-with-google-confirm-button" class="big-button">Create account</button>
-        </div>
-      </form>
-
-      <form id="menu-view-account-page" class="menu-page" action="javascript:;">
-        <div class="align-left">
-          <button type="button" class="square-button back-button" title="Go back">🡨</button>
-        </div>
-        <div class="menu-page-body">
-          <label for="view-account-user-name">Account name</label>
-          <div id="view-account-user-name" class="logged-in-as-account fixed-form-value"></div>
-          <div></div>
-
-          <label for="view-account-email">Email</label>
-          <div id="view-account-email" class="logged-in-as-email fixed-form-value"></div>
-          <div></div>
-
-          <label for="view-account-password" class="logged-in-with-password">Password</label>
-          <div id="view-account-password" class="logged-in-with-password">••••••••</div>
-          <div class="logged-in-with-password"></div>
-        </div>
-        <div class="flex-row">
-          <button id="view-account-change-button" class="flex-equisized logged-in-with-password">Change info</button>
-          <button id="view-account-delete-button" class="flex-equisized">Delete account</button>
-        </div>
-      </form>
-
-      <form id="menu-change-account-page" class="menu-page" action="javascript:;">
-        <div class="align-left">
-          <button type="button" class="square-button back-button" title="Go back">🡨</button>
-        </div>
-        <div class="menu-page-body">
-          <label for="change-account-user-name">Account name</label>
-          <div id="change-account-user-name" class="logged-in-as-account fixed-form-value"></div>
-          <div></div>
-
-          <label for="change-account-current-password">Current password</label>
-          <input type="password" id="change-account-current-password" name="current_password"
-            placeholder="&nbsp;" autocomplete="current-password" required />
-          <div></div>
-
-          <label for="change-account-email">Email</label>
-          <input type="email" id="change-account-email" name="email"
-            placeholder="no email" autocomplete="email" />
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>
-                Your email (optional; clear the field to remove). We do not send spam.
-                The email is only used in order to restore your account if you forget your password.
-              </p>
-            </div>
-          </div>
-
-          <label for="change-account-new-password">New password</label>
-          <input type="password" id="change-account-new-password" name="new_password"
-            placeholder="keep current password" minlength="8" autocomplete="new-password" />
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>
-                New password (leave empty to keep the current password).
-                Must be at least 8 characters long. Case-sensitive.
-              </p>
-            </div>
-          </div>
-
-          <label for="change-account-confirm-new-password">Confirm new password</label>
-          <input type="password" id="change-account-confirm-new-password" name="confirm_new_password"
-            placeholder="keep current password" minlength="8" autocomplete="new-password" />
-          <div></div>
-        </div>
-        <div class="align-center">
-          <button id="change-account-confirm-button" class="big-button">Update account</button>
-        </div>
-      </form>
-
-      <form id="menu-delete-account-page" class="menu-page" action="javascript:;">
-        <div class="align-left">
-          <button type="button" class="square-button back-button" title="Go back">🡨</button>
-        </div>
-        <div id="account-deletion-warning">
-          You are about to delete your bughouse.pro account,
-          <span id="view-account-user-name" class="logged-in-as-account fixed-form-value"></span>.
-          This action cannot be undone!
-          <span class="logged-in-with-password">Type your password below in order to continue.</span>
-          <!-- TODO: Some kind of confirmation for those logged in with Google. -->
-        </div>
-        <div class="menu-page-body">
-          <label for="delete-account-password" class="logged-in-with-password">Password</label>
-          <input type="password" id="delete-account-password" name="password" class="logged-in-with-password"
-            placeholder="&nbsp;" autocomplete="current-password" required />
-          <div class="logged-in-with-password"></div>
-        </div>
-        <div class="align-center">
-          <button id="delete-account-confirm-button" class="big-button danger-button">☠ Delete account</button>
-        </div>
-      </form>
-
-      <form id="menu-create-contest-page" class="menu-page" action="javascript:;">
-        <div class="flex-row">
-          <button type="button" class="square-button back-button" title="Go back">🡨</button>
-          <div class="flex-equisized"></div>
-          <div class="logged-in-as">
-            <span class="logged-in-as-prefix">Playing as</span>
-            <span class="logged-in-as-account"></span>
-          </div>
-        </div>
-        <div class="menu-page-body">
-          <!-- `pattern` and `maxlength` must be in sync with join contest player name field and with `is_valid_player_name` -->
-          <!-- Improvement potential. Dedup player name properties (like `pattern` and `title`),
-                or reuse the same <input> via dynamic css grids. -->
-          <!-- TODO: Visually separate player name from contest params. -->
-          <!-- TODO: Add presets (default and chess.com). -->
-          <label for="cc-player-name" class="guest-player-name">Player name</label>
-          <input type="text" id="cc-player-name" name="player_name" class="guest-player-name"
-            placeholder="&nbsp;" spellcheck="false" required
-            maxlength="16" pattern="[\p{L}\p{N}_-]+"
-            title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
-          <div class="tooltip guest-player-name">
-            <div class="tooltip-text">
-              <p>Player name. May contain letters, numbers, underscores and dashes. Case-sensitive.</p>
-            </div>
-          </div>
-
-          <label for="cc-teaming">Teaming</label>
-          <select id="cc-teaming" name="teaming">
-            <option value="individual-mode">Individual mode</option>
-            <option value="fixed-teams">Fixed teams</option>
-          </select>
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>
-                <i>Individual mode.</i>
-                Teams and opponents are randomized every round.
-              </p>
-              <p>
-                <i>Fixed teams.</i>
-                Teams are fixed. Opponents are randomized every round.
-              </p>
-              <p>
-                Note for both modes. While there are normally 4 players in bughouse, it is possible
-                to play with 2–3 (unrated only) or 5+ players (rated or unrated). If there are too few
-                players, some will play on both boards for a given team. If there are too many players,
-                some will seat out each round.
-              </p>
-            </div>
-          </div>
-
-          <label for="cc-starting-position">Starting position</label>
-          <select id="cc-starting-position" name="starting_position">
-            <option value="classic">Classic</option>
-            <option value="fischer-random" selected>Fischer random</option>
-          </select>
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>
-                <i>Classic.</i>
-                Standard starting positon.
-              </p>
-              <p>
-                <i>Fischer random</i> (a.k.a. Chess960).
-                Pawns start as usual. Pieces start on the home ranks, but their
-                positions are randomized. Bishops are always of opposite colors. King always starts between
-                the rooks. Castling is allowed: A-side castling puts the kind and left rook on files C and&nbspD
-                respectively, H-side castling puts the kind and right rook on files G and&nbspF respectively.
-                All four players start with the same setup.
-              </p>
-            </div>
-          </div>
-
-          <label for="cc-chess-variant">Variant</label>
-          <select id="cc-chess-variant" name="chess_variant">
-            <option value="standard" selected>Standard</option>
-            <option value="fog-of-war">Fog of war</option>
-          </select>
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>
-                <i>Standard.</i>
-                Classic chess rules.
-              </p>
-              <p>
-                <i>Fog of war.</i>
-                You only see squares that are a legal move destination for one of your pieces.
-                You can drop pieces into the fog of war at your own risk.
-              </p>
-            </div>
-          </div>
-
-          <label for="cc-fairy-pieces">Fairy pieces</label>
-          <select id="cc-fairy-pieces" name="fairy_pieces">
-            <option value="no-fairy" selected>No fairy</option>
-            <option value="accolade">Accolade</option>
-          </select>
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>
-                <i>No fairy.</i>
-                Play with standard chess pieces.
-              </p>
-              <p>
-                <i>Accolade.</i>
-                Confer knighthood to any piece! Combine a Knight with a Bishop, a Rook or a Queen to get
-                a Cardinal, an Empress or an Amazon respectively. Combine by moving one piece onto another
-                or by dropping one piece onto another. If captured, the piece falls back apart.
-              </p>
-            </div>
-          </div>
-
-          <label for="cc-starting-time">Starting time</label>
-          <input type="text" id="cc-starting-time" name="starting_time"
-            placeholder="m:ss" spellcheck="false" autocomplete="off" required
-            value="5:00" pattern="[0-9]+:[0-5][0-9]"
-            title="Starting time in “m:ss” format." />
-            <div class="tooltip">
+            <div id="guest-user-tooltip" class="tooltip">
               <div class="tooltip-text">
-                <p>Starting time in “m:ss” format. Increments and delays are not allowed.</p>
+                <p>
+                  Bughouse.pro is free and available to everybody. As a guest, you can create or
+                  join <i>unrated</i> games without limitations. Please log in to play rated.
+                  In the future we plan to add more features for registered users,
+                  such as friends-only games and easier access to your game history.
+                </p>
               </div>
             </div>
-
-          <label for="cc-drop-aggression">Drop aggression</label>
-          <select id="cc-drop-aggression" name="drop_aggression">
-            <option value="no-check">No check</option>
-            <option value="no-chess-mate" selected>No chess mate</option>
-            <option value="no-bughouse-mate">No bughouse mate</option>
-            <option value="mate-allowed">Mate allowed</option>
-          </select>
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>
-                <i>No check.</i>
-                Drop with a check is forbidden.
-              </p>
-              <p>
-                <i>No chess mate.</i>
-                Drop with a checkmate is forbidden, even if the opponent can escape the checkmate with
-                a drop of their own.
-              </p>
-              <p>
-                <i>No bughouse mate.</i>
-                Drop with a checkmate is forbidden, unless the opponent can escape the checkmate with
-                a drop of their own (even if their reserve is currently empty).
-              </p>
-              <p>
-                <i>Mate allowed.</i>
-                Drop with a checkmate is allowed.
-              </p>
-            </div>
-          </div>
-
-          <label for="cc-pawn-drop-ranks">Pawn drop ranks</label>
-          <input type="text" id="cc-pawn-drop-ranks" name="pawn_drop_ranks"
-            placeholder="min-max" spellcheck="false" autocomplete="off" required
-            value="2-6" pattern="1-[1-7]|2-[2-7]|3-[3-7]|4-[4-7]|5-[5-7]|6-[6-7]|7-[7-7]"
-            title="Allowed pawn drop ranks in “min-max” format. Limitations: 1 ≤ min ≤ max ≤ 7" />
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>
-                Allowed pawn drop ranks in “min-max” format. Ranks are counted starting from the player,
-                so “2-6” means White can drop from rank 2 to rank 6 and Black can drop from rank 7 to rank 3.
-              <p>
-              </p>
-                Limitations:<br> 1 ≤ min ≤ max ≤ 7
-              </p>
-            </div>
-          </div>
-
-          <label for="cc-rating">Rating</label>
-          <select id="cc-rating" name="rating">
-            <option value="rated" selected>Rated</option>
-            <option value="unrated">Unrated</option>
-          </select>
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>Whether the game is rated.</p>
-              <p>Unrated games are still recorded, but they do not affect either personal or team rating.</p>
-              <p>
-                In a rated game either each player must play on one board (classic bughouse),
-                or each player must play on two boards. Playing one versus two is only allowed in unrated.
-              </p>
-            </div>
-          </div>
+          </span>
+          <button id="authorization-button">Sign in</button>
         </div>
-        <div class="align-center">
-          <button id="cc-confirm-button" class="big-button">Create contest!</button>
-        </div>
-      </form>
+      </div>
+      <div style="height: 0.4em"></div>
+      <div class="align-center">
+        <button id="create-contest-button" class="big-button">Create contest</button>
+      </div>
+      <div class="align-center">
+        <button id="join-contest-button" class="big-button">Join contest</button>
+      </div>
+      <div style="height: 0.4em"></div>
+      <div class="flex-row">
+        <button data-suburl="/dyn/stats" class="flex-equisized">Leaderboard</button>
+        <button data-suburl="/dyn/history" class="flex-equisized">Rating history</button>
+      </div>
+      <div class="flex-row">
+        <button data-suburl="/dyn/games" class="flex-equisized">Game archive</button>
+        <button id="about-button" class="flex-equisized">About</button>
+      </div>
+    </div>
 
-      <form id="menu-join-contest-page" class="menu-page" action="javascript:;">
-        <div class="flex-row">
-          <button type="button" class="square-button back-button" title="Go back">🡨</button>
-          <div class="flex-equisized"></div>
-          <div class="logged-in-as">
-            <span class="logged-in-as-prefix">Playing as</span>
-            <span class="logged-in-as-account"></span>
-          </div>
-        </div>
-        <div class="menu-page-body">
-          <label for="jc-contest-id">Contest ID</label>
-          <input type="text" id="jc-contest-id" name="contest_id"
-            placeholder="&nbsp;" spellcheck="false" autocomplete="off" required
-            maxlength="10" pattern="[a-zA-Z0-9]*"
-            title="Contest ID consists of Latin letters and numbers" />
-          <div></div>
-
-          <!-- `pattern` and `maxlength` must be in sync with join contest player name field and with `is_valid_player_name` -->
-          <label for="jc-player-name" class="guest-player-name">Player name</label>
-          <input type="text" id="jc-player-name" name="player_name" class="guest-player-name"
-            placeholder="&nbsp;" spellcheck="false" required
-            maxlength="16" pattern="[\p{L}\p{N}_-]+"
-            title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
-          <div class="guest-player-name"></div>
-        </div>
-        <div class="align-center">
-          <button id="jc-confirm-button" class="big-button">Join contest!</button>
-        </div>
-      </form>
-
-      <div id="menu-about-page" class="menu-page">
+    <form id="menu-authorization-page" class="menu-page" action="javascript:;">
+      <div class="flex-col">
         <div class="align-left">
           <button type="button" class="square-button back-button" title="Go back">🡨</button>
         </div>
-        <div id="about-text" class="scrollable">
-          <p>
-            Welcome to bughouse.pro: a place where you can play bughouse chess online with your friends!
-          </p>
-          <!-- TODO: Make more readable by adding visual structure. -->
-          <p>
-            <i>Bughouse chess</i> (a.k.a. double chess, exchange chess, tandem chess, etc.)
-            is a chess variant played two versus two on two boards.
-            Pieces captured by one player go into their teammate's <i>reserve</i>.
-            Each player has an option to <i>drop</i> a reserve piece on a free square instead
-            of making a <s>boring</s> normal chess move.
-          </p>
-          <p>
-            There are variations in bughouse chess rules, and this site aims to support them all
-            rather than one specific variant. For example, it allows you to configure where pawns
-            can be dropped or whether drops with checkmates are allowed. Here you even could
-            (I dare say: should) play bughouse Fischer random chess! I find this to be a particularly
-            neat combination: bughouse effectively makes endgame theory useless and Fischer random
-            does the same to openings. Together they let your imagination fly completely free from
-            the chains of chess textbooks.
-          </p>
-          <p>
-            If you cherish a bughouse variant that we missed, if you feel your experience on this
-            website is not crazy enough — please tell us! Our aim is to make bughouse chess do
-            justice to its name.
-          </p>
-          <p>
-            Please note that this platform is in beta. Features may be missing. Games may crash.
-            Your rating may be lost. Forever. You have been warned. If you encounter something that
-            feels like a bug — please tell us!
-          </p>
-          <p>
-            The two biggest missing features are built-in player communication and matchmaking.
-            For now there's really just one way to play bughouse here. First, find a group of
-            people willing to play bughouse. Second, organize yourself a call in a voice chat of
-            your choosing. Third, create a game here, send an invitation code to your fellow
-            players and enjoy!
-          </p>
-          <hr>
-          <p>
-            Developed by Andrei Matveiakin<br>
-            together with Konstantin Mandelbaum
-          </p>
-          <p>
-            For questions, comments, suggestions and bug reports contact us at
-            <a href="mailto:contact.bughousepro@gmail.com">contact.bughousepro@gmail.com</a>
-          </p>
-          <p>
-            Privacy policy: <a href="privacy-policy.html" target="_blank">bughouse.pro/privacy-policy.html</a><br>
-          </p>
-          <p>
-            App version: <span id="git-version">v?</span> (beta)<br>
-            Source: <a href="https://github.com/amatveiakin/bughouse-chess" target="_blank">github.com/amatveiakin/bughouse-chess</a><br>
-          </p>
-        </div>
-      </div>
-
-      <div id="menu-lobby-page" class="menu-page">
-        <div class="flex-row">
-          <div id="lobby-contest">Contest <span id="lobby-contest-id"></span></div>
-          <!-- TODO: Allow to leave contest (don't forget to send the message to the server) -->
-          <!-- <button type="button" class="back-button" title="Go back">Leave</button> -->
-        </div>
-        <div id="lobby-rules"></div>
-        <hr>
-        <div id="lobby-participants"></div>
-        <hr>
-        <div id="lobby-footer">
-          <div id="lobby-waiting" class="centered"></div>
-          <div id="lobby-countdown">
-            Starting in
-            <span id="lobby-countdown-seconds"></span>
-            <span>
-              <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
-            </span>
+        <button id="sign-with-google-button" class="big-button">
+          <div class="flex-row">
+            <svg id="google-logo" viewBox="0 0 10 10">
+              <rect x=".86956" y=".86956" width="8.2609" height="8.2609" rx="1.5" fill="#fff" fill-opacity=".85" filter="url(#google-logo-background)"/>
+              <g>
+                <path d="m7.2618 5.0535c0-0.16649-0.01494-0.32656-0.042684-0.48024h-2.2112v0.9082h1.2636c-0.054432 0.29347-0.21984 0.54214-0.46849 0.70862v0.58909h0.75876c0.44395-0.40873 0.70007-1.0106 0.70007-1.7256z" fill="#4285f4"/>
+                <path d="m5.0078 7.3478c0.63391 0 1.1654-0.21024 1.5539-0.56882l-0.75876-0.58909c-0.21024 0.14087-0.47916 0.22411-0.79505 0.22411-0.61151 0-1.1291-0.413-1.3138-0.96796h-0.78438v0.60829c0.38632 0.76733 1.1803 1.2935 2.0981 1.2935z" fill="#34a853"/>
+                <path d="m3.6941 5.446c-0.046956-0.14087-0.073636-0.29134-0.073636-0.44609s0.026676-0.30522 0.073632-0.44609v-0.60829h-0.78438c-0.15901 0.31696-0.24972 0.67553-0.24972 1.0544s0.090708 0.73742 0.24972 1.0544z" fill="#fbbc05"/>
+                <path d="m5.0078 3.586c0.34471 0 0.65418 0.11845 0.89753 0.35111l0.6734-0.6734c-0.4066-0.37886-0.93806-0.61151-1.5709-0.61151-0.9178 0-1.7118 0.52613-2.0981 1.2935l0.78438 0.60829c0.18462-0.55495 0.7022-0.96796 1.3138-0.96796z" fill="#ea4335"/>
+              </g>
+            </svg>
+            <span class="flex-equisized">Sign in with Google</span>
           </div>
-          <div id="lobby-countdown-progressbar"></div>
+        </button>
+        <button id="begin-login-button" class="big-button">Log in</button>
+        <button id="begin-signup-button" class="big-button">Sign up</button>
+      </div>
+    </form>
+
+    <form id="menu-login-page" class="menu-page" action="javascript:;">
+      <div class="align-left">
+        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+      </div>
+      <div class="menu-page-body">
+        <label for="login-user-name">Account name</label>
+        <input type="text" id="login-user-name" name="user_name"
+          placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
+          maxlength="16" pattern="[\p{L}\p{N}_-]+"
+          title="User name may contain letters, numbers, underscores ('_') and dashes ('-')" />
+        <div></div>
+
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" name="password"
+          placeholder="&nbsp;" autocomplete="current-password" required />
+        <div></div>
+      </div>
+      <div class="align-center">
+        <button id="login-confirm-button" class="big-button">Log in</button>
+      </div>
+    </form>
+
+    <form id="menu-signup-page" class="menu-page" action="javascript:;">
+      <div class="align-left">
+        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+      </div>
+      <div class="menu-page-body">
+        <label for="signup-user-name">Account name *</label>
+        <input type="text" id="signup-user-name" name="user_name"
+          placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
+          maxlength="16" pattern="[\p{L}\p{N}_-]+"
+          title="User name may contain letters, numbers, underscores ('_') and dashes ('-')" />
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>
+              Account name (required). Your unique public identifier at bughouse.pro.
+              May contain letters, numbers, underscores and dashes. Case-sensitive.
+            </p>
+            <p>
+              If you played on bughouse.pro earlier, use the same name in order to keep your
+              rating and game history!
+            </p>
+          </div>
+        </div>
+
+        <label for="signup-email">Email</label>
+        <input type="email" id="signup-email" name="email"
+          placeholder="&nbsp;" autocomplete="email" />
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>
+              Your email (optional). We do not send spam.
+              The email is only used in order to restore your account if you forget your password.
+            </p>
+          </div>
+        </div>
+
+        <label for="signup-password">Password *</label>
+        <input type="password" id="signup-password" name="password"
+          placeholder="&nbsp;" minlength="8" autocomplete="new-password" required />
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>Password (required). Must be at least 8 characters long. Case-sensitive.</p>
+          </div>
+        </div>
+
+        <label for="signup-confirm-password">Confirm password *</label>
+        <input type="password" id="signup-confirm-password" name="confirm_password"
+          placeholder="&nbsp;" minlength="8" autocomplete="new-password" required />
+        <div></div>
+      </div>
+      <div class="align-center">
+        <button id="signup-confirm-button" class="big-button">Create account</button>
+      </div>
+    </form>
+
+    <form id="menu-signup-with-google-page" class="menu-page" action="javascript:;">
+      <div class="align-left">
+        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+      </div>
+      <div class="menu-page-body">
+        <label for="signup-with-google-user-name">Account name *</label>
+        <input type="text" id="signup-with-google-user-name" name="user_name"
+          placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
+          maxlength="16" pattern="[\p{L}\p{N}_-]+"
+          title="User name may contain letters, numbers, underscores ('_') and dashes ('-')" />
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>
+              Account name (required). Your unique public identifier at bughouse.pro.
+              May contain letters, numbers, underscores and dashes. Case-sensitive.
+            </p>
+            <p>
+              If you played on bughouse.pro earlier, use the same name in order to keep your
+              rating and game history!
+            </p>
+          </div>
+        </div>
+
+        <label for="signup-with-google-email">Email</label>
+        <div id="signup-with-google-email" class="logged-in-as-email fixed-form-value"></div>
+        <div></div>
+      </div>
+      <div class="align-center">
+        <button id="signup-with-google-confirm-button" class="big-button">Create account</button>
+      </div>
+    </form>
+
+    <form id="menu-view-account-page" class="menu-page" action="javascript:;">
+      <div class="align-left">
+        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+      </div>
+      <div class="menu-page-body">
+        <label for="view-account-user-name">Account name</label>
+        <div id="view-account-user-name" class="logged-in-as-account fixed-form-value"></div>
+        <div></div>
+
+        <label for="view-account-email">Email</label>
+        <div id="view-account-email" class="logged-in-as-email fixed-form-value"></div>
+        <div></div>
+
+        <label for="view-account-password" class="logged-in-with-password">Password</label>
+        <div id="view-account-password" class="logged-in-with-password">••••••••</div>
+        <div class="logged-in-with-password"></div>
+      </div>
+      <div class="flex-row">
+        <button id="view-account-change-button" class="flex-equisized logged-in-with-password">Change info</button>
+        <button id="view-account-delete-button" class="flex-equisized">Delete account</button>
+      </div>
+    </form>
+
+    <form id="menu-change-account-page" class="menu-page" action="javascript:;">
+      <div class="align-left">
+        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+      </div>
+      <div class="menu-page-body">
+        <label for="change-account-user-name">Account name</label>
+        <div id="change-account-user-name" class="logged-in-as-account fixed-form-value"></div>
+        <div></div>
+
+        <label for="change-account-current-password">Current password</label>
+        <input type="password" id="change-account-current-password" name="current_password"
+          placeholder="&nbsp;" autocomplete="current-password" required />
+        <div></div>
+
+        <label for="change-account-email">Email</label>
+        <input type="email" id="change-account-email" name="email"
+          placeholder="no email" autocomplete="email" />
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>
+              Your email (optional; clear the field to remove). We do not send spam.
+              The email is only used in order to restore your account if you forget your password.
+            </p>
+          </div>
+        </div>
+
+        <label for="change-account-new-password">New password</label>
+        <input type="password" id="change-account-new-password" name="new_password"
+          placeholder="keep current password" minlength="8" autocomplete="new-password" />
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>
+              New password (leave empty to keep the current password).
+              Must be at least 8 characters long. Case-sensitive.
+            </p>
+          </div>
+        </div>
+
+        <label for="change-account-confirm-new-password">Confirm new password</label>
+        <input type="password" id="change-account-confirm-new-password" name="confirm_new_password"
+          placeholder="keep current password" minlength="8" autocomplete="new-password" />
+        <div></div>
+      </div>
+      <div class="align-center">
+        <button id="change-account-confirm-button" class="big-button">Update account</button>
+      </div>
+    </form>
+
+    <form id="menu-delete-account-page" class="menu-page" action="javascript:;">
+      <div class="align-left">
+        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+      </div>
+      <div id="account-deletion-warning">
+        You are about to delete your bughouse.pro account,
+        <span id="view-account-user-name" class="logged-in-as-account fixed-form-value"></span>.
+        This action cannot be undone!
+        <span class="logged-in-with-password">Type your password below in order to continue.</span>
+        <!-- TODO: Some kind of confirmation for those logged in with Google. -->
+      </div>
+      <div class="menu-page-body">
+        <label for="delete-account-password" class="logged-in-with-password">Password</label>
+        <input type="password" id="delete-account-password" name="password" class="logged-in-with-password"
+          placeholder="&nbsp;" autocomplete="current-password" required />
+        <div class="logged-in-with-password"></div>
+      </div>
+      <div class="align-center">
+        <button id="delete-account-confirm-button" class="big-button danger-button">☠ Delete account</button>
+      </div>
+    </form>
+
+    <form id="menu-create-contest-page" class="menu-page" action="javascript:;">
+      <div class="flex-row">
+        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <div class="flex-equisized"></div>
+        <div class="logged-in-as">
+          <span class="logged-in-as-prefix">Playing as</span>
+          <span class="logged-in-as-account"></span>
         </div>
       </div>
-    </dialog>
-  </body>
+      <div class="menu-page-body">
+        <!-- `pattern` and `maxlength` must be in sync with join contest player name field and with `is_valid_player_name` -->
+        <!-- Improvement potential. Dedup player name properties (like `pattern` and `title`),
+              or reuse the same <input> via dynamic css grids. -->
+        <!-- TODO: Visually separate player name from contest params. -->
+        <!-- TODO: Add presets (default and chess.com). -->
+        <label for="cc-player-name" class="guest-player-name">Player name</label>
+        <input type="text" id="cc-player-name" name="player_name" class="guest-player-name"
+          placeholder="&nbsp;" spellcheck="false" required
+          maxlength="16" pattern="[\p{L}\p{N}_-]+"
+          title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
+        <div class="tooltip guest-player-name">
+          <div class="tooltip-text">
+            <p>Player name. May contain letters, numbers, underscores and dashes. Case-sensitive.</p>
+          </div>
+        </div>
+
+        <label for="cc-teaming">Teaming</label>
+        <select id="cc-teaming" name="teaming">
+          <option value="individual-mode">Individual mode</option>
+          <option value="fixed-teams">Fixed teams</option>
+        </select>
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>
+              <i>Individual mode.</i>
+              Teams and opponents are randomized every round.
+            </p>
+            <p>
+              <i>Fixed teams.</i>
+              Teams are fixed. Opponents are randomized every round.
+            </p>
+            <p>
+              Note for both modes. While there are normally 4 players in bughouse, it is possible
+              to play with 2–3 (unrated only) or 5+ players (rated or unrated). If there are too few
+              players, some will play on both boards for a given team. If there are too many players,
+              some will seat out each round.
+            </p>
+          </div>
+        </div>
+
+        <label for="cc-starting-position">Starting position</label>
+        <select id="cc-starting-position" name="starting_position">
+          <option value="classic">Classic</option>
+          <option value="fischer-random" selected>Fischer random</option>
+        </select>
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>
+              <i>Classic.</i>
+              Standard starting positon.
+            </p>
+            <p>
+              <i>Fischer random</i> (a.k.a. Chess960).
+              Pawns start as usual. Pieces start on the home ranks, but their
+              positions are randomized. Bishops are always of opposite colors. King always starts between
+              the rooks. Castling is allowed: A-side castling puts the kind and left rook on files C and&nbspD
+              respectively, H-side castling puts the kind and right rook on files G and&nbspF respectively.
+              All four players start with the same setup.
+            </p>
+          </div>
+        </div>
+
+        <label for="cc-chess-variant">Variant</label>
+        <select id="cc-chess-variant" name="chess_variant">
+          <option value="standard" selected>Standard</option>
+          <option value="fog-of-war">Fog of war</option>
+        </select>
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>
+              <i>Standard.</i>
+              Classic chess rules.
+            </p>
+            <p>
+              <i>Fog of war.</i>
+              You only see squares that are a legal move destination for one of your pieces.
+              You can drop pieces into the fog of war at your own risk.
+            </p>
+          </div>
+        </div>
+
+        <label for="cc-fairy-pieces">Fairy pieces</label>
+        <select id="cc-fairy-pieces" name="fairy_pieces">
+          <option value="no-fairy" selected>No fairy</option>
+          <option value="accolade">Accolade</option>
+        </select>
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>
+              <i>No fairy.</i>
+              Play with standard chess pieces.
+            </p>
+            <p>
+              <i>Accolade.</i>
+              Confer knighthood to any piece! Combine a Knight with a Bishop, a Rook or a Queen to get
+              a Cardinal, an Empress or an Amazon respectively. Combine by moving one piece onto another
+              or by dropping one piece onto another. If captured, the piece falls back apart.
+            </p>
+          </div>
+        </div>
+
+        <label for="cc-starting-time">Starting time</label>
+        <input type="text" id="cc-starting-time" name="starting_time"
+          placeholder="m:ss" spellcheck="false" autocomplete="off" required
+          value="5:00" pattern="[0-9]+:[0-5][0-9]"
+          title="Starting time in “m:ss” format." />
+          <div class="tooltip">
+            <div class="tooltip-text">
+              <p>Starting time in “m:ss” format. Increments and delays are not allowed.</p>
+            </div>
+          </div>
+
+        <label for="cc-drop-aggression">Drop aggression</label>
+        <select id="cc-drop-aggression" name="drop_aggression">
+          <option value="no-check">No check</option>
+          <option value="no-chess-mate" selected>No chess mate</option>
+          <option value="no-bughouse-mate">No bughouse mate</option>
+          <option value="mate-allowed">Mate allowed</option>
+        </select>
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>
+              <i>No check.</i>
+              Drop with a check is forbidden.
+            </p>
+            <p>
+              <i>No chess mate.</i>
+              Drop with a checkmate is forbidden, even if the opponent can escape the checkmate with
+              a drop of their own.
+            </p>
+            <p>
+              <i>No bughouse mate.</i>
+              Drop with a checkmate is forbidden, unless the opponent can escape the checkmate with
+              a drop of their own (even if their reserve is currently empty).
+            </p>
+            <p>
+              <i>Mate allowed.</i>
+              Drop with a checkmate is allowed.
+            </p>
+          </div>
+        </div>
+
+        <label for="cc-pawn-drop-ranks">Pawn drop ranks</label>
+        <input type="text" id="cc-pawn-drop-ranks" name="pawn_drop_ranks"
+          placeholder="min-max" spellcheck="false" autocomplete="off" required
+          value="2-6" pattern="1-[1-7]|2-[2-7]|3-[3-7]|4-[4-7]|5-[5-7]|6-[6-7]|7-[7-7]"
+          title="Allowed pawn drop ranks in “min-max” format. Limitations: 1 ≤ min ≤ max ≤ 7" />
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>
+              Allowed pawn drop ranks in “min-max” format. Ranks are counted starting from the player,
+              so “2-6” means White can drop from rank 2 to rank 6 and Black can drop from rank 7 to rank 3.
+            <p>
+            </p>
+              Limitations:<br> 1 ≤ min ≤ max ≤ 7
+            </p>
+          </div>
+        </div>
+
+        <label for="cc-rating">Rating</label>
+        <select id="cc-rating" name="rating">
+          <option value="rated" selected>Rated</option>
+          <option value="unrated">Unrated</option>
+        </select>
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>Whether the game is rated.</p>
+            <p>Unrated games are still recorded, but they do not affect either personal or team rating.</p>
+            <p>
+              In a rated game either each player must play on one board (classic bughouse),
+              or each player must play on two boards. Playing one versus two is only allowed in unrated.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="align-center">
+        <button id="cc-confirm-button" class="big-button">Create contest!</button>
+      </div>
+    </form>
+
+    <form id="menu-join-contest-page" class="menu-page" action="javascript:;">
+      <div class="flex-row">
+        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <div class="flex-equisized"></div>
+        <div class="logged-in-as">
+          <span class="logged-in-as-prefix">Playing as</span>
+          <span class="logged-in-as-account"></span>
+        </div>
+      </div>
+      <div class="menu-page-body">
+        <label for="jc-contest-id">Contest ID</label>
+        <input type="text" id="jc-contest-id" name="contest_id"
+          placeholder="&nbsp;" spellcheck="false" autocomplete="off" required
+          maxlength="10" pattern="[a-zA-Z0-9]*"
+          title="Contest ID consists of Latin letters and numbers" />
+        <div></div>
+
+        <!-- `pattern` and `maxlength` must be in sync with join contest player name field and with `is_valid_player_name` -->
+        <label for="jc-player-name" class="guest-player-name">Player name</label>
+        <input type="text" id="jc-player-name" name="player_name" class="guest-player-name"
+          placeholder="&nbsp;" spellcheck="false" required
+          maxlength="16" pattern="[\p{L}\p{N}_-]+"
+          title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
+        <div class="guest-player-name"></div>
+      </div>
+      <div class="align-center">
+        <button id="jc-confirm-button" class="big-button">Join contest!</button>
+      </div>
+    </form>
+
+    <div id="menu-about-page" class="menu-page">
+      <div class="align-left">
+        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+      </div>
+      <div id="about-text" class="scrollable">
+        <p>
+          Welcome to bughouse.pro: a place where you can play bughouse chess online with your friends!
+        </p>
+        <!-- TODO: Make more readable by adding visual structure. -->
+        <p>
+          <i>Bughouse chess</i> (a.k.a. double chess, exchange chess, tandem chess, etc.)
+          is a chess variant played two versus two on two boards.
+          Pieces captured by one player go into their teammate's <i>reserve</i>.
+          Each player has an option to <i>drop</i> a reserve piece on a free square instead
+          of making a <s>boring</s> normal chess move.
+        </p>
+        <p>
+          There are variations in bughouse chess rules, and this site aims to support them all
+          rather than one specific variant. For example, it allows you to configure where pawns
+          can be dropped or whether drops with checkmates are allowed. Here you even could
+          (I dare say: should) play bughouse Fischer random chess! I find this to be a particularly
+          neat combination: bughouse effectively makes endgame theory useless and Fischer random
+          does the same to openings. Together they let your imagination fly completely free from
+          the chains of chess textbooks.
+        </p>
+        <p>
+          If you cherish a bughouse variant that we missed, if you feel your experience on this
+          website is not crazy enough — please tell us! Our aim is to make bughouse chess do
+          justice to its name.
+        </p>
+        <p>
+          Please note that this platform is in beta. Features may be missing. Games may crash.
+          Your rating may be lost. Forever. You have been warned. If you encounter something that
+          feels like a bug — please tell us!
+        </p>
+        <p>
+          The two biggest missing features are built-in player communication and matchmaking.
+          For now there's really just one way to play bughouse here. First, find a group of
+          people willing to play bughouse. Second, organize yourself a call in a voice chat of
+          your choosing. Third, create a game here, send an invitation code to your fellow
+          players and enjoy!
+        </p>
+        <hr>
+        <p>
+          Developed by Andrei Matveiakin<br>
+          together with Konstantin Mandelbaum
+        </p>
+        <p>
+          For questions, comments, suggestions and bug reports contact us at
+          <a href="mailto:contact.bughousepro@gmail.com">contact.bughousepro@gmail.com</a>
+        </p>
+        <p>
+          Privacy policy: <a href="privacy-policy.html" target="_blank">bughouse.pro/privacy-policy.html</a><br>
+        </p>
+        <p>
+          App version: <span id="git-version">v?</span> (beta)<br>
+          Source: <a href="https://github.com/amatveiakin/bughouse-chess" target="_blank">github.com/amatveiakin/bughouse-chess</a><br>
+        </p>
+      </div>
+    </div>
+
+    <div id="menu-lobby-page" class="menu-page">
+      <div class="flex-row">
+        <div id="lobby-contest">Contest <span id="lobby-contest-id"></span></div>
+        <!-- TODO: Allow to leave contest (don't forget to send the message to the server) -->
+        <!-- <button type="button" class="back-button" title="Go back">Leave</button> -->
+      </div>
+      <div id="lobby-rules"></div>
+      <hr>
+      <div id="lobby-participants"></div>
+      <hr>
+      <div id="lobby-footer">
+        <div id="lobby-waiting" class="centered"></div>
+        <div id="lobby-countdown">
+          Starting in
+          <span id="lobby-countdown-seconds"></span>
+          <span>
+            <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+          </span>
+        </div>
+        <div id="lobby-countdown-progressbar"></div>
+      </div>
+    </div>
+  </dialog>
+</body>
+
 </html>
