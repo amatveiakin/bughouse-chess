@@ -5,8 +5,6 @@
 import './main.css';
 import * as wasm from 'bughouse-chess';
 
-import favicon from '../assets/favicon.png';
-
 import white_pawn from '../assets/pieces/white-pawn.png';
 import white_knight from '../assets/pieces/white-knight.png';
 import white_bishop from '../assets/pieces/white-bishop.png';
@@ -170,8 +168,6 @@ const loading_tracker = new class {
         }
     }
 };
-
-set_favicon();
 
 window.dataLayer = window.dataLayer || [];
 function gtag() { window.dataLayer.push(arguments); }
@@ -1419,15 +1415,4 @@ function download(text, filename) {
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
-}
-
-// TODO: Is it possible to set a static favicon in a way that is recognized by webpack?
-function set_favicon() {
-    var link = document.querySelector("link[rel~='icon']");
-    if (!link) {
-        link = document.createElement('link');
-        link.rel = 'icon';
-        document.head.appendChild(link);
-    }
-    link.href = favicon;
 }

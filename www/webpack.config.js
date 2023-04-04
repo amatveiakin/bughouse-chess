@@ -9,11 +9,16 @@ module.exports = {
   },
   mode: "development",
   plugins: [
-    new CopyWebpackPlugin({ patterns: ['*.html'] }),
-    new CopyWebpackPlugin({ patterns: ['info-page.css'] }),
     new CopyWebpackPlugin({
       patterns: [
-        { from: "./node_modules/@jstable/jstable/dist/jstable.min.js",
+        '*.html',
+        'info-page.css',
+        {
+          from: "../assets/favicon.png",
+          to: "favicon.png"
+        },
+        {
+          from: "./node_modules/@jstable/jstable/dist/jstable.min.js",
           to: "jstable.js"
         }
       ]
