@@ -719,7 +719,7 @@ button:active {
 dialog {
   background-color: var(--color-dialog-background);
   /* font-size: max(1em, 8pt); */
-  padding: 0.6em 1em;
+  padding: 0;
   overflow: visible;  /* allow tooltips go outside of the page area */
 }
 
@@ -744,6 +744,9 @@ dialog::backdrop {
   background: #000000a0;
 }
 
+.menu-page {
+  padding: 0.6em 1em;
+}
 .menu-page-body {
   display: grid;
   grid-template-columns: auto auto auto;
@@ -833,6 +836,26 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 #jc-contest-id:not(:placeholder-shown) {
   /* This is of course a purely visual change. Actual input should be uppercased in JS. */
   text-transform: uppercase;
+}
+
+.app-title-bar {
+  padding: 0.2em 1em 0.3em;
+  margin-bottom: 0.2em;
+  background-color: #c4a87f;
+  box-shadow: 0 0 0.4em #000000c0;
+  font-size: 90%;
+}
+.app-title {
+  font-family: Trebuchet MS, sans-serif;
+  font-weight: bold;
+}
+.app-title-suffix {
+  color: #00000080;
+}
+.app-logo {
+  height: 1.2em;
+  transform: translateY(0.12em);
+  padding-right: 0.1em;
 }
 
 #google-logo {

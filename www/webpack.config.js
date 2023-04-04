@@ -14,6 +14,10 @@ module.exports = {
         '*.html',
         'info-page.css',
         {
+          from: "../assets/logo.svg",
+          to: "logo.svg"
+        },
+        {
           from: "../assets/favicon.png",
           to: "favicon.png"
         },
