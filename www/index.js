@@ -1147,7 +1147,7 @@ function go_to_suburl(event) {
     const suburl = event.target.getAttribute('data-suburl');
     const url = new URL(window.location);
     url.pathname = suburl;
-    window.open(url, '_blank').focus();
+    window.open(url, '_blank')?.focus();
 }
 
 function update_session() {
