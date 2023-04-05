@@ -719,12 +719,13 @@ button:active {
 dialog {
   background-color: var(--color-dialog-background);
   /* font-size: max(1em, 8pt); */
-  padding: 0;
+  padding: 0.6em 1em;
   overflow: visible;  /* allow tooltips go outside of the page area */
 }
 
 #menu-dialog {
   min-width: 18em;
+  padding: 0;
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
