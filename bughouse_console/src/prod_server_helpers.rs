@@ -14,6 +14,12 @@ pub fn validate_player_name(name: &str) -> Result<(), String> {
     if !name.chars().all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_') {
         return Err(format!("Player name must consist of letters, digits, dashes ('-') and underscores ('_')."));
     }
+    if !name.chars().any(|ch| ch.is_alphabetic()) {
+        // Requiring that the name contains a letter reduces the risk of collision if
+        // e.g. we decide to have a DB column that stores either guest name or registered
+        // user ID. Also it just makes sense.
+        return Err(format!("Player name must contain at least one letter."));
+    }
     let len = name.graphemes(true).count();
     if len < MIN_NAME_LENGTH {
         return Err(format!("Minimum name length is {MIN_NAME_LENGTH}."));
