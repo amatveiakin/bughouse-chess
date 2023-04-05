@@ -1,16 +1,15 @@
 use std::env;
 
 use anyhow::{anyhow, Context};
-use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    Argon2
-};
-use oauth2::{basic::BasicClient, TokenResponse};
+use argon2::password_hash::rand_core::OsRng;
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::Argon2;
+use oauth2::basic::BasicClient;
 // Alternatively, this can be oauth2::curl::http_client or a custom.
 use oauth2::reqwest::async_http_client;
 use oauth2::{
     url, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, RevocationUrl,
-    Scope, TokenUrl,
+    Scope, TokenResponse, TokenUrl,
 };
 use serde::Deserialize;
 use url::Url;
@@ -20,7 +19,8 @@ use url::Url;
 pub fn hash_password(password: &str) -> anyhow::Result<String> {
     let argon2 = Argon2::default();
     let salt = SaltString::generate(&mut OsRng);
-    let hash = argon2.hash_password(password.as_bytes(), &salt)
+    let hash = argon2
+        .hash_password(password.as_bytes(), &salt)
         .map_err(|err| anyhow!(err))
         .context("Error computing password hash.")?;
     Ok(hash.to_string())
@@ -56,10 +56,7 @@ pub struct NewSessionQuery {
 
 impl NewSessionQuery {
     pub fn parse(self) -> (AuthorizationCode, CsrfToken) {
-        (
-            AuthorizationCode::new(self.code),
-            CsrfToken::new(self.state),
-        )
+        (AuthorizationCode::new(self.code), CsrfToken::new(self.state))
     }
 }
 
@@ -101,21 +98,26 @@ impl GoogleAuth {
             .url())
     }
 
-    pub async fn email(&self, callback_url: String, code: AuthorizationCode) -> anyhow::Result<String> {
+    pub async fn email(
+        &self, callback_url: String, code: AuthorizationCode,
+    ) -> anyhow::Result<String> {
         let token_response = self
             .client
             .clone()
             .set_redirect_uri(RedirectUrl::new(callback_url)?)
             .exchange_code(code)
             .request_async(async_http_client)
-            .await.context("exchanging auth code for auth token failed")?;
+            .await
+            .context("exchanging auth code for auth token failed")?;
         let response = reqwest::get(format!(
             "https://www.googleapis.com/oauth2/v1/userinfo?access_token={}",
             token_response.access_token().secret()
         ))
-        .await.context("requesting user info failed")?
+        .await
+        .context("requesting user info failed")?
         .json::<GoogleUserInfo>()
-        .await.context("getting user info JSON failed")?;
+        .await
+        .context("getting user info JSON failed")?;
         Ok(response.email)
     }
 }

@@ -1,9 +1,9 @@
 use std::fmt;
 use std::time::Duration;
 
-use enum_map::{EnumMap, enum_map};
+use enum_map::{enum_map, EnumMap};
 use instant::Instant;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use crate::force::Force;
@@ -44,13 +44,13 @@ impl GameInstant {
     pub fn from_duration(elapsed_since_start: Duration) -> Self {
         GameInstant {
             elapsed_since_start,
-            measurement: TimeMeasurement::Exact
+            measurement: TimeMeasurement::Exact,
         }
     }
     pub fn from_now_game_active(game_start: Instant, now: Instant) -> Self {
         GameInstant {
             elapsed_since_start: now - game_start,
-            measurement: TimeMeasurement::Exact
+            measurement: TimeMeasurement::Exact,
         }
     }
     pub fn from_now_game_maybe_active(game_start: Option<Instant>, now: Instant) -> GameInstant {
@@ -65,7 +65,9 @@ impl GameInstant {
             measurement: pair.game_t.measurement,
         }
     }
-    pub fn from_pair_game_maybe_active(pair: Option<WallGameTimePair>, now: Instant) -> GameInstant {
+    pub fn from_pair_game_maybe_active(
+        pair: Option<WallGameTimePair>, now: Instant,
+    ) -> GameInstant {
         match pair {
             Some(pair) => GameInstant::from_pair_game_active(pair, now),
             None => GameInstant::game_start(),
@@ -75,19 +77,19 @@ impl GameInstant {
     pub const fn game_start() -> Self {
         GameInstant {
             elapsed_since_start: Duration::ZERO,
-            measurement: TimeMeasurement::Exact
+            measurement: TimeMeasurement::Exact,
         }
     }
-    pub fn elapsed_since_start(self) -> Duration {
-        self.elapsed_since_start
-    }
+    pub fn elapsed_since_start(self) -> Duration { self.elapsed_since_start }
     pub fn duration_since(self, earlier: GameInstant) -> Duration {
         use TimeMeasurement::*;
         match (self.measurement, earlier.measurement) {
-            (Exact, Exact) =>
-                self.elapsed_since_start.checked_sub(earlier.elapsed_since_start).unwrap(),
-            (Approximate, _) | (_, Approximate) =>
-                self.elapsed_since_start.saturating_sub(earlier.elapsed_since_start),
+            (Exact, Exact) => {
+                self.elapsed_since_start.checked_sub(earlier.elapsed_since_start).unwrap()
+            }
+            (Approximate, _) | (_, Approximate) => {
+                self.elapsed_since_start.saturating_sub(earlier.elapsed_since_start)
+            }
         }
     }
 
@@ -117,7 +119,7 @@ pub struct WallGameTimePair {
 
 impl WallGameTimePair {
     pub fn new(world_t: Instant, game_t: GameInstant) -> Self {
-        WallGameTimePair{ world_t, game_t }
+        WallGameTimePair { world_t, game_t }
     }
 }
 
@@ -131,29 +133,24 @@ pub struct ClockShowing {
 
 // Improvement potential: Support longer time controls (with hours).
 pub enum TimeBreakdown {
-    NormalTime {
-        minutes: u32,
-        seconds: u32,
-    },
-    LowTime {
-        seconds: u32,
-        deciseconds: u32,
-    },
+    NormalTime { minutes: u32, seconds: u32 },
+    LowTime { seconds: u32, deciseconds: u32 },
 }
 
 
 #[derive(Clone, Debug)]
 pub struct Clock {
-    turn_state: Option<(Force, GameInstant)>,  // force, start time
+    turn_state: Option<(Force, GameInstant)>, // force, start time
     remaining_time: EnumMap<Force, Duration>,
-    #[allow(dead_code)] control: TimeControl,
+    #[allow(dead_code)]
+    control: TimeControl,
 }
 
 impl Clock {
     pub fn new(control: TimeControl) -> Self {
         Self {
             turn_state: None,
-            remaining_time: enum_map!{ _ => control.starting_time },
+            remaining_time: enum_map! { _ => control.starting_time },
             control,
         }
     }
@@ -193,19 +190,26 @@ impl Clock {
         let time_breakdown = if low_time {
             let seconds = s_floor.try_into().unwrap();
             let deciseconds = (div_ceil_u128(nanos, NANOS_PER_DECI) % 10).try_into().unwrap();
-            TimeBreakdown::LowTime{ seconds, deciseconds }
+            TimeBreakdown::LowTime { seconds, deciseconds }
         } else {
             let s_ceil = (nanos + NANOS_PER_SEC - 1) / NANOS_PER_SEC;
             let minutes = (s_ceil / 60).try_into().unwrap();
             let seconds = (s_ceil % 60).try_into().unwrap();
-            TimeBreakdown::NormalTime{ minutes, seconds }
+            TimeBreakdown::NormalTime { minutes, seconds }
         };
-        ClockShowing{ is_active, show_separator, out_of_time, time_breakdown }
+        ClockShowing {
+            is_active,
+            show_separator,
+            out_of_time,
+            time_breakdown,
+        }
     }
 
     pub fn total_time_elapsed(&self) -> Duration {
         // Note. This assumes no time increments, delays, etc.
-        Force::iter().map(|force| self.control.starting_time - self.remaining_time[force]).sum()
+        Force::iter()
+            .map(|force| self.control.starting_time - self.remaining_time[force])
+            .sum()
     }
 
     pub fn new_turn(&mut self, new_force: Force, now: GameInstant) {

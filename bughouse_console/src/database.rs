@@ -9,12 +9,11 @@
 // TODO: streaming support + APIs.
 use std::ops::Range;
 
+use bughouse_chess::{my_git_version, BughouseClientPerformance};
 use log::error;
 use sqlx::prelude::*;
 use tide::utils::async_trait;
 use time::{OffsetDateTime, PrimitiveDateTime};
-
-use bughouse_chess::{my_git_version, BughouseClientPerformance};
 
 use crate::persistence::*;
 
@@ -23,9 +22,7 @@ pub struct UnimplementedDatabase {}
 #[async_trait]
 impl DatabaseReader for UnimplementedDatabase {
     async fn finished_games(
-        &self,
-        _: Range<OffsetDateTime>,
-        _: bool,
+        &self, _: Range<OffsetDateTime>, _: bool,
     ) -> Result<Vec<(RowId, GameResultRow)>, anyhow::Error> {
         Err(anyhow::Error::msg("finished_games() unimplemented"))
     }
@@ -39,11 +36,7 @@ pub struct SqlxDatabase<DB: sqlx::Database> {
 }
 
 impl<DB: sqlx::Database> Clone for SqlxDatabase<DB> {
-    fn clone(&self) -> Self {
-        Self {
-            pool: self.pool.clone(),
-        }
-    }
+    fn clone(&self) -> Self { Self { pool: self.pool.clone() } }
 }
 
 impl SqlxDatabase<sqlx::Sqlite> {
@@ -80,9 +73,7 @@ where
     usize: sqlx::ColumnIndex<DB::Row>,
 {
     async fn finished_games(
-        &self,
-        game_end_time_range: Range<OffsetDateTime>,
-        only_rated: bool,
+        &self, game_end_time_range: Range<OffsetDateTime>, only_rated: bool,
     ) -> Result<Vec<(RowId, GameResultRow)>, anyhow::Error> {
         let rows = sqlx::query::<DB>(
             "SELECT
@@ -280,9 +271,7 @@ where
         Ok(())
     }
     async fn add_client_performance(
-        &self,
-        perf: &BughouseClientPerformance,
-        invocation_id: &str,
+        &self, perf: &BughouseClientPerformance, invocation_id: &str,
     ) -> anyhow::Result<()> {
         let stats = &perf.stats;
         let ping = stats.get("ping");

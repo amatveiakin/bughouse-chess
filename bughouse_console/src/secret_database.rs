@@ -1,8 +1,7 @@
+use bughouse_chess::session::RegistrationMethod;
 use sqlx::prelude::*;
 use tide::utils::async_trait;
 use time::OffsetDateTime;
-
-use bughouse_chess::session::RegistrationMethod;
 
 use crate::database::*;
 use crate::secret_persistence::*;
@@ -44,7 +43,9 @@ where
         row.map(row_to_account).transpose()
     }
 
-    async fn account_by_user_name(&self, user_name: &str) -> Result<Option<Account>, anyhow::Error> {
+    async fn account_by_user_name(
+        &self, user_name: &str,
+    ) -> Result<Option<Account>, anyhow::Error> {
         // TODO: handle NOT_FOUND separately from other errors.
         let row = self
             .pool
@@ -103,7 +104,8 @@ where
         password_hash: row.try_get("password_hash")?,
         registration_method: RegistrationMethod::try_from_string(
             row.try_get("registration_method")?,
-        ).map_err(anyhow::Error::msg)?,
+        )
+        .map_err(anyhow::Error::msg)?,
     }))
 }
 
@@ -146,12 +148,8 @@ where
     }
 
     async fn create_account(
-        &self,
-        user_name: String,
-        email: Option<String>,
-        password_hash: Option<String>,
-        registration_method: RegistrationMethod,
-        creation_time: OffsetDateTime,
+        &self, user_name: String, email: Option<String>, password_hash: Option<String>,
+        registration_method: RegistrationMethod, creation_time: OffsetDateTime,
     ) -> anyhow::Result<()> {
         sqlx::query(
             "INSERT INTO accounts(
@@ -174,8 +172,7 @@ where
 
     // Updates account atomically. Fails if the account does not exist.
     async fn update_account_txn(
-        &self,
-        id: AccountId,
+        &self, id: AccountId,
         f: Box<dyn for<'a> FnOnce(&'a mut LiveAccount) -> anyhow::Result<()> + Send>,
     ) -> anyhow::Result<()> {
         let mut txn = self.pool.begin().await?;
@@ -226,11 +223,9 @@ where
     }
 
     async fn delete_account_txn(
-        &self,
-        id: AccountId,
+        &self, id: AccountId,
         f: Box<dyn FnOnce(LiveAccount) -> anyhow::Result<DeletedAccount> + Send>,
     ) -> anyhow::Result<()> {
-
         let mut txn = self.pool.begin().await?;
         let row = txn
             .fetch_one(
@@ -285,11 +280,11 @@ impl<D: SecretDatabaseReader + SecretDatabaseWriter + Send + Sync> SecretDatabas
 #[async_trait]
 impl SecretDatabaseReader for UnimplementedDatabase {
     async fn account_by_email(&self, _email: &str) -> Result<Option<Account>, anyhow::Error> {
-        Err(anyhow::Error::msg(
-            "account_by_email is unimplemented in UnimplementedDatabase",
-        ))
+        Err(anyhow::Error::msg("account_by_email is unimplemented in UnimplementedDatabase"))
     }
-    async fn account_by_user_name(&self, _user_name: &str) -> Result<Option<Account>, anyhow::Error> {
+    async fn account_by_user_name(
+        &self, _user_name: &str,
+    ) -> Result<Option<Account>, anyhow::Error> {
         Err(anyhow::Error::msg(
             "account_by_user_name is unimplemented in UnimplementedDatabase",
         ))
@@ -299,38 +294,24 @@ impl SecretDatabaseReader for UnimplementedDatabase {
 #[async_trait]
 impl SecretDatabaseWriter for UnimplementedDatabase {
     async fn create_tables(&self) -> anyhow::Result<()> {
-        Err(anyhow::Error::msg(
-            "create_table is unimplemented in UnimplementedDatabase",
-        ))
+        Err(anyhow::Error::msg("create_table is unimplemented in UnimplementedDatabase"))
     }
     async fn create_account(
-        &self,
-        _user_name: String,
-        _email: Option<String>,
-        _password_hash: Option<String>,
-        _registration_method: RegistrationMethod,
-        _creation_time: OffsetDateTime,
+        &self, _user_name: String, _email: Option<String>, _password_hash: Option<String>,
+        _registration_method: RegistrationMethod, _creation_time: OffsetDateTime,
     ) -> anyhow::Result<()> {
-        Err(anyhow::Error::msg(
-            "create_account is unimplemented in UnimplementedDatabase",
-        ))
+        Err(anyhow::Error::msg("create_account is unimplemented in UnimplementedDatabase"))
     }
     async fn update_account_txn(
-        &self,
-        _id: AccountId,
+        &self, _id: AccountId,
         _f: Box<dyn for<'a> FnOnce(&'a mut LiveAccount) -> anyhow::Result<()> + Send>,
     ) -> anyhow::Result<()> {
-        Err(anyhow::Error::msg(
-            "create_account is unimplemented in UnimplementedDatabase",
-        ))
+        Err(anyhow::Error::msg("create_account is unimplemented in UnimplementedDatabase"))
     }
     async fn delete_account_txn(
-        &self,
-        _id: AccountId,
+        &self, _id: AccountId,
         _f: Box<dyn FnOnce(LiveAccount) -> anyhow::Result<DeletedAccount> + Send>,
     ) -> anyhow::Result<()> {
-        Err(anyhow::Error::msg(
-            "delete_account is unimplemented in UnimplementedDatabase",
-        ))
+        Err(anyhow::Error::msg("delete_account is unimplemented in UnimplementedDatabase"))
     }
 }

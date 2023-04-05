@@ -2,11 +2,11 @@ use std::time::Duration;
 
 use chain_cmp::chmp;
 use indoc::formatdoc;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::coord::SubjectiveRow;
 use crate::clock::TimeControl;
-use crate::player::{Team, Faction};
+use crate::coord::SubjectiveRow;
+use crate::player::{Faction, Team};
 
 
 // Time spent in the lobby before starting the first game after all players signal readiness.
@@ -31,16 +31,13 @@ const FIXED_TEAMS_FACTIONS: [Faction; 4] = [
     Faction::Fixed(Team::Blue),
     Faction::Observer,
 ];
-const INDIVIDUAL_MODE_FACTIONS: [Faction; 2] = [
-    Faction::Random,
-    Faction::Observer,
-];
+const INDIVIDUAL_MODE_FACTIONS: [Faction; 2] = [Faction::Random, Faction::Observer];
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum StartingPosition {
     Classic,
-    FischerRandom,  // a.k.a. Chess960
+    FischerRandom, // a.k.a. Chess960
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -119,9 +116,7 @@ impl Teaming {
 }
 
 impl ContestRules {
-    pub fn unrated() -> Self {
-        Self { rated: false }
-    }
+    pub fn unrated() -> Self { Self { rated: false } }
 }
 
 impl ChessRules {
@@ -130,7 +125,7 @@ impl ChessRules {
             starting_position: StartingPosition::Classic,
             chess_variant: ChessVariant::Standard,
             fairy_pieces: FairyPieces::NoFairy,
-            time_control: TimeControl{ starting_time: Duration::from_secs(300) }
+            time_control: TimeControl { starting_time: Duration::from_secs(300) },
         }
     }
 
@@ -181,15 +176,16 @@ impl Rules {
         let min_pawn_drop_rank = self.bughouse_rules.min_pawn_drop_rank.to_one_based();
         let max_pawn_drop_rank = self.bughouse_rules.max_pawn_drop_rank.to_one_based();
         if !chmp!(1 <= min_pawn_drop_rank <= max_pawn_drop_rank <= 7) {
-            return Err(format!("Invalid pawn drop ranks: {min_pawn_drop_rank}-{max_pawn_drop_rank}"));
+            return Err(format!(
+                "Invalid pawn drop ranks: {min_pawn_drop_rank}-{max_pawn_drop_rank}"
+            ));
         }
         if self.chess_rules.chess_variant == ChessVariant::FogOfWar
             && self.bughouse_rules.drop_aggression != DropAggression::MateAllowed
         {
-            return Err(
-                "Fog-of-war variant is played until a king is captured. \
-                Drop aggression must be set to \"mate allowed\"".to_owned()
-            );
+            return Err("Fog-of-war variant is played until a king is captured. \
+                Drop aggression must be set to \"mate allowed\""
+                .to_owned());
         }
         Ok(())
     }
@@ -219,7 +215,8 @@ impl Rules {
             true => "Rated",
             false => "Unrated",
         };
-        formatdoc!("
+        formatdoc!(
+            "
             Teaming: {teaming}
             Starting position: {starting_position}
             Variant: {chess_variant}
@@ -228,6 +225,7 @@ impl Rules {
             Drop aggression: {drop_aggression}
             Pawn drop ranks: {pawn_drop_ranks}
             Rating: {rating}
-        ")
+        "
+        )
     }
 }

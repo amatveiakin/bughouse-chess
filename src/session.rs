@@ -12,7 +12,8 @@ impl RegistrationMethod {
         match self {
             Self::Password => "Password",
             Self::GoogleOAuth => "GoogleOAuth",
-        }.to_owned()
+        }
+        .to_owned()
     }
     pub fn try_from_string(s: String) -> Result<Self, String> {
         match s.as_str() {
@@ -44,9 +45,7 @@ pub enum Session {
 }
 
 impl Default for Session {
-    fn default() -> Self {
-        Session::LoggedOut
-    }
+    fn default() -> Self { Session::LoggedOut }
 }
 
 impl Session {
@@ -56,7 +55,5 @@ impl Session {
             Session::LoggedIn(user_info) => Some(&user_info),
         }
     }
-    pub fn logout(&mut self) {
-        *self = Session::LoggedOut;
-    }
+    pub fn logout(&mut self) { *self = Session::LoggedOut; }
 }

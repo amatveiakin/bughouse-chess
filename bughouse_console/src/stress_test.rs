@@ -2,17 +2,16 @@
 // to a virtual server and execute random actions on the clients. Verify that the server
 // and the clients do not panic.
 
-use std::{io, panic};
 use std::cell::RefCell;
 use std::time::Duration;
+use std::{io, panic};
 
-use instant::Instant;
-use rand::prelude::*;
-use rand::distributions::WeightedIndex;
-use rand::seq::SliceRandom;
-
-use bughouse_chess::*;
 use bughouse_chess::test_util::*;
+use bughouse_chess::*;
+use instant::Instant;
+use rand::distributions::WeightedIndex;
+use rand::prelude::*;
+use rand::seq::SliceRandom;
 
 
 const GAMES_PER_BATCH: usize = 100;
@@ -43,14 +42,33 @@ enum ActionKind {
 // Improvement potential. Find or implement a way to automatically generate such a enum and apply it.
 #[derive(Clone, Debug)]
 enum Action {
-    SetStatus{ status: BughouseGameStatus, time: GameInstant },
-    ApplyRemoteTurn{ envoy: BughouseEnvoy, turn_algebraic: String, time: GameInstant },
-    LocalTurn{ board_idx: BughouseBoard, turn_input: TurnInput, time: GameInstant },
+    SetStatus {
+        status: BughouseGameStatus,
+        time: GameInstant,
+    },
+    ApplyRemoteTurn {
+        envoy: BughouseEnvoy,
+        turn_algebraic: String,
+        time: GameInstant,
+    },
+    LocalTurn {
+        board_idx: BughouseBoard,
+        turn_input: TurnInput,
+        time: GameInstant,
+    },
     PieceDragState,
-    StartDragPiece{ board_idx: BughouseBoard, start: PieceDragStart },
+    StartDragPiece {
+        board_idx: BughouseBoard,
+        start: PieceDragStart,
+    },
     AbortDragPiece,
-    DragPieceDrop{ dest: Coord, promote_to: PieceKind },
-    CancelPreturn{ board_idx: BughouseBoard },
+    DragPieceDrop {
+        dest: Coord,
+        promote_to: PieceKind,
+    },
+    CancelPreturn {
+        board_idx: BughouseBoard,
+    },
 }
 
 #[derive(Default)]
@@ -68,14 +86,29 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
         let rules = Rules {
             contest_rules: ContestRules::unrated(),
             chess_rules: ChessRules {
-                starting_position: if rng.gen::<bool>() { StartingPosition::Classic } else { StartingPosition::FischerRandom },
-                chess_variant: if rng.gen::<bool>() { ChessVariant::Standard } else { ChessVariant::FogOfWar },
-                fairy_pieces: if rng.gen::<bool>() { FairyPieces::NoFairy } else { FairyPieces::Accolade },
-                time_control: TimeControl{ starting_time: Duration::from_secs(300) }
-
+                starting_position: if rng.gen::<bool>() {
+                    StartingPosition::Classic
+                } else {
+                    StartingPosition::FischerRandom
+                },
+                chess_variant: if rng.gen::<bool>() {
+                    ChessVariant::Standard
+                } else {
+                    ChessVariant::FogOfWar
+                },
+                fairy_pieces: if rng.gen::<bool>() {
+                    FairyPieces::NoFairy
+                } else {
+                    FairyPieces::Accolade
+                },
+                time_control: TimeControl { starting_time: Duration::from_secs(300) },
             },
             bughouse_rules: BughouseRules {
-                teaming: if rng.gen::<bool>() { Teaming::FixedTeams } else { Teaming::IndividualMode },
+                teaming: if rng.gen::<bool>() {
+                    Teaming::FixedTeams
+                } else {
+                    Teaming::IndividualMode
+                },
                 min_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)).unwrap(),
                 max_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)).unwrap(),
                 drop_aggression: match rng.gen_range(0..4) {
@@ -98,29 +131,37 @@ fn bughouse_game(rules: Rules) -> BughouseGame {
         rules.contest_rules,
         rules.chess_rules,
         rules.bughouse_rules,
-        &sample_bughouse_players()
+        &sample_bughouse_players(),
     )
 }
 
 fn random_coord(rng: &mut rand::rngs::ThreadRng) -> Coord {
     Coord::new(
         Row::from_zero_based(rng.gen_range(0..NUM_ROWS)).unwrap(),
-        Col::from_zero_based(rng.gen_range(0..NUM_COLS)).unwrap()
+        Col::from_zero_based(rng.gen_range(0..NUM_COLS)).unwrap(),
     )
 }
 
 fn random_piece(rng: &mut rand::rngs::ThreadRng) -> PieceKind {
     use PieceKind::*;
-    let pieces = [ Pawn, Knight, Bishop, Rook, Queen, King ];
+    let pieces = [Pawn, Knight, Bishop, Rook, Queen, King];
     *pieces.choose(rng).unwrap()
 }
 
 fn random_force(rng: &mut rand::rngs::ThreadRng) -> Force {
-    if rng.gen::<bool>() { Force::White } else { Force::Black }
+    if rng.gen::<bool>() {
+        Force::White
+    } else {
+        Force::Black
+    }
 }
 
 fn random_board(rng: &mut rand::rngs::ThreadRng) -> BughouseBoard {
-    if rng.gen::<bool>() { BughouseBoard::A } else { BughouseBoard::B }
+    if rng.gen::<bool>() {
+        BughouseBoard::A
+    } else {
+        BughouseBoard::B
+    }
 }
 
 fn random_turn(rng: &mut rand::rngs::ThreadRng) -> Turn {
@@ -137,12 +178,13 @@ fn random_turn(rng: &mut rand::rngs::ThreadRng) -> Turn {
         // if they are potentially on the last row.
         let from = random_coord(rng);
         let to = random_coord(rng);
-        let promote_to = if to.row == Row::_1 || to.row == Row::_8 && rng.gen_bool(PROMOTION_RATIO) {
+        let promote_to = if to.row == Row::_1 || to.row == Row::_8 && rng.gen_bool(PROMOTION_RATIO)
+        {
             Some(random_piece(rng))
         } else {
             None
         };
-        Turn::Move(TurnMove{ from, to, promote_to })
+        Turn::Move(TurnMove { from, to, promote_to })
     }
 }
 
@@ -151,8 +193,8 @@ fn random_action_kind(rng: &mut rand::rngs::ThreadRng) -> ActionKind {
     assert!(n >= TURNS_PER_GAME * 10);
     use ActionKind::*;
     let weighted_actions = [
-        (SetStatus, n / TURNS_PER_GAME / 2),  // these end the game, so should only have very few
-        (ApplyRemoteTurn, n / 10),  // these are always valid (and expensive)
+        (SetStatus, n / TURNS_PER_GAME / 2), // these end the game, so should only have very few
+        (ApplyRemoteTurn, n / 10),           // these are always valid (and expensive)
         (LocalTurn, n),
         (PieceDragState, n),
         (StartDragPiece, n),
@@ -171,8 +213,8 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
         SetStatus => {
             let status = BughouseGameStatus::Victory(Team::Red, VictoryReason::Resignation);
             let time = GameInstant::game_start();
-            Action::SetStatus{ status, time }
-        },
+            Action::SetStatus { status, time }
+        }
         ApplyRemoteTurn => {
             // Optimization potential. A more direct way of generating random valid moves.
             for _ in 0..MAX_ATTEMPTS_GENERATING_SERVER_TURN {
@@ -180,7 +222,7 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
                 let mut random_envoy = || {
                     let board_idx = random_board(rng);
                     let force = game.board(board_idx).active_force();
-                    BughouseEnvoy{ board_idx, force }
+                    BughouseEnvoy { board_idx, force }
                 };
                 let mut envoy = random_envoy();
                 // The client can reasonably expect that the server wouldn't send back turns by
@@ -199,30 +241,34 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
                     envoy = random_envoy();
                 }
                 let turn = random_turn(rng);
-                let turn_is_valid = game.try_turn(
-                    envoy.board_idx,
-                    &TurnInput::DragDrop(turn),
-                    TurnMode::Normal,
-                    GameInstant::game_start()
-                ).is_ok();
+                let turn_is_valid = game
+                    .try_turn(
+                        envoy.board_idx,
+                        &TurnInput::DragDrop(turn),
+                        TurnMode::Normal,
+                        GameInstant::game_start(),
+                    )
+                    .is_ok();
                 if turn_is_valid {
-                    let turn_algebraic = game.last_turn_record().unwrap()
-                        .turn_expanded.algebraic.format(AlgebraicCharset::Ascii);
+                    let turn_algebraic = game
+                        .last_turn_record()
+                        .unwrap()
+                        .turn_expanded
+                        .algebraic
+                        .format(AlgebraicCharset::Ascii);
                     let time = GameInstant::game_start();
-                    return Some(Action::ApplyRemoteTurn{ envoy, turn_algebraic, time });
+                    return Some(Action::ApplyRemoteTurn { envoy, turn_algebraic, time });
                 }
             }
             return None;
-        },
+        }
         LocalTurn => {
             let board_idx = random_board(rng);
             let turn_input = TurnInput::DragDrop(random_turn(rng));
             let time = GameInstant::game_start();
-            Action::LocalTurn{ board_idx, turn_input, time }
-        },
-        PieceDragState => {
-            Action::PieceDragState
-        },
+            Action::LocalTurn { board_idx, turn_input, time }
+        }
+        PieceDragState => Action::PieceDragState,
         StartDragPiece => {
             let board_idx = random_board(rng);
             let start = if rng.gen_bool(DRAG_RESERVE_RATIO) {
@@ -230,42 +276,36 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
             } else {
                 PieceDragStart::Board(random_coord(rng))
             };
-            Action::StartDragPiece{ board_idx, start }
-        },
-        AbortDragPiece => {
-            Action::AbortDragPiece
-        },
+            Action::StartDragPiece { board_idx, start }
+        }
+        AbortDragPiece => Action::AbortDragPiece,
         DragPieceDrop => {
             let dest = random_coord(rng);
             let promote_to = PieceKind::Queen;
-            Action::DragPieceDrop{ dest, promote_to }
-        },
+            Action::DragPieceDrop { dest, promote_to }
+        }
         CancelPreturn => {
             let board_idx = random_board(rng);
-            Action::CancelPreturn{ board_idx }
-        },
+            Action::CancelPreturn { board_idx }
+        }
     })
 }
 
 fn apply_action(alt_game: &mut AlteredGame, action: Action) {
     use Action::*;
     match action {
-        SetStatus{ status, time } =>
-            _ = alt_game.set_status(status, time),
-        ApplyRemoteTurn{ envoy, turn_algebraic, time } =>
-            _ = alt_game.apply_remote_turn_algebraic(envoy, &turn_algebraic, time),
-        LocalTurn{ board_idx, turn_input, time } =>
-            _ = alt_game.try_local_turn(board_idx, turn_input, time),
-        PieceDragState =>
-            _ = alt_game.piece_drag_state(),
-        StartDragPiece{ board_idx,start } =>
-            _ = alt_game.start_drag_piece(board_idx, start),
-        AbortDragPiece =>
-            _ = alt_game.abort_drag_piece(),
-        DragPieceDrop{ dest, promote_to } =>
-            _ = alt_game.drag_piece_drop(dest, promote_to),
-        CancelPreturn{ board_idx } =>
-            _ = alt_game.cancel_preturn(board_idx),
+        SetStatus { status, time } => _ = alt_game.set_status(status, time),
+        ApplyRemoteTurn { envoy, turn_algebraic, time } => {
+            _ = alt_game.apply_remote_turn_algebraic(envoy, &turn_algebraic, time)
+        }
+        LocalTurn { board_idx, turn_input, time } => {
+            _ = alt_game.try_local_turn(board_idx, turn_input, time)
+        }
+        PieceDragState => _ = alt_game.piece_drag_state(),
+        StartDragPiece { board_idx, start } => _ = alt_game.start_drag_piece(board_idx, start),
+        AbortDragPiece => _ = alt_game.abort_drag_piece(),
+        DragPieceDrop { dest, promote_to } => _ = alt_game.drag_piece_drop(dest, promote_to),
+        CancelPreturn { board_idx } => _ = alt_game.cancel_preturn(board_idx),
     }
 }
 
@@ -284,7 +324,7 @@ pub fn bughouse_game_test() -> io::Result<()> {
                     random_board(rng),
                     &TurnInput::DragDrop(random_turn(rng)),
                     TurnMode::Normal,
-                    GameInstant::game_start()
+                    GameInstant::game_start(),
                 );
                 total_turns += 1;
                 if ret.is_ok() {
@@ -318,7 +358,7 @@ pub fn altered_game_test() -> io::Result<()> {
                 println!("Last action: {last_action:?}");
             }
             if let Some(ref alt_game) = cell.borrow().alt_game {
-               println!("AlteredGame before action:\n{alt_game:#?}");
+                println!("AlteredGame before action:\n{alt_game:#?}");
             }
         });
         std_panic_hook(panic_info);
@@ -328,12 +368,11 @@ pub fn altered_game_test() -> io::Result<()> {
         let t0 = Instant::now();
         let mut finished_games = 0;
         for _ in 0..GAMES_PER_BATCH {
-            let participant = BughouseParticipant::Player(
-                BughousePlayer::SinglePlayer(BughouseEnvoy {
+            let participant =
+                BughouseParticipant::Player(BughousePlayer::SinglePlayer(BughouseEnvoy {
                     board_idx: random_board(rng),
                     force: random_force(rng),
-                })
-            );
+                }));
             let mut alt_game = AlteredGame::new(participant, bughouse_game(random_rules(rng)));
             for _ in 0..ACTIONS_PER_GAME {
                 let Some(action) = random_action(&alt_game, rng) else {

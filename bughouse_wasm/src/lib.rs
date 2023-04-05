@@ -8,28 +8,27 @@ extern crate wasm_bindgen;
 extern crate bughouse_chess;
 
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::sync::mpsc;
 use std::time::Duration;
 
+use bughouse_chess::client::*;
+use bughouse_chess::lobby::*;
+use bughouse_chess::meter::*;
+use bughouse_chess::session::*;
+use bughouse_chess::*;
 use instant::Instant;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
 use wasm_bindgen::prelude::*;
 
-use bughouse_chess::*;
-use bughouse_chess::client::*;
-use bughouse_chess::lobby::*;
-use bughouse_chess::meter::*;
-use bughouse_chess::session::*;
-
 
 type JsResult<T> = Result<T, JsValue>;
 
-const RESERVE_HEIGHT: f64 = 1.5;  // total reserve area height, in squares
-const RESERVE_PADDING: f64 = 0.25;  // padding between board and reserve, in squares
+const RESERVE_HEIGHT: f64 = 1.5; // total reserve area height, in squares
+const RESERVE_PADDING: f64 = 0.25; // padding between board and reserve, in squares
 const TOTAL_FOG_TILES: u64 = 3;
 const FOG_TILE_SIZE: f64 = 1.2;
 
@@ -40,7 +39,7 @@ thread_local! {
 
 // Copied from console_error_panic_hook
 #[wasm_bindgen]
-extern {
+extern "C" {
     type Error;
     #[wasm_bindgen(constructor)]
     fn new() -> Error;
@@ -73,21 +72,27 @@ pub fn set_panic_hook() {
 }
 
 #[wasm_bindgen]
-pub fn last_panic() -> String {
-    LAST_PANIC.with(|cell| cell.borrow().clone())
+pub fn last_panic() -> String { LAST_PANIC.with(|cell| cell.borrow().clone()) }
+
+#[wasm_bindgen(getter_with_clone)]
+pub struct RustError {
+    pub message: String,
 }
 
 #[wasm_bindgen(getter_with_clone)]
-pub struct RustError { pub message: String }
+pub struct IgnorableError {
+    pub message: String,
+}
 
 #[wasm_bindgen(getter_with_clone)]
-pub struct IgnorableError { pub message: String }
+pub struct KickedFromContest {
+    pub message: String,
+}
 
 #[wasm_bindgen(getter_with_clone)]
-pub struct KickedFromContest { pub message: String }
-
-#[wasm_bindgen(getter_with_clone)]
-pub struct FatalError { pub message: String }
+pub struct FatalError {
+    pub message: String,
+}
 
 macro_rules! rust_error {
     ($($arg:tt)*) => {
@@ -97,15 +102,16 @@ macro_rules! rust_error {
 
 #[wasm_bindgen]
 pub fn make_rust_error_event(error: RustError) -> String {
-    let event = BughouseClientEvent::ReportError(BughouseClientErrorReport::RustError{
-        message: error.message
+    let event = BughouseClientEvent::ReportError(BughouseClientErrorReport::RustError {
+        message: error.message,
     });
     serde_json::to_string(&event).unwrap()
 }
 
 #[wasm_bindgen]
 pub fn make_unknown_error_event(message: String) -> String {
-    let event = BughouseClientEvent::ReportError(BughouseClientErrorReport::UnknownError { message });
+    let event =
+        BughouseClientEvent::ReportError(BughouseClientErrorReport::UnknownError { message });
     serde_json::to_string(&event).unwrap()
 }
 
@@ -116,7 +122,7 @@ pub struct JsMeter {
 
 #[wasm_bindgen]
 impl JsMeter {
-    fn new(meter: Meter) -> Self { JsMeter{ meter } }
+    fn new(meter: Meter) -> Self { JsMeter { meter } }
 
     // Note. It is possible to have a u64 argument, but it's passed as BigInt:
     // https://rustwasm.github.io/docs/wasm-bindgen/reference/browser-support.html
@@ -135,19 +141,23 @@ pub struct JsSession {
 }
 
 #[wasm_bindgen]
-pub struct JsEventNoop {}  // in contrast to `null`, indicates that event list is not over
+pub struct JsEventNoop {} // in contrast to `null`, indicates that event list is not over
 
 #[wasm_bindgen]
 pub struct JsEventSessionUpdated {}
 
 #[wasm_bindgen(getter_with_clone)]
-pub struct JsEventContestStarted { pub contest_id: String }
+pub struct JsEventContestStarted {
+    pub contest_id: String,
+}
 
 #[wasm_bindgen]
 pub struct JsEventGameStarted {}
 
 #[wasm_bindgen(getter_with_clone)]
-pub struct JsEventGameOver { pub result: String }
+pub struct JsEventGameOver {
+    pub result: String,
+}
 
 #[wasm_bindgen(getter_with_clone)]
 pub struct JsEventPlaySound {
@@ -156,7 +166,9 @@ pub struct JsEventPlaySound {
 }
 
 #[wasm_bindgen(getter_with_clone)]
-pub struct JsEventGameExportReady { pub content: String }
+pub struct JsEventGameExportReady {
+    pub content: String,
+}
 
 
 #[wasm_bindgen]
@@ -188,29 +200,28 @@ impl WebClient {
         };
         let user_name = match self.state.session() {
             Unknown | LoggedOut | GoogleOAuthRegistering(_) => String::new(),
-            LoggedIn(UserInfo{ user_name, .. }) => user_name.clone(),
+            LoggedIn(UserInfo { user_name, .. }) => user_name.clone(),
         };
         let email = match self.state.session() {
             Unknown | LoggedOut => String::new(),
-            LoggedIn(UserInfo{ email, .. }) => email.clone().unwrap_or(String::new()),
-            GoogleOAuthRegistering(GoogleOAuthRegistrationInfo{ email }) => email.clone(),
+            LoggedIn(UserInfo { email, .. }) => email.clone().unwrap_or(String::new()),
+            GoogleOAuthRegistering(GoogleOAuthRegistrationInfo { email }) => email.clone(),
         };
         let registration_method = match self.state.session() {
             Unknown | LoggedOut => String::new(),
             GoogleOAuthRegistering(_) => RegistrationMethod::GoogleOAuth.to_string(),
-            LoggedIn(UserInfo{ registration_method, .. }) => registration_method.to_string(),
+            LoggedIn(UserInfo { registration_method, .. }) => registration_method.to_string(),
         };
         Ok(JsSession {
             status: status.to_owned(),
             user_name,
             email,
             registration_method,
-        }.into())
+        }
+        .into())
     }
 
-    pub fn meter(&mut self, name: String) -> JsMeter {
-        JsMeter::new(self.state.meter(name))
-    }
+    pub fn meter(&mut self, name: String) -> JsMeter { JsMeter::new(self.state.meter(name)) }
 
     pub fn current_turnaround_time(&self) -> Option<f64> {
         self.state.current_turnaround_time().map(|t| t.as_secs_f64())
@@ -230,7 +241,8 @@ impl WebClient {
                     "no"
                 }
             }
-        }.to_owned()
+        }
+        .to_owned()
     }
 
     pub fn game_status(&self) -> String {
@@ -242,7 +254,8 @@ impl WebClient {
             }
         } else {
             "none"
-        }.to_owned()
+        }
+        .to_owned()
     }
 
     pub fn lobby_waiting_explanation(&self) -> String {
@@ -251,7 +264,7 @@ impl WebClient {
         };
         type Error = ParticipantsError;
         type Warning = ParticipantsWarning;
-        let ParticipantsStatus{ error, warning } =
+        let ParticipantsStatus { error, warning } =
             verify_participants(&contest.rules, contest.participants.iter());
         match (error, warning) {
             (Some(Error::NotEnoughPlayers), _) => "Not enough players",
@@ -279,16 +292,9 @@ impl WebClient {
             .ok_or(rust_error!("Player name is required if not a registered user"))
     }
     pub fn new_contest(
-        &mut self,
-        player_name: Option<String>,
-        teaming: &str,
-        starting_position: &str,
-        chess_variant: &str,
-        fairy_pieces: &str,
-        starting_time: &str,
-        drop_aggression: &str,
-        pawn_drop_ranks: &str,
-        rating: &str,
+        &mut self, player_name: Option<String>, teaming: &str, starting_position: &str,
+        chess_variant: &str, fairy_pieces: &str, starting_time: &str, drop_aggression: &str,
+        pawn_drop_ranks: &str, rating: &str,
     ) -> JsResult<()> {
         let teaming = match teaming {
             "fixed-teams" => Teaming::FixedTeams,
@@ -340,16 +346,12 @@ impl WebClient {
             return Err(format!("Invalid pawn drop ranks: {pawn_drop_ranks}").into());
         };
 
-        let contest_rules = ContestRules {
-            rated,
-        };
+        let contest_rules = ContestRules { rated };
         let chess_rules = ChessRules {
             starting_position,
             chess_variant,
             fairy_pieces,
-            time_control: TimeControl {
-                starting_time,
-            },
+            time_control: TimeControl { starting_time },
         };
         let bughouse_rules = BughouseRules {
             teaming,
@@ -363,7 +365,7 @@ impl WebClient {
             bughouse_rules,
         };
         if let Err(message) = rules.verify() {
-            return Err(IgnorableError{ message }.into());
+            return Err(IgnorableError { message }.into());
         }
         let player_name = self.finalize_player_name(player_name)?;
         self.state.new_contest(rules, player_name);
@@ -375,22 +377,16 @@ impl WebClient {
         self.state.join(contest_id, player_name);
         Ok(())
     }
-    pub fn resign(&mut self) {
-        self.state.resign();
-    }
+    pub fn resign(&mut self) { self.state.resign(); }
     pub fn toggle_ready(&mut self) {
         if let Some(is_ready) = self.state.is_ready() {
             self.state.set_ready(!is_ready);
         }
     }
-    pub fn next_faction(&mut self) {
-        self.change_faction(|f| f + 1);
-    }
-    pub fn previous_faction(&mut self) {
-        self.change_faction(|f| f - 1);
-    }
+    pub fn next_faction(&mut self) { self.change_faction(|f| f + 1); }
+    pub fn previous_faction(&mut self) { self.change_faction(|f| f - 1); }
     pub fn request_export(&mut self) -> JsResult<()> {
-        let format = pgn::BughouseExportFormat{};
+        let format = pgn::BughouseExportFormat {};
         self.state.request_export(format);
         Ok(())
     }
@@ -407,33 +403,44 @@ impl WebClient {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Err(rust_error!("Cannot drag: no game in progress"));
         };
-        let (display_board_idx, source) =
-            if let Some((display_board_idx, piece)) = parse_reserve_piece_id(source) {
-                (display_board_idx, PieceDragStart::Reserve(piece))
-            } else if let Some((display_board_idx, coord)) = parse_piece_id(source) {
-                let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
-                set_square_highlight(
-                    None, "drag-start-highlight", SquareHighlightLayer::Drag,
-                    display_board_idx, Some(to_display_coord(coord, board_orientation))
-                )?;
-                let board_idx = get_board_index(display_board_idx, alt_game.perspective());
-                // Improvement potential. More conistent legal moves highlighting. Perhaps, add
-                //   a config with "Yes" / "No" / "If fairy chess" values.
-                let rules = alt_game.chess_rules();
-                if rules.fairy_pieces != FairyPieces::NoFairy && rules.chess_variant != ChessVariant::FogOfWar {
-                    for dest in alt_game.local_game().board(board_idx).legal_turn_destinations(coord) {
-                        set_square_highlight(
-                            None, "legal-move-highlight", SquareHighlightLayer::Drag,
-                            display_board_idx, Some(to_display_coord(dest, board_orientation))
-                        )?;
-                    }
+        let (display_board_idx, source) = if let Some((display_board_idx, piece)) =
+            parse_reserve_piece_id(source)
+        {
+            (display_board_idx, PieceDragStart::Reserve(piece))
+        } else if let Some((display_board_idx, coord)) = parse_piece_id(source) {
+            let board_orientation =
+                get_board_orientation(display_board_idx, alt_game.perspective());
+            set_square_highlight(
+                None,
+                "drag-start-highlight",
+                SquareHighlightLayer::Drag,
+                display_board_idx,
+                Some(to_display_coord(coord, board_orientation)),
+            )?;
+            let board_idx = get_board_index(display_board_idx, alt_game.perspective());
+            // Improvement potential. More conistent legal moves highlighting. Perhaps, add
+            //   a config with "Yes" / "No" / "If fairy chess" values.
+            let rules = alt_game.chess_rules();
+            if rules.fairy_pieces != FairyPieces::NoFairy
+                && rules.chess_variant != ChessVariant::FogOfWar
+            {
+                for dest in alt_game.local_game().board(board_idx).legal_turn_destinations(coord) {
+                    set_square_highlight(
+                        None,
+                        "legal-move-highlight",
+                        SquareHighlightLayer::Drag,
+                        display_board_idx,
+                        Some(to_display_coord(dest, board_orientation)),
+                    )?;
                 }
-                (display_board_idx, PieceDragStart::Board(coord))
-            } else {
-                return Err(rust_error!("Illegal drag source: {source:?}"));
-            };
+            }
+            (display_board_idx, PieceDragStart::Board(coord))
+        } else {
+            return Err(rust_error!("Illegal drag source: {source:?}"));
+        };
         let board_idx = get_board_index(display_board_idx, alt_game.perspective());
-        alt_game.start_drag_piece(board_idx, source)
+        alt_game
+            .start_drag_piece(board_idx, source)
             .map_err(|err| rust_error!("Drag&drop error: {:?}", err))?;
         Ok(board_id(display_board_idx).to_owned())
     }
@@ -446,10 +453,13 @@ impl WebClient {
             return Ok(());
         };
         let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
-        let pos = DisplayFCoord{ x, y };
+        let pos = DisplayFCoord { x, y };
         set_square_highlight(
-            Some("drag-over-highlight"), "drag-over-highlight", SquareHighlightLayer::Drag,
-            display_board_idx, pos.to_square()
+            Some("drag-over-highlight"),
+            "drag-over-highlight",
+            SquareHighlightLayer::Drag,
+            display_board_idx,
+            pos.to_square(),
         )
     }
 
@@ -460,27 +470,28 @@ impl WebClient {
         let Some(board_idx) = alt_game.piece_drag_state().as_ref().map(|s| s.board_idx) else {
             return Ok(());
         };
-        let pos = DisplayFCoord{ x, y };
+        let pos = DisplayFCoord { x, y };
         if let Some(dest_display) = pos.to_square() {
             use PieceKind::*;
             let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
-            let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
+            let board_orientation =
+                get_board_orientation(display_board_idx, alt_game.perspective());
             let dest_coord = from_display_coord(dest_display, board_orientation).unwrap();
             let promote_to = if alternative_promotion { Knight } else { Queen };
             match alt_game.drag_piece_drop(dest_coord, promote_to) {
                 Ok(turn) => {
                     let turn_result = self.state.make_turn(display_board_idx, turn);
                     self.show_turn_result(turn_result)?;
-                },
+                }
                 Err(PieceDragError::DragNoLongerPossible) => {
                     // Ignore: this happen when dragged piece was captured by opponent.
-                },
+                }
                 Err(PieceDragError::Cancelled) => {
                     // Ignore: user cancelled the move by putting the piece back in place.
-                },
+                }
                 Err(err) => {
                     return Err(rust_error!("Drag&drop error: {:?}", err));
-                },
+                }
             };
         } else {
             alt_game.abort_drag_piece();
@@ -503,7 +514,7 @@ impl WebClient {
     }
 
     pub fn drag_state(&self) -> String {
-        (if let Some(GameState{ ref alt_game, .. }) = self.state.game_state() {
+        (if let Some(GameState { ref alt_game, .. }) = self.state.game_state() {
             if let Some(drag) = alt_game.piece_drag_state() {
                 match drag.source {
                     PieceDragSource::Board(_) | PieceDragSource::Reserve => "yes",
@@ -514,7 +525,8 @@ impl WebClient {
             }
         } else {
             "no"
-        }).to_owned()
+        })
+        .to_owned()
     }
 
     pub fn cancel_preturn(&mut self, board_id: &str) -> JsResult<()> {
@@ -525,20 +537,22 @@ impl WebClient {
     pub fn is_chalk_active(&self) -> bool {
         self.state.chalk_canvas().map_or(false, |c| c.is_painting())
     }
-    pub fn chalk_down(&mut self, board_node: &str, x: f64, y: f64, alternative_mode: bool) -> JsResult<()> {
+    pub fn chalk_down(
+        &mut self, board_node: &str, x: f64, y: f64, alternative_mode: bool,
+    ) -> JsResult<()> {
         let Some(GameState{ alt_game, .. }) = self.state.game_state() else { return Ok(()); };
         if alt_game.is_active() {
             return Ok(());
         }
         let Some(canvas) = self.state.chalk_canvas_mut() else { return Ok(()); };
         let board_idx = parse_board_node_id(board_node)?;
-        canvas.chalk_down(board_idx, DisplayFCoord{ x, y }, alternative_mode);
+        canvas.chalk_down(board_idx, DisplayFCoord { x, y }, alternative_mode);
         self.repaint_chalk()?;
         Ok(())
     }
     pub fn chalk_move(&mut self, x: f64, y: f64) -> JsResult<()> {
         let Some(canvas) = self.state.chalk_canvas_mut() else { return Ok(()); };
-        canvas.chalk_move(DisplayFCoord{ x, y });
+        canvas.chalk_move(DisplayFCoord { x, y });
         self.repaint_chalk()?;
         Ok(())
     }
@@ -576,7 +590,8 @@ impl WebClient {
         };
         let document = web_document();
         for board_idx in DisplayBoard::iter() {
-            let layer = document.get_existing_element_by_id(&chalk_highlight_layer_id(board_idx))?;
+            let layer =
+                document.get_existing_element_by_id(&chalk_highlight_layer_id(board_idx))?;
             remove_all_children(&layer)?;
             let layer = document.get_existing_element_by_id(&chalk_drawing_layer_id(board_idx))?;
             remove_all_children(&layer)?;
@@ -600,27 +615,25 @@ impl WebClient {
     pub fn process_server_event(&mut self, event: &str) -> JsResult<bool> {
         let server_event = serde_json::from_str(event).unwrap();
         let updated_needed = !matches!(server_event, BughouseServerEvent::Pong);
-        self.state.process_server_event(server_event).map_err(|err| {
-            match err {
-                EventError::IgnorableError(message) => IgnorableError{ message }.into(),
-                EventError::KickedFromContest(message) => KickedFromContest{ message }.into(),
-                EventError::FatalError(message) => FatalError{ message }.into(),
-                EventError::InternalEvent(message) => rust_error!("{message}"),
-            }
+        self.state.process_server_event(server_event).map_err(|err| match err {
+            EventError::IgnorableError(message) => IgnorableError { message }.into(),
+            EventError::KickedFromContest(message) => KickedFromContest { message }.into(),
+            EventError::FatalError(message) => FatalError { message }.into(),
+            EventError::InternalEvent(message) => rust_error!("{message}"),
         })?;
         Ok(updated_needed)
     }
 
     pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
         match self.state.next_notable_event() {
-            Some(NotableEvent::SessionUpdated) => {
-                Ok(JsEventSessionUpdated {}.into())
-            },
+            Some(NotableEvent::SessionUpdated) => Ok(JsEventSessionUpdated {}.into()),
             Some(NotableEvent::ContestStarted(contest_id)) => {
                 let rules_node = web_document().get_existing_element_by_id("lobby-rules")?;
-                rules_node.set_text_content(Some(&self.state.contest().unwrap().rules.to_human_readable()));
-                Ok(JsEventContestStarted{ contest_id }.into())
-            },
+                rules_node.set_text_content(Some(
+                    &self.state.contest().unwrap().rules.to_human_readable(),
+                ));
+                Ok(JsEventContestStarted { contest_id }.into())
+            }
             Some(NotableEvent::GameStarted) => {
                 let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
                     return Err(rust_error!("No game in progress"));
@@ -633,39 +646,46 @@ impl WebClient {
                 for display_board_idx in DisplayBoard::iter() {
                     scroll_log_to_bottom(display_board_idx)?;
                 }
-                Ok(JsEventGameStarted{}.into())
-            },
+                Ok(JsEventGameStarted {}.into())
+            }
             Some(NotableEvent::GameOver(game_status)) => {
                 let result = match game_status {
                     SubjectiveGameResult::Victory => "victory",
                     SubjectiveGameResult::Defeat => "defeat",
                     SubjectiveGameResult::Draw => "draw",
-                }.to_owned();
-                Ok(JsEventGameOver{ result }.into())
-            },
+                }
+                .to_owned();
+                Ok(JsEventGameOver { result }.into())
+            }
             Some(NotableEvent::TurnMade(envoy)) => {
                 let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
                     return Err(rust_error!("No game in progress"));
                 };
-                let display_board_idx = get_display_board_index(envoy.board_idx, alt_game.perspective());
+                let display_board_idx =
+                    get_display_board_index(envoy.board_idx, alt_game.perspective());
                 scroll_log_to_bottom(display_board_idx)?;
                 if alt_game.my_id().plays_on_board(envoy.board_idx) {
                     return Ok(JsEventPlaySound {
                         audio: "turn".to_owned(),
                         pan: self.get_game_audio_pan(envoy.board_idx)?,
-                    }.into());
+                    }
+                    .into());
                 }
-                Ok(JsEventNoop{}.into())
+                Ok(JsEventNoop {}.into())
             }
             Some(NotableEvent::MyReserveRestocked(board_idx)) => Ok(JsEventPlaySound {
                 audio: "reserve_restocked".to_owned(),
                 pan: self.get_game_audio_pan(board_idx)?,
-            }.into()),
+            }
+            .into()),
             Some(NotableEvent::LowTime(board_idx)) => Ok(JsEventPlaySound {
                 audio: "low_time".to_owned(),
                 pan: self.get_game_audio_pan(board_idx)?,
-            }.into()),
-            Some(NotableEvent::GameExportReady(content)) => Ok(JsEventGameExportReady{ content }.into()),
+            }
+            .into()),
+            Some(NotableEvent::GameExportReady(content)) => {
+                Ok(JsEventGameExportReady { content }.into())
+            }
             None => Ok(JsValue::NULL),
         }
     }
@@ -678,9 +698,7 @@ impl WebClient {
         }
     }
 
-    pub fn refresh(&mut self) {
-        self.state.refresh();
-    }
+    pub fn refresh(&mut self) { self.state.refresh(); }
 
     pub fn update_state(&self) -> JsResult<()> {
         let document = web_document();
@@ -701,15 +719,17 @@ impl WebClient {
         let perspective = alt_game.perspective();
         update_scores(&contest.scores, &contest.participants, game.status(), teaming, perspective)?;
         for (board_idx, board) in game.boards() {
-            let is_piece_draggable = |force| my_id.plays_for(BughouseEnvoy{ board_idx, force });
+            let is_piece_draggable = |force| my_id.plays_for(BughouseEnvoy { board_idx, force });
             let see_though_fog = !game.is_active();
             let empty_area = HashSet::new();
             let fog_render_area = alt_game.fog_of_war_area(board_idx);
             let fog_cover_area = if see_though_fog { &empty_area } else { &fog_render_area };
             let display_board_idx = get_display_board_index(board_idx, perspective);
             let board_orientation = get_board_orientation(display_board_idx, perspective);
-            let piece_layer = document.get_existing_element_by_id(&piece_layer_id(display_board_idx))?;
-            let fog_of_war_layer = document.get_existing_element_by_id(&fog_of_war_layer_id(display_board_idx))?;
+            let piece_layer =
+                document.get_existing_element_by_id(&piece_layer_id(display_board_idx))?;
+            let fog_of_war_layer =
+                document.get_existing_element_by_id(&fog_of_war_layer_id(display_board_idx))?;
             let grid = board.grid();
             for coord in Coord::all() {
                 let display_coord = to_display_coord(coord, board_orientation);
@@ -719,7 +739,13 @@ impl WebClient {
                     if fog_render_area.contains(&coord) {
                         let sq_hash = calculate_hash(&(&contest.contest_id, board_idx, coord));
                         let fog_tile = sq_hash % TOTAL_FOG_TILES + 1;
-                        let node = ensure_square_node(display_coord, &fog_of_war_layer, &node_id, node, FOG_TILE_SIZE)?;
+                        let node = ensure_square_node(
+                            display_coord,
+                            &fog_of_war_layer,
+                            &node_id,
+                            node,
+                            FOG_TILE_SIZE,
+                        )?;
                         node.set_attribute("href", &format!("#fog-{fog_tile}"))?;
                         node.remove_attribute("data-bughouse-location")?;
                         node.remove_attribute("class")?;
@@ -748,12 +774,14 @@ impl WebClient {
                     if fog_cover_area.contains(&coord) {
                         node.map(|n| n.remove());
                     } else if let Some(piece) = grid[coord] {
-                        let node = ensure_square_node(display_coord, &piece_layer, &node_id, node, 1.0)?;
+                        let node =
+                            ensure_square_node(display_coord, &piece_layer, &node_id, node, 1.0)?;
                         let filename = piece_path(piece.kind, piece.force);
                         node.set_attribute("href", &filename)?;
                         node.set_attribute("data-bughouse-location", &node_id)?;
                         node.remove_attribute("class")?;
-                        node.class_list().toggle_with_force("draggable", is_piece_draggable(piece.force))?;
+                        node.class_list()
+                            .toggle_with_force("draggable", is_piece_draggable(piece.force))?;
                     } else {
                         // Rust-upgrade (https://github.com/rust-lang/rust/issues/91345):
                         //   `map` -> `inspect`.
@@ -761,12 +789,15 @@ impl WebClient {
                     }
                 }
             }
-            fog_of_war_layer.class_list().toggle_with_force("see-though-fog", see_though_fog)?;
+            fog_of_war_layer
+                .class_list()
+                .toggle_with_force("see-though-fog", see_though_fog)?;
             for force in Force::iter() {
                 let player_idx = get_display_player(force, board_orientation);
-                let name_node = document.get_existing_element_by_id(
-                    &player_name_node_id(display_board_idx, player_idx)
-                )?;
+                let name_node = document.get_existing_element_by_id(&player_name_node_id(
+                    display_board_idx,
+                    player_idx,
+                ))?;
                 let player_name = board.player_name(force);
                 let player = contest.participants.iter().find(|p| p.name == *player_name).unwrap();
                 // TODO: Show teams for the upcoming game in individual mode.
@@ -775,16 +806,25 @@ impl WebClient {
                 let player_string = participant_string(&player, show_readiness);
                 name_node.set_text_content(Some(&player_string));
                 let is_draggable = is_piece_draggable(force);
-                update_reserve(board.reserve(force), force, display_board_idx, player_idx, is_draggable)?;
+                update_reserve(
+                    board.reserve(force),
+                    force,
+                    display_board_idx,
+                    player_idx,
+                    is_draggable,
+                )?;
             }
-            let latest_turn = game.turn_log().iter().rev()
-                .find(|record| record.envoy.board_idx == board_idx);
+            let latest_turn =
+                game.turn_log().iter().rev().find(|record| record.envoy.board_idx == board_idx);
             {
                 let latest_turn_highlight = latest_turn
                     .filter(|record| !my_id.plays_for(record.envoy))
                     .map(|record| &record.turn_expanded);
                 self.set_turn_highlights(
-                    TurnHighlight::LatestTurn, latest_turn_highlight, display_board_idx, fog_cover_area
+                    TurnHighlight::LatestTurn,
+                    latest_turn_highlight,
+                    display_board_idx,
+                    fog_cover_area,
                 )?;
             }
             {
@@ -792,12 +832,18 @@ impl WebClient {
                     .filter(|record| record.mode == TurnMode::Preturn)
                     .map(|record| &record.turn_expanded);
                 self.set_turn_highlights(
-                    TurnHighlight::Preturn, pre_turn_highlight, display_board_idx, fog_cover_area
+                    TurnHighlight::Preturn,
+                    pre_turn_highlight,
+                    display_board_idx,
+                    fog_cover_area,
                 )?;
             }
             update_turn_log(&game, my_id, board_idx, display_board_idx)?;
         }
-        document.body()?.class_list().toggle_with_force("active-player", is_clock_ticking(&game, my_id))?;
+        document
+            .body()?
+            .class_list()
+            .toggle_with_force("active-player", is_clock_ticking(&game, my_id))?;
         self.repaint_chalk()?;
         if !alt_game.is_active() {
             // Safe to use `game_confirmed` here, because there could be no local status
@@ -817,10 +863,12 @@ impl WebClient {
         let game = alt_game.local_game();
         for (board_idx, board) in game.boards() {
             let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
-            let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
+            let board_orientation =
+                get_board_orientation(display_board_idx, alt_game.perspective());
             for force in Force::iter() {
                 let player_idx = get_display_player(force, board_orientation);
-                let clock_node = document.get_existing_element_by_id(&clock_node_id(display_board_idx, player_idx))?;
+                let clock_node = document
+                    .get_existing_element_by_id(&clock_node_id(display_board_idx, player_idx))?;
                 render_clock(board.clock(), force, game_now, &clock_node)?;
             }
         }
@@ -828,7 +876,9 @@ impl WebClient {
     }
 
     pub fn meter_stats(&self) -> String {
-        self.state.read_meter_stats().iter()
+        self.state
+            .read_meter_stats()
+            .iter()
             .sorted_by_key(|(metric, _)| metric.as_str())
             .map(|(metric, stats)| format!("{metric}: {stats}"))
             .join("\n")
@@ -839,7 +889,9 @@ impl WebClient {
         //   Ideally also include rule-dependent context, e.g. "Illegal drop position:
         //   pawns can be dropped onto ranks 2–6 counting from the player".
         let game_message = web_document().get_existing_element_by_id("game-message")?;
-        game_message.set_text_content(turn_result.as_ref().err().map(|err| format!("{:?}", err)).as_deref());
+        game_message.set_text_content(
+            turn_result.as_ref().err().map(|err| format!("{:?}", err)).as_deref(),
+        );
         Ok(())
     }
 
@@ -856,7 +908,7 @@ impl WebClient {
     }
 
     fn render_chalk_mark(
-        &self, board_idx: DisplayBoard, owner: PlayerRelation, mark: &ChalkMark
+        &self, board_idx: DisplayBoard, owner: PlayerRelation, mark: &ChalkMark,
     ) -> JsResult<()> {
         use PlayerRelation::*;
         let Some(GameState{ alt_game, .. }) = self.state.game_state() else {
@@ -865,8 +917,9 @@ impl WebClient {
         let document = web_document();
         let orientation = get_board_orientation(board_idx, alt_game.perspective());
         match mark {
-            ChalkMark::Arrow{ from, to } => {
-                let layer = document.get_existing_element_by_id(&chalk_drawing_layer_id(board_idx))?;
+            ChalkMark::Arrow { from, to } => {
+                let layer =
+                    document.get_existing_element_by_id(&chalk_drawing_layer_id(board_idx))?;
                 let from = DisplayFCoord::square_center(to_display_coord(*from, orientation));
                 let to = DisplayFCoord::square_center(to_display_coord(*to, orientation));
                 let node = document.create_svg_element("line")?;
@@ -877,46 +930,65 @@ impl WebClient {
                 node.set_attribute("y1", &from.y.to_string())?;
                 node.set_attribute("x2", &to.x.to_string())?;
                 node.set_attribute("y2", &to.y.to_string())?;
-                node.set_attribute("class", &["chalk-arrow", &chalk_line_color_class(owner)].join(" "))?;
+                node.set_attribute(
+                    "class",
+                    &["chalk-arrow", &chalk_line_color_class(owner)].join(" "),
+                )?;
                 layer.append_child(&node)?;
-            },
-            ChalkMark::FreehandLine{ points } => {
-                let layer = document.get_existing_element_by_id(&chalk_drawing_layer_id(board_idx))?;
+            }
+            ChalkMark::FreehandLine { points } => {
+                let layer =
+                    document.get_existing_element_by_id(&chalk_drawing_layer_id(board_idx))?;
                 let node = document.create_svg_element("polyline")?;
-                let points = points.iter().map(|&q| {
-                    let p = to_display_fcoord(q, orientation);
-                    format!("{},{}", p.x, p.y)
-                }).join(" ");
+                let points = points
+                    .iter()
+                    .map(|&q| {
+                        let p = to_display_fcoord(q, orientation);
+                        format!("{},{}", p.x, p.y)
+                    })
+                    .join(" ");
                 node.set_attribute("points", &points)?;
-                node.set_attribute("class", &["chalk-freehand-line", &chalk_line_color_class(owner)].join(" "))?;
+                node.set_attribute(
+                    "class",
+                    &["chalk-freehand-line", &chalk_line_color_class(owner)].join(" "),
+                )?;
                 layer.append_child(&node)?;
-            },
-            ChalkMark::SquareHighlight{ coord } => {
-                let layer = document.get_existing_element_by_id(&chalk_highlight_layer_id(board_idx))?;
+            }
+            ChalkMark::SquareHighlight { coord } => {
+                let layer =
+                    document.get_existing_element_by_id(&chalk_highlight_layer_id(board_idx))?;
                 let node = document.create_svg_element("polygon")?;
                 let p = DisplayFCoord::square_pivot(to_display_coord(*coord, orientation));
                 // Note. The corners are chosen so that they corresponds to the seating, as seen
                 // by the current player. Another approach would be to have one highlight element,
                 // <use> it here and rotate in CSS based on class.
                 let points = match owner {
-                    Myself   => vec![ p + (0., 1.), p + (0.5, 1.), p + (0., 0.5) ],
-                    Opponent => vec![ p + (0., 0.), p + (0., 0.5), p + (0.5, 0.) ],
-                    Partner  => vec![ p + (1., 1.), p + (1., 0.5), p + (0.5, 1.) ],
-                    Diagonal => vec![ p + (1., 0.), p + (0.5, 0.), p + (1., 0.5) ],
-                    Other    => vec![ p + (0.5, 0.1), p + (0.1, 0.5), p + (0.5, 0.9), p + (0.9, 0.5) ],
+                    Myself => vec![p + (0., 1.), p + (0.5, 1.), p + (0., 0.5)],
+                    Opponent => vec![p + (0., 0.), p + (0., 0.5), p + (0.5, 0.)],
+                    Partner => vec![p + (1., 1.), p + (1., 0.5), p + (0.5, 1.)],
+                    Diagonal => vec![p + (1., 0.), p + (0.5, 0.), p + (1., 0.5)],
+                    Other => vec![
+                        p + (0.5, 0.1),
+                        p + (0.1, 0.5),
+                        p + (0.5, 0.9),
+                        p + (0.9, 0.5),
+                    ],
                 };
                 let points = points.iter().map(|&p| format!("{},{}", p.x, p.y)).join(" ");
                 node.set_attribute("points", &points)?;
-                node.set_attribute("class", &["chalk-square-highlight", &chalk_square_color_class(owner)].join(" "))?;
+                node.set_attribute(
+                    "class",
+                    &["chalk-square-highlight", &chalk_square_color_class(owner)].join(" "),
+                )?;
                 layer.append_child(&node)?;
-            },
+            }
         }
         Ok(())
     }
 
     fn set_turn_highlights(
         &self, highlight: TurnHighlight, turn: Option<&TurnExpanded>, board_idx: DisplayBoard,
-        fog_of_war_area: &HashSet<Coord>
+        fog_of_war_area: &HashSet<Coord>,
     ) -> JsResult<()> {
         let class_prefix = match highlight {
             TurnHighlight::LatestTurn => "latest",
@@ -952,8 +1024,11 @@ impl WebClient {
                 let id = format!("{}-{}", id_prefix, suffix);
                 let class = format!("{}-{}", class_prefix, suffix);
                 set_square_highlight(
-                    Some(&id), &class, layer, board_idx,
-                    Some(to_display_coord(coord, board_orientation))
+                    Some(&id),
+                    &class,
+                    layer,
+                    board_idx,
+                    Some(to_display_coord(coord, board_orientation)),
                 )?;
             }
         }
@@ -977,9 +1052,9 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SquareHighlightLayer {
-    Turn,       // last turn, preturn
-    TurnAbove,  // like `Turn`, but above the fog of war
-    Drag,       // drag start, drag hover, legal moves
+    Turn,      // last turn, preturn
+    TurnAbove, // like `Turn`, but above the fog of war
+    Drag,      // drag start, drag hover, legal moves
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -999,9 +1074,10 @@ impl WebDocument {
         self.0.get_element_by_id(element_id)
     }
     fn get_existing_element_by_id(&self, element_id: &str) -> JsResult<web_sys::Element> {
-        let element = self.0.get_element_by_id(element_id).ok_or_else(|| rust_error!(
-            "Cannot find element \"{}\"", element_id
-        ))?;
+        let element = self
+            .0
+            .get_element_by_id(element_id)
+            .ok_or_else(|| rust_error!("Cannot find element \"{}\"", element_id))?;
         if !element.is_object() {
             return Err(rust_error!("Element \"{}\" is not an object", element_id));
         }
@@ -1016,9 +1092,7 @@ impl WebDocument {
     }
 }
 
-fn web_document() -> WebDocument {
-    WebDocument(web_sys::window().unwrap().document().unwrap())
-}
+fn web_document() -> WebDocument { WebDocument(web_sys::window().unwrap().document().unwrap()) }
 
 fn remove_all_children(node: &web_sys::Node) -> JsResult<()> {
     while let Some(child) = node.last_child() {
@@ -1049,9 +1123,7 @@ pub fn init_page() -> JsResult<()> {
 }
 
 #[wasm_bindgen]
-pub fn git_version() -> String {
-    my_git_version!().to_owned()
-}
+pub fn git_version() -> String { my_git_version!().to_owned() }
 
 fn update_lobby(contest: &Contest) -> JsResult<()> {
     let document = web_document();
@@ -1061,13 +1133,15 @@ fn update_lobby(contest: &Contest) -> JsResult<()> {
         let is_me = p.name == contest.my_name;
         add_lobby_participant_node(p, is_me, &lobby_participants_node)?;
     }
-    document.get_existing_element_by_id("lobby-contest-id")?.set_text_content(Some(&contest.contest_id));
+    document
+        .get_existing_element_by_id("lobby-contest-id")?
+        .set_text_content(Some(&contest.contest_id));
     Ok(())
 }
 
 fn ensure_square_node(
     display_coord: DisplayCoord, layer: &web_sys::Element, node_id: &str,
-    existing_node: Option<web_sys::Element>, size: f64
+    existing_node: Option<web_sys::Element>, size: f64,
 ) -> JsResult<web_sys::Element> {
     let node = match existing_node {
         Some(v) => v,
@@ -1076,7 +1150,7 @@ fn ensure_square_node(
             v.set_attribute("id", &node_id)?;
             layer.append_child(&v)?;
             v
-        },
+        }
     };
     let shift = (size - 1.0) / 2.0;
     let pos = DisplayFCoord::square_pivot(display_coord);
@@ -1087,14 +1161,14 @@ fn ensure_square_node(
 
 // Note. If present, `id` must be unique across both boards.
 fn set_square_highlight(
-    id: Option<&str>, class: &str, layer: SquareHighlightLayer, board_idx: DisplayBoard, coord: Option<DisplayCoord>
+    id: Option<&str>, class: &str, layer: SquareHighlightLayer, board_idx: DisplayBoard,
+    coord: Option<DisplayCoord>,
 ) -> JsResult<()> {
     let document = web_document();
     if let Some(coord) = coord {
         let node = id.and_then(|id| document.get_element_by_id(id));
-        let highlight_layer = document.get_existing_element_by_id(
-            &square_highlight_layer_id(layer, board_idx)
-        )?;
+        let highlight_layer =
+            document.get_existing_element_by_id(&square_highlight_layer_id(layer, board_idx))?;
         let node = node.ok_or(JsValue::UNDEFINED).or_else(|_| -> JsResult<web_sys::Element> {
             let node = document.create_svg_element("rect")?;
             if let Some(id) = id {
@@ -1130,7 +1204,8 @@ fn reset_square_highlight(id: &str) -> JsResult<()> {
 fn clear_square_highlight_layer(layer: SquareHighlightLayer) -> JsResult<()> {
     let document = web_document();
     for board_idx in DisplayBoard::iter() {
-        let layer = document.get_existing_element_by_id(&square_highlight_layer_id(layer, board_idx))?;
+        let layer =
+            document.get_existing_element_by_id(&square_highlight_layer_id(layer, board_idx))?;
         remove_all_children(&layer)?;
     }
     Ok(())
@@ -1140,7 +1215,7 @@ fn clear_square_highlight_layer(layer: SquareHighlightLayer) -> JsResult<()> {
 // Improvement potential: Add a tooltip explaining the meaning of the icons.
 fn participant_prefix(p: &Participant, show_readiness: bool) -> &'static str {
     if p.faction == Faction::Observer {
-        return "👀 "
+        return "👀 ";
     }
     if !p.is_online {
         return "⚠️ ";
@@ -1156,7 +1231,9 @@ fn participant_string(p: &Participant, show_readiness: bool) -> String {
 }
 
 // Standalone chess piece icon to be used outside of SVG area.
-fn make_piece_icon(piece_kind: PieceKind, force: Force, classes: &[&str]) -> JsResult<web_sys::Element> {
+fn make_piece_icon(
+    piece_kind: PieceKind, force: Force, classes: &[&str],
+) -> JsResult<web_sys::Element> {
     let document = web_document();
     let svg_node = document.create_svg_element("svg")?;
     svg_node.set_attribute("viewBox", "0 0 1 1")?;
@@ -1181,7 +1258,9 @@ fn make_menu_icon(images: &[&str]) -> JsResult<web_sys::Element> {
     Ok(svg_node)
 }
 
-fn add_lobby_participant_node(p: &Participant, is_me: bool, parent: &web_sys::Element) -> JsResult<()> {
+fn add_lobby_participant_node(
+    p: &Participant, is_me: bool, parent: &web_sys::Element,
+) -> JsResult<()> {
     let document = web_document();
     let add_relation_class = |node: &web_sys::Element| {
         node.class_list().add_1(if is_me { "lobby-me" } else { "lobby-other" })
@@ -1240,11 +1319,11 @@ fn add_lobby_participant_node(p: &Participant, is_me: bool, parent: &web_sys::El
 // reserve update.
 fn render_reserve(
     force: Force, board_idx: DisplayBoard, player_idx: DisplayPlayer, draggable: bool,
-    piece_kind_sep: f64, reserve_iter: impl Iterator<Item = (PieceKind, u8)> + Clone
-) -> JsResult<()>
-{
+    piece_kind_sep: f64, reserve_iter: impl Iterator<Item = (PieceKind, u8)> + Clone,
+) -> JsResult<()> {
     let document = web_document();
-    let reserve_node = document.get_existing_element_by_id(&reserve_node_id(board_idx, player_idx))?;
+    let reserve_node =
+        document.get_existing_element_by_id(&reserve_node_id(board_idx, player_idx))?;
     // Does not interfere with dragging a reserve piece, because dragged piece is re-parented
     // to board SVG.
     remove_all_children(&reserve_node)?;
@@ -1258,14 +1337,12 @@ fn render_reserve(
     let num_nonempty_kind = reserve_iter.clone().filter(|&(_, amount)| amount > 0).count() as f64;
     let max_width = NUM_COLS as f64;
     let total_kind_sep_width = piece_kind_sep * (num_kind - 1.0);
-    let piece_sep = f64::min(
-        0.5,
-        (max_width - total_kind_sep_width) / (num_piece - num_nonempty_kind)
-    );
+    let piece_sep =
+        f64::min(0.5, (max_width - total_kind_sep_width) / (num_piece - num_nonempty_kind));
     assert!(piece_sep > 0.0, "{:?}", reserve_iter.collect_vec());
     let width = total_kind_sep_width + (num_piece - num_nonempty_kind) * piece_sep;
 
-    let mut x = (max_width - width - 1.0) / 2.0;  // center reserve
+    let mut x = (max_width - width - 1.0) / 2.0; // center reserve
     let y = reserve_y_pos(player_idx);
     for (piece_kind, amount) in reserve_iter {
         let filename = piece_path(piece_kind, force);
@@ -1289,10 +1366,12 @@ fn render_reserve(
 }
 
 fn update_reserve(
-    reserve: &Reserve, force: Force, board_idx: DisplayBoard, player_idx: DisplayPlayer, is_draggable: bool
+    reserve: &Reserve, force: Force, board_idx: DisplayBoard, player_idx: DisplayPlayer,
+    is_draggable: bool,
 ) -> JsResult<()> {
     let piece_kind_sep = 1.0;
-    let reserve_iter = reserve.iter()
+    let reserve_iter = reserve
+        .iter()
         .filter(|(kind, &amount)| {
             // Normally we leave space for all pieces that can be in reserve, so that the
             // pieces don't shift too much and you don't misclick after receiving a new
@@ -1307,10 +1386,10 @@ fn update_reserve(
 }
 
 fn render_starting() -> JsResult<()> {
-    use PieceKind::*;
-    use Force::*;
     use DisplayBoard::*;
     use DisplayPlayer::*;
+    use Force::*;
+    use PieceKind::*;
     let reserve = [
         (Pawn, 8),
         (Knight, 2),
@@ -1339,14 +1418,23 @@ fn is_clock_ticking(game: &BughouseGame, participant_id: BughouseParticipant) ->
     false
 }
 
-fn render_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_sys::Element)
-    -> JsResult<()>
-{
-    let ClockShowing{ is_active, show_separator, out_of_time, time_breakdown } = clock.showing_for(force, now);
+fn render_clock(
+    clock: &Clock, force: Force, now: GameInstant, clock_node: &web_sys::Element,
+) -> JsResult<()> {
+    let ClockShowing {
+        is_active,
+        show_separator,
+        out_of_time,
+        time_breakdown,
+    } = clock.showing_for(force, now);
     let separator = |s| if show_separator { s } else { " " };
     let clock_str = match time_breakdown {
-        TimeBreakdown::NormalTime{ minutes, seconds } => format!("{:02}{}{:02}", minutes, separator(":"), seconds),
-        TimeBreakdown::LowTime{ seconds, deciseconds } => format!("{:02}{}{}", seconds, separator("."), deciseconds),
+        TimeBreakdown::NormalTime { minutes, seconds } => {
+            format!("{:02}{}{:02}", minutes, separator(":"), seconds)
+        }
+        TimeBreakdown::LowTime { seconds, deciseconds } => {
+            format!("{:02}{}{}", seconds, separator("."), deciseconds)
+        }
     };
     clock_node.set_text_content(Some(&clock_str));
     let mut classes = vec!["clock"];
@@ -1354,7 +1442,7 @@ fn render_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_
         classes.push("clock-flag");
     } else {
         classes.push(if is_active { "clock-active" } else { "clock-inactive" });
-        if matches!(time_breakdown, TimeBreakdown::LowTime{ .. }) {
+        if matches!(time_breakdown, TimeBreakdown::LowTime { .. }) {
             classes.push("clock-low-time");
         }
     }
@@ -1364,7 +1452,7 @@ fn render_clock(clock: &Clock, force: Force, now: GameInstant, clock_node: &web_
 
 fn update_scores(
     scores: &Scores, participants: &[Participant], game_status: BughouseGameStatus,
-    teaming: Teaming, perspective: Perspective
+    teaming: Teaming, perspective: Perspective,
 ) -> JsResult<()> {
     let normalize = |score: u32| (score as f64) / 2.0;
     let team_node = web_document().get_existing_element_by_id("score-team")?;
@@ -1380,7 +1468,7 @@ fn update_scores(
                 normalize(*scores.per_team.get(&my_team).unwrap_or(&0)),
             )));
             individual_node.set_text_content(None);
-        },
+        }
         Teaming::IndividualMode => {
             assert!(scores.per_team.is_empty());
             let show_readiness = !game_status.is_active();
@@ -1388,11 +1476,15 @@ fn update_scores(
                 let participant = participants.iter().find(|p| p.name == *name).unwrap();
                 (
                     name,
-                    format!("{}: {}", participant_string(participant, show_readiness), normalize(*score))
+                    format!(
+                        "{}: {}",
+                        participant_string(participant, show_readiness),
+                        normalize(*score)
+                    ),
                 )
             });
             let scores = scores
-                .sorted_by_key(|(name, _)| name.clone())  // TODO: Can we do without `clone()`?
+                .sorted_by_key(|(name, _)| name.clone()) // TODO: Can we do without `clone()`?
                 .map(|(_, display_string)| display_string)
                 .join("\n");
             team_node.set_text_content(None);
@@ -1404,7 +1496,8 @@ fn update_scores(
 
 fn update_observers(participants: &[Participant]) -> JsResult<()> {
     let observers_node = web_document().get_existing_element_by_id("observers")?;
-    let text = participants.iter()
+    let text = participants
+        .iter()
         .filter(|p| p.faction == Faction::Observer)
         .map(|p| participant_string(p, false))
         .join("\n");
@@ -1420,7 +1513,8 @@ fn render_grids(perspective: Perspective) -> JsResult<()> {
 }
 
 fn update_turn_log(
-    game: &BughouseGame, my_id: BughouseParticipant, board_idx: BughouseBoard, display_board_idx: DisplayBoard
+    game: &BughouseGame, my_id: BughouseParticipant, board_idx: BughouseBoard,
+    display_board_idx: DisplayBoard,
 ) -> JsResult<()> {
     let document = web_document();
     let log_node = document.get_existing_element_by_id(&turn_log_node_id(display_board_idx))?;
@@ -1434,29 +1528,27 @@ fn update_turn_log(
                 turn_number += 1;
                 turn_number_str = format!("{turn_number}.");
             }
-            let is_in_fog =
-                game.chess_rules().chess_variant == ChessVariant::FogOfWar &&
-                game.is_active() &&
-                my_id.as_player().map_or(false, |p| p.team() != record.envoy.team())
-            ;
+            let is_in_fog = game.chess_rules().chess_variant == ChessVariant::FogOfWar
+                && game.is_active()
+                && my_id.as_player().map_or(false, |p| p.team() != record.envoy.team());
             let algebraic = if is_in_fog {
                 record.turn_expanded.algebraic.format_in_the_fog()
             } else {
                 record.turn_expanded.algebraic.format(AlgebraicCharset::AuxiliaryUnicode)
             };
             let (algebraic, capture) = match record.mode {
-                TurnMode::Normal => (
-                    algebraic,
-                    record.turn_expanded.capture.clone(),
-                ),
+                TurnMode::Normal => (algebraic, record.turn_expanded.capture.clone()),
                 TurnMode::Preturn => (
                     format!("({})", algebraic),
-                    None,  // don't show captures for preturns: too unpredictable and messes with braces
+                    None, // don't show captures for preturns: too unpredictable and messes with braces
                 ),
             };
 
             let line_node = document.create_element("div")?;
-            line_node.set_attribute("class", &format!("log-turn-record log-turn-record-{}", force_id(force)))?;
+            line_node.set_attribute(
+                "class",
+                &format!("log-turn-record log-turn-record-{}", force_id(force)),
+            )?;
 
             let turn_number_node = document.create_element("span")?;
             turn_number_node.set_text_content(Some(&turn_number_str));
@@ -1475,7 +1567,7 @@ fn update_turn_log(
 
                 let capture_classes = [
                     "log-capture",
-                    &format!("log-capture-{}", force_id(capture.force))
+                    &format!("log-capture-{}", force_id(capture.force)),
                 ];
                 for &kind in capture.piece_kinds.iter() {
                     let capture_node = make_piece_icon(kind, capture.force, &capture_classes)?;
@@ -1522,7 +1614,7 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
 
     let make_board_rect = |document: &WebDocument| -> JsResult<web_sys::Element> {
         let rect = document.create_svg_element("rect")?;
-        let pos = DisplayFCoord::square_pivot(DisplayCoord{ x: 0, y: 0 });
+        let pos = DisplayFCoord::square_pivot(DisplayCoord { x: 0, y: 0 });
         rect.set_attribute("x", &pos.x.to_string())?;
         rect.set_attribute("y", &pos.y.to_string())?;
         rect.set_attribute("width", &NUM_COLS.to_string())?;
@@ -1543,7 +1635,7 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
         for col in Col::all() {
             let sq = document.create_svg_element("rect")?;
             let display_coord = to_display_coord(Coord::new(row, col), board_orientation);
-            let DisplayFCoord{ x, y } = DisplayFCoord::square_pivot(display_coord);
+            let DisplayFCoord { x, y } = DisplayFCoord::square_pivot(display_coord);
             sq.set_attribute("x", &x.to_string())?;
             sq.set_attribute("y", &y.to_string())?;
             sq.set_attribute("width", "1")?;
@@ -1597,9 +1689,8 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
         let reserve = document.create_svg_element("g")?;
         reserve.set_attribute("id", &reserve_node_id(board_idx, player_idx))?;
         reserve.set_attribute("class", "reserve")?;
-        let reserve_container = document.get_existing_element_by_id(
-            &reserve_container_id(board_idx, player_idx)
-        )?;
+        let reserve_container =
+            document.get_existing_element_by_id(&reserve_container_id(board_idx, player_idx))?;
         // Note that reserve height is also encoded in CSS.
         reserve_container.set_attribute("viewBox", &format!("0 0 {NUM_COLS} {RESERVE_HEIGHT}"))?;
         reserve_container.append_child(&reserve)?;
@@ -1674,9 +1765,7 @@ fn parse_board_id(id: &str) -> JsResult<DisplayBoard> {
     }
 }
 
-fn board_node_id(idx: DisplayBoard) -> String {
-    format!("board-{}", board_id(idx))
-}
+fn board_node_id(idx: DisplayBoard) -> String { format!("board-{}", board_id(idx)) }
 fn parse_board_node_id(id: &str) -> JsResult<DisplayBoard> {
     match id {
         "board-primary" => Ok(DisplayBoard::Primary),
@@ -1814,8 +1903,8 @@ fn square_color_class(row: Row, col: Col) -> &'static str {
 }
 
 fn piece_path(piece_kind: PieceKind, force: Force) -> &'static str {
-    use PieceKind::*;
     use Force::*;
+    use PieceKind::*;
     match (force, piece_kind) {
         (White, Pawn) => "#white-pawn",
         (White, Knight) => "#white-knight",
@@ -1843,8 +1932,9 @@ fn get_audio_pan(my_id: BughouseParticipant, display_board_idx: DisplayBoard) ->
     use BughousePlayer::*;
     match (my_id, display_board_idx) {
         (Player(SinglePlayer(_)), DisplayBoard::Primary) => Ok(0.),
-        (Player(SinglePlayer(_)), DisplayBoard::Secondary) =>
-            Err(rust_error!("Unexpected secondary board sound for a single-board player")),
+        (Player(SinglePlayer(_)), DisplayBoard::Secondary) => {
+            Err(rust_error!("Unexpected secondary board sound for a single-board player"))
+        }
         (Player(DoublePlayer(_)) | Observer, DisplayBoard::Primary) => Ok(-1.),
         (Player(DoublePlayer(_)) | Observer, DisplayBoard::Secondary) => Ok(1.),
     }

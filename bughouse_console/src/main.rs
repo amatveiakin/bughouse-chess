@@ -7,9 +7,9 @@
 
 #![forbid(unsafe_code)]
 
-extern crate crossterm;
 extern crate clap;
 extern crate console;
+extern crate crossterm;
 extern crate enum_map;
 extern crate instant;
 extern crate itertools;
@@ -30,22 +30,21 @@ mod auth_handlers_tide;
 mod censor;
 mod client_main;
 mod database;
+mod database_server_hooks;
 mod game_stats;
 mod history_graphs;
 mod http_server_state;
 mod persistence;
+mod prod_server_helpers;
 mod secret_database;
 mod secret_persistence;
-mod prod_server_helpers;
 mod server_config;
-mod database_server_hooks;
 mod stats_handlers_tide;
 mod stress_test;
 
 use std::io;
 
 use clap::{arg, Command};
-
 use server_config::DatabaseOptions;
 
 fn main() -> io::Result<()> {
@@ -111,11 +110,12 @@ fn main() -> io::Result<()> {
                 crate::server_config::SessionOptions::NoSessions
             };
 
-            let allowed_origin = match sub_matches.get_one::<String>("allowed-origin").map(String::as_str) {
-                None => panic!("--allowed-origin must be specified"),
-                Some("*") => crate::server_config::AllowedOrigin::Any,
-                Some(o) => crate::server_config::AllowedOrigin::ThisSite(o.to_owned()),
-            };
+            let allowed_origin =
+                match sub_matches.get_one::<String>("allowed-origin").map(String::as_str) {
+                    None => panic!("--allowed-origin must be specified"),
+                    Some("*") => crate::server_config::AllowedOrigin::Any,
+                    Some(o) => crate::server_config::AllowedOrigin::ThisSite(o.to_owned()),
+                };
 
             let static_content_url_prefix = sub_matches
                 .get_one::<String>("static-content-url-prefix")
@@ -131,32 +131,27 @@ fn main() -> io::Result<()> {
             });
             Ok(())
         }
-        Some(("client", sub_matches)) => {
-            client_main::run(client_main::ClientConfig {
-                server_address: sub_matches.get_one::<String>("server_address").unwrap().clone(),
-                contest_id: sub_matches.get_one::<String>("contest_id").unwrap().clone(),
-                player_name: sub_matches.get_one::<String>("player_name").unwrap().clone(),
-            })
-        }
-        Some(("stress-test", sub_matches)) => {
-            stress_test::run(stress_test::StressTestConfig {
-                target: sub_matches.get_one::<String>("target").unwrap().clone(),
-            })
-        },
+        Some(("client", sub_matches)) => client_main::run(client_main::ClientConfig {
+            server_address: sub_matches.get_one::<String>("server_address").unwrap().clone(),
+            contest_id: sub_matches.get_one::<String>("contest_id").unwrap().clone(),
+            player_name: sub_matches.get_one::<String>("player_name").unwrap().clone(),
+        }),
+        Some(("stress-test", sub_matches)) => stress_test::run(stress_test::StressTestConfig {
+            target: sub_matches.get_one::<String>("target").unwrap().clone(),
+        }),
         _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),
     }
 }
 
 fn database_options_from_args(args: &clap::ArgMatches) -> DatabaseOptions {
-    database_options(
-        args.get_one::<String>("sqlite-db"),
-        args.get_one::<String>("postgres-db"))
+    database_options(args.get_one::<String>("sqlite-db"), args.get_one::<String>("postgres-db"))
 }
 
 fn secret_database_options_from_args(args: &clap::ArgMatches) -> DatabaseOptions {
     database_options(
         args.get_one::<String>("secret-sqlite-db"),
-        args.get_one::<String>("secret-postgres-db"))
+        args.get_one::<String>("secret-postgres-db"),
+    )
 }
 
 fn database_options(sqlite: Option<&String>, postgres: Option<&String>) -> DatabaseOptions {

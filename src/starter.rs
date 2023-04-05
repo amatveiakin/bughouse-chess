@@ -1,11 +1,11 @@
 use itertools::Itertools;
 use rand::prelude::*;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::coord::{Row, Col, Coord, NUM_ROWS};
+use crate::coord::{Col, Coord, Row, NUM_ROWS};
 use crate::force::Force;
 use crate::grid::Grid;
-use crate::piece::{PieceKind, PieceOrigin, PieceOnBoard};
+use crate::piece::{PieceKind, PieceOnBoard, PieceOrigin};
 use crate::rules::StartingPosition;
 
 
@@ -29,19 +29,19 @@ fn setup_black_pieces_mirrorlike(grid: &mut Grid) {
     for coord in Coord::all() {
         if let Some(piece) = grid[coord] {
             if piece.force == Force::White {
-                let mirror_row = Row::from_zero_based(NUM_ROWS - coord.row.to_zero_based() - 1).unwrap();
+                let mirror_row =
+                    Row::from_zero_based(NUM_ROWS - coord.row.to_zero_based() - 1).unwrap();
                 let mirror_coord = Coord::new(mirror_row, coord.col);
                 assert!(grid[mirror_coord].is_none(), "{:?}", grid);
-                grid[mirror_coord] = Some(PieceOnBoard {
-                    force: Force::Black,
-                    ..piece
-                });
+                grid[mirror_coord] = Some(PieceOnBoard { force: Force::Black, ..piece });
             }
         }
     }
 }
 
-pub fn generate_starting_position(starting_position: StartingPosition) -> EffectiveStartingPosition {
+pub fn generate_starting_position(
+    starting_position: StartingPosition,
+) -> EffectiveStartingPosition {
     use PieceKind::*;
     match starting_position {
         StartingPosition::Classic => EffectiveStartingPosition::Classic,
@@ -50,9 +50,11 @@ pub fn generate_starting_position(starting_position: StartingPosition) -> Effect
             let mut row = [None; 8];
             row[rng.gen_range(0..4) * 2] = Some(Bishop);
             row[rng.gen_range(0..4) * 2 + 1] = Some(Bishop);
-            let mut cols = row.iter().enumerate().filter_map(
-                |(col, piece)| if piece.is_none() { Some(col) } else { None }
-            ).collect_vec();
+            let mut cols = row
+                .iter()
+                .enumerate()
+                .filter_map(|(col, piece)| if piece.is_none() { Some(col) } else { None })
+                .collect_vec();
             cols.shuffle(&mut rng);
             let (king_and_rook_cols, queen_and_knight_cols) = cols.split_at(3);
             let (&left_rook_col, &king_col, &right_rook_col) =
@@ -66,15 +68,16 @@ pub fn generate_starting_position(starting_position: StartingPosition) -> Effect
             row[knight_col_1] = Some(Knight);
             row[knight_col_2] = Some(Knight);
             EffectiveStartingPosition::FischerRandom(row.map(|col| col.unwrap()))
-        },
+        }
     }
 }
 
 pub fn starting_piece_row(starting_position: &EffectiveStartingPosition) -> &[PieceKind; 8] {
     use PieceKind::*;
     match starting_position {
-        EffectiveStartingPosition::Classic =>
-            &[Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook],
+        EffectiveStartingPosition::Classic => {
+            &[Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]
+        }
         EffectiveStartingPosition::FischerRandom(row) => row,
     }
 }

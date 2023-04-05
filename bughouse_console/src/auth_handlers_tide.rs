@@ -1,16 +1,14 @@
 use anyhow::anyhow;
+use bughouse_chess::session::{GoogleOAuthRegistrationInfo, RegistrationMethod, Session, UserInfo};
 use oauth2::AuthorizationCode;
 use serde::Deserialize;
 use tide::StatusCode;
 use time::OffsetDateTime;
 
-use bughouse_chess::session::{GoogleOAuthRegistrationInfo, RegistrationMethod, Session, UserInfo};
-
 use crate::auth;
 use crate::http_server_state::*;
 use crate::prod_server_helpers::validate_player_name;
-use crate::secret_persistence::DeletedAccount;
-use crate::secret_persistence::{Account, LiveAccount};
+use crate::secret_persistence::{Account, DeletedAccount, LiveAccount};
 use crate::server_config::AllowedOrigin;
 
 pub const OAUTH_CSRF_COOKIE_NAME: &str = "oauth-csrf-state";
@@ -28,7 +26,7 @@ pub const AUTH_MYSESSION_PATH: &str = "/auth/mysession";
 #[derive(Deserialize)]
 struct SignupData {
     user_name: String,
-    email: String,  // optional; empty string means none
+    email: String, // optional; empty string means none
     password: String,
 }
 
@@ -45,14 +43,14 @@ struct FinishSignupWithGoogleData {
 
 #[derive(Deserialize)]
 struct ChangeAccountData {
-    current_password: String,      // must be present to authorize any changes
-    email: Option<String>,         // empty string means remove / don't add
-    new_password: Option<String>,  // empty string means keep old password
+    current_password: String,     // must be present to authorize any changes
+    email: Option<String>,        // empty string means remove / don't add
+    new_password: Option<String>, // empty string means keep old password
 }
 
 #[derive(Deserialize)]
 struct DeleteAccountData {
-    password: Option<String>,  // must be present to authorize deletion
+    password: Option<String>, // must be present to authorize deletion
 }
 
 pub fn check_origin<T>(req: &tide::Request<T>, allowed_origin: &AllowedOrigin) -> tide::Result<()> {
@@ -85,10 +83,7 @@ pub fn check_google_csrf<T>(req: &tide::Request<T>) -> tide::Result<Authorizatio
         ));
     };
     if oauth_csrf_state_cookie.value() != request_csrf_state.secret() {
-        return Err(tide::Error::from_str(
-            StatusCode::Forbidden,
-            "Non-matching CSRF token.",
-        ));
+        return Err(tide::Error::from_str(StatusCode::Forbidden, "Non-matching CSRF token."));
     }
     Ok(auth_code)
 }
@@ -117,7 +112,7 @@ pub fn authorize_access_by_password(password: &str, account: &LiveAccount) -> an
 pub async fn handle_signup<DB: Send + Sync + 'static>(
     mut req: tide::Request<HttpServerState<DB>>,
 ) -> tide::Result {
-    let SignupData{ user_name, email, password } = req.body_form().await?;
+    let SignupData { user_name, email, password } = req.body_form().await?;
     let email = if email.is_empty() { None } else { Some(email) };
 
     validate_player_name(&user_name)
@@ -135,13 +130,17 @@ pub async fn handle_signup<DB: Send + Sync + 'static>(
         .map_err(|err| tide::Error::new(StatusCode::InternalServerError, err))?;
 
     // TODO: Confirm email if not empty.
-    req.state().secret_db.create_account(
-        user_name.clone(),
-        email.clone(),
-        Some(password_hash),
-        RegistrationMethod::Password,
-        OffsetDateTime::now_utc(),
-    ).await.map_err(|err| tide::Error::new(StatusCode::InternalServerError, err))?;
+    req.state()
+        .secret_db
+        .create_account(
+            user_name.clone(),
+            email.clone(),
+            Some(password_hash),
+            RegistrationMethod::Password,
+            OffsetDateTime::now_utc(),
+        )
+        .await
+        .map_err(|err| tide::Error::new(StatusCode::InternalServerError, err))?;
 
     let session = Session::LoggedIn(UserInfo {
         user_name,
@@ -197,10 +196,7 @@ pub async fn handle_sign_with_google<DB: Send + Sync + 'static>(
         .state()
         .google_auth
         .as_ref()
-        .ok_or(tide::Error::from_str(
-            StatusCode::NotImplemented,
-            "Google Auth is not enabled.",
-        ))?
+        .ok_or(tide::Error::from_str(StatusCode::NotImplemented, "Google Auth is not enabled."))?
         .start(callback_url.into())?;
 
     let mut resp: tide::Response = req.into();
@@ -244,10 +240,7 @@ pub async fn handle_continue_sign_with_google<DB: Send + Sync + 'static>(
         .state()
         .google_auth
         .as_ref()
-        .ok_or(tide::Error::from_str(
-            StatusCode::NotImplemented,
-            "Google auth is not enabled.",
-        ))?
+        .ok_or(tide::Error::from_str(StatusCode::NotImplemented, "Google auth is not enabled."))?
         .email(callback_url_str, auth_code)
         .await?;
 
@@ -270,14 +263,14 @@ pub async fn handle_continue_sign_with_google<DB: Send + Sync + 'static>(
                 email: Some(email),
                 registration_method: RegistrationMethod::GoogleOAuth,
             })
-        },
+        }
         Some(Account::Deleted(_)) => {
             // Should not happen: deleted accounts don't have emails.
             return Err(tide::Error::from_str(
                 StatusCode::Forbidden,
-                "Cannot log in with Google: no such account"
+                "Cannot log in with Google: no such account",
             ));
-        },
+        }
     };
 
     let session_id = get_session_id(&req)?;
@@ -292,7 +285,7 @@ pub async fn handle_continue_sign_with_google<DB: Send + Sync + 'static>(
 pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
     mut req: tide::Request<HttpServerState<DB>>,
 ) -> tide::Result {
-    let FinishSignupWithGoogleData{ user_name } = req.body_form().await?;
+    let FinishSignupWithGoogleData { user_name } = req.body_form().await?;
 
     validate_player_name(&user_name)
         .map_err(|err| tide::Error::from_str(StatusCode::Forbidden, err))?;
@@ -309,23 +302,29 @@ pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
     let email = {
         let session_store = req.state().session_store.lock().unwrap();
         match session_store.get(&session_id) {
-            Some(Session::GoogleOAuthRegistering(GoogleOAuthRegistrationInfo{ email })) => email.clone(),
+            Some(Session::GoogleOAuthRegistering(GoogleOAuthRegistrationInfo { email })) => {
+                email.clone()
+            }
             _ => {
                 return Err(tide::Error::from_str(
                     StatusCode::Forbidden,
-                    format!("Error creating account with Google.")
+                    format!("Error creating account with Google."),
                 ));
             }
         }
     };
 
-    req.state().secret_db.create_account(
-        user_name.clone(),
-        Some(email.clone()),
-        None,
-        RegistrationMethod::GoogleOAuth,
-        OffsetDateTime::now_utc(),
-    ).await.map_err(|err| tide::Error::new(StatusCode::InternalServerError, err))?;
+    req.state()
+        .secret_db
+        .create_account(
+            user_name.clone(),
+            Some(email.clone()),
+            None,
+            RegistrationMethod::GoogleOAuth,
+            OffsetDateTime::now_utc(),
+        )
+        .await
+        .map_err(|err| tide::Error::new(StatusCode::InternalServerError, err))?;
 
     let session = Session::LoggedIn(UserInfo {
         user_name,
@@ -341,7 +340,10 @@ pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
 
 pub async fn handle_logout<DB>(req: tide::Request<HttpServerState<DB>>) -> tide::Result {
     let session_id = get_session_id(&req)?;
-    req.state().session_store.lock().unwrap()
+    req.state()
+        .session_store
+        .lock()
+        .unwrap()
         .update_if_exists(&session_id, Session::logout);
     Ok("You are now logged out.".into())
 }
@@ -349,7 +351,7 @@ pub async fn handle_logout<DB>(req: tide::Request<HttpServerState<DB>>) -> tide:
 pub async fn handle_change_account<DB: Send + Sync + 'static>(
     mut req: tide::Request<HttpServerState<DB>>,
 ) -> tide::Result {
-    let ChangeAccountData{ current_password, email, new_password } = req.body_form().await?;
+    let ChangeAccountData { current_password, email, new_password } = req.body_form().await?;
     let email = email.filter(|s| !s.is_empty());
     let email_copy = email.clone();
     let new_password = new_password.filter(|s| !s.is_empty());
@@ -358,17 +360,20 @@ pub async fn handle_change_account<DB: Send + Sync + 'static>(
     let user_name = {
         let session_store = req.state().session_store.lock().unwrap();
         match session_store.get(&session_id) {
-            Some(Session::LoggedIn(UserInfo{ user_name, .. })) => user_name.clone(),
+            Some(Session::LoggedIn(UserInfo { user_name, .. })) => user_name.clone(),
             _ => {
                 return Err(tide::Error::from_str(
                     StatusCode::Forbidden,
-                    format!("You need to log in in order to change account settings.")
+                    format!("You need to log in in order to change account settings."),
                 ));
             }
         }
     };
 
-    let old_account = req.state().secret_db.account_by_user_name(&user_name)
+    let old_account = req
+        .state()
+        .secret_db
+        .account_by_user_name(&user_name)
         .await?
         .and_then(Account::live)
         .ok_or(tide::Error::from_str(
@@ -376,16 +381,23 @@ pub async fn handle_change_account<DB: Send + Sync + 'static>(
             format!("User '{}' not found.", user_name),
         ))?;
 
-    req.state().secret_db.update_account_txn(old_account.id, Box::new(move |account| -> anyhow::Result<()> {
-        if account.registration_method == RegistrationMethod::Password {
-            authorize_access_by_password(&current_password, &account)?;
-        }
-        account.email = email;
-        if let Some(new_password) = new_password {
-            account.password_hash = Some(auth::hash_password(&new_password)?);
-        }
-        Ok(())
-    })).await.map_err(|err| tide::Error::new(StatusCode::Forbidden, err))?;
+    req.state()
+        .secret_db
+        .update_account_txn(
+            old_account.id,
+            Box::new(move |account| -> anyhow::Result<()> {
+                if account.registration_method == RegistrationMethod::Password {
+                    authorize_access_by_password(&current_password, &account)?;
+                }
+                account.email = email;
+                if let Some(new_password) = new_password {
+                    account.password_hash = Some(auth::hash_password(&new_password)?);
+                }
+                Ok(())
+            }),
+        )
+        .await
+        .map_err(|err| tide::Error::new(StatusCode::Forbidden, err))?;
 
     let session = Session::LoggedIn(UserInfo {
         user_name,
@@ -402,23 +414,26 @@ pub async fn handle_change_account<DB: Send + Sync + 'static>(
 pub async fn handle_delete_account<DB: Send + Sync + 'static>(
     mut req: tide::Request<HttpServerState<DB>>,
 ) -> tide::Result {
-    let DeleteAccountData{ password } = req.body_form().await?;
+    let DeleteAccountData { password } = req.body_form().await?;
 
     let session_id = get_session_id(&req)?;
     let user_name = {
         let session_store = req.state().session_store.lock().unwrap();
         match session_store.get(&session_id) {
-            Some(Session::LoggedIn(UserInfo{ user_name, .. })) => user_name.clone(),
+            Some(Session::LoggedIn(UserInfo { user_name, .. })) => user_name.clone(),
             _ => {
                 return Err(tide::Error::from_str(
                     StatusCode::Forbidden,
-                    format!("You need to log in in order to delete account.")
+                    format!("You need to log in in order to delete account."),
                 ));
             }
         }
     };
 
-    let account_id = req.state().secret_db.account_by_user_name(&user_name)
+    let account_id = req
+        .state()
+        .secret_db
+        .account_by_user_name(&user_name)
         .await?
         .and_then(Account::live)
         .ok_or(tide::Error::from_str(
@@ -427,19 +442,29 @@ pub async fn handle_delete_account<DB: Send + Sync + 'static>(
         ))?
         .id;
 
-    req.state().secret_db.delete_account_txn(account_id, Box::new(move |account| -> anyhow::Result<DeletedAccount> {
-        if account.registration_method == RegistrationMethod::Password {
-            authorize_access_by_password(&password.unwrap_or_default(), &account)?;
-        }
-        Ok(DeletedAccount {
-            id: account.id,
-            user_name: account.user_name,
-            creation_time: account.creation_time,
-            deletion_time: OffsetDateTime::now_utc(),
-        })
-    })).await.map_err(|err| tide::Error::new(StatusCode::Forbidden, err))?;
+    req.state()
+        .secret_db
+        .delete_account_txn(
+            account_id,
+            Box::new(move |account| -> anyhow::Result<DeletedAccount> {
+                if account.registration_method == RegistrationMethod::Password {
+                    authorize_access_by_password(&password.unwrap_or_default(), &account)?;
+                }
+                Ok(DeletedAccount {
+                    id: account.id,
+                    user_name: account.user_name,
+                    creation_time: account.creation_time,
+                    deletion_time: OffsetDateTime::now_utc(),
+                })
+            }),
+        )
+        .await
+        .map_err(|err| tide::Error::new(StatusCode::Forbidden, err))?;
 
-    req.state().session_store.lock().unwrap()
+    req.state()
+        .session_store
+        .lock()
+        .unwrap()
         .update_if_exists(&session_id, Session::logout);
 
     let mut resp: tide::Response = req.into();

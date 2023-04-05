@@ -1,6 +1,6 @@
 use derive_new::new;
 use enum_map::Enum;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use strum::EnumIter;
 
@@ -33,21 +33,23 @@ pub enum PieceMovement {
     },
     Ride {
         shift: (u8, u8),
-        max_leaps: Option<u8>,  // always >= 2
+        max_leaps: Option<u8>, // always >= 2
     },
     LikePawn,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Enum, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Enum, Serialize, Deserialize,
+)]
 pub enum PieceKind {
     Pawn,
     Knight,
     Bishop,
     Rook,
     Queen,
-    Cardinal,  // == Bishop + Knight (a.k.a. Archbishop)
-    Empress,   // == Rook + Knight
-    Amazon,    // == Queen + Knight
+    Cardinal, // == Bishop + Knight (a.k.a. Archbishop)
+    Empress,  // == Rook + Knight
+    Amazon,   // == Queen + Knight
     King,
 }
 
@@ -91,29 +93,26 @@ pub struct PieceForRepetitionDraw {
 //     array and returns reference to it.)
 
 macro_rules! leap {
-    ($a:literal, $b:literal) => {
-        {
-            const_assert!($a <= $b);
-            PieceMovement::Leap{ shift: ($a, $b) }
-        }
-    };
+    ($a:literal, $b:literal) => {{
+        const_assert!($a <= $b);
+        PieceMovement::Leap { shift: ($a, $b) }
+    }};
 }
 
 macro_rules! ride {
-    ($a:literal, $b:literal) => {
-        {
-            const_assert!($a <= $b);
-            PieceMovement::Ride{ shift: ($a, $b), max_leaps: None }
+    ($a:literal, $b:literal) => {{
+        const_assert!($a <= $b);
+        PieceMovement::Ride { shift: ($a, $b), max_leaps: None }
+    }};
+    ($a:literal, $b:literal, max_leaps=$max_leaps:literal) => {{
+        const_assert!($a <= $b);
+        // Q. Is this a good solution? Or should we remove leaps and always use rides instead?
+        const_assert!($max_leaps > 1); // Use `leap!` instead
+        PieceMovement::Ride {
+            shift: ($a, $b),
+            max_leaps: Some($max_leaps),
         }
-    };
-    ($a:literal, $b:literal, max_leaps=$max_leaps:literal) => {
-        {
-            const_assert!($a <= $b);
-            // Q. Is this a good solution? Or should we remove leaps and always use rides instead?
-            const_assert!($max_leaps > 1);  // Use `leap!` instead
-            PieceMovement::Ride{ shift: ($a, $b), max_leaps: Some($max_leaps) }
-        }
-    };
+    }};
 }
 
 // Improvement potential: Also generate `to_algebraic_for_move` returning `&'static str` instead
@@ -198,12 +197,14 @@ pub fn accolade_combine_piece_kinds(first: PieceKind, second: PieceKind) -> Opti
     use PieceKind::*;
     let base_piece = match (first, second) {
         (Knight, p) | (p, Knight) => p,
-        _ => { return None; },
+        _ => {
+            return None;
+        }
     };
     match base_piece {
-        Knight => None,                       // knight itself
-        Pawn | King => None,                  // not combinable
-        Cardinal | Empress | Amazon => None,  // already combined
+        Knight => None,                      // knight itself
+        Pawn | King => None,                 // not combinable
+        Cardinal | Empress | Amazon => None, // already combined
         Bishop => Some(Cardinal),
         Rook => Some(Empress),
         Queen => Some(Amazon),
@@ -217,17 +218,18 @@ pub fn accolade_combine_pieces(first: PieceOnBoard, second: PieceOnBoard) -> Opt
         PieceOrigin::Combined(_) => None,
     };
     let kind = accolade_combine_piece_kinds(first.kind, second.kind)?;
-    let origin = PieceOrigin::Combined(sort_two_desc((original_piece(first)?, original_piece(second)?)));
+    let origin =
+        PieceOrigin::Combined(sort_two_desc((original_piece(first)?, original_piece(second)?)));
     if first.force != second.force {
         return None;
     }
     let force = first.force;
-    return Some(PieceOnBoard{ kind, origin, force });
+    return Some(PieceOnBoard { kind, origin, force });
 }
 
 pub fn piece_to_pictogram(piece_kind: PieceKind, force: Force) -> char {
-    use self::PieceKind::*;
     use self::Force::*;
+    use self::PieceKind::*;
     match (force, piece_kind) {
         (White, Pawn) => '♙',
         (White, Knight) => '♘',

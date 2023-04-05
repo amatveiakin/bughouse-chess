@@ -1,9 +1,8 @@
-use log::error;
-use time::OffsetDateTime;
-
 use bughouse_chess::server::*;
 use bughouse_chess::server_hooks::ServerHooks;
 use bughouse_chess::*;
+use log::error;
+use time::OffsetDateTime;
 
 use crate::persistence::*;
 
@@ -26,18 +25,14 @@ impl<DB: DatabaseWriter> ServerHooks for DatabaseServerHooks<DB> {
     fn on_client_event(&mut self, event: &BughouseClientEvent) {
         if let BughouseClientEvent::ReportPerformace(performance) = event {
             if let Err(e) = async_std::task::block_on(
-                self.db
-                    .add_client_performance(performance, self.invocation_id.as_str()),
+                self.db.add_client_performance(performance, self.invocation_id.as_str()),
             ) {
                 error!("Error persisting client performance: {}", e);
             }
         }
     }
     fn on_server_broadcast_event(
-        &mut self,
-        event: &BughouseServerEvent,
-        maybe_game: Option<&GameState>,
-        round: usize,
+        &mut self, event: &BughouseServerEvent, maybe_game: Option<&GameState>, round: usize,
     ) {
         let Some(row) = self.game_result(event, maybe_game, round) else {
             return;
@@ -50,10 +45,7 @@ impl<DB: DatabaseWriter> ServerHooks for DatabaseServerHooks<DB> {
 
 impl<DB: DatabaseWriter> DatabaseServerHooks<DB> {
     fn game_result(
-        &self,
-        event: &BughouseServerEvent,
-        maybe_game: Option<&GameState>,
-        round: usize,
+        &self, event: &BughouseServerEvent, maybe_game: Option<&GameState>, round: usize,
     ) -> Option<GameResultRow> {
         let game = maybe_game?;
         let (players, result) = match event {

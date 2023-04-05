@@ -1,10 +1,10 @@
-use std::fmt;
-use std::ops;
+use std::{fmt, ops};
 
-use crate::coord::{Coord, NUM_ROWS, NUM_COLS};
+use serde::{Deserialize, Serialize};
+
+use crate::coord::{Coord, NUM_COLS, NUM_ROWS};
 use crate::janitor::Janitor;
-use crate::piece::{PieceOrigin, PieceOnBoard, PieceForRepetitionDraw};
-use serde::{Serialize, Deserialize};
+use crate::piece::{PieceForRepetitionDraw, PieceOnBoard, PieceOrigin};
 
 
 pub type Grid = GenericGrid<PieceOnBoard>;
@@ -18,9 +18,7 @@ pub struct GenericGrid<T: Clone> {
 }
 
 impl<T: Clone> GenericGrid<T> {
-    pub fn new() -> Self {
-        GenericGrid { data: Default::default() }
-    }
+    pub fn new() -> Self { GenericGrid { data: Default::default() } }
 
     pub fn map<U: Clone>(&self, f: impl Fn(T) -> U + Copy) -> GenericGrid<U> {
         GenericGrid {
@@ -29,16 +27,16 @@ impl<T: Clone> GenericGrid<T> {
     }
 
     // Idea. A separate class GridView that allows to make only temporary changes.
-    pub fn maybe_scoped_set(&mut self, change: Option<(Coord, Option<T>)>)
-        -> impl ops::DerefMut<Target = Self> + '_
-    {
+    pub fn maybe_scoped_set(
+        &mut self, change: Option<(Coord, Option<T>)>,
+    ) -> impl ops::DerefMut<Target = Self> + '_ {
         let original = match change {
             None => None,
             Some((pos, new_piece)) => {
                 let original_piece = self[pos].take();
                 self[pos] = new_piece;
                 Some((pos, original_piece))
-            },
+            }
         };
         Janitor::new(self, move |grid| {
             if let Some((pos, ref original_piece)) = original {
@@ -47,9 +45,9 @@ impl<T: Clone> GenericGrid<T> {
         })
     }
 
-    pub fn scoped_set(&mut self, pos: Coord, piece: Option<T>)
-        -> impl ops::DerefMut<Target = Self> + '_
-    {
+    pub fn scoped_set(
+        &mut self, pos: Coord, piece: Option<T>,
+    ) -> impl ops::DerefMut<Target = Self> + '_ {
         let original_piece = self[pos].take();
         self[pos] = piece;
         Janitor::new(self, move |grid| grid[pos] = original_piece.clone())
@@ -80,11 +78,13 @@ fn debug_format_piece(piece: &PieceOnBoard) -> String {
 impl fmt::Debug for Grid {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Grid ")?;
-        f.debug_list().entries(Coord::all().filter_map(|coord| {
-            self[coord].map(|piece| {
-                format!("{} => {}", coord.to_algebraic(), debug_format_piece(&piece))
-            })
-        })).finish()
+        f.debug_list()
+            .entries(Coord::all().filter_map(|coord| {
+                self[coord].map(|piece| {
+                    format!("{} => {}", coord.to_algebraic(), debug_format_piece(&piece))
+                })
+            }))
+            .finish()
     }
 }
 
@@ -98,8 +98,8 @@ impl fmt::Debug for GridForRepetitionDraw {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::piece::{PieceKind, PieceOrigin};
     use crate::force::Force;
+    use crate::piece::{PieceKind, PieceOrigin};
 
     fn make_piece(kind: PieceKind) -> PieceOnBoard {
         PieceOnBoard::new(kind, PieceOrigin::Innate, Force::White)

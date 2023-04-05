@@ -1,30 +1,35 @@
 mod common;
 
-use itertools::Itertools;
-
-use bughouse_chess::*;
 use bughouse_chess::test_util::*;
+use bughouse_chess::*;
 use common::*;
+use itertools::Itertools;
 
 
 fn chess_with_rules(rules: ChessRules) -> ChessGame {
     ChessGame::new(ContestRules::unrated(), rules, sample_chess_players())
 }
 
-fn chess_classic() -> ChessGame {
-    chess_with_rules(ChessRules::classic_blitz())
-}
+fn chess_classic() -> ChessGame { chess_with_rules(ChessRules::classic_blitz()) }
 
 fn chess960_from_short_fen(pieces: &str) -> ChessGame {
     let rules = ChessRules {
         starting_position: StartingPosition::FischerRandom,
         ..ChessRules::classic_blitz()
     };
-    let pieces: [PieceKind; 8] = pieces.chars()
+    let pieces: [PieceKind; 8] = pieces
+        .chars()
         .map(|ch| PieceKind::from_algebraic_char(ch).unwrap())
-        .collect_vec().try_into().unwrap();
+        .collect_vec()
+        .try_into()
+        .unwrap();
     let starting_position = EffectiveStartingPosition::FischerRandom(pieces);
-    ChessGame::new_with_starting_position(ContestRules::unrated(), rules, starting_position, sample_chess_players())
+    ChessGame::new_with_starting_position(
+        ContestRules::unrated(),
+        rules,
+        starting_position,
+        sample_chess_players(),
+    )
 }
 
 // Improvement potential: Allow whitespace after turn number.
@@ -32,7 +37,8 @@ fn replay_log(game: &mut ChessGame, log: &str) -> Result<(), TurnError> {
     let turn_number_re = once_cell_regex!(r"^(?:[0-9]+\.)?(.*)$");
     let now = GameInstant::game_start();
     for turn_notation in log.split_whitespace() {
-        let turn_notation = turn_number_re.captures(turn_notation).unwrap().get(1).unwrap().as_str();
+        let turn_notation =
+            turn_number_re.captures(turn_notation).unwrap().get(1).unwrap().as_str();
         let turn_input = TurnInput::Algebraic(turn_notation.to_owned());
         game.try_turn(&turn_input, TurnMode::Normal, now)?;
     }
@@ -70,7 +76,9 @@ fn capture_notation() {
 #[test]
 fn wikipedia_example() {
     let mut game = chess_classic();
-    replay_log(&mut game, "
+    replay_log(
+        &mut game,
+        "
         1.Nf3 Nf6 2.c4 g6 3.Nc3 Bg7 4.d4 O-O 5.Bf4 d5
         6.Qb3 dxc4 7.Qxc4 c6 8.e4 Nbd7 9.Rd1 Nb6 10.Qc5 Bg4
         11.Bg5 Na4 12.Qa3 Nxc3 13.bxc3 Nxe4 14.Bxe7 Qb6 15.Bc4 Nxc3
@@ -80,7 +88,9 @@ fn wikipedia_example() {
         31.Nf3 Ne4 32.Qb8 b5 33.h4 h5 34.Ne5 Kg7 35.Kg1 Bc5+
         36.Kf1 Ng3+ 37.Ke1 Bb4+ 38.Kd1 Bb3+ 39.Kc1 Ne2+ 40.Kb1 Nc3+
         41.Kc1 Rc2#
-    ").unwrap();
+    ",
+    )
+    .unwrap();
     assert_eq!(game.status(), ChessGameStatus::Victory(Force::Black, VictoryReason::Checkmate));
 }
 
@@ -93,7 +103,8 @@ fn chess960_first_move_castle() {
 #[test]
 fn chess960_drag_king_onto_rook_castle() {
     let mut game = chess960_from_short_fen("RBNNBKRQ");
-    game.try_turn(&drag_move!(F1 -> G1), TurnMode::Normal, GameInstant::game_start()).unwrap();
+    game.try_turn(&drag_move!(F1 -> G1), TurnMode::Normal, GameInstant::game_start())
+        .unwrap();
     assert!(game.board().grid()[Coord::F1].is(piece!(White Rook)));
     assert!(game.board().grid()[Coord::G1].is(piece!(White King)));
 }

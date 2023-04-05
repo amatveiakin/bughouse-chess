@@ -1,14 +1,13 @@
 // Improvement potential. Synchronized version for server-side logging.
 
 use std::cell::RefCell;
-use std::cmp;
 use std::collections::HashMap;
-use std::fmt;
 use std::rc::Rc;
 use std::time::Duration;
+use std::{cmp, fmt};
 
 use hdrhistogram::Histogram;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -36,20 +35,14 @@ pub struct MeterBox {
 }
 
 impl MeterBox {
-    pub fn new() -> Self {
-        MeterBox {
-            meters: HashMap::new(),
-        }
-    }
+    pub fn new() -> Self { MeterBox { meters: HashMap::new() } }
 
     pub fn meter(&mut self, name: String) -> Meter {
         self.meters.entry(name).or_insert_with(|| Meter::new()).clone()
     }
 
     pub fn read_stats(&self) -> HashMap<String, MeterStats> {
-        self.meters.iter()
-            .map(|(name, meter)| (name.clone(), meter.stats()))
-            .collect()
+        self.meters.iter().map(|(name, meter)| (name.clone(), meter.stats())).collect()
     }
     pub fn consume_stats(&mut self) -> HashMap<String, MeterStats> {
         let stats = self.read_stats();
@@ -72,24 +65,20 @@ impl Meter {
         }
     }
 
-    pub fn record(&self, value: u64) {
-        self.histogram.borrow_mut().record(value).unwrap()
-    }
+    pub fn record(&self, value: u64) { self.histogram.borrow_mut().record(value).unwrap() }
     pub fn record_duration(&self, duration: Duration) {
         let value = cmp::min(duration.as_millis(), u64::MAX.into()).try_into().unwrap();
         self.record(value);
     }
 
-    fn reset(&mut self) {
-        self.histogram.borrow_mut().reset();
-    }
+    fn reset(&mut self) { self.histogram.borrow_mut().reset(); }
     fn stats(&self) -> MeterStats {
         let histogram = self.histogram.borrow();
         MeterStats {
             p50: histogram.value_at_quantile(0.5),
             p90: histogram.value_at_quantile(0.9),
             p99: histogram.value_at_quantile(0.99),
-            num_values: histogram.len()
+            num_values: histogram.len(),
         }
     }
 }

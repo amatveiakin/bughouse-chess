@@ -1,27 +1,22 @@
 use std::collections::HashMap;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use crate::coord::Coord;
-use crate::display::{Perspective, DisplayBoard, FCoord, DisplayFCoord, display_to_fcoord, get_board_orientation};
+use crate::display::{
+    display_to_fcoord, get_board_orientation, DisplayBoard, DisplayFCoord, FCoord, Perspective,
+};
 use crate::game::BughouseBoard;
 
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum ChalkMark {
-    Arrow {
-        from: Coord,
-        to: Coord,
-    },
+    Arrow { from: Coord, to: Coord },
     // Improvement potential: Smoothen and simplify the curve. Either while drawing
     //   or afterwards. Or both.
-    FreehandLine {
-        points: Vec<FCoord>,
-    },
-    SquareHighlight {
-        coord: Coord,
-    },
+    FreehandLine { points: Vec<FCoord> },
+    SquareHighlight { coord: Coord },
 }
 
 // Represents all chalk marks by a given player.
@@ -33,12 +28,7 @@ pub struct ChalkDrawing {
 }
 
 impl ChalkDrawing {
-    pub fn new() -> Self {
-        ChalkDrawing {
-            board_a: vec![],
-            board_b: vec![],
-        }
-    }
+    pub fn new() -> Self { ChalkDrawing { board_a: vec![], board_b: vec![] } }
     pub fn board(&self, board_idx: BughouseBoard) -> &Vec<ChalkMark> {
         match board_idx {
             BughouseBoard::A => &self.board_a,
@@ -59,9 +49,7 @@ pub struct Chalkboard {
 }
 
 impl Chalkboard {
-    pub fn new() -> Self {
-        Chalkboard{ player_drawings: HashMap::new() }
-    }
+    pub fn new() -> Self { Chalkboard { player_drawings: HashMap::new() } }
 
     pub fn all_drawings(&self) -> &HashMap<String, ChalkDrawing> { &self.player_drawings }
     pub fn drawings_by(&self, player_name: &str) -> Option<&ChalkDrawing> {
@@ -69,7 +57,10 @@ impl Chalkboard {
     }
 
     pub fn add_mark(&mut self, player: String, board_idx: BughouseBoard, mark: ChalkMark) {
-        let marks = self.player_drawings.entry(player).or_insert_with(|| ChalkDrawing::new())
+        let marks = self
+            .player_drawings
+            .entry(player)
+            .or_insert_with(|| ChalkDrawing::new())
             .board_mut(board_idx);
         if let Some(existing) = marks.iter().position(|m| *m == mark) {
             marks.remove(existing);
@@ -78,11 +69,17 @@ impl Chalkboard {
         }
     }
     pub fn remove_last_mark(&mut self, player: String, board_idx: BughouseBoard) {
-        self.player_drawings.entry(player).or_insert_with(|| ChalkDrawing::new())
-            .board_mut(board_idx).pop();
+        self.player_drawings
+            .entry(player)
+            .or_insert_with(|| ChalkDrawing::new())
+            .board_mut(board_idx)
+            .pop();
     }
     pub fn clear_drawing(&mut self, player: String, board_idx: BughouseBoard) -> bool {
-        let board = &mut self.player_drawings.entry(player).or_insert_with(|| ChalkDrawing::new())
+        let board = &mut self
+            .player_drawings
+            .entry(player)
+            .or_insert_with(|| ChalkDrawing::new())
             .board_mut(board_idx);
         let had_content = !board.is_empty();
         board.clear();
@@ -107,25 +104,22 @@ pub struct ChalkCanvas {
 }
 
 impl ChalkCanvas {
-    pub fn new(perspective: Perspective) -> Self {
-        ChalkCanvas {
-            perspective,
-            painting: None,
-        }
-    }
+    pub fn new(perspective: Perspective) -> Self { ChalkCanvas { perspective, painting: None } }
 
     pub fn is_painting(&self) -> bool { self.painting.is_some() }
     pub fn current_painting(&self) -> Option<&(DisplayBoard, ChalkMark)> {
         self.painting.as_ref().filter(|&p| is_valid_painting(p))
     }
 
-    pub fn chalk_down(&mut self, board_idx: DisplayBoard, pos: DisplayFCoord, alternative_mode: bool) {
+    pub fn chalk_down(
+        &mut self, board_idx: DisplayBoard, pos: DisplayFCoord, alternative_mode: bool,
+    ) {
         let fcoord = to_fcoord(self.perspective, board_idx, pos);
         if alternative_mode {
-            self.painting = Some((board_idx, ChalkMark::FreehandLine{ points: vec![fcoord] }));
+            self.painting = Some((board_idx, ChalkMark::FreehandLine { points: vec![fcoord] }));
         } else {
             let coord = fcoord.to_coord_snapped();
-            self.painting = Some((board_idx, ChalkMark::Arrow{ from: coord, to: coord }));
+            self.painting = Some((board_idx, ChalkMark::Arrow { from: coord, to: coord }));
         }
     }
 
@@ -135,16 +129,16 @@ impl ChalkCanvas {
         };
         let fcoord = to_fcoord(self.perspective, board_idx, pos);
         match mark {
-            ChalkMark::Arrow{ ref mut to, .. } => {
+            ChalkMark::Arrow { ref mut to, .. } => {
                 *to = fcoord.to_coord_snapped();
-            },
-            ChalkMark::FreehandLine{ ref mut points } => {
+            }
+            ChalkMark::FreehandLine { ref mut points } => {
                 // Possible optimization: also filter out consequent points that are very close.
                 if points.last() != Some(&fcoord) {
                     points.push(fcoord);
                 }
-            },
-            ChalkMark::SquareHighlight{ .. } => {},
+            }
+            ChalkMark::SquareHighlight { .. } => {}
         }
     }
 
@@ -152,17 +146,15 @@ impl ChalkCanvas {
     pub fn chalk_up(&mut self, pos: DisplayFCoord) -> Option<(DisplayBoard, ChalkMark)> {
         self.chalk_move(pos);
         let painting = self.painting.take();
-        if let Some((board_idx, ChalkMark::Arrow{ to, from })) = &painting {
+        if let Some((board_idx, ChalkMark::Arrow { to, from })) = &painting {
             if to == from {
-                return Some((*board_idx, ChalkMark::SquareHighlight{ coord: *to }));
+                return Some((*board_idx, ChalkMark::SquareHighlight { coord: *to }));
             }
         }
         painting.filter(is_valid_painting)
     }
 
-    pub fn chalk_abort(&mut self) {
-        self.painting = None;
-    }
+    pub fn chalk_abort(&mut self) { self.painting = None; }
 }
 
 fn to_fcoord(perspective: Perspective, board_idx: DisplayBoard, pos: DisplayFCoord) -> FCoord {
@@ -172,8 +164,8 @@ fn to_fcoord(perspective: Perspective, board_idx: DisplayBoard, pos: DisplayFCoo
 
 fn is_valid_painting((_, mark): &(DisplayBoard, ChalkMark)) -> bool {
     match mark {
-        ChalkMark::Arrow{ to, from } => to != from,
-        ChalkMark::FreehandLine{ points } => points.len() > 1,
-        ChalkMark::SquareHighlight{ .. } => true,
+        ChalkMark::Arrow { to, from } => to != from,
+        ChalkMark::FreehandLine { points } => points.len() > 1,
+        ChalkMark::SquareHighlight { .. } => true,
     }
 }

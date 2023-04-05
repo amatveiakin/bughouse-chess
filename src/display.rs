@@ -3,12 +3,12 @@
 
 use std::ops;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::coord::{Row, Col, Coord, NUM_ROWS, NUM_COLS};
+use crate::coord::{Col, Coord, Row, NUM_COLS, NUM_ROWS};
 use crate::force::Force;
-use crate::game::{BughouseBoard, BughousePlayer, BughouseParticipant, get_bughouse_board};
+use crate::game::{get_bughouse_board, BughouseBoard, BughouseParticipant, BughousePlayer};
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
@@ -33,8 +33,8 @@ pub struct Perspective {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BoardOrientation {
-    Normal,   // White at bottom
-    Rotated,  // Black at bottom
+    Normal,  // White at bottom
+    Rotated, // Black at bottom
 }
 
 // These coords describe board squares, like `Coord`. Both `x` and `y` are integers
@@ -93,7 +93,11 @@ pub fn get_board_index(board: DisplayBoard, perspective: Perspective) -> Bughous
 }
 
 pub fn get_display_board_index(board: BughouseBoard, perspective: Perspective) -> DisplayBoard {
-    if perspective.board_idx == board { DisplayBoard::Primary } else { DisplayBoard::Secondary }
+    if perspective.board_idx == board {
+        DisplayBoard::Primary
+    } else {
+        DisplayBoard::Secondary
+    }
 }
 
 pub fn get_board_orientation(board: DisplayBoard, perspective: Perspective) -> BoardOrientation {
@@ -106,8 +110,8 @@ pub fn get_board_orientation(board: DisplayBoard, perspective: Perspective) -> B
 }
 
 pub fn get_display_player(force: Force, orientation: BoardOrientation) -> DisplayPlayer {
-    use Force::*;
     use BoardOrientation::*;
+    use Force::*;
     match (orientation, force) {
         (Normal, White) | (Rotated, Black) => DisplayPlayer::Bottom,
         (Normal, Black) | (Rotated, White) => DisplayPlayer::Top,
@@ -129,8 +133,8 @@ pub fn to_display_coord(coord: Coord, orientation: BoardOrientation) -> DisplayC
 
 pub fn to_display_fcoord(p: FCoord, orientation: BoardOrientation) -> DisplayFCoord {
     match orientation {
-        BoardOrientation::Normal => DisplayFCoord{ x: p.x, y: (NUM_ROWS as f64) - p.y },
-        BoardOrientation::Rotated => DisplayFCoord{ x: (NUM_COLS as f64) - p.x, y: p.y },
+        BoardOrientation::Normal => DisplayFCoord { x: p.x, y: (NUM_ROWS as f64) - p.y },
+        BoardOrientation::Rotated => DisplayFCoord { x: (NUM_COLS as f64) - p.x, y: p.y },
     }
 }
 
@@ -157,8 +161,8 @@ pub fn from_display_coord(q: DisplayCoord, orientation: BoardOrientation) -> Opt
 
 pub fn display_to_fcoord(q: DisplayFCoord, orientation: BoardOrientation) -> FCoord {
     match orientation {
-        BoardOrientation::Normal => FCoord{ x: q.x, y: (NUM_ROWS as f64) - q.y },
-        BoardOrientation::Rotated => FCoord{ x: (NUM_COLS as f64) - q.x, y: q.y },
+        BoardOrientation::Normal => FCoord { x: q.x, y: (NUM_ROWS as f64) - q.y },
+        BoardOrientation::Rotated => FCoord { x: (NUM_COLS as f64) - q.x, y: q.y },
     }
 }
 
@@ -178,14 +182,14 @@ impl DisplayFCoord {
         return DisplayFCoord {
             x: f64::from(coord.x),
             y: f64::from(coord.y),
-        }
+        };
     }
 
     pub fn square_center(coord: DisplayCoord) -> Self {
         return DisplayFCoord {
             x: f64::from(coord.x) + 0.5,
             y: f64::from(coord.y) + 0.5,
-        }
+        };
     }
 
     pub fn to_square(&self) -> Option<DisplayCoord> {
@@ -194,7 +198,10 @@ impl DisplayFCoord {
         if 0 <= x && x < NUM_COLS as i32 && 0 <= y && y < NUM_ROWS as i32 {
             // Improvement potential: clamp instead of asserting the values are in range.
             // Who knows if all browsers guarantee click coords cannot be 0.00001px away?
-            Some(DisplayCoord{ x: x.try_into().unwrap(), y: y.try_into().unwrap() })
+            Some(DisplayCoord {
+                x: x.try_into().unwrap(),
+                y: y.try_into().unwrap(),
+            })
         } else {
             None
         }
@@ -206,21 +213,15 @@ impl DisplayFCoord {
 impl ops::Add<(f64, f64)> for DisplayFCoord {
     type Output = Self;
     fn add(self, (x, y): (f64, f64)) -> Self::Output {
-        DisplayFCoord{ x: self.x + x, y: self.y + y }
+        DisplayFCoord { x: self.x + x, y: self.y + y }
     }
 }
 
 impl ops::Sub for DisplayFCoord {
     type Output = (f64, f64);
-    fn sub(self, rhs: DisplayFCoord) -> Self::Output {
-        (self.x - rhs.x, self.y - rhs.y)
-    }
+    fn sub(self, rhs: DisplayFCoord) -> Self::Output { (self.x - rhs.x, self.y - rhs.y) }
 }
 
-pub fn mult_vec((x, y): (f64, f64), s: f64) -> (f64, f64) {
-    (x * s, y * s)
-}
+pub fn mult_vec((x, y): (f64, f64), s: f64) -> (f64, f64) { (x * s, y * s) }
 
-pub fn normalize_vec((x, y): (f64, f64)) -> (f64, f64) {
-    mult_vec((x, y), 1. / x.hypot(y))
-}
+pub fn normalize_vec((x, y): (f64, f64)) -> (f64, f64) { mult_vec((x, y), 1. / x.hypot(y)) }

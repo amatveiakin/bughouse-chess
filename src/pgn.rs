@@ -1,16 +1,18 @@
 use enum_map::enum_map;
 use indoc::formatdoc;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use time::macros::format_description;
 
 use crate::algebraic::AlgebraicCharset;
-use crate::board::{VictoryReason, DrawReason};
+use crate::board::{DrawReason, VictoryReason};
 use crate::clock::TimeControl;
-use crate::{fen, ChessVariant, FairyPieces};
 use crate::force::Force;
-use crate::game::{TurnRecordExpanded, BughouseEnvoy, BughouseBoard, BughouseGameStatus, BughouseGame};
+use crate::game::{
+    BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, TurnRecordExpanded,
+};
 use crate::player::Team;
 use crate::rules::StartingPosition;
+use crate::{fen, ChessVariant, FairyPieces};
 
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -30,7 +32,7 @@ struct TextDocument {
     last_line_len: usize,
 }
 impl TextDocument {
-    fn new() -> Self { TextDocument{ text: String::new(), last_line_len: 0 } }
+    fn new() -> Self { TextDocument { text: String::new(), last_line_len: 0 } }
     fn push_word(&mut self, word: &str) {
         const SPACE_WIDTH: usize = 1;
         if self.last_line_len == 0 {
@@ -69,8 +71,8 @@ fn make_result_string(game: &BughouseGame) -> &'static str {
 
 fn make_termination_string(game: &BughouseGame) -> &'static str {
     use BughouseGameStatus::*;
-    use VictoryReason::*;
     use DrawReason::*;
+    use VictoryReason::*;
     match game.status() {
         Active => "unterminated",
         Victory(_, Checkmate) => "normal",
@@ -94,7 +96,7 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
     let mut variant = vec!["Bughouse"];
     let mut setup = String::new();
     match game.chess_rules().starting_position {
-        StartingPosition::Classic => {},
+        StartingPosition::Classic => {}
         StartingPosition::FischerRandom => {
             variant.push("Chess960");
             let a = fen::starting_position_to_shredder_fen(&game_at_start.board(BughouseBoard::A));
@@ -103,15 +105,24 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
         }
     }
     match game.chess_rules().chess_variant {
-        ChessVariant::Standard => {},
-        ChessVariant::FogOfWar => { variant.push("DarkChess"); },
+        ChessVariant::Standard => {}
+        ChessVariant::FogOfWar => {
+            variant.push("DarkChess");
+        }
     }
     match game.chess_rules().fairy_pieces {
-        FairyPieces::NoFairy => {},
-        FairyPieces::Accolade => { variant.push("Accolade"); },
+        FairyPieces::NoFairy => {}
+        FairyPieces::Accolade => {
+            variant.push("Accolade");
+        }
     }
-    let event = if game.contest_rules().rated { "Rated Bughouse Match" } else { "Unrated Bughouse Match" };
-    formatdoc!(r#"
+    let event = if game.contest_rules().rated {
+        "Rated Bughouse Match"
+    } else {
+        "Unrated Bughouse Match"
+    };
+    formatdoc!(
+        r#"
         [Event "{}"]
         [Site "bughouse.pro"]
         [UTCDate "{}"]
@@ -168,14 +179,12 @@ fn envoy_notation(envoy: BughouseEnvoy) -> &'static str {
 //   - "Variant" - follow chess.com example;
 //   - "Outcome" - human-readable game result description; this is addition to "Result"
 //     and "Termination" fields, which follow PGN standard, but are less informative.
-pub fn export_to_bpgn(_format: BughouseExportFormat, game: &BughouseGame, round: usize)
-    -> String
-{
+pub fn export_to_bpgn(_format: BughouseExportFormat, game: &BughouseGame, round: usize) -> String {
     let header = make_bughouse_bpng_header(game, round);
     let mut doc = TextDocument::new();
-    let mut full_turn_idx = enum_map!{ _ => 1 };
+    let mut full_turn_idx = enum_map! { _ => 1 };
     for turn_record in game.turn_log() {
-        let TurnRecordExpanded{ envoy, turn_expanded, .. } = turn_record;
+        let TurnRecordExpanded { envoy, turn_expanded, .. } = turn_record;
         let turn_notation = format!(
             "{}{}. {}",
             full_turn_idx[envoy.board_idx],

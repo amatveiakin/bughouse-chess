@@ -29,7 +29,7 @@ macro_rules! piece {
     ($force:ident $kind:ident) => {
         common::PieceMatcher {
             force: bughouse_chess::Force::$force,
-            kind: bughouse_chess::PieceKind::$kind
+            kind: bughouse_chess::PieceKind::$kind,
         }
     };
 }
@@ -40,9 +40,7 @@ pub trait AutoTurnInput {
 }
 
 impl AutoTurnInput for &str {
-    fn to_turn_input(self) -> TurnInput {
-        TurnInput::Algebraic(self.to_owned())
-    }
+    fn to_turn_input(self) -> TurnInput { TurnInput::Algebraic(self.to_owned()) }
 }
 
 impl AutoTurnInput for TurnInput {

@@ -1,8 +1,6 @@
 use crate::game_stats::{GroupStats, RawStats};
 // for colorizer plugins in editors
-const fn rgb(x: u8, y: u8, z: u8) -> (u8, u8, u8) {
-    (x, y, z)
-}
+const fn rgb(x: u8, y: u8, z: u8) -> (u8, u8, u8) { (x, y, z) }
 
 // https://google.github.io/palette.js
 const COLOR_PALETTE: [(u8, u8, u8); 8] = [
@@ -92,11 +90,7 @@ pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxi
             .filter_map(|stat| stat.rating.map(|r| r.rating + r.uncertainty))
             .collect::<Vec<_>>();
 
-        let Style {
-            line_color,
-            line_dash_type,
-            fill_color,
-        } = style_for_index(index);
+        let Style { line_color, line_dash_type, fill_color } = style_for_index(index);
 
         let lower_rating_trace = plotly::Scatter::new(xs.clone(), lower_rating)
             .mode(plotly::common::Mode::Lines)
@@ -118,11 +112,7 @@ pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxi
         let rating_trace = plotly::Scatter::new(xs, rating)
             .name(player)
             .mode(plotly::common::Mode::LinesMarkers)
-            .line(
-                plotly::common::Line::default()
-                    .color(line_color)
-                    .dash(line_dash_type),
-            )
+            .line(plotly::common::Line::default().color(line_color).dash(line_dash_type))
             .marker(plotly::common::Marker::default().size(4))
             .legend_group(player);
 
@@ -139,9 +129,8 @@ pub fn teams_elo_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxis) ->
     plot.set_layout(layout);
     for (index, (team, stats_vec)) in stats.per_team.iter().enumerate() {
         // Drops points where the timestamp or rating can't be determined.
-        let filtered_stats = stats_vec
-            .iter()
-            .filter(|stat| stat.last_update.is_some() && stat.elo.is_some());
+        let filtered_stats =
+            stats_vec.iter().filter(|stat| stat.last_update.is_some() && stat.elo.is_some());
 
         // filter_map is unnecessary here and below, but avoids unwraps.
         let xs = make_xs(filtered_stats.clone(), x_axis);
@@ -153,20 +142,12 @@ pub fn teams_elo_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxis) ->
 
         let team_str = format!("{}, {}", team[0], team[1]);
 
-        let Style {
-            line_color,
-            line_dash_type,
-            ..
-        } = style_for_index(index);
+        let Style { line_color, line_dash_type, .. } = style_for_index(index);
 
         let elo_trace = plotly::Scatter::new(xs, elo)
             .name(team_str.clone())
             .mode(plotly::common::Mode::LinesMarkers)
-            .line(
-                plotly::common::Line::default()
-                    .color(line_color)
-                    .dash(line_dash_type),
-            )
+            .line(plotly::common::Line::default().color(line_color).dash(line_dash_type))
             .marker(plotly::common::Marker::default().size(4))
             .legend_group(team_str);
 
@@ -177,12 +158,8 @@ pub fn teams_elo_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxis) ->
 
 fn make_xs<'a, I: Iterator<Item = &'a RawStats>>(stats: I, x_axis: XAxis) -> Vec<String> {
     match x_axis {
-        XAxis::Timestamp => stats
-            .filter_map(get_timestamp_for_plotly)
-            .collect::<Vec<_>>(),
-        XAxis::UpdateIndex => stats
-            .map(|s| format!("{}", s.update_index))
-            .collect::<Vec<_>>(),
+        XAxis::Timestamp => stats.filter_map(get_timestamp_for_plotly).collect::<Vec<_>>(),
+        XAxis::UpdateIndex => stats.map(|s| format!("{}", s.update_index)).collect::<Vec<_>>(),
         XAxis::Date => stats.filter_map(get_date_for_plotly).collect::<Vec<_>>(),
     }
 }

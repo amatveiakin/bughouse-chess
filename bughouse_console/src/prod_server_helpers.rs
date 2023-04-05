@@ -1,8 +1,7 @@
+use bughouse_chess::server_helpers::ServerHelpers;
 use censor::Censor;
 use unicode_normalization::UnicodeNormalization;
 use unicode_segmentation::UnicodeSegmentation;
-
-use bughouse_chess::server_helpers::ServerHelpers;
 
 use crate::censor::profanity_censor;
 
@@ -12,7 +11,9 @@ pub fn validate_player_name(name: &str) -> Result<(), String> {
     const MIN_NAME_LENGTH: usize = 2;
     const MAX_NAME_LENGTH: usize = 16;
     if !name.chars().all(|ch| ch.is_alphanumeric() || ch == '-' || ch == '_') {
-        return Err(format!("Player name must consist of letters, digits, dashes ('-') and underscores ('_')."));
+        return Err(format!(
+            "Player name must consist of letters, digits, dashes ('-') and underscores ('_')."
+        ));
     }
     if !name.chars().any(|ch| ch.is_alphabetic()) {
         // Requiring that the name contains a letter reduces the risk of collision if
@@ -42,7 +43,5 @@ impl ServerHelpers for ProdServerHelpers {
     // Validates player name. Simple tests (such as length and character set) are also done
     // on the client.
     // TODO: Also convert to NFC and count graphemes in the web client.
-    fn validate_player_name(&self, name: &str) -> Result<(), String> {
-        validate_player_name(name)
-    }
+    fn validate_player_name(&self, name: &str) -> Result<(), String> { validate_player_name(name) }
 }

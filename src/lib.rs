@@ -26,13 +26,14 @@ mod player;
 mod rules;
 mod scores;
 mod starter;
+
 pub mod client;
 pub mod fen;
 pub mod janitor;
 pub mod lobby;
 pub mod meter;
-pub mod ping_pong;
 pub mod pgn;
+pub mod ping_pong;
 pub mod server;
 pub mod server_helpers;
 pub mod server_hooks;

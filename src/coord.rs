@@ -1,11 +1,10 @@
 // We use Row/Col terminology instead of traditional Rank/File because "File" could be misleading
 // in programming context. But all user-visible places (UI, PGN, etc.) should say Rank/File.
 
-use std::fmt;
-use std::ops;
+use std::{fmt, ops};
 
 use itertools::Itertools;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::force::Force;
 
@@ -17,19 +16,21 @@ pub const NUM_COLS: u8 = 8;
 // Row form a force's point of view
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct SubjectiveRow {
-    idx: u8,  // 0-based
+    idx: u8, // 0-based
 }
 
 impl SubjectiveRow {
     pub const fn from_zero_based(idx: u8) -> Option<Self> {
-        if idx < NUM_ROWS { Some(Self{ idx }) } else { None }
+        if idx < NUM_ROWS {
+            Some(Self { idx })
+        } else {
+            None
+        }
     }
     pub fn from_one_based(idx: u8) -> Option<Self> {
         (idx).checked_sub(1).and_then(|v| Self::from_zero_based(v))
     }
-    pub const fn to_one_based(&self) -> u8 {
-        self.idx + 1
-    }
+    pub const fn to_one_based(&self) -> u8 { self.idx + 1 }
     pub fn to_row(self, force: Force) -> Row {
         match force {
             Force::White => Row::from_zero_based(self.idx).unwrap(),
@@ -47,12 +48,16 @@ impl SubjectiveRow {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct Row {
-    idx: u8,  // 0-based
+    idx: u8, // 0-based
 }
 
 impl Row {
     pub const fn from_zero_based(idx: u8) -> Option<Self> {
-        if idx < NUM_ROWS { Some(Self{ idx }) } else { None }
+        if idx < NUM_ROWS {
+            Some(Self { idx })
+        } else {
+            None
+        }
     }
     pub fn from_algebraic(idx: char) -> Option<Self> {
         (idx as u8).checked_sub(b'1').and_then(|v| Self::from_zero_based(v))
@@ -81,12 +86,16 @@ impl ops::Sub for Row {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct Col {
-    idx: u8,  // 0-based
+    idx: u8, // 0-based
 }
 
 impl Col {
     pub const fn from_zero_based(idx: u8) -> Option<Self> {
-        if idx < NUM_COLS { Some(Self{ idx }) } else { None }
+        if idx < NUM_COLS {
+            Some(Self { idx })
+        } else {
+            None
+        }
     }
     pub fn from_algebraic(idx: char) -> Option<Self> {
         (idx as u8).checked_sub(b'a').and_then(|v| Self::from_zero_based(v))
@@ -120,9 +129,7 @@ pub struct Coord {
 }
 
 impl Coord {
-    pub const fn new(row: Row, col: Col) -> Self {
-        Self{ row, col }
-    }
+    pub const fn new(row: Row, col: Col) -> Self { Self { row, col } }
     pub fn from_algebraic(s: &str) -> Option<Self> {
         let (col, row) = s.chars().collect_tuple()?;
         Some(Coord {
@@ -134,7 +141,7 @@ impl Coord {
         format!("{}{}", self.col.to_algebraic(), self.row.to_algebraic())
     }
     pub fn all() -> impl Iterator<Item = Coord> {
-        Row::all().cartesian_product(Col::all()).map(|(row, col)| Coord{ row, col } )
+        Row::all().cartesian_product(Col::all()).map(|(row, col)| Coord { row, col })
     }
 }
 
@@ -150,9 +157,7 @@ impl ops::Add<(i8, i8)> for Coord {
 
 impl ops::Sub for Coord {
     type Output = (i8, i8);
-    fn sub(self, other: Self) -> Self::Output {
-        (self.row - other.row, self.col - other.col)
-    }
+    fn sub(self, other: Self) -> Self::Output { (self.row - other.row, self.col - other.col) }
 }
 
 impl fmt::Debug for Coord {
@@ -164,26 +169,26 @@ impl fmt::Debug for Coord {
 
 impl Row {
     #![allow(dead_code)]
-    pub const _1: Row = Row{ idx: 0 };
-    pub const _2: Row = Row{ idx: 1 };
-    pub const _3: Row = Row{ idx: 2 };
-    pub const _4: Row = Row{ idx: 3 };
-    pub const _5: Row = Row{ idx: 4 };
-    pub const _6: Row = Row{ idx: 5 };
-    pub const _7: Row = Row{ idx: 6 };
-    pub const _8: Row = Row{ idx: 7 };
+    pub const _1: Row = Row { idx: 0 };
+    pub const _2: Row = Row { idx: 1 };
+    pub const _3: Row = Row { idx: 2 };
+    pub const _4: Row = Row { idx: 3 };
+    pub const _5: Row = Row { idx: 4 };
+    pub const _6: Row = Row { idx: 5 };
+    pub const _7: Row = Row { idx: 6 };
+    pub const _8: Row = Row { idx: 7 };
 }
 
 impl Col {
     #![allow(dead_code)]
-    pub const A: Col = Col{ idx: 0 };
-    pub const B: Col = Col{ idx: 1 };
-    pub const C: Col = Col{ idx: 2 };
-    pub const D: Col = Col{ idx: 3 };
-    pub const E: Col = Col{ idx: 4 };
-    pub const F: Col = Col{ idx: 5 };
-    pub const G: Col = Col{ idx: 6 };
-    pub const H: Col = Col{ idx: 7 };
+    pub const A: Col = Col { idx: 0 };
+    pub const B: Col = Col { idx: 1 };
+    pub const C: Col = Col { idx: 2 };
+    pub const D: Col = Col { idx: 3 };
+    pub const E: Col = Col { idx: 4 };
+    pub const F: Col = Col { idx: 5 };
+    pub const G: Col = Col { idx: 6 };
+    pub const H: Col = Col { idx: 7 };
 }
 
 impl Coord {

@@ -1,9 +1,9 @@
-use enum_map::{EnumMap, enum_map};
+use enum_map::{enum_map, EnumMap};
 
-use crate::TOTAL_ENVOYS_PER_TEAM;
 use crate::game::{MIN_PLAYERS, TOTAL_ENVOYS};
-use crate::player::{Team, Faction, Participant};
-use crate::rules::{Teaming, Rules};
+use crate::player::{Faction, Participant, Team};
+use crate::rules::{Rules, Teaming};
+use crate::TOTAL_ENVOYS_PER_TEAM;
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -30,17 +30,14 @@ pub struct ParticipantsStatus {
 
 impl ParticipantsStatus {
     fn from_error(error: ParticipantsError) -> Self {
-        ParticipantsStatus {
-            error: Some(error),
-            warning: None,
-        }
+        ParticipantsStatus { error: Some(error), warning: None }
     }
 }
 
 pub fn num_fixed_players_per_team<'a>(
-    participants: impl Iterator<Item = &'a Participant>
+    participants: impl Iterator<Item = &'a Participant>,
 ) -> EnumMap<Team, usize> {
-    let mut num_players_per_team = enum_map!{ _ => 0 };
+    let mut num_players_per_team = enum_map! { _ => 0 };
     for p in participants {
         if let Faction::Fixed(team) = p.faction {
             num_players_per_team[team] += 1;
@@ -50,7 +47,7 @@ pub fn num_fixed_players_per_team<'a>(
 }
 
 pub fn verify_participants<'a>(
-    rules: &Rules, participants: impl Iterator<Item = &'a Participant> + Clone
+    rules: &Rules, participants: impl Iterator<Item = &'a Participant> + Clone,
 ) -> ParticipantsStatus {
     let total_players = participants.clone().filter(|p| p.faction.is_player()).count();
     if total_players < MIN_PLAYERS {
@@ -61,7 +58,8 @@ pub fn verify_participants<'a>(
     let mut need_to_seat_out = total_players > TOTAL_ENVOYS;
     match rules.bughouse_rules.teaming {
         Teaming::FixedTeams => {
-            let random_players = participants.clone().filter(|p| p.faction == Faction::Random).count();
+            let random_players =
+                participants.clone().filter(|p| p.faction == Faction::Random).count();
             let players_per_team = num_fixed_players_per_team(participants.clone());
             for &team_players in players_per_team.values() {
                 if team_players + random_players == 0 {
@@ -75,7 +73,7 @@ pub fn verify_participants<'a>(
                 }
             }
         }
-        Teaming::IndividualMode => {},
+        Teaming::IndividualMode => {}
     };
 
     if rules.contest_rules.rated && need_to_double_play {
@@ -83,7 +81,11 @@ pub fn verify_participants<'a>(
     }
 
     let players_ready = participants.clone().filter(|p| p.faction.is_player()).all(|p| p.is_ready);
-    let error = if players_ready { None } else { Some(ParticipantsError::NotReady) };
+    let error = if players_ready {
+        None
+    } else {
+        Some(ParticipantsError::NotReady)
+    };
 
     let warning = match (need_to_double_play, need_to_seat_out) {
         (true, true) => Some(ParticipantsWarning::NeedToDoublePlayAndSeatOut),
@@ -92,25 +94,20 @@ pub fn verify_participants<'a>(
         (false, false) => None,
     };
 
-    ParticipantsStatus{ error, warning }
+    ParticipantsStatus { error, warning }
 }
 
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::{ChessRules, BughouseRules, ContestRules};
+    use crate::rules::{BughouseRules, ChessRules, ContestRules};
 
     fn make_rules(teaming: Teaming, rated: bool) -> Rules {
         Rules {
             chess_rules: ChessRules::classic_blitz(),
-            bughouse_rules: BughouseRules {
-                teaming,
-                ..BughouseRules::chess_com()
-            },
-            contest_rules: ContestRules {
-                rated,
-            },
+            bughouse_rules: BughouseRules { teaming, ..BughouseRules::chess_com() },
+            contest_rules: ContestRules { rated },
         }
     }
 
@@ -128,23 +125,31 @@ mod tests {
     #[test]
     fn verify_participants_test() {
         assert_eq!(
-            verify_participants(&make_rules(Teaming::IndividualMode, true), [
-                make_participant(Faction::Random, false),
-                make_participant(Faction::Random, false),
-                make_participant(Faction::Random, false),
-            ].iter()),
+            verify_participants(
+                &make_rules(Teaming::IndividualMode, true),
+                [
+                    make_participant(Faction::Random, false),
+                    make_participant(Faction::Random, false),
+                    make_participant(Faction::Random, false),
+                ]
+                .iter()
+            ),
             ParticipantsStatus {
                 error: Some(ParticipantsError::RatedDoublePlay),
-                warning: None,
+                warning: None
             }
         );
 
         assert_eq!(
-            verify_participants(&make_rules(Teaming::IndividualMode, false), [
-                make_participant(Faction::Random, false),
-                make_participant(Faction::Random, false),
-                make_participant(Faction::Random, false),
-            ].iter()),
+            verify_participants(
+                &make_rules(Teaming::IndividualMode, false),
+                [
+                    make_participant(Faction::Random, false),
+                    make_participant(Faction::Random, false),
+                    make_participant(Faction::Random, false),
+                ]
+                .iter()
+            ),
             ParticipantsStatus {
                 error: Some(ParticipantsError::NotReady),
                 warning: Some(ParticipantsWarning::NeedToDoublePlay),
@@ -152,12 +157,16 @@ mod tests {
         );
 
         assert_eq!(
-            verify_participants(&make_rules(Teaming::FixedTeams, false), [
-                make_participant(Faction::Fixed(Team::Red), true),
-                make_participant(Faction::Fixed(Team::Blue), true),
-                make_participant(Faction::Fixed(Team::Blue), true),
-                make_participant(Faction::Fixed(Team::Blue), true),
-            ].iter()),
+            verify_participants(
+                &make_rules(Teaming::FixedTeams, false),
+                [
+                    make_participant(Faction::Fixed(Team::Red), true),
+                    make_participant(Faction::Fixed(Team::Blue), true),
+                    make_participant(Faction::Fixed(Team::Blue), true),
+                    make_participant(Faction::Fixed(Team::Blue), true),
+                ]
+                .iter()
+            ),
             ParticipantsStatus {
                 error: None,
                 warning: Some(ParticipantsWarning::NeedToDoublePlayAndSeatOut),
@@ -165,16 +174,17 @@ mod tests {
         );
 
         assert_eq!(
-            verify_participants(&make_rules(Teaming::FixedTeams, false), [
-                make_participant(Faction::Fixed(Team::Red), true),
-                make_participant(Faction::Fixed(Team::Blue), true),
-                make_participant(Faction::Fixed(Team::Blue), true),
-                make_participant(Faction::Random, true),
-            ].iter()),
-            ParticipantsStatus {
-                error: None,
-                warning: None,
-            }
+            verify_participants(
+                &make_rules(Teaming::FixedTeams, false),
+                [
+                    make_participant(Faction::Fixed(Team::Red), true),
+                    make_participant(Faction::Fixed(Team::Blue), true),
+                    make_participant(Faction::Fixed(Team::Blue), true),
+                    make_participant(Faction::Random, true),
+                ]
+                .iter()
+            ),
+            ParticipantsStatus { error: None, warning: None }
         );
     }
 }

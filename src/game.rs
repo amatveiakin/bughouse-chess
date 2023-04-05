@@ -27,21 +27,21 @@
 
 use std::rc::Rc;
 
-use enum_map::{Enum, EnumMap, enum_map};
+use enum_map::{enum_map, Enum, EnumMap};
 use itertools::Itertools;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoEnumIterator};
 
-use crate::algebraic::{AlgebraicDetails, AlgebraicCharset, AlgebraicTurn};
+use crate::algebraic::{AlgebraicCharset, AlgebraicDetails, AlgebraicTurn};
 use crate::board::{
-    Board, Reserve, Turn, TurnInput, TurnExpanded, TurnFacts, TurnMode, TurnError,
-    ChessGameStatus, VictoryReason, DrawReason
+    Board, ChessGameStatus, DrawReason, Reserve, Turn, TurnError, TurnExpanded, TurnFacts,
+    TurnInput, TurnMode, VictoryReason,
 };
 use crate::clock::GameInstant;
 use crate::force::Force;
 use crate::player::Team;
-use crate::rules::{ContestRules, ChessRules, BughouseRules};
-use crate::starter::{EffectiveStartingPosition, generate_starting_position};
+use crate::rules::{BughouseRules, ChessRules, ContestRules};
+use crate::starter::{generate_starting_position, EffectiveStartingPosition};
 
 
 pub const MIN_PLAYERS: usize = 2;
@@ -80,25 +80,22 @@ impl TurnRecordExpanded {
 
 #[derive(Clone, Debug)]
 pub struct ChessGame {
-    #[allow(dead_code)] starting_position: EffectiveStartingPosition,
+    #[allow(dead_code)]
+    starting_position: EffectiveStartingPosition,
     board: Board,
 }
 
 impl ChessGame {
     pub fn new(
-        contest_rules: ContestRules,
-        rules: ChessRules,
-        player_names: EnumMap<Force, String>
+        contest_rules: ContestRules, rules: ChessRules, player_names: EnumMap<Force, String>,
     ) -> Self {
         let starting_position = generate_starting_position(rules.starting_position);
         Self::new_with_starting_position(contest_rules, rules, starting_position, player_names)
     }
 
     pub fn new_with_starting_position(
-        contest_rules: ContestRules,
-        rules: ChessRules,
-        starting_position: EffectiveStartingPosition,
-        player_names: EnumMap<Force, String>
+        contest_rules: ContestRules, rules: ChessRules,
+        starting_position: EffectiveStartingPosition, player_names: EnumMap<Force, String>,
     ) -> Self {
         let board = Board::new(
             Rc::new(contest_rules),
@@ -107,22 +104,20 @@ impl ChessGame {
             player_names,
             &starting_position,
         );
-        ChessGame{ starting_position, board }
+        ChessGame { starting_position, board }
     }
 
     pub fn board(&self) -> &Board { &self.board }
     pub fn status(&self) -> ChessGameStatus { self.board.status() }
 
-    pub fn test_flag(&mut self, now: GameInstant) {
-        self.board.test_flag(now);
-    }
+    pub fn test_flag(&mut self, now: GameInstant) { self.board.test_flag(now); }
 
     // Function from `try_turn...` familiy do not test flag internally. They will not update
     // game status if a player has zero time left.
     // Thus it's recommended to `test_flag` first.
-    pub fn try_turn(&mut self, turn_input: &TurnInput, mode: TurnMode, now: GameInstant)
-        -> Result<Turn, TurnError>
-    {
+    pub fn try_turn(
+        &mut self, turn_input: &TurnInput, mode: TurnMode, now: GameInstant,
+    ) -> Result<Turn, TurnError> {
         let turn = self.board.parse_turn_input(turn_input, mode)?;
         self.board.try_turn(turn, mode, now)?;
         Ok(turn)
@@ -215,9 +210,7 @@ pub enum PlayerRelation {
 }
 
 impl BughouseEnvoy {
-    pub fn team(self) -> Team {
-        get_bughouse_team(self.board_idx, self.force)
-    }
+    pub fn team(self) -> Team { get_bughouse_team(self.board_idx, self.force) }
     pub fn opponent(self) -> Self {
         BughouseEnvoy {
             board_idx: self.board_idx,
@@ -236,8 +229,12 @@ impl BughousePlayer {
     pub fn envoy_for(self, board_idx: BughouseBoard) -> Option<BughouseEnvoy> {
         match self {
             BughousePlayer::SinglePlayer(envoy) => {
-                if envoy.board_idx == board_idx { Some(envoy) } else { None }
-            },
+                if envoy.board_idx == board_idx {
+                    Some(envoy)
+                } else {
+                    None
+                }
+            }
             BughousePlayer::DoublePlayer(team) => Some(BughouseEnvoy {
                 board_idx,
                 force: get_bughouse_force(team, board_idx),
@@ -247,10 +244,12 @@ impl BughousePlayer {
     pub fn envoys(self) -> Vec<BughouseEnvoy> {
         match self {
             BughousePlayer::SinglePlayer(envoy) => vec![envoy],
-            BughousePlayer::DoublePlayer(team) => BughouseBoard::iter().map(|board_idx| BughouseEnvoy {
-                board_idx,
-                force: get_bughouse_force(team, board_idx),
-            }).collect(),
+            BughousePlayer::DoublePlayer(team) => BughouseBoard::iter()
+                .map(|board_idx| BughouseEnvoy {
+                    board_idx,
+                    force: get_bughouse_force(team, board_idx),
+                })
+                .collect(),
         }
     }
     pub fn plays_on_board(self, board_idx: BughouseBoard) -> bool {
@@ -281,7 +280,7 @@ impl BughousePlayer {
                     // actual game such two players cannot coexist.
                     PlayerRelation::Other
                 }
-            },
+            }
             (true, false) => PlayerRelation::Opponent,
             (false, true) => PlayerRelation::Partner,
             (false, false) => PlayerRelation::Diagonal,
@@ -305,9 +304,7 @@ impl BughouseParticipant {
     pub fn plays_for(self, envoy: BughouseEnvoy) -> bool {
         self.as_player().map_or(false, |p| p.plays_for(envoy))
     }
-    pub fn envoys(self) -> Vec<BughouseEnvoy> {
-        self.as_player().map_or(vec![], |p| p.envoys())
-    }
+    pub fn envoys(self) -> Vec<BughouseEnvoy> { self.as_player().map_or(vec![], |p| p.envoys()) }
 }
 
 
@@ -321,33 +318,36 @@ pub struct BughouseGame {
 
 impl BughouseGame {
     pub fn new(
-        contest_rules: ContestRules,
-        chess_rules: ChessRules,
-        bughouse_rules: BughouseRules,
-        players: &[PlayerInGame]
+        contest_rules: ContestRules, chess_rules: ChessRules, bughouse_rules: BughouseRules,
+        players: &[PlayerInGame],
     ) -> Self {
         let starting_position = generate_starting_position(chess_rules.starting_position);
-        Self::new_with_starting_position(contest_rules, chess_rules, bughouse_rules, starting_position, players)
+        Self::new_with_starting_position(
+            contest_rules,
+            chess_rules,
+            bughouse_rules,
+            starting_position,
+            players,
+        )
     }
 
     pub fn new_with_starting_position(
-        contest_rules: ContestRules,
-        chess_rules: ChessRules,
-        bughouse_rules: BughouseRules,
-        starting_position: EffectiveStartingPosition,
-        players: &[PlayerInGame],
+        contest_rules: ContestRules, chess_rules: ChessRules, bughouse_rules: BughouseRules,
+        starting_position: EffectiveStartingPosition, players: &[PlayerInGame],
     ) -> Self {
         let contest_rules = Rc::new(contest_rules);
         let chess_rules = Rc::new(chess_rules);
         let bughouse_rules = Rc::new(bughouse_rules);
         let player_map = make_player_map(players);
-        let boards = player_map.map(|_, board_players| Board::new(
-            Rc::clone(&contest_rules),
-            Rc::clone(&chess_rules),
-            Some(Rc::clone(&bughouse_rules)),
-            board_players,
-            &starting_position
-        ));
+        let boards = player_map.map(|_, board_players| {
+            Board::new(
+                Rc::clone(&contest_rules),
+                Rc::clone(&chess_rules),
+                Some(Rc::clone(&bughouse_rules)),
+                board_players,
+                &starting_position,
+            )
+        });
         BughouseGame {
             starting_position,
             boards,
@@ -362,14 +362,18 @@ impl BughouseGame {
             (**self.chess_rules()).clone(),
             (**self.bughouse_rules()).clone(),
             self.starting_position.clone(),
-            &self.players()
+            &self.players(),
         )
     }
 
     pub fn starting_position(&self) -> &EffectiveStartingPosition { &self.starting_position }
-    pub fn contest_rules(&self) -> &Rc<ContestRules> { self.boards[BughouseBoard::A].contest_rules() }
+    pub fn contest_rules(&self) -> &Rc<ContestRules> {
+        self.boards[BughouseBoard::A].contest_rules()
+    }
     pub fn chess_rules(&self) -> &Rc<ChessRules> { self.boards[BughouseBoard::A].chess_rules() }
-    pub fn bughouse_rules(&self) -> &Rc<BughouseRules> { self.boards[BughouseBoard::A].bughouse_rules().as_ref().unwrap() }
+    pub fn bughouse_rules(&self) -> &Rc<BughouseRules> {
+        self.boards[BughouseBoard::A].bughouse_rules().as_ref().unwrap()
+    }
     // Improvement potential. Remove mutable access to the boards.
     pub fn board_mut(&mut self, idx: BughouseBoard) -> &mut Board { &mut self.boards[idx] }
     pub fn board(&self, idx: BughouseBoard) -> &Board { &self.boards[idx] }
@@ -385,9 +389,11 @@ impl BughouseGame {
     pub fn players(&self) -> Vec<PlayerInGame> {
         let mut ret = vec![];
         for team in Team::iter() {
-            let same_player = BughouseBoard::iter().map(|board_idx| {
-                self.boards[board_idx].player_name(get_bughouse_force(team, board_idx))
-            }).all_equal();
+            let same_player = BughouseBoard::iter()
+                .map(|board_idx| {
+                    self.boards[board_idx].player_name(get_bughouse_force(team, board_idx))
+                })
+                .all_equal();
             if same_player {
                 let board_idx = BughouseBoard::A;
                 let force = get_bughouse_force(team, board_idx);
@@ -400,7 +406,7 @@ impl BughouseGame {
                     let force = get_bughouse_force(team, board_idx);
                     ret.push(PlayerInGame {
                         name: self.boards[board_idx].player_name(force).to_owned(),
-                        id: BughousePlayer::SinglePlayer(BughouseEnvoy{ board_idx, force }),
+                        id: BughousePlayer::SinglePlayer(BughouseEnvoy { board_idx, force }),
                     });
                 }
             }
@@ -412,12 +418,15 @@ impl BughouseGame {
         self.players().iter().find(|p| p.name == player_name).map(|p| p.id)
     }
     pub fn envoy_is_active(&self, envoy: BughouseEnvoy) -> bool {
-        self.status.is_active() &&
-            self.boards[envoy.board_idx].active_force() == envoy.force
+        self.status.is_active() && self.boards[envoy.board_idx].active_force() == envoy.force
     }
     pub fn turn_mode_for_envoy(&self, envoy: BughouseEnvoy) -> Result<TurnMode, TurnError> {
         if self.status.is_active() {
-            Ok(if self.envoy_is_active(envoy) { TurnMode::Normal } else { TurnMode::Preturn })
+            Ok(if self.envoy_is_active(envoy) {
+                TurnMode::Normal
+            } else {
+                TurnMode::Preturn
+            })
         } else {
             Err(TurnError::GameOver)
         }
@@ -448,12 +457,16 @@ impl BughouseGame {
                 } else {
                     Draw(DrawReason::SimultaneousFlag)
                 }
-            },
-            (Victory(winner, Flag), Active) => { Victory(winner, Flag) },
-            (Active, Victory(winner, Flag)) => { Victory(winner, Flag) },
-            (Active, Active) => { Active },
-            (Victory(_, reason), _) => panic!("Unexpected victory reason in `test_flag`: {:?}", reason),
-            (_, Victory(_, reason)) => panic!("Unexpected victory reason in `test_flag`: {:?}", reason),
+            }
+            (Victory(winner, Flag), Active) => Victory(winner, Flag),
+            (Active, Victory(winner, Flag)) => Victory(winner, Flag),
+            (Active, Active) => Active,
+            (Victory(_, reason), _) => {
+                panic!("Unexpected victory reason in `test_flag`: {:?}", reason)
+            }
+            (_, Victory(_, reason)) => {
+                panic!("Unexpected victory reason in `test_flag`: {:?}", reason)
+            }
             (Draw(_), _) | (_, Draw(_)) => panic!("Unexpected draw in `test_flag`"),
         };
         self.set_status(status, now);
@@ -461,17 +474,16 @@ impl BughouseGame {
 
     // Should `test_flag` first!
     pub fn try_turn(
-        &mut self, board_idx: BughouseBoard, turn_input: &TurnInput, mode: TurnMode, now: GameInstant
-    )
-        -> Result<Turn, TurnError>
-    {
+        &mut self, board_idx: BughouseBoard, turn_input: &TurnInput, mode: TurnMode,
+        now: GameInstant,
+    ) -> Result<Turn, TurnError> {
         if !self.status.is_active() {
             // `Board::try_turn` will also test game status, but that's not enough: the game
             // may have ended earlier on the other board.
             return Err(TurnError::GameOver);
         }
         let board = &mut self.boards[board_idx];
-        let envoy = BughouseEnvoy{ board_idx, force: board.turn_owner(mode) };
+        let envoy = BughouseEnvoy { board_idx, force: board.turn_owner(mode) };
         let turn = board.parse_turn_input(turn_input, mode)?;
         // `turn_to_algebraic` must be called before `try_turn`, because algebraic form depend
         // on the current position.
@@ -482,24 +494,22 @@ impl BughouseGame {
         let turn_algebraic = turn_algebraic.unwrap();
         let other_board = &mut self.boards[board_idx.other()];
         match mode {
-            TurnMode::Normal => { other_board.start_clock(now) }
+            TurnMode::Normal => other_board.start_clock(now),
             TurnMode::Preturn => {}
         }
         if let Some(ref capture) = turn_facts.capture {
             other_board.receive_capture(&capture);
         }
         let turn_expanded = make_turn_expanded(turn, turn_algebraic, turn_facts);
-        self.turn_log.push(TurnRecordExpanded{ mode, envoy, turn_expanded, time: now });
+        self.turn_log.push(TurnRecordExpanded { mode, envoy, turn_expanded, time: now });
         assert!(self.status.is_active());
         self.set_status(self.game_status_for_board(board_idx), now);
         Ok(turn)
     }
 
     pub fn try_turn_by_envoy(
-        &mut self, envoy: BughouseEnvoy, turn_input: &TurnInput, mode: TurnMode, now: GameInstant
-    )
-        -> Result<Turn, TurnError>
-    {
+        &mut self, envoy: BughouseEnvoy, turn_input: &TurnInput, mode: TurnMode, now: GameInstant,
+    ) -> Result<Turn, TurnError> {
         let expected_mode = self.turn_mode_for_envoy(envoy)?;
         if mode != expected_mode {
             return Err(TurnError::WrongTurnOrder);
@@ -509,12 +519,14 @@ impl BughouseGame {
 
     pub fn outcome(&self) -> String {
         use BughouseGameStatus::*;
-        use VictoryReason::*;
         use DrawReason::*;
+        use VictoryReason::*;
         let make_team_string = |team| {
             // Note. Not using `self.players()` because the order there is not specified.
             BughouseBoard::iter()
-                .map(|board_idx| self.board(board_idx).player_name(get_bughouse_force(team, board_idx)))
+                .map(|board_idx| {
+                    self.board(board_idx).player_name(get_bughouse_force(team, board_idx))
+                })
                 .join(" & ")
         };
         match self.status() {
@@ -530,8 +542,9 @@ impl BughouseGame {
     fn game_status_for_board(&self, board_idx: BughouseBoard) -> BughouseGameStatus {
         match self.boards[board_idx].status() {
             ChessGameStatus::Active => BughouseGameStatus::Active,
-            ChessGameStatus::Victory(force, reason) =>
-                BughouseGameStatus::Victory(get_bughouse_team(board_idx, force), reason),
+            ChessGameStatus::Victory(force, reason) => {
+                BughouseGameStatus::Victory(get_bughouse_team(board_idx, force), reason)
+            }
             ChessGameStatus::Draw(reason) => BughouseGameStatus::Draw(reason),
         }
     }
@@ -539,7 +552,7 @@ impl BughouseGame {
 
 fn make_player_map(players: &[PlayerInGame]) -> EnumMap<BughouseBoard, EnumMap<Force, String>> {
     let mut player_map: EnumMap<BughouseBoard, EnumMap<Force, Option<String>>> =
-        enum_map!{ _ => enum_map!{ _ => None } };
+        enum_map! { _ => enum_map!{ _ => None } };
     let mut insert_player = |board_idx, force, name: &String| {
         let player_ref = &mut player_map[board_idx][force];
         assert!(player_ref.is_none());
@@ -549,17 +562,15 @@ fn make_player_map(players: &[PlayerInGame]) -> EnumMap<BughouseBoard, EnumMap<F
         match p.id {
             BughousePlayer::SinglePlayer(envoy) => {
                 insert_player(envoy.board_idx, envoy.force, &p.name);
-            },
+            }
             BughousePlayer::DoublePlayer(team) => {
                 for board_idx in BughouseBoard::iter() {
                     insert_player(board_idx, get_bughouse_force(team, board_idx), &p.name);
                 }
-            },
+            }
         }
     }
-    player_map.map(|_, board_players| {
-        board_players.map(|_, p| { p.unwrap() })
-    })
+    player_map.map(|_, board_players| board_players.map(|_, p| p.unwrap()))
 }
 
 fn make_turn_expanded(turn: Turn, algebraic: AlgebraicTurn, facts: TurnFacts) -> TurnExpanded {
@@ -569,15 +580,15 @@ fn make_turn_expanded(turn: Turn, algebraic: AlgebraicTurn, facts: TurnFacts) ->
     match turn {
         Turn::Move(mv) => {
             relocation = Some((mv.from, mv.to));
-        },
+        }
         Turn::Drop(dr) => {
             drop = Some(dr.to);
-        },
+        }
         Turn::Castle(_) => {
             let castling_relocations = facts.castling_relocations.unwrap();
             relocation = Some(castling_relocations.king);
             relocation_extra = Some(castling_relocations.rook);
-        },
+        }
     }
     TurnExpanded {
         turn,

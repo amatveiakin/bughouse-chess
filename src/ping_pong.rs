@@ -52,17 +52,11 @@ pub enum ActiveConnectionStatus {
 }
 
 impl PassiveConnectionStatus {
-    pub fn is_healthy(self) -> bool {
-        self == PassiveConnectionStatus::Healthy
-    }
+    pub fn is_healthy(self) -> bool { self == PassiveConnectionStatus::Healthy }
 }
 
 impl PassiveConnectionMonitor {
-    pub fn new(now: Instant) -> Self {
-        PassiveConnectionMonitor {
-            latest_incoming: now,
-        }
-    }
+    pub fn new(now: Instant) -> Self { PassiveConnectionMonitor { latest_incoming: now } }
 
     pub fn latest_incoming(&self) -> Instant { self.latest_incoming }
 
@@ -71,9 +65,13 @@ impl PassiveConnectionMonitor {
     }
 
     pub fn status(&mut self, now: Instant) -> PassiveConnectionStatus {
-        if now.saturating_duration_since(self.latest_incoming) >= OTHER_PARTY_PERMANENTLY_LOST_THRESHOLD {
+        if now.saturating_duration_since(self.latest_incoming)
+            >= OTHER_PARTY_PERMANENTLY_LOST_THRESHOLD
+        {
             PassiveConnectionStatus::PermanentlyLost
-        } else if now.saturating_duration_since(self.latest_incoming) >= OTHER_PARTY_TEMPORARY_LOST_THRESHOLD {
+        } else if now.saturating_duration_since(self.latest_incoming)
+            >= OTHER_PARTY_TEMPORARY_LOST_THRESHOLD
+        {
             PassiveConnectionStatus::TemporaryLost
         } else {
             PassiveConnectionStatus::Healthy

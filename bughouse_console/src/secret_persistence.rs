@@ -1,7 +1,6 @@
+use bughouse_chess::session::RegistrationMethod;
 use tide::utils::async_trait;
 use time::OffsetDateTime;
-
-use bughouse_chess::session::RegistrationMethod;
 
 
 #[derive(Debug, Clone, Copy)]
@@ -43,28 +42,23 @@ impl Account {
 #[async_trait]
 pub trait SecretDatabaseReader {
     async fn account_by_email(&self, email: &str) -> Result<Option<Account>, anyhow::Error>;
-    async fn account_by_user_name(&self, user_name: &str) -> Result<Option<Account>, anyhow::Error>;
+    async fn account_by_user_name(&self, user_name: &str)
+        -> Result<Option<Account>, anyhow::Error>;
 }
 
 #[async_trait]
 pub trait SecretDatabaseWriter {
     async fn create_tables(&self) -> anyhow::Result<()>;
     async fn create_account(
-        &self,
-        user_name: String,
-        email: Option<String>,
-        password_hash: Option<String>,
-        registration_method: RegistrationMethod,
-        creation_time: OffsetDateTime,
+        &self, user_name: String, email: Option<String>, password_hash: Option<String>,
+        registration_method: RegistrationMethod, creation_time: OffsetDateTime,
     ) -> anyhow::Result<()>;
     async fn update_account_txn(
-        &self,
-        id: AccountId,
+        &self, id: AccountId,
         f: Box<dyn for<'a> FnOnce(&'a mut LiveAccount) -> anyhow::Result<()> + Send>,
     ) -> anyhow::Result<()>;
     async fn delete_account_txn(
-        &self,
-        id: AccountId,
+        &self, id: AccountId,
         f: Box<dyn FnOnce(LiveAccount) -> anyhow::Result<DeletedAccount> + Send>,
     ) -> anyhow::Result<()>;
 }

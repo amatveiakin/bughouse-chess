@@ -7,21 +7,17 @@
 mod common;
 
 use std::collections::HashMap;
-use std::iter;
-use std::ops;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc, Arc, Mutex};
+use std::{iter, ops};
 
-use itertools::Itertools;
-
-use bughouse_chess::*;
 use bughouse_chess::server_helpers::TestServerHelpers;
 use bughouse_chess::session_store::SessionStore;
+use bughouse_chess::*;
 use common::*;
+use itertools::Itertools;
 
 
-fn default_chess_rules() -> ChessRules {
-    ChessRules::classic_blitz()
-}
+fn default_chess_rules() -> ChessRules { ChessRules::classic_blitz() }
 
 fn default_bughouse_rules() -> BughouseRules {
     BughouseRules {
@@ -58,10 +54,13 @@ impl Server {
         let clients_copy = Arc::clone(&clients);
         let session_store = Arc::new(Mutex::new(SessionStore::new()));
         let mut state = server::ServerState::new(
-            clients_copy, session_store, Box::new(TestServerHelpers{}), None
+            clients_copy,
+            session_store,
+            Box::new(TestServerHelpers {}),
+            None,
         );
         state.TEST_disable_countdown();
-        Server{ clients, state }
+        Server { clients, state }
     }
 
     fn add_client(&mut self, events_tx: mpsc::Sender<BughouseServerEvent>) -> server::ClientId {
@@ -71,9 +70,8 @@ impl Server {
     fn send_network_event(&mut self, id: server::ClientId, event: BughouseClientEvent) {
         self.state.apply_event(server::IncomingEvent::Network(id, event));
     }
-    #[allow(dead_code)] fn tick(&mut self) {
-        self.state.apply_event(server::IncomingEvent::Tick);
-    }
+    #[allow(dead_code)]
+    fn tick(&mut self) { self.state.apply_event(server::IncomingEvent::Tick); }
 }
 
 
@@ -92,7 +90,7 @@ impl Client {
         let user_agent = "Test".to_owned();
         let time_zone = "?".to_owned();
         let state = client::ClientState::new(user_agent, time_zone, outgoing_tx);
-        Client{ id, incoming_rx, outgoing_rx, state }
+        Client { id, incoming_rx, outgoing_rx, state }
     }
 
     fn join(&mut self, contest_id: &str, my_name: &str) {
@@ -124,9 +122,7 @@ impl Client {
     fn make_turn(&mut self, turn: impl AutoTurnInput) -> Result<(), TurnError> {
         self.state.make_turn(self.my_display_board_idx(), turn.to_turn_input())
     }
-    fn cancel_preturn(&mut self) {
-        self.state.cancel_preturn(self.my_display_board_idx())
-    }
+    fn cancel_preturn(&mut self) { self.state.cancel_preturn(self.my_display_board_idx()) }
 
     fn process_outgoing_events(&mut self, server: &mut Server) -> bool {
         let mut something_changed = false;
@@ -164,16 +160,11 @@ struct World {
 }
 
 impl World {
-    fn new() -> Self {
-        World {
-            server: Server::new(),
-            clients: vec![],
-        }
-    }
+    fn new() -> Self { World { server: Server::new(), clients: vec![] } }
 
     fn new_contest_with_rules(
-        &mut self, client_id: TestClientId, player_name: &str,
-        chess_rules: ChessRules, bughouse_rules: BughouseRules
+        &mut self, client_id: TestClientId, player_name: &str, chess_rules: ChessRules,
+        bughouse_rules: BughouseRules,
     ) -> String {
         let rules = Rules {
             contest_rules: ContestRules::unrated(),
@@ -186,12 +177,15 @@ impl World {
     }
     fn new_contest(&mut self, client_id: TestClientId, player_name: &str) -> String {
         self.new_contest_with_rules(
-            client_id, player_name, default_chess_rules(), default_bughouse_rules()
+            client_id,
+            player_name,
+            default_chess_rules(),
+            default_bughouse_rules(),
         )
     }
 
     fn join_and_set_team(
-        &mut self, client_id: TestClientId, contest_id: &str, player_name: &str, team: Team
+        &mut self, client_id: TestClientId, contest_id: &str, player_name: &str, team: Team,
     ) {
         self[client_id].join(contest_id, player_name);
         self.process_events_for(client_id).unwrap();
@@ -205,17 +199,23 @@ impl World {
         idx
     }
     fn new_clients<const NUM: usize>(&mut self) -> [TestClientId; NUM] {
-        iter::repeat_with(|| self.new_client()).take(NUM).collect_vec().try_into().unwrap()
+        iter::repeat_with(|| self.new_client())
+            .take(NUM)
+            .collect_vec()
+            .try_into()
+            .unwrap()
     }
 
-    fn default_clients(&mut self) -> (String, TestClientId, TestClientId, TestClientId, TestClientId) {
+    fn default_clients(
+        &mut self,
+    ) -> (String, TestClientId, TestClientId, TestClientId, TestClientId) {
         let [cl1, cl2, cl3, cl4] = self.new_clients();
 
         let contest = self.new_contest(cl1, "p1");
         self[cl1].state.set_faction(Faction::Fixed(Team::Red));
         self.process_all_events();
 
-        self.server.state.TEST_override_board_assignment(contest.clone(), vec! [
+        self.server.state.TEST_override_board_assignment(contest.clone(), vec![
             single_player("p1", envoy!(White A)),
             single_player("p2", envoy!(Black B)),
             single_player("p3", envoy!(Black A)),
@@ -238,7 +238,9 @@ impl World {
     fn process_outgoing_events_for(&mut self, client_id: TestClientId) -> bool {
         self.clients[client_id.0].process_outgoing_events(&mut self.server)
     }
-    fn process_incoming_events_for(&mut self, client_id: TestClientId) -> (bool, Result<(), client::EventError>) {
+    fn process_incoming_events_for(
+        &mut self, client_id: TestClientId,
+    ) -> (bool, Result<(), client::EventError>) {
         self.clients[client_id.0].process_incoming_events()
     }
     fn process_events_for(&mut self, client_id: TestClientId) -> Result<(), client::EventError> {
@@ -281,15 +283,24 @@ impl World {
     }
 
     fn replay_white_checkmates_black(&mut self, white_id: TestClientId, black_id: TestClientId) {
-        self[white_id].make_turn("Nf3").unwrap();   self.process_all_events();
-        self[black_id].make_turn("h6").unwrap();    self.process_all_events();
-        self[white_id].make_turn("Ng5").unwrap();   self.process_all_events();
-        self[black_id].make_turn("h5").unwrap();    self.process_all_events();
-        self[white_id].make_turn("e4").unwrap();    self.process_all_events();
-        self[black_id].make_turn("h4").unwrap();    self.process_all_events();
-        self[white_id].make_turn("Qf3").unwrap();   self.process_all_events();
-        self[black_id].make_turn("h3").unwrap();    self.process_all_events();
-        self[white_id].make_turn("Qxf7").unwrap();  self.process_all_events();
+        self[white_id].make_turn("Nf3").unwrap();
+        self.process_all_events();
+        self[black_id].make_turn("h6").unwrap();
+        self.process_all_events();
+        self[white_id].make_turn("Ng5").unwrap();
+        self.process_all_events();
+        self[black_id].make_turn("h5").unwrap();
+        self.process_all_events();
+        self[white_id].make_turn("e4").unwrap();
+        self.process_all_events();
+        self[black_id].make_turn("h4").unwrap();
+        self.process_all_events();
+        self[white_id].make_turn("Qf3").unwrap();
+        self.process_all_events();
+        self[black_id].make_turn("h3").unwrap();
+        self.process_all_events();
+        self[white_id].make_turn("Qxf7").unwrap();
+        self.process_all_events();
     }
 }
 
@@ -313,7 +324,7 @@ fn play_online_misc() {
     world[cl1].state.set_faction(Faction::Fixed(Team::Red));
     world.process_all_events();
 
-    world.server.state.TEST_override_board_assignment(contest.clone(), vec! [
+    world.server.state.TEST_override_board_assignment(contest.clone(), vec![
         single_player("p1", envoy!(White A)),
         single_player("p2", envoy!(Black B)),
         single_player("p3", envoy!(Black A)),
@@ -355,7 +366,7 @@ fn play_online_misc() {
     world[cl4].make_turn("d4").unwrap();
     world.process_all_events();
 
-    world[cl2].make_turn("xd3").unwrap();  // en passant
+    world[cl2].make_turn("xd3").unwrap(); // en passant
     world.process_all_events();
 }
 
@@ -392,12 +403,16 @@ fn preturn_failed_square_occupied() {
     let mut world = World::new();
     let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
 
-    world[cl1].make_turn("e4").unwrap();  world.process_all_events();
-    world[cl3].make_turn("d5").unwrap();  world.process_all_events();
+    world[cl1].make_turn("e4").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("d5").unwrap();
+    world.process_all_events();
 
     // Invalid pre-move ignored.
-    world[cl3].make_turn("d4").unwrap();  world.process_all_events();
-    world[cl1].make_turn("d4").unwrap();  world.process_all_events();
+    world[cl3].make_turn("d4").unwrap();
+    world.process_all_events();
+    world[cl1].make_turn("d4").unwrap();
+    world.process_all_events();
     assert!(world[cl1].my_board().grid()[Coord::D5].is(piece!(Black Pawn)));
     assert!(world[cl1].my_board().grid()[Coord::D4].is(piece!(White Pawn)));
 }
@@ -408,12 +423,16 @@ fn preturn_failed_piece_captured() {
     let mut world = World::new();
     let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
 
-    world[cl1].make_turn(drag_move!(E2 -> E4)).unwrap();  world.process_all_events();
-    world[cl3].make_turn(drag_move!(D7 -> D5)).unwrap();  world.process_all_events();
+    world[cl1].make_turn(drag_move!(E2 -> E4)).unwrap();
+    world.process_all_events();
+    world[cl3].make_turn(drag_move!(D7 -> D5)).unwrap();
+    world.process_all_events();
 
     // Invalid pre-move ignored.
-    world[cl3].make_turn(drag_move!(D5 -> D4)).unwrap();  world.process_all_events();
-    world[cl1].make_turn(drag_move!(E4 -> D5)).unwrap();  world.process_all_events();
+    world[cl3].make_turn(drag_move!(D5 -> D4)).unwrap();
+    world.process_all_events();
+    world[cl1].make_turn(drag_move!(E4 -> D5)).unwrap();
+    world.process_all_events();
     assert!(world[cl1].my_board().grid()[Coord::D5].is(piece!(White Pawn)));
     assert!(world[cl1].my_board().grid()[Coord::D4].is_none());
 }
@@ -577,7 +596,10 @@ fn reconnect_lobby() {
     // Cannot reconnect as an active player.
     let cl1_new = world.new_client();
     world[cl1_new].join(&contest, "p1");
-    assert!(matches!(world.process_events_for(cl1_new), Err(client::EventError::IgnorableError(_))));
+    assert!(matches!(
+        world.process_events_for(cl1_new),
+        Err(client::EventError::IgnorableError(_))
+    ));
     world.process_all_events();
 
     // Can reconnect with the same name - that's fine.
@@ -602,10 +624,14 @@ fn reconnect_game_active() {
     let (contest, cl1, _cl2, cl3, _cl4) = world.default_clients();
     assert!(world[cl1].state.game_state().is_some());
 
-    world[cl1].make_turn("e4").unwrap();   world.process_all_events();
-    world[cl3].make_turn("d5").unwrap();   world.process_all_events();
-    world[cl1].make_turn("xd5").unwrap();  world.process_all_events();
-    world[cl3].make_turn("Nf6").unwrap();  world.process_all_events();
+    world[cl1].make_turn("e4").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("d5").unwrap();
+    world.process_all_events();
+    world[cl1].make_turn("xd5").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("Nf6").unwrap();
+    world.process_all_events();
 
     world[cl3].state.leave();
     world.process_all_events();
@@ -621,7 +647,10 @@ fn reconnect_game_active() {
     // Cannot reconnect as an active player.
     let cl2_new = world.new_client();
     world[cl2_new].join(&contest, "p2");
-    assert!(matches!(world.process_events_for(cl2_new), Err(client::EventError::IgnorableError(_))));
+    assert!(matches!(
+        world.process_events_for(cl2_new),
+        Err(client::EventError::IgnorableError(_))
+    ));
     world.process_all_events();
 
     // Reconnection successful.
@@ -707,16 +736,12 @@ fn three_players() {
     let mut world = World::new();
     let [cl1, cl2, cl3] = world.new_clients();
 
-    let contest = world.new_contest_with_rules(
-        cl1, "p1",
-        default_chess_rules(),
-        BughouseRules {
-            teaming: Teaming::IndividualMode,
-            .. default_bughouse_rules()
-        }
-    );
+    let contest = world.new_contest_with_rules(cl1, "p1", default_chess_rules(), BughouseRules {
+        teaming: Teaming::IndividualMode,
+        ..default_bughouse_rules()
+    });
 
-    world.server.state.TEST_override_board_assignment(contest.clone(), vec! [
+    world.server.state.TEST_override_board_assignment(contest.clone(), vec![
         single_player("p1", envoy!(White A)),
         single_player("p2", envoy!(Black B)),
         double_player("p3", Team::Blue),
@@ -734,8 +759,14 @@ fn three_players() {
     // For a double-player the board where they play White is always primary, thus
     // for p3: A is Secondary, B is Primary.
     world[cl1].make_turn("e4").unwrap();
-    world[cl3].state.make_turn(Secondary, TurnInput::Algebraic("e5".to_owned())).unwrap();
-    world[cl3].state.make_turn(Primary, TurnInput::Algebraic("Nc3".to_owned())).unwrap();
+    world[cl3]
+        .state
+        .make_turn(Secondary, TurnInput::Algebraic("e5".to_owned()))
+        .unwrap();
+    world[cl3]
+        .state
+        .make_turn(Primary, TurnInput::Algebraic("Nc3".to_owned()))
+        .unwrap();
     world.process_all_events();
     assert!(world[cl2].local_game().board(A).grid()[Coord::E4].is(piece!(White Pawn)));
     assert!(world[cl2].local_game().board(A).grid()[Coord::E5].is(piece!(Black Pawn)));
@@ -747,16 +778,12 @@ fn five_players() {
     let mut world = World::new();
     let [cl1, cl2, cl3, cl4, cl5] = world.new_clients();
 
-    let contest = world.new_contest_with_rules(
-        cl1, "p1",
-        default_chess_rules(),
-        BughouseRules {
-            teaming: Teaming::IndividualMode,
-            .. default_bughouse_rules()
-        }
-    );
+    let contest = world.new_contest_with_rules(cl1, "p1", default_chess_rules(), BughouseRules {
+        teaming: Teaming::IndividualMode,
+        ..default_bughouse_rules()
+    });
 
-    world.server.state.TEST_override_board_assignment(contest.clone(), vec! [
+    world.server.state.TEST_override_board_assignment(contest.clone(), vec![
         single_player("p1", envoy!(White A)),
         single_player("p2", envoy!(Black B)),
         single_player("p3", envoy!(Black A)),
@@ -777,7 +804,9 @@ fn five_players() {
     // The player who does not participate should still be able to see the game.
     world[cl1].make_turn("e4").unwrap();
     world.process_all_events();
-    assert!(world[cl5].local_game().board(BughouseBoard::A).grid()[Coord::E4].is(piece!(White Pawn)));
+    assert!(
+        world[cl5].local_game().board(BughouseBoard::A).grid()[Coord::E4].is(piece!(White Pawn))
+    );
 }
 
 #[test]
@@ -792,13 +821,13 @@ fn two_contests() {
     world[cl5].state.set_faction(Faction::Fixed(Team::Red));
     world.process_all_events();
 
-    world.server.state.TEST_override_board_assignment(contest1.clone(), vec! [
+    world.server.state.TEST_override_board_assignment(contest1.clone(), vec![
         single_player("p1", envoy!(White A)),
         single_player("p2", envoy!(Black B)),
         single_player("p3", envoy!(Black A)),
         single_player("p4", envoy!(White B)),
     ]);
-    world.server.state.TEST_override_board_assignment(contest2.clone(), vec! [
+    world.server.state.TEST_override_board_assignment(contest2.clone(), vec![
         single_player("p5", envoy!(White A)),
         single_player("p6", envoy!(Black B)),
         single_player("p7", envoy!(Black A)),
@@ -821,10 +850,14 @@ fn two_contests() {
     world[cl1].make_turn("e4").unwrap();
     world[cl5].make_turn("Nc3").unwrap();
     world.process_all_events();
-    assert!(world[cl2].local_game().board(BughouseBoard::A).grid()[Coord::E4].is(piece!(White Pawn)));
+    assert!(
+        world[cl2].local_game().board(BughouseBoard::A).grid()[Coord::E4].is(piece!(White Pawn))
+    );
     assert!(world[cl2].local_game().board(BughouseBoard::A).grid()[Coord::C3].is_none());
     assert!(world[cl6].local_game().board(BughouseBoard::A).grid()[Coord::E4].is_none());
-    assert!(world[cl6].local_game().board(BughouseBoard::A).grid()[Coord::C3].is(piece!(White Knight)));
+    assert!(
+        world[cl6].local_game().board(BughouseBoard::A).grid()[Coord::C3].is(piece!(White Knight))
+    );
 }
 
 #[test]
@@ -832,14 +865,10 @@ fn seating_assignment_is_fair() {
     let mut world = World::new();
     let [cl1, cl2, cl3, cl4, cl5, cl6] = world.new_clients();
 
-    let contest = world.new_contest_with_rules(
-        cl1, "p1",
-        default_chess_rules(),
-        BughouseRules {
-            teaming: Teaming::IndividualMode,
-            .. default_bughouse_rules()
-        }
-    );
+    let contest = world.new_contest_with_rules(cl1, "p1", default_chess_rules(), BughouseRules {
+        teaming: Teaming::IndividualMode,
+        ..default_bughouse_rules()
+    });
     world[cl2].join(&contest, "p2");
     world[cl3].join(&contest, "p3");
     world[cl4].join(&contest, "p4");
@@ -885,19 +914,30 @@ fn pgn_standard() {
     let mut world = World::new();
     let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
 
-    world[cl1].make_turn("e4").unwrap();  world.process_all_events();
-    world[cl3].make_turn("e5").unwrap();  world.process_all_events();
-    world[cl1].make_turn("Nf3").unwrap();  world.process_all_events();
-    world[cl3].make_turn("Nc6").unwrap();  world.process_all_events();
-    world[cl1].make_turn("g3").unwrap();  world.process_all_events();
-    world[cl3].make_turn("d5").unwrap();  world.process_all_events();
-    world[cl1].make_turn("Bg2").unwrap();  world.process_all_events();
-    world[cl3].make_turn("Qe7").unwrap();  world.process_all_events();
-    world[cl1].make_turn("Nxe5").unwrap();  world.process_all_events();
-    world[cl3].make_turn("xe4").unwrap();  world.process_all_events();
-    world[cl1].make_turn("0-0").unwrap();  world.process_all_events();
+    world[cl1].make_turn("e4").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("e5").unwrap();
+    world.process_all_events();
+    world[cl1].make_turn("Nf3").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("Nc6").unwrap();
+    world.process_all_events();
+    world[cl1].make_turn("g3").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("d5").unwrap();
+    world.process_all_events();
+    world[cl1].make_turn("Bg2").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("Qe7").unwrap();
+    world.process_all_events();
+    world[cl1].make_turn("Nxe5").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("xe4").unwrap();
+    world.process_all_events();
+    world[cl1].make_turn("0-0").unwrap();
+    world.process_all_events();
 
-    world[cl1].state.request_export(pgn::BughouseExportFormat{});
+    world[cl1].state.request_export(pgn::BughouseExportFormat {});
     world.process_all_events();
     while let Some(event) = world[cl1].state.next_notable_event() {
         if let client::NotableEvent::GameExportReady(content) = event {

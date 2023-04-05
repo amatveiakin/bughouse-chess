@@ -1,4 +1,3 @@
-
 // Server functionality which:
 //   - Is not important for testing;
 //   - Can potentially blow up WASM size, e.g. due to new Carge dependencies. Rust linker

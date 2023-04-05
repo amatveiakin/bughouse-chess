@@ -26,8 +26,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
         app.at("/dyn/games").get(Self::handle_games);
         app.at("/dyn/pgn/:rowid").get(Self::hanle_pgn);
         app.at("/dyn/stats").get(|r| Self::handle_stats(r, None));
-        app.at("/dyn/stats/:duration")
-            .get(Self::handle_stats_with_duration);
+        app.at("/dyn/stats/:duration").get(Self::handle_stats_with_duration);
         app.at("/dyn/history")
             .get(|req| Self::handle_history(req, history_graphs::XAxis::Date));
         app.at("/dyn/history/pergame")
@@ -64,11 +63,9 @@ impl<ST: SuitableServerState> Handlers<ST> {
                 let red_team = format!("{}, {}", game.player_red_a, game.player_red_b);
                 let blue_team = format!("{}, {}", game.player_blue_a, game.player_blue_b);
                 let (winners, losers, drawers) = match game.result.as_str() {
-                    "DRAW" => (
-                        "".to_string(),
-                        "".to_string(),
-                        format!("{}, {}", red_team, blue_team),
-                    ),
+                    "DRAW" => {
+                        ("".to_string(), "".to_string(), format!("{}, {}", red_team, blue_team))
+                    }
                     "VICTORY_RED" => (red_team, blue_team, "".to_string()),
                     "VICTORY_BLUE" => (blue_team, red_team, "".to_string()),
                     _ => ("".to_string(), "".to_string(), "".to_string()),
@@ -117,11 +114,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
 
     async fn hanle_pgn(req: Request<ST>) -> tide::Result {
         let rowid = req.param("rowid")?.parse()?;
-        let p = req
-            .state()
-            .db()
-            .pgn(persistence::RowId { id: rowid })
-            .await?;
+        let p = req.state().db().pgn(persistence::RowId { id: rowid }).await?;
         let mut resp = Response::new(StatusCode::Ok);
         resp.insert_header(
             "Content-Disposition",
@@ -312,14 +305,8 @@ impl<ST: SuitableServerState> Handlers<ST> {
         }
 
         if x_axis == crate::history_graphs::XAxis::Date {
-            all_stats
-                .per_player
-                .values_mut()
-                .for_each(keep_last_point_per_date);
-            all_stats
-                .per_team
-                .values_mut()
-                .for_each(keep_last_point_per_date);
+            all_stats.per_player.values_mut().for_each(keep_last_point_per_date);
+            all_stats.per_team.values_mut().for_each(keep_last_point_per_date);
         }
 
         let players_history_graph_html =
@@ -448,22 +435,20 @@ fn process_stats<I: Iterator<Item = (String, RawStats)>>(raw_stats: I) -> Vec<Fi
 fn format_timestamp_date_and_time(maybe_ts: Option<OffsetDateTime>) -> Option<(String, String)> {
     let datetime = maybe_ts?;
     let date = datetime
-        .format(&time::macros::format_description!(
-            "[year]-[month]-[day], [weekday repr:short]"
-        ))
+        .format(&time::macros::format_description!("[year]-[month]-[day], [weekday repr:short]"))
         .ok()?;
     let time = datetime
-        .format(&time::macros::format_description!(
-            "[hour]:[minute]:[second]"
-        ))
+        .format(&time::macros::format_description!("[hour]:[minute]:[second]"))
         .ok()?;
     Some((date, time))
 }
 
 fn keep_last_point_per_date(points: &mut Vec<RawStats>) {
-    *points = points.into_iter()
-      .filter(|p| p.last_update.is_some())
-      .group_by(|p| p.last_update.unwrap().date()).into_iter()
-      .map(|(_, group)| *group.last().unwrap())
-      .collect();
+    *points = points
+        .into_iter()
+        .filter(|p| p.last_update.is_some())
+        .group_by(|p| p.last_update.unwrap().date())
+        .into_iter()
+        .map(|(_, group)| *group.last().unwrap())
+        .collect();
 }

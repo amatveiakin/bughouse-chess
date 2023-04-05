@@ -8,6 +8,10 @@ use std::thread;
 use std::time::Duration;
 
 use async_tungstenite::WebSocketStream;
+use bughouse_chess::server::*;
+use bughouse_chess::server_hooks::ServerHooks;
+use bughouse_chess::session_store::*;
+use bughouse_chess::BughouseServerEvent;
 use futures_io::{AsyncRead, AsyncWrite};
 use futures_util::StreamExt;
 use log::{error, info, warn};
@@ -15,27 +19,22 @@ use rand::RngCore;
 use tide::StatusCode;
 use tungstenite::protocol;
 
-use bughouse_chess::server_hooks::ServerHooks;
-use bughouse_chess::session_store::*;
-use bughouse_chess::{server::*, BughouseServerEvent};
-
-use crate::auth;
 use crate::auth_handlers_tide::*;
-use crate::database;
 use crate::database_server_hooks::*;
 use crate::http_server_state::*;
 use crate::network::{self, CommunicationError};
 use crate::persistence::DatabaseReader;
-use crate::secret_persistence::SecretDatabaseRW;
 use crate::prod_server_helpers::ProdServerHelpers;
+use crate::secret_persistence::SecretDatabaseRW;
 use crate::server_config::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
+use crate::{auth, database};
 
-async fn handle_connection<DB: Sync + Send + 'static, S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static>(
-    peer_addr: String,
-    stream: WebSocketStream<S>,
-    tx: mpsc::SyncSender<IncomingEvent>,
-    clients: Arc<Mutex<Clients>>,
-    session_id: Option<SessionId>,
+async fn handle_connection<
+    DB: Sync + Send + 'static,
+    S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+>(
+    peer_addr: String, stream: WebSocketStream<S>, tx: mpsc::SyncSender<IncomingEvent>,
+    clients: Arc<Mutex<Clients>>, session_id: Option<SessionId>,
     http_server_state: HttpServerState<DB>,
 ) -> tide::Result<()> {
     let (mut stream_tx, mut stream_rx) = stream.split();
@@ -59,10 +58,11 @@ async fn handle_connection<DB: Sync + Send + 'static, S: AsyncRead + AsyncWrite 
             })
     });
 
-    let client_id = clients
-        .lock()
-        .unwrap()
-        .add_client(client_tx, session_id.clone(), peer_addr.to_string());
+    let client_id =
+        clients
+            .lock()
+            .unwrap()
+            .add_client(client_tx, session_id.clone(), peer_addr.to_string());
     let clients_remover = Arc::clone(&clients);
     let remove_client1 = move || {
         match (session_id, session_store_subscription_id) {
@@ -72,8 +72,8 @@ async fn handle_connection<DB: Sync + Send + 'static, S: AsyncRead + AsyncWrite 
                     .lock()
                     .unwrap()
                     .unsubscribe(&session_id, session_store_subscription_id);
-            },
-            _ => {},
+            }
+            _ => {}
         };
         clients_remover.lock().unwrap().remove_client(client_id)
     };
@@ -117,10 +117,7 @@ async fn handle_connection<DB: Sync + Send + 'static, S: AsyncRead + AsyncWrite 
                 Ok(()) => {}
                 Err(err) => {
                     if let Some(logging_id) = remove_client2() {
-                        warn!(
-                            "Client {} disconnected due to write error: {:?}",
-                            logging_id, err
-                        );
+                        warn!("Client {} disconnected due to write error: {:?}", logging_id, err);
                     }
                     break;
                 }
@@ -135,11 +132,8 @@ async fn handle_connection<DB: Sync + Send + 'static, S: AsyncRead + AsyncWrite 
 }
 
 fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
-    config: ServerConfig,
-    db: DB,
-    secret_db: Box<dyn SecretDatabaseRW>,
-    session_store: Arc<Mutex<SessionStore>>,
-    clients: Arc<Mutex<Clients>>,
+    config: ServerConfig, db: DB, secret_db: Box<dyn SecretDatabaseRW>,
+    session_store: Arc<Mutex<SessionStore>>, clients: Arc<Mutex<Clients>>,
     tx: mpsc::SyncSender<IncomingEvent>,
 ) {
     let (google_auth, auth_callback_is_https) = match config.auth_options {
@@ -192,8 +186,10 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     app.at(AUTH_LOGIN_PATH).post(handle_login);
     app.at(AUTH_LOGOUT_PATH).post(handle_logout);
     app.at(AUTH_SIGN_WITH_GOOGLE_PATH).get(handle_sign_with_google);
-    app.at(AUTH_CONTINUE_SIGN_WITH_GOOGLE_PATH).get(handle_continue_sign_with_google);
-    app.at(AUTH_FINISH_SIGNUP_WITH_GOOGLE_PATH).post(handle_finish_signup_with_google);
+    app.at(AUTH_CONTINUE_SIGN_WITH_GOOGLE_PATH)
+        .get(handle_continue_sign_with_google);
+    app.at(AUTH_FINISH_SIGNUP_WITH_GOOGLE_PATH)
+        .post(handle_finish_signup_with_google);
     app.at(AUTH_CHANGE_ACCOUNT_PATH).post(handle_change_account);
     app.at(AUTH_DELETE_ACCOUNT_PATH).post(handle_delete_account);
     app.at(AUTH_MYSESSION_PATH).get(handle_mysession);
@@ -202,72 +198,66 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
 
     let allowed_origin = config.allowed_origin;
 
-    app.at("/")
-        .get(move |req: tide::Request<HttpServerState<_>>| {
-            let mytx = tx.clone();
-            let myclients = clients.clone();
-            let allowed_origin = allowed_origin.clone();
-            async move {
-                if req.state().sessions_enabled {
-                    // When the sessions are enabled, we might be using the session
-                    // cookie for authentication.
-                    // We should be checking request origin in that case to
-                    // preven CSRF, to which websockets are inherently vulnerable.
-                    check_origin(&req, &allowed_origin)?;
-                }
-                let peer_addr = req.peer_addr().map_or_else(
-                    || {
-                        Err(tide::Error::from_str(
-                            StatusCode::Forbidden,
-                            "Peer address missing",
-                        ))
-                    },
-                    |x| Ok(x.to_owned()),
-                )?;
-
-                let session_id = get_session_id(&req).ok();
-
-                let http_server_state = req.state().clone();
-                // tide::Request -> http_types::Request -> http::Request<Body> -> http::Request<()>.
-                let http_types_req: http_types::Request = req.into();
-                let http_req_with_body: http::Request<http_types::Body> = http_types_req.into();
-                let http_req = http_req_with_body.map(|_| ());
-
-                let http_resp = tungstenite::handshake::server::create_response(&http_req)
-                    .map_err(|e| tide::Error::new(StatusCode::BadRequest, e))?;
-
-                // http::Response<()> -> http::Response<Body> -> http_types::Response
-                let http_resp_with_body = http_resp.map(|_| http_types::Body::empty());
-                let mut http_types_resp: http_types::Response = http_resp_with_body.into();
-
-                // http_types::Response is a magic thing that can give us the stream back
-                // once it's upgraded.
-                let upgrade_receiver = http_types_resp.recv_upgrade().await;
-
-                async_std::task::spawn(async move {
-                    if let Some(stream) = upgrade_receiver.await {
-                        let stream =
-                            WebSocketStream::from_raw_socket(stream, protocol::Role::Server, None)
-                                .await;
-                        if let Err(err) = handle_connection(
-                            peer_addr,
-                            stream,
-                            mytx,
-                            myclients,
-                            session_id,
-                            http_server_state,
-                        )
-                        .await
-                        {
-                            error!("{}", err);
-                        }
-                    } else {
-                        error!("Never received an upgrade for client {}", peer_addr);
-                    }
-                });
-                Ok(http_types_resp)
+    app.at("/").get(move |req: tide::Request<HttpServerState<_>>| {
+        let mytx = tx.clone();
+        let myclients = clients.clone();
+        let allowed_origin = allowed_origin.clone();
+        async move {
+            if req.state().sessions_enabled {
+                // When the sessions are enabled, we might be using the session
+                // cookie for authentication.
+                // We should be checking request origin in that case to
+                // preven CSRF, to which websockets are inherently vulnerable.
+                check_origin(&req, &allowed_origin)?;
             }
-        });
+            let peer_addr = req.peer_addr().map_or_else(
+                || Err(tide::Error::from_str(StatusCode::Forbidden, "Peer address missing")),
+                |x| Ok(x.to_owned()),
+            )?;
+
+            let session_id = get_session_id(&req).ok();
+
+            let http_server_state = req.state().clone();
+            // tide::Request -> http_types::Request -> http::Request<Body> -> http::Request<()>.
+            let http_types_req: http_types::Request = req.into();
+            let http_req_with_body: http::Request<http_types::Body> = http_types_req.into();
+            let http_req = http_req_with_body.map(|_| ());
+
+            let http_resp = tungstenite::handshake::server::create_response(&http_req)
+                .map_err(|e| tide::Error::new(StatusCode::BadRequest, e))?;
+
+            // http::Response<()> -> http::Response<Body> -> http_types::Response
+            let http_resp_with_body = http_resp.map(|_| http_types::Body::empty());
+            let mut http_types_resp: http_types::Response = http_resp_with_body.into();
+
+            // http_types::Response is a magic thing that can give us the stream back
+            // once it's upgraded.
+            let upgrade_receiver = http_types_resp.recv_upgrade().await;
+
+            async_std::task::spawn(async move {
+                if let Some(stream) = upgrade_receiver.await {
+                    let stream =
+                        WebSocketStream::from_raw_socket(stream, protocol::Role::Server, None)
+                            .await;
+                    if let Err(err) = handle_connection(
+                        peer_addr,
+                        stream,
+                        mytx,
+                        myclients,
+                        session_id,
+                        http_server_state,
+                    )
+                    .await
+                    {
+                        error!("{}", err);
+                    }
+                } else {
+                    error!("Never received an upgrade for client {}", peer_addr);
+                }
+            });
+            Ok(http_types_resp)
+        }
+    });
     async_std::task::block_on(async { app.listen(format!("0.0.0.0:{}", network::PORT)).await })
         .expect("Failed to start the tide server");
 }

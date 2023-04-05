@@ -1,0 +1,21 @@
+# Increase single-line thresholds compared to `use_small_heuristics = "Default"`:
+fn_call_width = 80
+attr_fn_like_width = 80
+struct_lit_width = 40
+struct_variant_width = 40
+array_width = 60
+chain_width = 80
+single_line_if_else_max_width = 60
+
+# Imports
+imports_granularity = "Module"
+group_imports = "StdExternalCrate"
+
+# Function calls
+fn_params_layout = "Compressed"
+fn_single_line = true
+overflow_delimited_expr = true
+
+# Misc
+newline_style = "Native"
+blank_lines_upper_bound = 2

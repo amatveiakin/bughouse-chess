@@ -6,7 +6,10 @@ use itertools::Itertools;
 macro_rules! my_git_version {
     () => {
         // TODO: Fix missing git version in Docker.
-        $crate::util::git_version!(args = ["--tags", "--always", "--dirty=-modified"], fallback = "unknown")
+        $crate::util::git_version!(
+            args = ["--tags", "--always", "--dirty=-modified"],
+            fallback = "unknown"
+        )
     };
 }
 
@@ -20,10 +23,18 @@ macro_rules! once_cell_regex {
 }
 
 pub fn sort_two<T: Ord>((a, b): (T, T)) -> (T, T) {
-    if a < b { (a, b) } else { (b, a) }
+    if a < b {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 pub fn sort_two_desc<T: Ord>((a, b): (T, T)) -> (T, T) {
-    if a > b { (a, b) } else { (b, a) }
+    if a > b {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 
 // Rust-upgrade (https://github.com/rust-lang/rust/issues/88581):

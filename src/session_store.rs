@@ -1,5 +1,4 @@
-use std::collections::hash_map;
-use std::collections::HashMap;
+use std::collections::{hash_map, HashMap};
 use std::hash::Hash;
 
 use crate::session::*;
@@ -14,9 +13,7 @@ pub type SessionStore = Store<SessionId, Session>;
 pub struct SessionId(String);
 
 impl SessionId {
-    pub fn new(s: String) -> Self {
-        Self(s)
-    }
+    pub fn new(s: String) -> Self { Self(s) }
 }
 
 pub struct Store<K, V> {
@@ -32,15 +29,9 @@ where
     K: Eq + PartialEq + Hash + Clone,
     V: Default,
 {
-    pub fn new() -> Self {
-        Self {
-            entries: HashMap::new(),
-        }
-    }
+    pub fn new() -> Self { Self { entries: HashMap::new() } }
 
-    pub fn get(&self, id: &K) -> Option<&V> {
-        self.entries.get(id).map(|e| &e.value)
-    }
+    pub fn get(&self, id: &K) -> Option<&V> { self.entries.get(id).map(|e| &e.value) }
 
     // Sets the new Session data and notifies all subscribers.
     pub fn set(&mut self, id: K, value: V) {
@@ -59,17 +50,13 @@ where
     // Registers a subscriber and immediately calls it with the current
     // session. If there is no session, Session::default() is passed.
     pub fn subscribe(
-        &mut self,
-        id: &K,
-        subscriber_tx: impl Fn(&V) + Send + 'static,
+        &mut self, id: &K, subscriber_tx: impl Fn(&V) + Send + 'static,
     ) -> SubscriptionId {
         self.entries.entry(id.clone()).or_default().subscribe(subscriber_tx)
     }
 
     pub fn unsubscribe(&mut self, id: &K, subscription_id: SubscriptionId) {
-        self.entries
-            .get_mut(id)
-            .map(|e| e.unsubscribe(subscription_id));
+        self.entries.get_mut(id).map(|e| e.unsubscribe(subscription_id));
     }
 
     pub fn update_if_exists<F: FnOnce(&mut V)>(&mut self, id: &K, f: F) {
@@ -101,8 +88,7 @@ impl<V> Entry<V> {
         let subscription_id = self.next_subscription_id;
         self.next_subscription_id.0 += 1;
         subscriber_tx(&self.value);
-        self.subscriber_tx
-            .insert(subscription_id, Box::new(subscriber_tx));
+        self.subscriber_tx.insert(subscription_id, Box::new(subscriber_tx));
         subscription_id
     }
     fn unsubscribe(&mut self, subscription_id: SubscriptionId) {

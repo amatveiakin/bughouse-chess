@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::board::TurnInput;
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
-use crate::game::{BughouseBoard, TurnRecord, BughouseGameStatus, PlayerInGame};
+use crate::game::{BughouseBoard, BughouseGameStatus, PlayerInGame, TurnRecord};
 use crate::meter::MeterStats;
 use crate::pgn::BughouseExportFormat;
-use crate::player::{Participant, Faction};
+use crate::player::{Faction, Participant};
 use crate::rules::Rules;
 use crate::scores::Scores;
 use crate::session::Session;
@@ -18,14 +18,11 @@ use crate::starter::EffectiveStartingPosition;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseServerRejection {
     // Cannot join: a contest with given ID does not exist.
-    NoSuchContest{ contest_id: String },
+    NoSuchContest { contest_id: String },
     // Cannot join contest: there already is a player with this name and an active client.
-    PlayerAlreadyExists{ player_name: String },
+    PlayerAlreadyExists { player_name: String },
     // Cannot create account or join as a guest with a given name.
-    InvalidPlayerName {
-        player_name: String,
-        reason: String,
-    },
+    InvalidPlayerName { player_name: String, reason: String },
     // Registered user kicked out of a contest, because they joined in another client (e.g. another
     // browser tab). We never send this for guest users, because we cannot be sure if it's them or not.
     JoinedInAnotherClient,
@@ -36,7 +33,7 @@ pub enum BughouseServerRejection {
     // Server is shutting down for maintenance.
     ShuttingDown,
     // Internal error. Should be investigated.
-    UnknownError{ message: String },
+    UnknownError { message: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -59,10 +56,10 @@ pub enum BughouseServerEvent {
     GameStarted {
         starting_position: EffectiveStartingPosition,
         players: Vec<PlayerInGame>,
-        time: GameInstant,                          // for re-connection
-        turn_log: Vec<TurnRecord>,                  // for re-connection
-        preturns: Vec<(BughouseBoard, TurnInput)>,  // for re-connection
-        game_status: BughouseGameStatus,            // for re-connection
+        time: GameInstant,                         // for re-connection
+        turn_log: Vec<TurnRecord>,                 // for re-connection
+        preturns: Vec<(BughouseBoard, TurnInput)>, // for re-connection
+        game_status: BughouseGameStatus,           // for re-connection
         scores: Scores,
     },
     // Improvement potential: unite `TurnsMade` and `GameOver` into a single event "something happened".
@@ -91,15 +88,15 @@ pub enum BughouseServerEvent {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BughouseClientPerformance {
     pub user_agent: String,
-    pub time_zone: String,  // location estimate
+    pub time_zone: String, // location estimate
     pub stats: HashMap<String, MeterStats>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseClientErrorReport {
-    RustPanic{ panic_info: String, backtrace: String },
-    RustError{ message: String },
-    UnknownError{ message: String },
+    RustPanic { panic_info: String, backtrace: String },
+    RustError { message: String },
+    UnknownError { message: String },
 }
 
 // TODO: Make sure server does not process events like MakeTurn sent during an older game.

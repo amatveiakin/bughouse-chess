@@ -1,7 +1,7 @@
 mod common;
 
-use bughouse_chess::*;
 use bughouse_chess::test_util::*;
+use bughouse_chess::*;
 
 
 fn bughouse_chess_com() -> BughouseGame {
@@ -9,13 +9,13 @@ fn bughouse_chess_com() -> BughouseGame {
         ContestRules::unrated(),
         ChessRules::classic_blitz(),
         BughouseRules::chess_com(),
-        &sample_bughouse_players()
+        &sample_bughouse_players(),
     )
 }
 
-fn make_turn(game: &mut BughouseGame, board_idx: BughouseBoard, turn_notation: &str)
-    -> Result<(), TurnError>
-{
+fn make_turn(
+    game: &mut BughouseGame, board_idx: BughouseBoard, turn_notation: &str,
+) -> Result<(), TurnError> {
     let turn_input = TurnInput::Algebraic(turn_notation.to_owned());
     game.try_turn(board_idx, &turn_input, TurnMode::Normal, GameInstant::game_start())?;
     Ok(())
@@ -58,7 +58,9 @@ fn replay_log_symmetric(game: &mut BughouseGame, log: &str) -> Result<(), TurnEr
 #[test]
 fn no_castling_with_dropped_rook() {
     let mut game = bughouse_chess_com();
-    replay_log(&mut game, "
+    replay_log(
+        &mut game,
+        "
         0A.g4  0a.h5
         0A.xh5  0a.Rxh5
         0A.Nf3  0a.Rxh2
@@ -71,7 +73,9 @@ fn no_castling_with_dropped_rook() {
         0B.Nf3  0b.Rxa2
         0B.Nc3  0b.Rxa1
         0A.R@h8  0a.d5
-    ").unwrap();
+    ",
+    )
+    .unwrap();
     assert_eq!(
         make_turn(&mut game, BughouseBoard::A, "0-0").err().unwrap(),
         TurnError::CastlingPieceHasMoved
@@ -86,19 +90,27 @@ fn no_castling_with_dropped_rook() {
 #[test]
 fn threefold_repetition_draw_prevented_by_drops() {
     let mut game = bughouse_chess_com();
-    replay_log_symmetric(&mut game, "
+    replay_log_symmetric(
+        &mut game,
+        "
         e4 b6
         Qf3 Ba6
         Bxa6 e5
         b3 Ba3
         Bc4 Ne7
         Bxa3 B@g6
-    ").unwrap();
+    ",
+    )
+    .unwrap();
     for _ in 0..10 {
-        replay_log_symmetric(&mut game, "
+        replay_log_symmetric(
+            &mut game,
+            "
             Bxf7 Bxf7
             B@c4 B@g6
-        ").unwrap();
+        ",
+        )
+        .unwrap();
     }
     assert!(game.is_active());
 }
@@ -106,13 +118,17 @@ fn threefold_repetition_draw_prevented_by_drops() {
 #[test]
 fn threefold_repetition_draw_ignores_reserve() {
     let mut game = bughouse_chess_com();
-    replay_log(&mut game, "
+    replay_log(
+        &mut game,
+        "
         1A.Nc3  1a.Nf6
         2A.Nb1  2a.Ng8
         3A.Nc3  3a.Nf6
         1B.e4  1b.d5
         2B.xd5
         4A.Nb1  4a.Ng8
-    ").unwrap();
+    ",
+    )
+    .unwrap();
     assert!(game.status() == BughouseGameStatus::Draw(DrawReason::ThreefoldRepetition));
 }

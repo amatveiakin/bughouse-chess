@@ -1,37 +1,38 @@
 // Improvement potential. Replace `game.find_player(&self.players[participant_id].name)`
 //   with a direct mapping (participant_id -> player_bughouse_id).
 
-use std::collections::{HashSet, HashMap, hash_map, BTreeMap};
-use std::cmp;
-use std::iter;
-use std::ops;
-use std::sync::{Arc, Mutex, MutexGuard, mpsc};
+use std::collections::{hash_map, BTreeMap, HashMap, HashSet};
+use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::time::Duration;
+use std::{cmp, iter, ops};
 
 use enum_map::enum_map;
 use indoc::printdoc;
 use instant::Instant;
 use itertools::Itertools;
 use log::{info, warn};
-use rand::{Rng, seq::SliceRandom};
+use rand::seq::SliceRandom;
+use rand::Rng;
 use strum::IntoEnumIterator;
 
-use crate::board::{TurnMode, TurnError, TurnInput, VictoryReason};
+use crate::board::{TurnError, TurnInput, TurnMode, VictoryReason};
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
-use crate::game::{
-    TurnRecord, BughouseBoard, BughouseEnvoy, BughousePlayer, PlayerInGame, BughouseGameStatus, BughouseGame,
-    get_bughouse_force, TOTAL_ENVOYS, TOTAL_ENVOYS_PER_TEAM,
+use crate::event::{
+    BughouseClientErrorReport, BughouseClientEvent, BughouseServerEvent, BughouseServerRejection,
 };
-use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseServerRejection, BughouseClientErrorReport};
+use crate::game::{
+    get_bughouse_force, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
+    BughousePlayer, PlayerInGame, TurnRecord, TOTAL_ENVOYS, TOTAL_ENVOYS_PER_TEAM,
+};
 use crate::lobby::{num_fixed_players_per_team, verify_participants};
 use crate::pgn::{self, BughouseExportFormat};
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
-use crate::player::{Participant, Team, Faction};
-use crate::rules::{Teaming, Rules, FIRST_GAME_COUNTDOWN_DURATION};
+use crate::player::{Faction, Participant, Team};
+use crate::rules::{Rules, Teaming, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
 use crate::server_helpers::ServerHelpers;
-use crate::server_hooks::{ServerHooks, NoopServerHooks};
+use crate::server_hooks::{NoopServerHooks, ServerHooks};
 use crate::session::Session;
 use crate::session_store::{SessionId, SessionStore};
 
@@ -92,9 +93,7 @@ pub struct GameState {
 impl GameState {
     pub fn game(&self) -> &BughouseGame { &self.game }
     pub fn rated(&self) -> bool { self.game.contest_rules().rated }
-    pub fn start_offset_time(&self) -> Option<time::OffsetDateTime> {
-        self.game_start_offset_time
-    }
+    pub fn start_offset_time(&self) -> Option<time::OffsetDateTime> { self.game_start_offset_time }
 }
 
 
@@ -113,11 +112,13 @@ struct Participants {
 }
 
 impl Participants {
-    fn new() -> Self { Self{ map: BTreeMap::new(), next_id: 1 } }
+    fn new() -> Self { Self { map: BTreeMap::new(), next_id: 1 } }
     fn iter(&self) -> impl Iterator<Item = &Participant> + Clone { self.map.values() }
     fn iter_mut(&mut self) -> impl Iterator<Item = &mut Participant> { self.map.values_mut() }
     fn find_by_name(&self, name: &str) -> Option<ParticipantId> {
-        self.map.iter().find_map(|(id, p)| if p.name == name { Some(*id) } else { None })
+        self.map
+            .iter()
+            .find_map(|(id, p)| if p.name == name { Some(*id) } else { None })
     }
     fn add_participant(&mut self, participant: Participant) -> ParticipantId {
         let id = ParticipantId(self.next_id);
@@ -132,7 +133,9 @@ impl ops::Index<ParticipantId> for Participants {
     fn index(&self, id: ParticipantId) -> &Self::Output { &self.map[&id] }
 }
 impl ops::IndexMut<ParticipantId> for Participants {
-    fn index_mut(&mut self, id: ParticipantId) -> &mut Self::Output { self.map.get_mut(&id).unwrap() }
+    fn index_mut(&mut self, id: ParticipantId) -> &mut Self::Output {
+        self.map.get_mut(&id).unwrap()
+    }
 }
 
 
@@ -149,9 +152,7 @@ pub struct Client {
 }
 
 impl Client {
-    fn send(&mut self, event: BughouseServerEvent) {
-        self.events_tx.send(event).unwrap();
-    }
+    fn send(&mut self, event: BughouseServerEvent) { self.events_tx.send(event).unwrap(); }
     fn send_rejection(&mut self, rejection: BughouseServerRejection) {
         self.send(BughouseServerEvent::Rejection(rejection));
     }
@@ -163,11 +164,11 @@ pub struct Clients {
 }
 
 impl Clients {
-    pub fn new() -> Self { Clients{ map: HashMap::new(), next_id: 1 } }
+    pub fn new() -> Self { Clients { map: HashMap::new(), next_id: 1 } }
 
     pub fn add_client(
-        &mut self, events_tx: mpsc::Sender<BughouseServerEvent>,
-        session_id: Option<SessionId>, logging_id: String
+        &mut self, events_tx: mpsc::Sender<BughouseServerEvent>, session_id: Option<SessionId>,
+        logging_id: String,
     ) -> ClientId {
         let now = Instant::now();
         let client = Client {
@@ -211,9 +212,13 @@ impl Clients {
     }
 
     fn find_participant(&self, participant_id: ParticipantId) -> Option<ClientId> {
-        self.map.iter().find_map(
-            |(&id, c)| if c.participant_id == Some(participant_id) { Some(id) } else { None }
-        )
+        self.map.iter().find_map(|(&id, c)| {
+            if c.participant_id == Some(participant_id) {
+                Some(id)
+            } else {
+                None
+            }
+        })
     }
 }
 
@@ -239,10 +244,10 @@ struct Contest {
     rules: Rules,
     participants: Participants,
     scores: Scores,
-    match_history: Vec<BughouseGame>,  // final game states
+    match_history: Vec<BughouseGame>, // final game states
     first_game_countdown_since: Option<Instant>,
-    game_state: Option<GameState>,  // active game or latest game
-    board_assignment_override: Option<Vec<PlayerInGame>>,  // for tests
+    game_state: Option<GameState>, // active game or latest game
+    board_assignment_override: Option<Vec<PlayerInGame>>, // for tests
 }
 
 struct Context<'a, 'b> {
@@ -273,22 +278,20 @@ pub struct ServerState {
     helpers: Box<dyn ServerHelpers>,
     hooks: Box<dyn ServerHooks>,
     // TODO: Remove special test paths, use proper mock clock instead.
-    disable_countdown: bool,  // for tests
+    disable_countdown: bool, // for tests
     core: CoreServerState,
 }
 
 impl ServerState {
     pub fn new(
-        clients: Arc<Mutex<Clients>>,
-        session_store: Arc<Mutex<SessionStore>>,
-        helpers: Box<dyn ServerHelpers>,
-        hooks: Option<Box<dyn ServerHooks>>,
+        clients: Arc<Mutex<Clients>>, session_store: Arc<Mutex<SessionStore>>,
+        helpers: Box<dyn ServerHelpers>, hooks: Option<Box<dyn ServerHooks>>,
     ) -> Self {
         ServerState {
             clients,
             session_store,
             helpers,
-            hooks: hooks.unwrap_or_else(|| Box::new(NoopServerHooks{})),
+            hooks: hooks.unwrap_or_else(|| Box::new(NoopServerHooks {})),
             disable_countdown: false,
             core: CoreServerState::new(),
         }
@@ -319,14 +322,15 @@ impl ServerState {
     }
 
     #[allow(non_snake_case)]
-    pub fn TEST_disable_countdown(&mut self) {
-        self.disable_countdown = true;
-    }
+    pub fn TEST_disable_countdown(&mut self) { self.disable_countdown = true; }
 
     #[allow(non_snake_case)]
-    pub fn TEST_override_board_assignment(&mut self, contest_id: String, assignment: Vec<PlayerInGame>) {
+    pub fn TEST_override_board_assignment(
+        &mut self, contest_id: String, assignment: Vec<PlayerInGame>,
+    ) {
         let contest_id = ContestId(contest_id);
-        self.core.contests.get_mut(&contest_id).unwrap().board_assignment_override = Some(assignment);
+        self.core.contests.get_mut(&contest_id).unwrap().board_assignment_override =
+            Some(assignment);
     }
 }
 
@@ -344,9 +348,8 @@ impl CoreServerState {
         //   - 'O' and '0' (easy to confuse);
         //   - 'I' (looks like '1'; keep '1' because confusion in the other direction seems less likely).
         const ALPHABET: [char; 33] = [
-            '1', '2', '3', '4', '5', '6', '7', '8', '9',
-            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M',
-            'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+            '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
+            'J', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
         ];
         const MIN_ID_LEN: usize = 4;
         const MAX_ATTEMPTS_PER_LEN: usize = 100;
@@ -355,11 +358,12 @@ impl CoreServerState {
         let mut id = ContestId(String::new());
         let mut attempts_at_this_len = 0;
         while id.0.is_empty() || self.contests.contains_key(&id) {
-            id = ContestId((&mut rng)
-                .sample_iter(rand::distributions::Uniform::from(0..ALPHABET.len()))
-                .map(|idx| ALPHABET[idx])
-                .take(id_len)
-                .collect()
+            id = ContestId(
+                (&mut rng)
+                    .sample_iter(rand::distributions::Uniform::from(0..ALPHABET.len()))
+                    .map(|idx| ALPHABET[idx])
+                    .take(id_len)
+                    .collect(),
             );
             attempts_at_this_len += 1;
             if attempts_at_this_len > MAX_ATTEMPTS_PER_LEN {
@@ -393,14 +397,16 @@ impl CoreServerState {
         let now = Instant::now();
 
         match event {
-            IncomingEvent::Network(client_id, event) => self.on_client_event(ctx, client_id, now, event),
+            IncomingEvent::Network(client_id, event) => {
+                self.on_client_event(ctx, client_id, now, event)
+            }
             IncomingEvent::Tick => self.on_tick(ctx, now),
             IncomingEvent::Terminate => self.on_terminate(ctx, now),
         }
     }
 
     fn on_client_event(
-        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, event: BughouseClientEvent
+        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, event: BughouseClientEvent,
     ) {
         ctx.hooks.on_client_event(&event);
 
@@ -420,20 +426,20 @@ impl CoreServerState {
             BughouseClientEvent::ReportPerformace(..) => {
                 // Only used by server hooks.
                 return;
-            },
+            }
             BughouseClientEvent::ReportError(report) => {
                 process_report_error(ctx, client_id, report);
                 return;
-            },
+            }
             BughouseClientEvent::Ping => {
                 process_ping(ctx, client_id);
                 return;
-            },
-            _ => {},
+            }
+            _ => {}
         };
 
         let contest_id = match &event {
-            BughouseClientEvent::NewContest{ rules, .. } => {
+            BughouseClientEvent::NewContest { rules, .. } => {
                 if !matches!(self.execution, Execution::Running) {
                     ctx.clients[client_id].send_rejection(BughouseServerRejection::ShuttingDown);
                     return;
@@ -443,20 +449,24 @@ impl CoreServerState {
                 let contest_id = match self.make_contest(now, rules.clone()) {
                     Ok(id) => id,
                     Err(message) => {
-                        ctx.clients[client_id].send_rejection(BughouseServerRejection::UnknownError{ message });
+                        ctx.clients[client_id]
+                            .send_rejection(BughouseServerRejection::UnknownError { message });
                         return;
-                    },
+                    }
                 };
-                info!("Contest {} created by client {}", contest_id.0, ctx.clients[client_id].logging_id);
+                info!(
+                    "Contest {} created by client {}",
+                    contest_id.0, ctx.clients[client_id].logging_id
+                );
                 Some(contest_id)
-            },
-            BughouseClientEvent::Join{ contest_id, .. } => {
+            }
+            BughouseClientEvent::Join { contest_id, .. } => {
                 // Improvement potential: Log cases when a client reconnects to their current
                 //   contest. This likely indicates a client error.
                 ctx.clients[client_id].contest_id = None;
                 ctx.clients[client_id].participant_id = None;
                 Some(ContestId(contest_id.clone()))
-            },
+            }
             _ => ctx.clients[client_id].contest_id.clone(),
         };
 
@@ -530,13 +540,23 @@ impl CoreServerState {
                         //     server, not to the contest).
                         //   - Clients will get the relevant information sooner.
                         if contest.game_state.is_none() {
-                            contest.broadcast(ctx, &BughouseServerEvent::Rejection(BughouseServerRejection::ShuttingDown));
+                            contest.broadcast(
+                                ctx,
+                                &BughouseServerEvent::Rejection(
+                                    BughouseServerRejection::ShuttingDown,
+                                ),
+                            );
                         }
                     });
                 }
-            },
-            Execution::ShuttingDown{ shutting_down_since, ref mut last_termination_request } => {
-                if now.duration_since(*last_termination_request) <= DOUBLE_TERMINATION_ABORT_THRESHOLD {
+            }
+            Execution::ShuttingDown {
+                shutting_down_since,
+                ref mut last_termination_request,
+            } => {
+                if now.duration_since(*last_termination_request)
+                    <= DOUBLE_TERMINATION_ABORT_THRESHOLD
+                {
                     println!("Aborting!");
                     shutdown();
                 } else {
@@ -549,43 +569,40 @@ impl CoreServerState {
                     );
                 }
                 *last_termination_request = now;
-            },
+            }
         }
     }
 
     fn num_active_contests(&self, now: Instant) -> usize {
-        self.contests.values().filter(|contest| {
-            match contest.latest_activity() {
+        self.contests
+            .values()
+            .filter(|contest| match contest.latest_activity() {
                 ContestActivity::Present => true,
-                ContestActivity::Past(t) => now.duration_since(t) <= TERMINATION_WAITING_PERIOD
-            }
-        }).count()
+                ContestActivity::Past(t) => now.duration_since(t) <= TERMINATION_WAITING_PERIOD,
+            })
+            .count()
     }
 
     fn gc_old_contests(&mut self, now: Instant) {
         // Improvement potential. GC unused contests (zero games and/or no players) sooner.
-        self.contests.retain(|_, contest| {
-            match contest.latest_activity() {
-                ContestActivity::Present => true,
-                ContestActivity::Past(t) => now.duration_since(t) <= CONTEST_GC_INACTIVITY_THRESHOLD
-            }
+        self.contests.retain(|_, contest| match contest.latest_activity() {
+            ContestActivity::Present => true,
+            ContestActivity::Past(t) => now.duration_since(t) <= CONTEST_GC_INACTIVITY_THRESHOLD,
         });
     }
 
     fn check_client_connections(&mut self, ctx: &mut Context, now: Instant) {
         use PassiveConnectionStatus::*;
-        ctx.clients.map.retain(|_, client| {
-            match client.connection_monitor.status(now) {
-                Healthy | TemporaryLost => true,
-                PermanentlyLost => false,
-            }
+        ctx.clients.map.retain(|_, client| match client.connection_monitor.status(now) {
+            Healthy | TemporaryLost => true,
+            PermanentlyLost => false,
         });
     }
 }
 
 impl Contest {
     fn latest_activity(&self) -> ContestActivity {
-        if let Some(GameState{ game_creation, game_start, game_end, .. }) = self.game_state {
+        if let Some(GameState { game_creation, game_start, game_end, .. }) = self.game_state {
             if let Some(game_end) = game_end {
                 ContestActivity::Past(game_end)
             } else if game_start.is_some() {
@@ -607,13 +624,27 @@ impl Contest {
     }
 
     fn test_flags(&mut self, ctx: &mut Context, now: Instant) {
-        if let Some(GameState{ game_start, ref mut game_end, ref mut game, ref mut preturns, .. }) = self.game_state {
+        if let Some(GameState {
+            game_start,
+            ref mut game_end,
+            ref mut game,
+            ref mut preturns,
+            ..
+        }) = self.game_state
+        {
             if let Some(game_start) = game_start {
                 if game.is_active() {
                     let game_now = GameInstant::from_now_game_active(game_start, now);
                     game.test_flag(game_now);
                     if !game.is_active() {
-                        update_state_on_game_over(game, preturns, &mut self.participants, &mut self.scores, game_end, now);
+                        update_state_on_game_over(
+                            game,
+                            preturns,
+                            &mut self.participants,
+                            &mut self.scores,
+                            game_end,
+                            now,
+                        );
                         let ev = BughouseServerEvent::GameOver {
                             time: game_now,
                             game_status: game.status(),
@@ -627,54 +658,55 @@ impl Contest {
     }
 
     fn broadcast(&self, ctx: &mut Context, event: &BughouseServerEvent) {
-        ctx.hooks.on_server_broadcast_event(event, self.game_state.as_ref(), self.match_history.len() + 1);
+        ctx.hooks.on_server_broadcast_event(
+            event,
+            self.game_state.as_ref(),
+            self.match_history.len() + 1,
+        );
         ctx.clients.broadcast(&self.contest_id, event);
     }
 
     fn process_client_event(
-        &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution, now: Instant, event: BughouseClientEvent
+        &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution, now: Instant,
+        event: BughouseClientEvent,
     ) {
         let result = match event {
-            BughouseClientEvent::NewContest{ player_name, .. } => {
+            BughouseClientEvent::NewContest { player_name, .. } => {
                 // The contest was created earlier.
                 self.join_participant(ctx, client_id, execution, now, player_name)
-            },
-            BughouseClientEvent::Join{ contest_id: _, player_name } => {
+            }
+            BughouseClientEvent::Join { contest_id: _, player_name } => {
                 self.join_participant(ctx, client_id, execution, now, player_name)
-            },
-            BughouseClientEvent::SetFaction{ faction } => {
+            }
+            BughouseClientEvent::SetFaction { faction } => {
                 self.process_set_faction(ctx, client_id, faction)
-            },
-            BughouseClientEvent::MakeTurn{ board_idx, turn_input } => {
+            }
+            BughouseClientEvent::MakeTurn { board_idx, turn_input } => {
                 self.process_make_turn(ctx, client_id, now, board_idx, turn_input)
-            },
-            BughouseClientEvent::CancelPreturn{ board_idx} => {
+            }
+            BughouseClientEvent::CancelPreturn { board_idx } => {
                 self.process_cancel_preturn(ctx, client_id, board_idx)
-            },
-            BughouseClientEvent::Resign => {
-                self.process_resign(ctx, client_id, now)
-            },
-            BughouseClientEvent::SetReady{ is_ready } => {
+            }
+            BughouseClientEvent::Resign => self.process_resign(ctx, client_id, now),
+            BughouseClientEvent::SetReady { is_ready } => {
                 self.process_set_ready(ctx, client_id, is_ready)
-            },
-            BughouseClientEvent::Leave => {
-                self.process_leave(ctx, client_id)
-            },
-            BughouseClientEvent::UpdateChalkDrawing{ drawing } => {
+            }
+            BughouseClientEvent::Leave => self.process_leave(ctx, client_id),
+            BughouseClientEvent::UpdateChalkDrawing { drawing } => {
                 self.process_update_chalk_drawing(ctx, client_id, drawing)
-            },
-            BughouseClientEvent::RequestExport{ format } => {
+            }
+            BughouseClientEvent::RequestExport { format } => {
                 self.process_request_export(ctx, client_id, format)
-            },
+            }
             BughouseClientEvent::ReportPerformace(..) => {
                 unreachable!("Contest-independent event must be processed separately");
-            },
+            }
             BughouseClientEvent::ReportError(..) => {
                 unreachable!("Contest-independent event must be processed separately");
-            },
+            }
             BughouseClientEvent::Ping => {
                 unreachable!("Contest-independent event must be processed separately");
-            },
+            }
         };
         if let Err(err) = result {
             ctx.clients[client_id].send_rejection(err);
@@ -682,12 +714,14 @@ impl Contest {
     }
 
     fn join_participant(
-        &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution, now: Instant, player_name: String
+        &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution, now: Instant,
+        player_name: String,
     ) -> EventResult {
         assert!(ctx.clients[client_id].contest_id.is_none());
         assert!(ctx.clients[client_id].participant_id.is_none());
 
-        let registered_user_name = ctx.clients[client_id].session_id
+        let registered_user_name = ctx.clients[client_id]
+            .session_id
             .as_ref()
             .and_then(|id| ctx.session_store.get(&id))
             .and_then(Session::user_info)
@@ -708,20 +742,29 @@ impl Contest {
         if let Some(ref game_state) = self.game_state {
             let existing_participant_id = self.participants.find_by_name(&player_name);
             if let Some(existing_participant_id) = existing_participant_id {
-                if let Some(existing_client_id) = ctx.clients.find_participant(existing_participant_id) {
-                    let is_existing_user_registered = self.participants[existing_participant_id].is_registered_user;
+                if let Some(existing_client_id) =
+                    ctx.clients.find_participant(existing_participant_id)
+                {
+                    let is_existing_user_registered =
+                        self.participants[existing_participant_id].is_registered_user;
                     // If both users are registered and have the same user name, then we know for sure
                     // this is the same user. If both are guests, we can only guess. There is no way to
                     // be certain, because guest accounts are inherently non-exclusive.
                     let both_registered = is_registered_user && is_existing_user_registered;
                     let both_guests = !is_registered_user && !is_existing_user_registered;
                     if both_registered {
-                        ctx.clients[existing_client_id].send_rejection(BughouseServerRejection::JoinedInAnotherClient);
+                        ctx.clients[existing_client_id]
+                            .send_rejection(BughouseServerRejection::JoinedInAnotherClient);
                         ctx.clients.remove_client(existing_client_id);
-                    } else if both_guests && !ctx.clients[existing_client_id].connection_monitor.status(now).is_healthy() {
+                    } else if both_guests
+                        && !ctx.clients[existing_client_id]
+                            .connection_monitor
+                            .status(now)
+                            .is_healthy()
+                    {
                         ctx.clients.remove_client(existing_client_id);
                     } else {
-                        return Err(BughouseServerRejection::PlayerAlreadyExists{ player_name });
+                        return Err(BughouseServerRejection::PlayerAlreadyExists { player_name });
                     }
                 } else {
                     if !matches!(execution, Execution::Running) {
@@ -749,30 +792,37 @@ impl Contest {
             self.send_lobby_updated(ctx);
             ctx.clients[client_id].send(self.make_game_start_event(now, Some(participant_id)));
             let chalkboard = game_state.chalkboard.clone();
-            ctx.clients[client_id].send(BughouseServerEvent::ChalkboardUpdated{ chalkboard });
+            ctx.clients[client_id].send(BughouseServerEvent::ChalkboardUpdated { chalkboard });
             Ok(())
         } else {
             let existing_participant_id = self.participants.find_by_name(&player_name);
             if let Some(existing_participant_id) = existing_participant_id {
-                if let Some(existing_client_id) = ctx.clients.find_participant(existing_participant_id) {
+                if let Some(existing_client_id) =
+                    ctx.clients.find_participant(existing_participant_id)
+                {
                     if is_registered_user {
-                        let is_existing_user_registered = self.participants[existing_participant_id].is_registered_user;
+                        let is_existing_user_registered =
+                            self.participants[existing_participant_id].is_registered_user;
                         let rejection = if is_existing_user_registered {
-                            BughouseServerRejection::JoinedInAnotherClient  // this is us
+                            BughouseServerRejection::JoinedInAnotherClient // this is us
                         } else {
                             BughouseServerRejection::NameClashWithRegisteredUser
                         };
                         ctx.clients[existing_client_id].send_rejection(rejection);
                         ctx.clients.remove_client(existing_client_id);
-                    } else if !ctx.clients[existing_client_id].connection_monitor.status(now).is_healthy() {
+                    } else if !ctx.clients[existing_client_id]
+                        .connection_monitor
+                        .status(now)
+                        .is_healthy()
+                    {
                         ctx.clients.remove_client(existing_client_id);
                     } else {
-                        return Err(BughouseServerRejection::PlayerAlreadyExists{ player_name });
+                        return Err(BughouseServerRejection::PlayerAlreadyExists { player_name });
                     }
                 }
             }
             if let Err(reason) = ctx.helpers.validate_player_name(&player_name) {
-                return Err(BughouseServerRejection::InvalidPlayerName{ player_name, reason });
+                return Err(BughouseServerRejection::InvalidPlayerName { player_name, reason });
             }
             if !matches!(execution, Execution::Running) {
                 return Err(BughouseServerRejection::ShuttingDown);
@@ -797,7 +847,9 @@ impl Contest {
         }
     }
 
-    fn process_set_faction(&mut self, ctx: &mut Context, client_id: ClientId, faction: Faction) -> EventResult {
+    fn process_set_faction(
+        &mut self, ctx: &mut Context, client_id: ClientId, faction: Faction,
+    ) -> EventResult {
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
             return Err(unknown_error!("Cannot set faction: not joined"));
         };
@@ -808,9 +860,9 @@ impl Contest {
             (Faction::Fixed(_), Teaming::FixedTeams) => {}
             (Faction::Fixed(_), Teaming::IndividualMode) => {
                 return Err(unknown_error!("Cannot set fixed team in individual mode"));
-            },
-            (Faction::Random, _) => {},
-            (Faction::Observer, _) => {},
+            }
+            (Faction::Random, _) => {}
+            (Faction::Observer, _) => {}
         }
         self.participants[participant_id].faction = faction;
         self.send_lobby_updated(ctx);
@@ -818,8 +870,8 @@ impl Contest {
     }
 
     fn process_make_turn(
-        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
-        board_idx: BughouseBoard, turn_input: TurnInput
+        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, board_idx: BughouseBoard,
+        turn_input: TurnInput,
     ) -> EventResult {
         let Some(GameState{
                 ref mut game_start,
@@ -847,7 +899,15 @@ impl Contest {
                 let mut turns = vec![];
                 let game_now = GameInstant::from_now_game_maybe_active(*game_start, now);
                 if let Ok(turn_event) = apply_turn(
-                    game_now, envoy, turn_input, game, preturns, participants, scores, game_end, now
+                    game_now,
+                    envoy,
+                    turn_input,
+                    game,
+                    preturns,
+                    participants,
+                    scores,
+                    game_end,
+                    now,
                 ) {
                     if game_start.is_none() {
                         *game_start = Some(now);
@@ -857,7 +917,15 @@ impl Contest {
                     let opponent = envoy.opponent();
                     if let Some(preturn) = preturns.remove(&opponent) {
                         if let Ok(preturn_event) = apply_turn(
-                            game_now, opponent, preturn, game, preturns, participants, scores, game_end, now
+                            game_now,
+                            opponent,
+                            preturn,
+                            game,
+                            preturns,
+                            participants,
+                            scores,
+                            game_end,
+                            now,
                         ) {
                             turns.push(preturn_event);
                         } else {
@@ -879,28 +947,26 @@ impl Contest {
                 };
                 self.broadcast(ctx, &ev);
                 Ok(())
-            },
-            Ok(TurnMode::Preturn) => {
-                match preturns.entry(envoy) {
-                    hash_map::Entry::Occupied(_) => {
-                        Err(unknown_error!("Only one premove is supported"))
-                    },
-                    hash_map::Entry::Vacant(entry) => {
-                        entry.insert(turn_input);
-                        Ok(())
-                    },
+            }
+            Ok(TurnMode::Preturn) => match preturns.entry(envoy) {
+                hash_map::Entry::Occupied(_) => {
+                    Err(unknown_error!("Only one premove is supported"))
+                }
+                hash_map::Entry::Vacant(entry) => {
+                    entry.insert(turn_input);
+                    Ok(())
                 }
             },
             Err(_) => {
                 // Ignore error: This could fail if the game ended by flag or on the other board
                 // while the turn was in flight.
                 Ok(())
-            },
+            }
         }
     }
 
     fn process_cancel_preturn(
-        &mut self, ctx: &mut Context, client_id: ClientId, board_idx: BughouseBoard
+        &mut self, ctx: &mut Context, client_id: ClientId, board_idx: BughouseBoard,
     ) -> EventResult {
         let Some(GameState{ ref game, ref mut preturns, .. }) = self.game_state else {
             return Err(unknown_error!("Cannot cancel pre-turn: no game in progress"));
@@ -918,7 +984,9 @@ impl Contest {
         Ok(())
     }
 
-    fn process_resign(&mut self, ctx: &mut Context, client_id: ClientId, now: Instant) -> EventResult {
+    fn process_resign(
+        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
+    ) -> EventResult {
         let Some(GameState{ ref mut game, ref mut preturns, game_start, ref mut game_end, .. }) = self.game_state else {
             return Err(unknown_error!("Cannot resign: no game in progress"));
         };
@@ -933,7 +1001,7 @@ impl Contest {
         };
         let status = BughouseGameStatus::Victory(
             player_bughouse_id.team().opponent(),
-            VictoryReason::Resignation
+            VictoryReason::Resignation,
         );
         let scores = &mut self.scores;
         let participants = &mut self.participants;
@@ -949,11 +1017,13 @@ impl Contest {
         Ok(())
     }
 
-    fn process_set_ready(&mut self, ctx: &mut Context, client_id: ClientId, is_ready: bool) -> EventResult {
+    fn process_set_ready(
+        &mut self, ctx: &mut Context, client_id: ClientId, is_ready: bool,
+    ) -> EventResult {
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
             return Err(unknown_error!("Cannot update readiness: not joined"));
         };
-        if let Some(GameState{ ref game, .. }) = self.game_state {
+        if let Some(GameState { ref game, .. }) = self.game_state {
             if game.is_active() {
                 return Err(unknown_error!("Cannot update readiness: game still in progress"));
             }
@@ -975,7 +1045,7 @@ impl Contest {
     }
 
     fn process_update_chalk_drawing(
-        &mut self, ctx: &mut Context, client_id: ClientId, drawing: ChalkDrawing
+        &mut self, ctx: &mut Context, client_id: ClientId, drawing: ChalkDrawing,
     ) -> EventResult {
         let Some(GameState{ ref mut chalkboard, ref game, .. }) = self.game_state else {
             return Err(unknown_error!("Cannot update chalk drawing: no game in progress"));
@@ -984,25 +1054,28 @@ impl Contest {
             return Err(unknown_error!("Cannot update chalk drawing: not joined"));
         };
         if game.is_active() {
-            return Err(unknown_error!("Cannot update chalk drawing: can draw only after game is over"));
+            return Err(unknown_error!(
+                "Cannot update chalk drawing: can draw only after game is over"
+            ));
         }
         chalkboard.set_drawing(self.participants[participant_id].name.clone(), drawing);
         let chalkboard = chalkboard.clone();
-        self.broadcast(ctx, &BughouseServerEvent::ChalkboardUpdated{ chalkboard });
+        self.broadcast(ctx, &BughouseServerEvent::ChalkboardUpdated { chalkboard });
         Ok(())
     }
 
     fn process_request_export(
-        &self, ctx: &mut Context, client_id: ClientId, format: BughouseExportFormat
+        &self, ctx: &mut Context, client_id: ClientId, format: BughouseExportFormat,
     ) -> EventResult {
         let Some(GameState{ ref game, .. }) = self.game_state else {
             return Err(unknown_error!("Cannot export: no game in progress"));
         };
         let all_games = self.match_history.iter().chain(iter::once(game));
-        let content = all_games.enumerate().map(|(round, game)| {
-            pgn::export_to_bpgn(format, game, round + 1)
-        }).join("\n");
-        ctx.clients[client_id].send(BughouseServerEvent::GameExportReady{ content });
+        let content = all_games
+            .enumerate()
+            .map(|(round, game)| pgn::export_to_bpgn(format, game, round + 1))
+            .join("\n");
+        ctx.clients[client_id].send(BughouseServerEvent::GameExportReady { content });
         Ok(())
     }
 
@@ -1025,7 +1098,8 @@ impl Contest {
                 }
                 if !p.faction.is_player() {
                     if let Some(ref mut game_state) = self.game_state {
-                        chalkboard_updated |= game_state.chalkboard.clear_drawings_by_player(p.name.clone());
+                        chalkboard_updated |=
+                            game_state.chalkboard.clear_drawings_by_player(p.name.clone());
                     }
                     lobby_updated = true;
                     return false;
@@ -1043,26 +1117,34 @@ impl Contest {
         }
         if chalkboard_updated {
             let chalkboard = self.game_state.as_ref().unwrap().chalkboard.clone();
-            self.broadcast(ctx, &BughouseServerEvent::ChalkboardUpdated{ chalkboard });
+            self.broadcast(ctx, &BughouseServerEvent::ChalkboardUpdated { chalkboard });
         }
 
-        let can_start_game = verify_participants(&self.rules, self.participants.iter()).error.is_none();
+        let can_start_game =
+            verify_participants(&self.rules, self.participants.iter()).error.is_none();
         if let Some(first_game_countdown_start) = self.first_game_countdown_since {
             if !can_start_game {
                 self.first_game_countdown_since = None;
                 self.broadcast(ctx, &BughouseServerEvent::FirstGameCountdownCancelled);
-            } else if now.duration_since(first_game_countdown_start) >= FIRST_GAME_COUNTDOWN_DURATION {
+            } else if now.duration_since(first_game_countdown_start)
+                >= FIRST_GAME_COUNTDOWN_DURATION
+            {
                 self.start_game(ctx, now);
             }
         } else if can_start_game {
             if !matches!(execution, Execution::Running) {
-                self.broadcast(ctx, &BughouseServerEvent::Rejection(BughouseServerRejection::ShuttingDown));
+                self.broadcast(
+                    ctx,
+                    &BughouseServerEvent::Rejection(BughouseServerRejection::ShuttingDown),
+                );
                 self.reset_readiness();
                 return;
             }
-            if let Some(GameState{ ref game, .. }) = self.game_state {
-                assert!(!game.is_active(),
-                    "Players must not be allowed to set is_ready flag while the game is active");
+            if let Some(GameState { ref game, .. }) = self.game_state {
+                assert!(
+                    !game.is_active(),
+                    "Players must not be allowed to set is_ready flag while the game is active"
+                );
                 self.match_history.push(game.clone());
                 self.start_game(ctx, now);
             } else if self.first_game_countdown_since.is_none() {
@@ -1082,13 +1164,13 @@ impl Contest {
 
     fn start_game(&mut self, ctx: &mut Context, now: Instant) {
         self.reset_readiness();
-        self.randomize_fixed_teams();  // non-trivial only in the beginning of a contest
+        self.randomize_fixed_teams(); // non-trivial only in the beginning of a contest
         let players = self.assign_boards();
         let game = BughouseGame::new(
             self.rules.contest_rules.clone(),
             self.rules.chess_rules.clone(),
             self.rules.bughouse_rules.clone(),
-            &players
+            &players,
         );
         self.init_scores();
         self.game_state = Some(GameState {
@@ -1101,12 +1183,12 @@ impl Contest {
             chalkboard: Chalkboard::new(),
         });
         self.broadcast(ctx, &self.make_game_start_event(now, None));
-        self.send_lobby_updated(ctx);  // update readiness flags
+        self.send_lobby_updated(ctx); // update readiness flags
     }
 
     fn init_scores(&mut self) {
         match self.rules.bughouse_rules.teaming {
-            Teaming::FixedTeams => {},
+            Teaming::FixedTeams => {}
             Teaming::IndividualMode => {
                 assert!(self.scores.per_team.is_empty());
                 for p in self.participants.iter() {
@@ -1127,13 +1209,13 @@ impl Contest {
 
     // Creates a game start/reconnect event. `participant_id` is needed only if reconnecting.
     fn make_game_start_event(
-        &self, now: Instant, participant_id: Option<ParticipantId>
+        &self, now: Instant, participant_id: Option<ParticipantId>,
     ) -> BughouseServerEvent {
         let Some(game_state) = &self.game_state else {
             panic!("Expected ContestState::Game");
         };
-        let player_bughouse_id = participant_id
-            .and_then(|id| game_state.game.find_player(&self.participants[id].name));
+        let player_bughouse_id =
+            participant_id.and_then(|id| game_state.game.find_player(&self.participants[id].name));
         let preturns = if let Some(player_bughouse_id) = player_bughouse_id {
             player_preturns(&game_state.preturns, player_bughouse_id)
         } else {
@@ -1152,12 +1234,10 @@ impl Contest {
 
     fn send_lobby_updated(&self, ctx: &mut Context) {
         let participants = self.participants.iter().cloned().collect();
-        self.broadcast(ctx, &BughouseServerEvent::LobbyUpdated{ participants });
+        self.broadcast(ctx, &BughouseServerEvent::LobbyUpdated { participants });
     }
 
-    fn reset_readiness(&mut self) {
-        self.participants.iter_mut().for_each(|p| p.is_ready = false);
-    }
+    fn reset_readiness(&mut self) { self.participants.iter_mut().for_each(|p| p.is_ready = false); }
 
     // Randomize fixed teams in the beginning of a contest.
     //
@@ -1168,14 +1248,16 @@ impl Contest {
     // team with probability 1/2 (instead of 1/3).
     fn randomize_fixed_teams(&mut self) {
         match self.rules.bughouse_rules.teaming {
-            Teaming::FixedTeams => {},
+            Teaming::FixedTeams => {}
             Teaming::IndividualMode => {
                 return;
-            },
+            }
         };
         let mut rng = rand::thread_rng();
         let mut num_fixed = num_fixed_players_per_team(self.participants.iter());
-        let mut to_randomize = self.participants.iter_mut()
+        let mut to_randomize = self
+            .participants
+            .iter_mut()
             .filter(|p| p.faction == Faction::Random)
             .collect_vec();
         to_randomize.shuffle(&mut rng);
@@ -1193,7 +1275,9 @@ impl Contest {
     fn assign_boards(&self) -> Vec<PlayerInGame> {
         if let Some(assignment) = &self.board_assignment_override {
             for player_assignment in assignment {
-                if let Some(player) = self.participants.iter().find(|p| p.name == player_assignment.name) {
+                if let Some(player) =
+                    self.participants.iter().find(|p| p.name == player_assignment.name)
+                {
                     if let Faction::Fixed(team) = player.faction {
                         assert_eq!(team, player_assignment.id.team());
                     }
@@ -1203,57 +1287,63 @@ impl Contest {
         }
 
         let mut rng = rand::thread_rng();
-        let mut players_per_team = enum_map!{ _ => vec![] };
+        let mut players_per_team = enum_map! { _ => vec![] };
         match self.rules.bughouse_rules.teaming {
             Teaming::FixedTeams => {
                 for p in self.participants.iter() {
                     match p.faction {
                         Faction::Fixed(team) => players_per_team[team].push(p.clone()),
-                        Faction::Random => panic!("Player {} doesn't have a team in team mode", p.name),
-                        Faction::Observer => {},
+                        Faction::Random => {
+                            panic!("Player {} doesn't have a team in team mode", p.name)
+                        }
+                        Faction::Observer => {}
                     }
                 }
-            },
+            }
             Teaming::IndividualMode => {
-                let participants = self.participants.iter()
-                    .filter(|p| match p.faction {
-                        Faction::Fixed(_) => panic!("Player {} has a fixed team in individual mode", p.name),
-                        Faction::Random => true,
-                        Faction::Observer => false,
-                    });
+                let participants = self.participants.iter().filter(|p| match p.faction {
+                    Faction::Fixed(_) => {
+                        panic!("Player {} has a fixed team in individual mode", p.name)
+                    }
+                    Faction::Random => true,
+                    Faction::Observer => false,
+                });
                 for p in get_next_players(participants, TOTAL_ENVOYS) {
                     let team = Team::iter().min_by_key(|&t| players_per_team[t].len()).unwrap();
                     assert!(players_per_team[team].len() < TOTAL_ENVOYS_PER_TEAM);
                     players_per_team[team].push(p);
                 }
-            },
+            }
         }
-        players_per_team.into_iter().map(|(team, mut team_players)| {
-            team_players.shuffle(&mut rng);
-            match team_players.len() {
-                0 => panic!("Empty team: {}", team_players.len()),
-                1 => {
-                    vec![
-                        PlayerInGame {
+        players_per_team
+            .into_iter()
+            .map(|(team, mut team_players)| {
+                team_players.shuffle(&mut rng);
+                match team_players.len() {
+                    0 => panic!("Empty team: {}", team_players.len()),
+                    1 => {
+                        vec![PlayerInGame {
                             name: team_players.pop().unwrap().name.clone(),
-                            id: BughousePlayer::DoublePlayer(team)
-                        }
-                    ]
-                },
-                _ => {
-                    BughouseBoard::iter()
-                        .zip(get_next_players(team_players.iter(), TOTAL_ENVOYS_PER_TEAM).into_iter())
+                            id: BughousePlayer::DoublePlayer(team),
+                        }]
+                    }
+                    _ => BughouseBoard::iter()
+                        .zip(
+                            get_next_players(team_players.iter(), TOTAL_ENVOYS_PER_TEAM)
+                                .into_iter(),
+                        )
                         .map(move |(board_idx, participant)| PlayerInGame {
                             name: participant.name.clone(),
                             id: BughousePlayer::SinglePlayer(BughouseEnvoy {
                                 board_idx,
-                                force: get_bughouse_force(team, board_idx)
-                            })
+                                force: get_bughouse_force(team, board_idx),
+                            }),
                         })
-                        .collect_vec()
-                },
-            }
-        }).flatten().collect_vec()
+                        .collect_vec(),
+                }
+            })
+            .flatten()
+            .collect_vec()
     }
 }
 
@@ -1291,20 +1381,22 @@ fn apply_turn(
 }
 
 fn update_state_on_game_over(
-    game: &BughouseGame, preturns: &mut Preturns, participants: &mut Participants, scores: &mut Scores,
-    game_end: &mut Option<Instant>, now: Instant,
+    game: &BughouseGame, preturns: &mut Preturns, participants: &mut Participants,
+    scores: &mut Scores, game_end: &mut Option<Instant>, now: Instant,
 ) {
     assert!(game_end.is_none());
     *game_end = Some(now);
     preturns.clear();
     let team_scores = match game.status() {
-        BughouseGameStatus::Active => panic!("It just so happens that the game here is only mostly over"),
+        BughouseGameStatus::Active => {
+            panic!("It just so happens that the game here is only mostly over")
+        }
         BughouseGameStatus::Victory(team, _) => {
-            let mut s = enum_map!{ _ => 0 };
+            let mut s = enum_map! { _ => 0 };
             s[team] = 2;
             s
-        },
-        BughouseGameStatus::Draw(_) => enum_map!{ _ => 1 },
+        }
+        BughouseGameStatus::Draw(_) => enum_map! { _ => 1 },
     };
     match game.bughouse_rules().teaming {
         Teaming::FixedTeams => {
@@ -1312,7 +1404,7 @@ fn update_state_on_game_over(
             for (team, score) in team_scores {
                 *scores.per_team.entry(team).or_insert(0) += score;
             }
-        },
+        }
         Teaming::IndividualMode => {
             assert!(scores.per_team.is_empty());
             for p in game.players() {
@@ -1330,27 +1422,30 @@ fn update_state_on_game_over(
 
 fn player_preturns(preturns: &Preturns, player: BughousePlayer) -> Vec<(BughouseBoard, TurnInput)> {
     let preturns_or = match player {
-        BughousePlayer::SinglePlayer(envoy) => vec![
-            (envoy.board_idx, preturns.get(&envoy))
-        ],
-        BughousePlayer::DoublePlayer(team) => BughouseBoard::iter().map(|board_idx| {
-            let envoy = BughouseEnvoy{ board_idx, force: get_bughouse_force(team, board_idx) };
-            (board_idx, preturns.get(&envoy))
-        }).collect_vec(),
+        BughousePlayer::SinglePlayer(envoy) => vec![(envoy.board_idx, preturns.get(&envoy))],
+        BughousePlayer::DoublePlayer(team) => BughouseBoard::iter()
+            .map(|board_idx| {
+                let envoy = BughouseEnvoy {
+                    board_idx,
+                    force: get_bughouse_force(team, board_idx),
+                };
+                (board_idx, preturns.get(&envoy))
+            })
+            .collect_vec(),
     };
-    return preturns_or.into_iter()
+    return preturns_or
+        .into_iter()
         .filter(|(_, turn)| turn.is_some())
         .map(|(board_idx, turn)| (board_idx, turn.unwrap().clone()))
         .collect();
 }
 
 fn get_next_players<'a>(
-    participants: impl Iterator<Item = &'a Participant>, max_players: usize
+    participants: impl Iterator<Item = &'a Participant>, max_players: usize,
 ) -> Vec<Participant> {
     let mut rng = rand::thread_rng();
-    let players_buckets = participants
-        .sorted_by_key(|p| p.games_played)
-        .group_by(|p| p.games_played);
+    let players_buckets =
+        participants.sorted_by_key(|p| p.games_played).group_by(|p| p.games_played);
     let mut ret = Vec::<Participant>::new();
     for (_, bucket) in players_buckets.into_iter() {
         let bucket = bucket.collect_vec();
@@ -1366,13 +1461,13 @@ fn process_report_error(ctx: &Context, client_id: ClientId, report: &BughouseCli
     // TODO: Save errors to DB.
     let logging_id = &ctx.clients[client_id].logging_id;
     match report {
-        BughouseClientErrorReport::RustPanic{ panic_info, backtrace } => {
+        BughouseClientErrorReport::RustPanic { panic_info, backtrace } => {
             warn!("Client {logging_id} panicked:\n{panic_info}\nBacktrace: {backtrace}");
         }
-        BughouseClientErrorReport::RustError{ message } => {
+        BughouseClientErrorReport::RustError { message } => {
             warn!("Client {logging_id} experienced Rust error:\n{message}");
         }
-        BughouseClientErrorReport::UnknownError{ message } => {
+        BughouseClientErrorReport::UnknownError { message } => {
             warn!("Client {logging_id} experienced unknown error:\n{message}");
         }
     }

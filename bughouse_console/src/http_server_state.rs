@@ -1,9 +1,8 @@
 use std::sync::{Arc, Mutex};
 
+use bughouse_chess::session_store::{SessionId, SessionStore};
 use http_types::StatusCode;
 use url::Url;
-
-use bughouse_chess::session_store::{SessionId, SessionStore};
 
 use crate::secret_persistence::SecretDatabaseRW;
 
@@ -25,13 +24,9 @@ where
 {
     type DB = DB;
 
-    fn db(&self) -> &Self::DB {
-        &self.db
-    }
+    fn db(&self) -> &Self::DB { &self.db }
 
-    fn static_content_url_prefix(&self) -> &str {
-        &self.static_content_url_prefix
-    }
+    fn static_content_url_prefix(&self) -> &str { &self.static_content_url_prefix }
 }
 
 impl<DB> HttpServerStateImpl<DB> {
@@ -60,9 +55,6 @@ fn get_session<DB>(
     if req.state().sessions_enabled {
         Ok(req.session())
     } else {
-        Err(tide::Error::from_str(
-            StatusCode::NotImplemented,
-            "Sessions are not enabled.",
-        ))
+        Err(tide::Error::from_str(StatusCode::NotImplemented, "Sessions are not enabled."))
     }
 }

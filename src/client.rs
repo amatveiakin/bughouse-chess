@@ -2,27 +2,29 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use enum_map::{EnumMap, enum_map};
+use enum_map::{enum_map, EnumMap};
 use instant::Instant;
-use strum::{IntoEnumIterator};
+use strum::IntoEnumIterator;
 
 use crate::altered_game::AlteredGame;
-use crate::board::{TurnError, TurnMode, TurnInput};
-use crate::chalk::{Chalkboard, ChalkCanvas, ChalkDrawing, ChalkMark};
+use crate::board::{TurnError, TurnInput, TurnMode};
+use crate::chalk::{ChalkCanvas, ChalkDrawing, ChalkMark, Chalkboard};
 use crate::clock::{GameInstant, WallGameTimePair};
-use crate::display::{DisplayBoard, get_board_index};
-use crate::game::{
-    TurnRecord, BughouseBoard, BughouseEnvoy, BughousePlayer, BughouseParticipant, PlayerRelation,
-    BughouseGameStatus, BughouseGame
+use crate::display::{get_board_index, DisplayBoard};
+use crate::event::{
+    BughouseClientEvent, BughouseClientPerformance, BughouseServerEvent, BughouseServerRejection,
 };
-use crate::event::{BughouseServerEvent, BughouseClientEvent, BughouseServerRejection, BughouseClientPerformance};
+use crate::game::{
+    BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
+    BughousePlayer, PlayerRelation, TurnRecord,
+};
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::BughouseExportFormat;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
-use crate::player::{Participant, Faction};
+use crate::player::{Faction, Participant};
 use crate::rules::{Rules, FIRST_GAME_COUNTDOWN_DURATION};
-use crate::session::Session;
 use crate::scores::Scores;
+use crate::session::Session;
 
 
 #[derive(Clone, Copy, Debug)]
@@ -35,7 +37,7 @@ pub enum SubjectiveGameResult {
 #[derive(Clone, Debug)]
 pub enum NotableEvent {
     SessionUpdated,
-    ContestStarted(String),  // contains ContestID
+    ContestStarted(String), // contains ContestID
     GameStarted,
     GameOver(SubjectiveGameResult),
     TurnMade(BughouseEnvoy),
@@ -72,7 +74,6 @@ pub struct GameState {
     pub chalk_canvas: ChalkCanvas,
     // Index of the next warning in `LOW_TIME_WARNING_THRESHOLDS`.
     next_low_time_warning_idx: EnumMap<BughouseBoard, usize>,
-
 }
 
 #[derive(Debug)]
@@ -97,13 +98,8 @@ pub struct Contest {
 #[derive(Debug)]
 enum ContestState {
     NotConnected,
-    Creating {
-        my_name: String,
-    },
-    Joining {
-        contest_id: String,
-        my_name: String,
-    },
+    Creating { my_name: String },
+    Joining { contest_id: String, my_name: String },
     Connected(Contest),
 }
 
@@ -120,9 +116,7 @@ impl Connection {
         }
     }
 
-    fn send(&mut self, event: BughouseClientEvent) {
-        self.events_tx.send(event).unwrap();
-    }
+    fn send(&mut self, event: BughouseClientEvent) { self.events_tx.send(event).unwrap(); }
 }
 
 pub struct ClientState {
@@ -153,7 +147,7 @@ macro_rules! internal_error {
 
 impl ClientState {
     pub fn new(
-        user_agent: String, time_zone: String, events_tx: mpsc::Sender<BughouseClientEvent>
+        user_agent: String, time_zone: String, events_tx: mpsc::Sender<BughouseClientEvent>,
     ) -> Self {
         let mut meter_box = MeterBox::new();
         let ping_meter = meter_box.meter("ping".to_owned());
@@ -171,26 +165,42 @@ impl ClientState {
 
     pub fn session(&self) -> &Session { &self.session }
     pub fn contest(&self) -> Option<&Contest> {
-        if let ContestState::Connected(ref c) = self.contest_state { Some(c) } else { None }
+        if let ContestState::Connected(ref c) = self.contest_state {
+            Some(c)
+        } else {
+            None
+        }
     }
     fn contest_mut(&mut self) -> Option<&mut Contest> {
-        if let ContestState::Connected(ref mut c) = self.contest_state { Some(c) } else { None }
+        if let ContestState::Connected(ref mut c) = self.contest_state {
+            Some(c)
+        } else {
+            None
+        }
     }
     pub fn is_ready(&self) -> Option<bool> { self.contest().map(|c| c.is_ready) }
     pub fn contest_id(&self) -> Option<&String> { self.contest().map(|c| &c.contest_id) }
-    pub fn game_state(&self) -> Option<&GameState> { self.contest().and_then(|c| c.game_state.as_ref()) }
-    fn game_state_mut(&mut self) -> Option<&mut GameState> { self.contest_mut().and_then(|c| c.game_state.as_mut()) }
+    pub fn game_state(&self) -> Option<&GameState> {
+        self.contest().and_then(|c| c.game_state.as_ref())
+    }
+    fn game_state_mut(&mut self) -> Option<&mut GameState> {
+        self.contest_mut().and_then(|c| c.game_state.as_mut())
+    }
     // TODO: Reduce public mutability. This is used only for drag&drop, so limit the mutable API to that.
-    pub fn alt_game_mut(&mut self) -> Option<&mut AlteredGame> { self.game_state_mut().map(|s| &mut s.alt_game) }
+    pub fn alt_game_mut(&mut self) -> Option<&mut AlteredGame> {
+        self.game_state_mut().map(|s| &mut s.alt_game)
+    }
 
     pub fn my_faction(&self) -> Option<Faction> { self.contest().map(|c| c.my_faction) }
-    pub fn my_id(&self) -> Option<BughouseParticipant> { self.game_state().map(|s| s.alt_game.my_id()) }
+    pub fn my_id(&self) -> Option<BughouseParticipant> {
+        self.game_state().map(|s| s.alt_game.my_id())
+    }
     pub fn my_name(&self) -> Option<&str> {
         match &self.contest_state {
             ContestState::NotConnected => None,
-            ContestState::Creating{ my_name } => Some(&my_name),
-            ContestState::Joining{ my_name, .. } => Some(&my_name),
-            ContestState::Connected(Contest{ my_name, .. }) => Some(&my_name),
+            ContestState::Creating { my_name } => Some(&my_name),
+            ContestState::Joining { my_name, .. } => Some(&my_name),
+            ContestState::Connected(Contest { my_name, .. }) => Some(&my_name),
         }
     }
     pub fn relation_to(&self, name: &str) -> PlayerRelation {
@@ -210,17 +220,25 @@ impl ClientState {
     }
 
     pub fn first_game_countdown_left(&self) -> Option<Duration> {
-        self.contest().and_then(|c| c.first_game_countdown_since.map(|t| {
-            FIRST_GAME_COUNTDOWN_DURATION.saturating_sub(Instant::now().duration_since(t))
-        }))
+        self.contest().and_then(|c| {
+            c.first_game_countdown_since.map(|t| {
+                FIRST_GAME_COUNTDOWN_DURATION.saturating_sub(Instant::now().duration_since(t))
+            })
+        })
     }
 
-    pub fn chalk_canvas(&self) -> Option<&ChalkCanvas> { self.game_state().map(|s| &s.chalk_canvas) }
-    pub fn chalk_canvas_mut(&mut self) -> Option<&mut ChalkCanvas> { self.game_state_mut().map(|s| &mut s.chalk_canvas) }
+    pub fn chalk_canvas(&self) -> Option<&ChalkCanvas> {
+        self.game_state().map(|s| &s.chalk_canvas)
+    }
+    pub fn chalk_canvas_mut(&mut self) -> Option<&mut ChalkCanvas> {
+        self.game_state_mut().map(|s| &mut s.chalk_canvas)
+    }
 
     pub fn meter(&mut self, name: String) -> Meter { self.meter_box.meter(name) }
     pub fn read_meter_stats(&self) -> HashMap<String, MeterStats> { self.meter_box.read_stats() }
-    pub fn consume_meter_stats(&mut self) -> HashMap<String, MeterStats> { self.meter_box.consume_stats() }
+    pub fn consume_meter_stats(&mut self) -> HashMap<String, MeterStats> {
+        self.meter_box.consume_stats()
+    }
 
     pub fn current_turnaround_time(&self) -> Option<Duration> {
         let now = Instant::now();
@@ -228,29 +246,28 @@ impl ClientState {
     }
 
     pub fn new_contest(&mut self, rules: Rules, my_name: String) {
-        self.contest_state = ContestState::Creating{ my_name: my_name.clone() };
-        self.connection.send(BughouseClientEvent::NewContest{ rules, player_name: my_name });
+        self.contest_state = ContestState::Creating { my_name: my_name.clone() };
+        self.connection
+            .send(BughouseClientEvent::NewContest { rules, player_name: my_name });
     }
     pub fn join(&mut self, contest_id: String, my_name: String) {
         self.connection.send(BughouseClientEvent::Join {
             contest_id: contest_id.clone(),
             player_name: my_name.clone(),
         });
-        self.contest_state = ContestState::Joining{ contest_id, my_name };
+        self.contest_state = ContestState::Joining { contest_id, my_name };
     }
     pub fn set_faction(&mut self, faction: Faction) {
         if let Some(contest) = self.contest_mut() {
             contest.my_faction = faction;
-            self.connection.send(BughouseClientEvent::SetFaction{ faction });
+            self.connection.send(BughouseClientEvent::SetFaction { faction });
         }
     }
-    pub fn resign(&mut self) {
-        self.connection.send(BughouseClientEvent::Resign);
-    }
+    pub fn resign(&mut self) { self.connection.send(BughouseClientEvent::Resign); }
     pub fn set_ready(&mut self, is_ready: bool) {
         if let Some(contest) = self.contest_mut() {
             contest.is_ready = is_ready;
-            self.connection.send(BughouseClientEvent::SetReady{ is_ready });
+            self.connection.send(BughouseClientEvent::SetReady { is_ready });
         }
     }
     pub fn leave(&mut self) {
@@ -261,14 +278,15 @@ impl ClientState {
     }
     pub fn report_performance(&mut self) {
         let stats = self.consume_meter_stats();
-        self.connection.send(BughouseClientEvent::ReportPerformace(BughouseClientPerformance {
-            user_agent: self.user_agent.clone(),
-            time_zone: self.time_zone.clone(),
-            stats,
-        }));
+        self.connection
+            .send(BughouseClientEvent::ReportPerformace(BughouseClientPerformance {
+                user_agent: self.user_agent.clone(),
+                time_zone: self.time_zone.clone(),
+                stats,
+            }));
     }
     pub fn request_export(&mut self, format: BughouseExportFormat) {
-        self.connection.send(BughouseClientEvent::RequestExport{ format });
+        self.connection.send(BughouseClientEvent::RequestExport { format });
     }
 
     pub fn refresh(&mut self) {
@@ -280,19 +298,21 @@ impl ClientState {
     //   1. Board notation (usually optional; mandatory if double-playing).
     //   2. Algebraic turn notation or "-" to cancel pending preturn.
     pub fn execute_turn_command(&mut self, turn_command: &str) -> Result<(), TurnError> {
-        let (display_board, turn) =
-            if let Some(suffix) = turn_command.strip_prefix('<') {
-                (DisplayBoard::Primary, suffix)
-            } else if let Some(suffix) = turn_command.strip_prefix('>') {
-                (DisplayBoard::Secondary, suffix)
-            } else {
-                let game_state = self.game_state().ok_or(TurnError::NoGameInProgress)?;
-                let my_player_id = game_state.alt_game.my_id().as_player().ok_or(TurnError::NotPlayer)?;
-                match my_player_id {
-                    BughousePlayer::SinglePlayer(_) => (DisplayBoard::Primary, turn_command),
-                    BughousePlayer::DoublePlayer(_) => { return Err(TurnError::AmbiguousBoard); },
+        let (display_board, turn) = if let Some(suffix) = turn_command.strip_prefix('<') {
+            (DisplayBoard::Primary, suffix)
+        } else if let Some(suffix) = turn_command.strip_prefix('>') {
+            (DisplayBoard::Secondary, suffix)
+        } else {
+            let game_state = self.game_state().ok_or(TurnError::NoGameInProgress)?;
+            let my_player_id =
+                game_state.alt_game.my_id().as_player().ok_or(TurnError::NotPlayer)?;
+            match my_player_id {
+                BughousePlayer::SinglePlayer(_) => (DisplayBoard::Primary, turn_command),
+                BughousePlayer::DoublePlayer(_) => {
+                    return Err(TurnError::AmbiguousBoard);
                 }
-            };
+            }
+        };
         if turn == "-" {
             self.cancel_preturn(display_board);
         } else {
@@ -301,17 +321,17 @@ impl ClientState {
         Ok(())
     }
 
-    pub fn make_turn(&mut self, display_board: DisplayBoard, turn_input: TurnInput)
-        -> Result<(), TurnError>
-    {
+    pub fn make_turn(
+        &mut self, display_board: DisplayBoard, turn_input: TurnInput,
+    ) -> Result<(), TurnError> {
         let game_state = self.game_state_mut().ok_or(TurnError::NoGameInProgress)?;
-        let GameState{ ref mut alt_game, time_pair, .. } = game_state;
+        let GameState { ref mut alt_game, time_pair, .. } = game_state;
         let board_idx = get_board_index(display_board, alt_game.perspective());
         let my_envoy = alt_game.my_id().envoy_for(board_idx).ok_or(TurnError::NotPlayer)?;
         let now = Instant::now();
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         alt_game.try_local_turn(board_idx, turn_input.clone(), game_now)?;
-        self.connection.send(BughouseClientEvent::MakeTurn{ board_idx, turn_input });
+        self.connection.send(BughouseClientEvent::MakeTurn { board_idx, turn_input });
         self.notable_event_queue.push_back(NotableEvent::TurnMade(my_envoy));
         Ok(())
     }
@@ -322,27 +342,24 @@ impl ClientState {
         };
         let board_idx = get_board_index(display_board, alt_game.perspective());
         if alt_game.cancel_preturn(board_idx) {
-            self.connection.send(BughouseClientEvent::CancelPreturn{ board_idx });
+            self.connection.send(BughouseClientEvent::CancelPreturn { board_idx });
         }
     }
 
     pub fn add_chalk_mark(&mut self, display_board: DisplayBoard, mark: ChalkMark) {
-        self.update_chalk_board(
-            display_board,
-            |chalkboard, my_name, board_idx| chalkboard.add_mark(my_name, board_idx, mark)
-        );
+        self.update_chalk_board(display_board, |chalkboard, my_name, board_idx| {
+            chalkboard.add_mark(my_name, board_idx, mark)
+        });
     }
     pub fn remove_last_chalk_mark(&mut self, display_board: DisplayBoard) {
-        self.update_chalk_board(
-            display_board,
-            |chalkboard, my_name, board_idx| chalkboard.remove_last_mark(my_name, board_idx)
-        );
+        self.update_chalk_board(display_board, |chalkboard, my_name, board_idx| {
+            chalkboard.remove_last_mark(my_name, board_idx)
+        });
     }
     pub fn clear_chalk_drawing(&mut self, display_board: DisplayBoard) {
-        self.update_chalk_board(
-            display_board,
-            |chalkboard, my_name, board_idx| { chalkboard.clear_drawing(my_name, board_idx); }
-        );
+        self.update_chalk_board(display_board, |chalkboard, my_name, board_idx| {
+            chalkboard.clear_drawing(my_name, board_idx);
+        });
     }
 
     // Improvement potential: Split into functions like `CoreServerState.on_client_event` does.
@@ -403,25 +420,28 @@ impl ClientState {
                     self.contest_state = ContestState::NotConnected;
                 }
                 return Err(error);
-            },
+            }
             UpdateSession { session } => {
                 self.session = session;
                 self.notable_event_queue.push_back(NotableEvent::SessionUpdated);
-            },
-            ContestWelcome{ contest_id, rules } => {
+            }
+            ContestWelcome { contest_id, rules } => {
                 let my_name = match &self.contest_state {
-                    ContestState::Creating{ my_name } => {
-                        my_name.clone()
-                    }
-                    ContestState::Joining{ contest_id: id, my_name } => {
+                    ContestState::Creating { my_name } => my_name.clone(),
+                    ContestState::Joining { contest_id: id, my_name } => {
                         if contest_id != *id {
                             return Err(internal_error!("Cannot apply ContestWelcome: expected contest {id}, but got {contest_id}"));
                         }
                         my_name.clone()
-                    },
-                    _ => return Err(internal_error!("Cannot apply ContestWelcome: not expecting a new contest")),
+                    }
+                    _ => {
+                        return Err(internal_error!(
+                            "Cannot apply ContestWelcome: not expecting a new contest"
+                        ))
+                    }
                 };
-                self.notable_event_queue.push_back(NotableEvent::ContestStarted(contest_id.clone()));
+                self.notable_event_queue
+                    .push_back(NotableEvent::ContestStarted(contest_id.clone()));
                 // `Observer` is a safe faction default that wouldn't allow us to try acting as
                 // a player if we are in fact an observer. We'll get the real faction afterwards
                 // in a `LobbyUpdated` event.
@@ -437,9 +457,11 @@ impl ClientState {
                     first_game_countdown_since: None,
                     game_state: None,
                 });
-            },
-            LobbyUpdated{ participants } => {
-                let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply LobbyUpdated: no contest in progress"))?;
+            }
+            LobbyUpdated { participants } => {
+                let contest = self.contest_mut().ok_or_else(|| {
+                    internal_error!("Cannot apply LobbyUpdated: no contest in progress")
+                })?;
                 // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
                 //   (e.g. is_ready from another player) arrived before is_ready update from this
                 //   client reached the server. Same for `my_team`.
@@ -447,29 +469,47 @@ impl ClientState {
                 contest.is_ready = me.is_ready;
                 contest.my_faction = me.faction;
                 contest.participants = participants;
-            },
+            }
             FirstGameCountdownStarted => {
-                let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply FirstGameCountdownStarted: no contest in progress"))?;
+                let contest = self.contest_mut().ok_or_else(|| {
+                    internal_error!(
+                        "Cannot apply FirstGameCountdownStarted: no contest in progress"
+                    )
+                })?;
                 contest.first_game_countdown_since = Some(now);
-            },
+            }
             FirstGameCountdownCancelled => {
-                let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply FirstGameCountdownCancelled: no contest in progress"))?;
+                let contest = self.contest_mut().ok_or_else(|| {
+                    internal_error!(
+                        "Cannot apply FirstGameCountdownCancelled: no contest in progress"
+                    )
+                })?;
                 contest.first_game_countdown_since = None;
-            },
-            GameStarted{ starting_position, players, time, turn_log, preturns, game_status, scores } => {
+            }
+            GameStarted {
+                starting_position,
+                players,
+                time,
+                turn_log,
+                preturns,
+                game_status,
+                scores,
+            } => {
                 let time_pair = if turn_log.is_empty() {
                     assert!(time.elapsed_since_start().is_zero());
                     None
                 } else {
                     Some(WallGameTimePair::new(now, time.approximate()))
                 };
-                let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply GameStarted: no contest in progress"))?;
+                let contest = self.contest_mut().ok_or_else(|| {
+                    internal_error!("Cannot apply GameStarted: no contest in progress")
+                })?;
                 let game = BughouseGame::new_with_starting_position(
                     contest.rules.contest_rules.clone(),
                     contest.rules.chess_rules.clone(),
                     contest.rules.bughouse_rules.clone(),
                     starting_position,
-                    &players
+                    &players,
                 );
                 let my_id = match game.find_player(&contest.my_name) {
                     Some(id) => BughouseParticipant::Player(id),
@@ -482,7 +522,7 @@ impl ClientState {
                     time_pair,
                     chalkboard: Chalkboard::new(),
                     chalk_canvas: ChalkCanvas::new(perspective),
-                    next_low_time_warning_idx: enum_map!{ _ => 0 },
+                    next_low_time_warning_idx: enum_map! { _ => 0 },
                 });
                 for turn in turn_log {
                     self.apply_remote_turn(turn, false)?;
@@ -500,8 +540,8 @@ impl ClientState {
                 self.update_scores(scores)?;
                 self.notable_event_queue.push_back(NotableEvent::GameStarted);
                 self.update_low_time_warnings(false);
-            },
-            TurnsMade{ turns, game_status, scores } => {
+            }
+            TurnsMade { turns, game_status, scores } => {
                 for turn in turns {
                     self.apply_remote_turn(turn, true)?;
                 }
@@ -510,23 +550,32 @@ impl ClientState {
                 if !game_status.is_active() {
                     self.game_over_postprocess()?;
                 }
-            },
-            GameOver{ time, game_status, scores: new_scores } => {
-                let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply GameOver: no contest in progress"))?;
-                let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot apply GameOver: no game in progress"))?;
+            }
+            GameOver { time, game_status, scores: new_scores } => {
+                let contest = self.contest_mut().ok_or_else(|| {
+                    internal_error!("Cannot apply GameOver: no contest in progress")
+                })?;
+                let game_state = contest
+                    .game_state
+                    .as_mut()
+                    .ok_or_else(|| internal_error!("Cannot apply GameOver: no game in progress"))?;
                 assert!(game_state.alt_game.is_active());
                 game_state.alt_game.set_status(game_status, time);
                 contest.scores = new_scores;
                 self.game_over_postprocess()?;
-            },
-            ChalkboardUpdated{ chalkboard } => {
-                let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply ChalkboardUpdated: no contest in progress"))?;
-                let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot apply ChalkboardUpdated: no game in progress"))?;
+            }
+            ChalkboardUpdated { chalkboard } => {
+                let contest = self.contest_mut().ok_or_else(|| {
+                    internal_error!("Cannot apply ChalkboardUpdated: no contest in progress")
+                })?;
+                let game_state = contest.game_state.as_mut().ok_or_else(|| {
+                    internal_error!("Cannot apply ChalkboardUpdated: no game in progress")
+                })?;
                 game_state.chalkboard = chalkboard;
-            },
-            GameExportReady{ content } => {
+            }
+            GameExportReady { content } => {
                 self.notable_event_queue.push_back(NotableEvent::GameExportReady(content));
-            },
+            }
             Pong => {
                 if let Some(ping_duration) = self.connection.health_monitor.register_pong(now) {
                     self.ping_meter.record_duration(ping_duration);
@@ -541,14 +590,17 @@ impl ClientState {
     }
 
     fn apply_remote_turn(
-        &mut self, turn_record: TurnRecord, generate_notable_events: bool
+        &mut self, turn_record: TurnRecord, generate_notable_events: bool,
     ) -> Result<(), EventError> {
-        let TurnRecord{ envoy, turn_algebraic, time } = turn_record;
+        let TurnRecord { envoy, turn_algebraic, time } = turn_record;
         let ContestState::Connected(contest) = &mut self.contest_state else {
             return Err(internal_error!("Cannot make turn: no contest in progress"));
         };
-        let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot make turn: no game in progress"))?;
-        let GameState{ ref mut alt_game, ref mut time_pair, .. } = game_state;
+        let game_state = contest
+            .game_state
+            .as_mut()
+            .ok_or_else(|| internal_error!("Cannot make turn: no game in progress"))?;
+        let GameState { ref mut alt_game, ref mut time_pair, .. } = game_state;
         if !alt_game.is_active() {
             return Err(internal_error!("Cannot make turn {}: game over", turn_algebraic));
         }
@@ -560,11 +612,15 @@ impl ClientState {
             *time_pair = Some(WallGameTimePair::new(now, game_start));
         }
         let old_reserve_size = reserve_size(alt_game, envoy);
-        alt_game.apply_remote_turn_algebraic(
-            envoy, &turn_algebraic, time
-        ).map_err(|err| {
-            internal_error!("Got impossible turn from server: {}, error: {:?}", turn_algebraic, err)
-        })?;
+        alt_game
+            .apply_remote_turn_algebraic(envoy, &turn_algebraic, time)
+            .map_err(|err| {
+                internal_error!(
+                    "Got impossible turn from server: {}, error: {:?}",
+                    turn_algebraic,
+                    err
+                )
+            })?;
         let new_reserve_size = reserve_size(alt_game, envoy);
         if generate_notable_events {
             if !is_my_turn {
@@ -573,30 +629,43 @@ impl ClientState {
                 self.notable_event_queue.push_back(NotableEvent::TurnMade(envoy));
             }
             if is_my_turn && new_reserve_size > old_reserve_size {
-                self.notable_event_queue.push_back(NotableEvent::MyReserveRestocked(envoy.board_idx));
+                self.notable_event_queue
+                    .push_back(NotableEvent::MyReserveRestocked(envoy.board_idx));
             }
         }
         Ok(())
     }
 
     fn verify_game_status(&mut self, game_status: BughouseGameStatus) -> Result<(), EventError> {
-        let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot verify game status: no contest in progress"))?;
-        let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot verify game status: no game in progress"))?;
-        let GameState{ ref mut alt_game, .. } = game_state;
+        let contest = self
+            .contest_mut()
+            .ok_or_else(|| internal_error!("Cannot verify game status: no contest in progress"))?;
+        let game_state = contest
+            .game_state
+            .as_mut()
+            .ok_or_else(|| internal_error!("Cannot verify game status: no game in progress"))?;
+        let GameState { ref mut alt_game, .. } = game_state;
         if game_status != alt_game.status() {
             return Err(internal_error!(
-                "Expected game status {:?}, got {:?}", game_status, alt_game.status()
+                "Expected game status {:?}, got {:?}",
+                game_status,
+                alt_game.status()
             ));
         }
         Ok(())
     }
 
-    fn update_game_status(&mut self, game_status: BughouseGameStatus, game_now: GameInstant)
-        -> Result<(), EventError>
-    {
-        let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot update game status: no contest in progress"))?;
-        let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot update game status: no game in progress"))?;
-        let GameState{ ref mut alt_game, .. } = game_state;
+    fn update_game_status(
+        &mut self, game_status: BughouseGameStatus, game_now: GameInstant,
+    ) -> Result<(), EventError> {
+        let contest = self
+            .contest_mut()
+            .ok_or_else(|| internal_error!("Cannot update game status: no contest in progress"))?;
+        let game_state = contest
+            .game_state
+            .as_mut()
+            .ok_or_else(|| internal_error!("Cannot update game status: no game in progress"))?;
+        let GameState { ref mut alt_game, .. } = game_state;
         if alt_game.is_active() {
             if !game_status.is_active() {
                 alt_game.set_status(game_status, game_now);
@@ -608,21 +677,26 @@ impl ClientState {
     }
 
     fn game_over_postprocess(&mut self) -> Result<(), EventError> {
-        let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot process game over: no contest in progress"))?;
-        let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot process game over: no game in progress"))?;
-        let GameState{ ref mut alt_game, .. } = game_state;
+        let contest = self
+            .contest_mut()
+            .ok_or_else(|| internal_error!("Cannot process game over: no contest in progress"))?;
+        let game_state = contest
+            .game_state
+            .as_mut()
+            .ok_or_else(|| internal_error!("Cannot process game over: no game in progress"))?;
+        let GameState { ref mut alt_game, .. } = game_state;
         if let BughouseParticipant::Player(my_player_id) = alt_game.my_id() {
             let game_status = match alt_game.status() {
                 BughouseGameStatus::Active => {
                     return Err(internal_error!("Cannot process game over: game not over"));
-                },
+                }
                 BughouseGameStatus::Victory(team, _) => {
                     if team == my_player_id.team() {
                         SubjectiveGameResult::Victory
                     } else {
                         SubjectiveGameResult::Defeat
                     }
-                },
+                }
                 BughouseGameStatus::Draw(_) => SubjectiveGameResult::Draw,
             };
             self.notable_event_queue.push_back(NotableEvent::GameOver(game_status));
@@ -634,14 +708,16 @@ impl ClientState {
     }
 
     fn update_scores(&mut self, new_scores: Scores) -> Result<(), EventError> {
-        let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot update scores: no contest in progress"))?;
+        let contest = self
+            .contest_mut()
+            .ok_or_else(|| internal_error!("Cannot update scores: no contest in progress"))?;
         contest.scores = new_scores;
         Ok(())
     }
 
     fn update_chalk_board<F>(&mut self, display_board: DisplayBoard, f: F)
     where
-        F: FnOnce(&mut Chalkboard, String, BughouseBoard)
+        F: FnOnce(&mut Chalkboard, String, BughouseBoard),
     {
         let Some(contest) = self.contest_mut() else {
             return;
@@ -661,17 +737,22 @@ impl ClientState {
         // Caller must ensure that contest and game exist.
         let contest = self.contest().unwrap();
         let game_state = contest.game_state.as_ref().unwrap();
-        let drawing = game_state.chalkboard.drawings_by(&contest.my_name).cloned()
+        let drawing = game_state
+            .chalkboard
+            .drawings_by(&contest.my_name)
+            .cloned()
             .unwrap_or_else(|| ChalkDrawing::new());
-        self.connection.send(BughouseClientEvent::UpdateChalkDrawing{ drawing })
+        self.connection.send(BughouseClientEvent::UpdateChalkDrawing { drawing })
     }
 
     fn check_connection(&mut self) {
         use ActiveConnectionStatus::*;
         let now = Instant::now();
         match self.connection.health_monitor.update(now) {
-            Noop => {},
-            SendPing => { self.connection.send(BughouseClientEvent::Ping); },
+            Noop => {}
+            SendPing => {
+                self.connection.send(BughouseClientEvent::Ping);
+            }
         }
     }
 
@@ -679,7 +760,12 @@ impl ClientState {
         let Some(game_state) = self.game_state_mut() else {
             return;
         };
-        let GameState{ ref alt_game, time_pair, ref mut next_low_time_warning_idx, .. } = game_state;
+        let GameState {
+            ref alt_game,
+            time_pair,
+            ref mut next_low_time_warning_idx,
+            ..
+        } = game_state;
         let Some(time_pair) = time_pair else {
             return;
         };
@@ -690,13 +776,15 @@ impl ClientState {
         // out of sync if local player made a move at 0:20.01 and the opponent replied
         // one minute later.
         let game_now = GameInstant::from_pair_game_active(*time_pair, Instant::now());
-        let mut num_events = enum_map!{ _ => 0 };
+        let mut num_events = enum_map! { _ => 0 };
         for board_idx in BughouseBoard::iter() {
             let Some(time_left) = my_time_left(alt_game, board_idx, game_now) else {
                 return;
             };
             let idx = &mut next_low_time_warning_idx[board_idx];
-            while *idx < LOW_TIME_WARNING_THRESHOLDS.len() && time_left <= LOW_TIME_WARNING_THRESHOLDS[*idx] {
+            while *idx < LOW_TIME_WARNING_THRESHOLDS.len()
+                && time_left <= LOW_TIME_WARNING_THRESHOLDS[*idx]
+            {
                 *idx += 1;
                 num_events[board_idx] += 1;
             }
@@ -718,8 +806,11 @@ fn reserve_size(alt_game: &AlteredGame, envoy: BughouseEnvoy) -> Option<u8> {
     Some(alt_game.game_confirmed().reserve(envoy).values().sum())
 }
 
-fn my_time_left(alt_game: &AlteredGame, board_idx: BughouseBoard, now: GameInstant) -> Option<Duration> {
-    alt_game.my_id().envoy_for(board_idx).map(|e| {
-        alt_game.local_game().board(e.board_idx).clock().time_left(e.force, now)
-    })
+fn my_time_left(
+    alt_game: &AlteredGame, board_idx: BughouseBoard, now: GameInstant,
+) -> Option<Duration> {
+    alt_game
+        .my_id()
+        .envoy_for(board_idx)
+        .map(|e| alt_game.local_game().board(e.board_idx).clock().time_left(e.force, now))
 }

@@ -3,11 +3,9 @@
 use std::collections::HashMap;
 
 use log::error;
-use skillratings::{
-    elo::{elo, EloConfig, EloRating},
-    weng_lin::{weng_lin, weng_lin_two_teams, WengLinConfig, WengLinRating},
-    Outcomes,
-};
+use skillratings::elo::{elo, EloConfig, EloRating};
+use skillratings::weng_lin::{weng_lin, weng_lin_two_teams, WengLinConfig, WengLinRating};
+use skillratings::Outcomes;
 use time::OffsetDateTime;
 
 use crate::persistence::GameResultRow;
@@ -31,12 +29,8 @@ pub struct RawStats {
 
 impl RawStats {
     pub fn update(
-        &self,
-        outcome: Outcomes,
-        new_elo: Option<EloRating>,
-        new_rating: Option<Rating>,
-        new_last_update: Option<OffsetDateTime>,
-        new_update_index: usize,
+        &self, outcome: Outcomes, new_elo: Option<EloRating>, new_rating: Option<Rating>,
+        new_last_update: Option<OffsetDateTime>, new_update_index: usize,
     ) -> Self {
         Self {
             wins: self.wins + (outcome == Outcomes::WIN) as usize,
@@ -78,18 +72,12 @@ struct GameStats {
     blue_players: [RawStats; 2],
 }
 
-fn default_elo() -> EloRating {
-    EloRating { rating: 1600.0 }
-}
+fn default_elo() -> EloRating { EloRating { rating: 1600.0 } }
 
-fn default_weng_lin() -> WengLinRating {
-    WengLinRating::new()
-}
+fn default_weng_lin() -> WengLinRating { WengLinRating::new() }
 
 fn process_game(
-    result: &str,
-    prior_stats: GameStats,
-    game_end_time: Option<OffsetDateTime>,
+    result: &str, prior_stats: GameStats, game_end_time: Option<OffsetDateTime>,
     update_index: usize,
 ) -> GameStats {
     let (red_outcome, blue_outcome) = match result {
@@ -109,20 +97,13 @@ fn process_game(
     );
     let (red_team_rating, blue_team_rating) = weng_lin(
         &prior_stats.red_team.rating.unwrap_or_else(default_weng_lin),
-        &prior_stats
-            .blue_team
-            .rating
-            .unwrap_or_else(default_weng_lin),
+        &prior_stats.blue_team.rating.unwrap_or_else(default_weng_lin),
         &red_outcome,
         &WengLinConfig::default(),
     );
     let (red_players_rating, blue_players_rating) = weng_lin_two_teams(
-        &prior_stats
-            .red_players
-            .map(|p| p.rating.unwrap_or_else(default_weng_lin)),
-        &prior_stats
-            .blue_players
-            .map(|p| p.rating.unwrap_or_else(default_weng_lin)),
+        &prior_stats.red_players.map(|p| p.rating.unwrap_or_else(default_weng_lin)),
+        &prior_stats.blue_players.map(|p| p.rating.unwrap_or_else(default_weng_lin)),
         &red_outcome,
         &WengLinConfig::default(),
     );
@@ -200,19 +181,11 @@ impl StatStore for GroupStats<RawStats> {
 
 impl StatStore for GroupStats<Vec<RawStats>> {
     fn get_team(&self, team: &[String; 2]) -> RawStats {
-        self.per_team
-            .get(team)
-            .and_then(|v| v.last())
-            .cloned()
-            .unwrap_or_default()
+        self.per_team.get(team).and_then(|v| v.last()).cloned().unwrap_or_default()
     }
 
     fn get_player(&self, player: &String) -> RawStats {
-        self.per_player
-            .get(player)
-            .and_then(|v| v.last())
-            .cloned()
-            .unwrap_or_default()
+        self.per_player.get(player).and_then(|v| v.last()).cloned().unwrap_or_default()
     }
 
     fn update_team(&mut self, team: &[String; 2], stats: RawStats) {
@@ -220,10 +193,7 @@ impl StatStore for GroupStats<Vec<RawStats>> {
     }
 
     fn update_player(&mut self, player: &String, stats: RawStats) {
-        self.per_player
-            .entry(player.clone())
-            .or_default()
-            .push(stats)
+        self.per_player.entry(player.clone()).or_default().push(stats)
     }
 }
 

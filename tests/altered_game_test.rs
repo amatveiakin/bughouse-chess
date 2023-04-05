@@ -1,8 +1,7 @@
-
 mod common;
 
-use bughouse_chess::*;
 use bughouse_chess::test_util::*;
+use bughouse_chess::*;
 use common::*;
 use BughouseBoard::{A, B};
 
@@ -20,7 +19,7 @@ fn default_bughouse_game() -> BughouseGame {
         ContestRules::unrated(),
         ChessRules::classic_blitz(),
         BughouseRules::chess_com(),
-        &sample_bughouse_players()
+        &sample_bughouse_players(),
     )
 }
 
@@ -36,7 +35,10 @@ fn drag_depends_on_reverted_preturn() {
     alt_game.try_local_turn(A, drag_move!(E6 -> E5), GAME_START).unwrap();
     alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::E5)).unwrap();
     alt_game.apply_remote_turn_algebraic(envoy!(White A), "e5", GAME_START).unwrap();
-    assert_eq!(alt_game.drag_piece_drop(Coord::E4, PieceKind::Queen), Err(PieceDragError::DragNoLongerPossible));
+    assert_eq!(
+        alt_game.drag_piece_drop(Coord::E4, PieceKind::Queen),
+        Err(PieceDragError::DragNoLongerPossible)
+    );
 }
 
 // It is not allowed to have more than one preturn. However a player can start dragging a
@@ -49,7 +51,9 @@ fn start_drag_with_a_preturn() {
     alt_game.try_local_turn(A, drag_move!(E3 -> E4), GAME_START).unwrap();
     alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::E4)).unwrap();
     alt_game.apply_remote_turn_algebraic(envoy!(White A), "e3", GAME_START).unwrap();
-    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "Nc6", GAME_START).unwrap();
+    alt_game
+        .apply_remote_turn_algebraic(envoy!(Black A), "Nc6", GAME_START)
+        .unwrap();
     let drag_result = alt_game.drag_piece_drop(Coord::E5, PieceKind::Queen).unwrap();
     assert_eq!(drag_result, drag_move!(E4 -> E5));
 }
@@ -87,7 +91,9 @@ fn preturn_after_local_turn_persistent() {
     alt_game.apply_remote_turn_algebraic(envoy!(White A), "e4", GAME_START).unwrap();
     assert!(alt_game.local_game().board(A).grid()[Coord::E5].is(piece!(White Pawn)));
 
-    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "Nc6", GAME_START).unwrap();
+    alt_game
+        .apply_remote_turn_algebraic(envoy!(Black A), "Nc6", GAME_START)
+        .unwrap();
     assert!(alt_game.local_game().board(A).grid()[Coord::E5].is(piece!(White Pawn)));
 }
 
@@ -96,13 +102,19 @@ fn two_preturns_forbidden() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), default_bughouse_game());
     alt_game.try_local_turn(A, drag_move!(E2 -> E4), GAME_START).unwrap();
     alt_game.try_local_turn(A, drag_move!(D2 -> D4), GAME_START).unwrap();
-    assert_eq!(alt_game.try_local_turn(A, drag_move!(F2 -> F4), GAME_START), Err(TurnError::PreturnLimitReached));
+    assert_eq!(
+        alt_game.try_local_turn(A, drag_move!(F2 -> F4), GAME_START),
+        Err(TurnError::PreturnLimitReached)
+    );
 }
 
 #[test]
 fn cannot_make_turns_on_other_board() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(Black A)), default_bughouse_game());
-    assert_eq!(alt_game.try_local_turn(B, drag_move!(E2 -> E4), GAME_START), Err(TurnError::NotPlayer));
+    assert_eq!(
+        alt_game.try_local_turn(B, drag_move!(E2 -> E4), GAME_START),
+        Err(TurnError::NotPlayer)
+    );
 }
 
 #[test]

@@ -1,21 +1,29 @@
 // Improvement potential. Use `crossterm` instead (fix: for some reason rendering
 //   reserve background was more buggy with it).
 
+use bughouse_chess::*;
 use console::Style;
 use itertools::Itertools;
-
-use bughouse_chess::*;
 
 
 const BOARD_WIDTH: usize = (NUM_COLS as usize + 2) * 3;
 
 fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, usize) {
     // Improvement potential: Support longer time controls (with hours).
-    let ClockShowing{ is_active, show_separator, out_of_time, time_breakdown } = clock.showing_for(force, now);
+    let ClockShowing {
+        is_active,
+        show_separator,
+        out_of_time,
+        time_breakdown,
+    } = clock.showing_for(force, now);
     let separator = |s| if show_separator { s } else { " " };
     let mut clock_str = match time_breakdown {
-        TimeBreakdown::NormalTime{ minutes, seconds } => format!("{:02}{}{:02}", minutes, separator(":"), seconds),
-        TimeBreakdown::LowTime{ seconds, deciseconds } => format!(" {:02}{}{}", seconds, separator("."), deciseconds),
+        TimeBreakdown::NormalTime { minutes, seconds } => {
+            format!("{:02}{}{:02}", minutes, separator(":"), seconds)
+        }
+        TimeBreakdown::LowTime { seconds, deciseconds } => {
+            format!(" {:02}{}{}", seconds, separator("."), deciseconds)
+        }
     };
     let clock_str_len = clock_str.len();
     if out_of_time {
@@ -31,7 +39,7 @@ fn render_player(player_name: &str) -> (String, usize) {
 }
 
 fn render_header(
-    clock: &Clock, player_name: &str, force: Force, now: GameInstant, view_board: DisplayBoard
+    clock: &Clock, player_name: &str, force: Force, now: GameInstant, view_board: DisplayBoard,
 ) -> String {
     let (clock_str, clock_str_len) = render_clock(clock, force, now);
     let (player_str, player_str_len) = render_player(player_name);
@@ -52,12 +60,12 @@ fn render_reserve(reserve: &Reserve, force: Force) -> String {
     format!(
         "{1:^0$}\n",
         BOARD_WIDTH,
-         Style::new().color256(233).on_color256(194).apply_to(stacks.iter().join(" "))
+        Style::new().color256(233).on_color256(194).apply_to(stacks.iter().join(" "))
     )
 }
 
 fn render_bughouse_board(
-    board: &Board, now: GameInstant, view_board: DisplayBoard, perspective: Perspective
+    board: &Board, now: GameInstant, view_board: DisplayBoard, perspective: Perspective,
 ) -> String {
     use self::Force::*;
     let orientation = get_board_orientation(view_board, perspective);
@@ -71,16 +79,21 @@ fn render_bughouse_board(
     )
 }
 
-pub fn render_bughouse_game(game: &BughouseGame, my_id: BughouseParticipant, now: GameInstant) -> String {
+pub fn render_bughouse_game(
+    game: &BughouseGame, my_id: BughouseParticipant, now: GameInstant,
+) -> String {
     use DisplayBoard::*;
     let perspective = Perspective::for_participant(my_id);
     let primary_idx = get_board_index(Primary, perspective);
     let secondary_idx = get_board_index(Secondary, perspective);
     let board_primary = render_bughouse_board(game.board(primary_idx), now, Primary, perspective);
-    let board_secondary = render_bughouse_board(game.board(secondary_idx), now, Secondary, perspective);
-    board_primary.lines().zip(board_secondary.lines()).map(
-        |(l1, l2)| format!("{}      {}", l1, l2)
-    ).join("\n")
+    let board_secondary =
+        render_bughouse_board(game.board(secondary_idx), now, Secondary, perspective);
+    board_primary
+        .lines()
+        .zip(board_secondary.lines())
+        .map(|(l1, l2)| format!("{}      {}", l1, l2))
+        .join("\n")
 }
 
 fn render_grid(grid: &Grid, orientation: BoardOrientation) -> String {
@@ -89,26 +102,34 @@ fn render_grid(grid: &Grid, orientation: BoardOrientation) -> String {
         Style::new().color256(233).on_color256(230),
     ];
     let mut ret = String::new();
-    for y in (-1) ..= (NUM_COLS as i32) {
-        for x in (-1) ..= (NUM_ROWS as i32) {
+    for y in (-1)..=(NUM_COLS as i32) {
+        for x in (-1)..=(NUM_ROWS as i32) {
             let row_header = x < 0 || x >= NUM_COLS.into();
             let col_header = y < 0 || y >= NUM_ROWS.into();
             let square = match (row_header, col_header) {
                 (true, true) => format_square(' '),
-                (true, false) => format_square(from_display_row(y.try_into().unwrap(), orientation).unwrap().to_algebraic()),
-                (false, true) => format_square(from_display_col(x.try_into().unwrap(), orientation).unwrap().to_algebraic()),
+                (true, false) => format_square(
+                    from_display_row(y.try_into().unwrap(), orientation).unwrap().to_algebraic(),
+                ),
+                (false, true) => format_square(
+                    from_display_col(x.try_into().unwrap(), orientation).unwrap().to_algebraic(),
+                ),
                 (false, false) => {
-                    let coord = from_display_coord(DisplayCoord {
-                        x: x.try_into().unwrap(),
-                        y: y.try_into().unwrap()
-                    }, orientation).unwrap();
+                    let coord = from_display_coord(
+                        DisplayCoord {
+                            x: x.try_into().unwrap(),
+                            y: y.try_into().unwrap(),
+                        },
+                        orientation,
+                    )
+                    .unwrap();
                     let color_idx = (coord.row.to_zero_based() + coord.col.to_zero_based()) % 2;
-                    colors[usize::from(color_idx)].apply_to(
-                        format_square(match grid[coord] {
+                    colors[usize::from(color_idx)]
+                        .apply_to(format_square(match grid[coord] {
                             Some(piece) => piece_to_pictogram(piece.kind, piece.force),
                             None => ' ',
-                        })
-                    ).to_string()
+                        }))
+                        .to_string()
                 }
             };
             ret.push_str(&square);
@@ -118,6 +139,4 @@ fn render_grid(grid: &Grid, orientation: BoardOrientation) -> String {
     ret
 }
 
-fn format_square(ch: char) -> String {
-    format!(" {} ", ch)
-}
+fn format_square(ch: char) -> String { format!(" {} ", ch) }

@@ -4,9 +4,11 @@
 use std::io;
 use std::net::TcpStream;
 
-use futures_util::{sink::SinkExt, stream::StreamExt};
+use futures_util::sink::SinkExt;
+use futures_util::stream::StreamExt;
 use serde::{de, Serialize};
-use tungstenite::{protocol::Role, Message, WebSocket};
+use tungstenite::protocol::Role;
+use tungstenite::{Message, WebSocket};
 
 pub const PORT: u16 = 14361;
 
@@ -34,18 +36,13 @@ where
     T: de::DeserializeOwned,
     S: io::Read + io::Write,
 {
-    let msg = socket
-        .read_message()
-        .map_err(|err| CommunicationError::Socket(err))?;
+    let msg = socket.read_message().map_err(|err| CommunicationError::Socket(err))?;
     match msg {
         Message::Text(msg) => {
             serde_json::from_str(&msg).map_err(|err| CommunicationError::Serde(err))
         }
         Message::Close(_) => Err(CommunicationError::ConnectionClosed),
-        _ => Err(CommunicationError::BughouseProtocol(format!(
-            "Expected text, got {:?}",
-            msg
-        ))),
+        _ => Err(CommunicationError::BughouseProtocol(format!("Expected text, got {:?}", msg))),
     }
 }
 
@@ -66,21 +63,15 @@ where
     T: de::DeserializeOwned,
     S: StreamExt<Item = Result<Message, tungstenite::Error>> + Unpin,
 {
-    let msg = socket
-        .next()
-        .await
-        .map_or(Err(CommunicationError::ConnectionClosed), |m| {
-            m.map_err(|e| CommunicationError::Socket(e))
-        })?;
+    let msg = socket.next().await.map_or(Err(CommunicationError::ConnectionClosed), |m| {
+        m.map_err(|e| CommunicationError::Socket(e))
+    })?;
     match msg {
         Message::Text(msg) => {
             serde_json::from_str(&msg).map_err(|err| CommunicationError::Serde(err))
         }
         Message::Close(_) => Err(CommunicationError::ConnectionClosed),
-        _ => Err(CommunicationError::BughouseProtocol(format!(
-            "Expected text, got {:?}",
-            msg
-        ))),
+        _ => Err(CommunicationError::BughouseProtocol(format!("Expected text, got {:?}", msg))),
     }
 }
 

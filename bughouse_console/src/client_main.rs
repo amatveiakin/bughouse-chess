@@ -1,27 +1,22 @@
 // TODO: Rename to client_tui (or client_console).
 // TODO: Allow all commands (including "next game" and others).
 
-use std::fmt;
-use std::io;
 use std::net::{TcpStream, ToSocketAddrs};
-use std::panic;
 use std::sync::mpsc;
-use std::thread;
 use std::time::Duration;
+use std::{fmt, io, panic, thread};
 
-use crossterm::{execute, terminal, cursor, event as term_event};
+use bughouse_chess::client::*;
+use bughouse_chess::*;
 use crossterm::style::{self, Stylize};
+use crossterm::{cursor, event as term_event, execute, terminal};
 use instant::Instant;
 use itertools::Itertools;
 use scopeguard::defer;
 use tungstenite::protocol;
 use url::Url;
 
-use bughouse_chess::*;
-use bughouse_chess::client::*;
-
-use crate::network;
-use crate::tui;
+use crate::{network, tui};
 
 
 pub struct ClientConfig {
@@ -48,32 +43,33 @@ fn writeln_raw(stdout: &mut io::Stdout, v: impl fmt::Display) -> io::Result<()> 
 
 fn render(
     stdout: &mut io::Stdout, app_start_time: Instant, client_state: &ClientState,
-    keyboard_input: &str, command_error: &Option<String>
-)
-    -> io::Result<()>
-{
+    keyboard_input: &str, command_error: &Option<String>,
+) -> io::Result<()> {
     let now = Instant::now();
     execute!(stdout, cursor::MoveTo(0, 0))?;
     let mut highlight_input = false;
     let mut additional_message = None;
     if let Some(contest) = client_state.contest() {
-        if let Some(GameState{ ref alt_game, time_pair, .. }) = contest.game_state {
+        if let Some(GameState { ref alt_game, time_pair, .. }) = contest.game_state {
             // TODO: Show scores
             let my_id = alt_game.my_id();
             let game_now = GameInstant::from_pair_game_maybe_active(time_pair, now);
             let game = alt_game.local_game();
-            writeln_raw(stdout, format!("{}\n", tui::render_bughouse_game(&game, my_id, game_now)))?;
+            writeln_raw(
+                stdout,
+                format!("{}\n", tui::render_bughouse_game(&game, my_id, game_now)),
+            )?;
             // Note. Don't clear the board to avoid blinking.
             // TODO: Show last turn by opponent.
             execute!(stdout, terminal::Clear(terminal::ClearType::FromCursorDown))?;
             if game.is_active() {
                 if let BughouseParticipant::Player(my_player_id) = my_id {
-                    highlight_input = my_player_id.envoys().into_iter().any(|e| game.envoy_is_active(e));
+                    highlight_input =
+                        my_player_id.envoys().into_iter().any(|e| game.envoy_is_active(e));
                 }
             } else {
-                additional_message = Some(
-                    format!("Game over: {:?}", game.status()).with(style::Color::Magenta)
-                );
+                additional_message =
+                    Some(format!("Game over: {:?}", game.status()).with(style::Color::Magenta));
             }
         } else {
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
@@ -98,13 +94,13 @@ fn render(
                         writeln_raw(stdout, "")?;
                     }
                     */
-                },
+                }
                 Teaming::IndividualMode => {
                     for p in &contest.participants {
                         // TODO: Distinguish between players and observers.
                         writeln_raw(stdout, format!("  {} {}", "•", p.name))?;
                     }
-                },
+                }
             }
         }
     } else {
@@ -117,7 +113,11 @@ fn render(
     let show_cursor = now.duration_since(app_start_time).as_millis() % 1000 >= 500;
     let cursor = if show_cursor { '▂' } else { ' ' };
     let input_with_cursor = format!("{}{}", keyboard_input, cursor);
-    let input_style = if highlight_input { style::Color::White } else { style::Color::DarkGrey };
+    let input_style = if highlight_input {
+        style::Color::White
+    } else {
+        style::Color::DarkGrey
+    };
     // Improvement potential. Show input on a fixed line regardless of client_status.
     writeln_raw(stdout, format!("{}\n", input_with_cursor.with(input_style)))?;
 
@@ -133,7 +133,10 @@ fn render(
 pub fn run(config: ClientConfig) -> io::Result<()> {
     let contest_id = config.contest_id.trim().to_owned();
     let my_name = config.player_name.trim().to_owned();
-    let server_addr = (config.server_address.as_str(), network::PORT).to_socket_addrs().unwrap().collect_vec();
+    let server_addr = (config.server_address.as_str(), network::PORT)
+        .to_socket_addrs()
+        .unwrap()
+        .collect_vec();
     println!("Connecting to {:?}...", server_addr);
     let stream = TcpStream::connect(&server_addr[..])?;
     // Improvement potential: Test if nodelay helps. Should it be set on both sides or just one?
@@ -151,32 +154,26 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     }));
 
     let mut stdout = io::stdout();
-    terminal::enable_raw_mode()?;  // TODO: Should this be reverted on exit?
+    terminal::enable_raw_mode()?; // TODO: Should this be reverted on exit?
     execute!(stdout, terminal::EnterAlternateScreen, cursor::Hide)?;
-    defer!{ execute!(io::stdout(), terminal::LeaveAlternateScreen).unwrap(); };
+    defer! { execute!(io::stdout(), terminal::LeaveAlternateScreen).unwrap(); };
     let app_start_time = Instant::now();
 
     let (tx, rx) = mpsc::channel();
     let tx_net = tx.clone();
     let tx_local = tx.clone();
     let tx_tick = tx;
-    thread::spawn(move || {
-        loop {
-            let ev = network::read_obj(&mut socket_in).unwrap();
-            tx_net.send(IncomingEvent::Network(ev)).unwrap();
-        }
+    thread::spawn(move || loop {
+        let ev = network::read_obj(&mut socket_in).unwrap();
+        tx_net.send(IncomingEvent::Network(ev)).unwrap();
     });
-    thread::spawn(move || {
-        loop {
-            let ev = term_event::read().unwrap();
-            tx_local.send(IncomingEvent::Terminal(ev)).unwrap();
-        }
+    thread::spawn(move || loop {
+        let ev = term_event::read().unwrap();
+        tx_local.send(IncomingEvent::Terminal(ev)).unwrap();
     });
-    thread::spawn(move || {
-        loop {
-            thread::sleep(Duration::from_millis(100));
-            tx_tick.send(IncomingEvent::Tick).unwrap();
-        }
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_millis(100));
+        tx_tick.send(IncomingEvent::Tick).unwrap();
     });
 
     let (server_tx, server_rx) = mpsc::channel();
@@ -200,16 +197,16 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
         match event {
             IncomingEvent::Network(event) => {
                 client_state.process_server_event(event).unwrap();
-            },
+            }
             IncomingEvent::Terminal(event) => {
                 if let term_event::Event::Key(event) = event {
                     match event.code {
                         term_event::KeyCode::Char(ch) => {
                             keyboard_input.push(ch);
-                        },
+                        }
                         term_event::KeyCode::Backspace => {
                             keyboard_input.pop();
-                        },
+                        }
                         term_event::KeyCode::Enter => {
                             let mut keep_input = false;
                             if let Some(cmd) = keyboard_input.strip_prefix('/') {
@@ -217,56 +214,60 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                                     "quit" => {
                                         client_state.leave();
                                         return Ok(());
-                                    },
+                                    }
                                     "resign" => {
                                         client_state.resign();
-                                    },
+                                    }
                                     _ => {
                                         command_error = Some(format!("Unknown command: '{}'", cmd));
-                                    },
+                                    }
                                 }
                             } else {
-                                let turn_result = client_state.execute_turn_command(&keyboard_input);
+                                let turn_result =
+                                    client_state.execute_turn_command(&keyboard_input);
                                 command_error = match turn_result {
                                     Ok(()) => None,
-                                    Err(TurnError::WrongTurnOrder | TurnError::PreturnLimitReached) => {
+                                    Err(
+                                        TurnError::WrongTurnOrder | TurnError::PreturnLimitReached,
+                                    ) => {
                                         keep_input = true;
                                         None
-                                    },
-                                    Err(err) => {
-                                        Some(format!("Illegal turn '{}': {:?}", keyboard_input, err))
-                                    },
+                                    }
+                                    Err(err) => Some(format!(
+                                        "Illegal turn '{}': {:?}",
+                                        keyboard_input, err
+                                    )),
                                 }
                             }
                             if !keep_input {
                                 keyboard_input.clear();
                             }
-                        },
-                        _ => {},
+                        }
+                        _ => {}
                     }
                 }
-            },
+            }
             IncomingEvent::Tick => {
                 // Any event triggers repaint, so no additional action is required.
-            },
+            }
         }
         client_state.refresh();
         while let Some(event) = client_state.next_notable_event() {
             match event {
-                NotableEvent::SessionUpdated => {},
+                NotableEvent::SessionUpdated => {}
                 NotableEvent::ContestStarted(..) => {
                     // TODO: Display contest ID to the user.
                 }
                 NotableEvent::GameStarted => {
                     execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-                },
-                NotableEvent::GameOver(..) => {},
-                NotableEvent::TurnMade(..) => {},
-                NotableEvent::MyReserveRestocked(..) => {},
-                NotableEvent::LowTime(..) => {},
+                }
+                NotableEvent::GameOver(..) => {}
+                NotableEvent::TurnMade(..) => {}
+                NotableEvent::MyReserveRestocked(..) => {}
+                NotableEvent::LowTime(..) => {}
                 NotableEvent::GameExportReady(..) => {
                     // Improvement potential: Implement.
-                },
+                }
             }
         }
         render(&mut stdout, app_start_time, &client_state, &keyboard_input, &command_error)?;

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::player::Team;
 
@@ -10,8 +10,8 @@ use crate::player::Team;
 pub struct Scores {
     // Not EnumMap, because it does not support serde.
     // Improvement potential: Implement Serde support for EnumMap instead.
-    pub per_team: HashMap<Team, u32>,  // when teaming == Teaming::FixedTeams
-    pub per_player: HashMap<String, u32>,  // when teaming == Teaming::IndividualMode
+    pub per_team: HashMap<Team, u32>, // when teaming == Teaming::FixedTeams
+    pub per_player: HashMap<String, u32>, // when teaming == Teaming::IndividualMode
 }
 
 impl Scores {
