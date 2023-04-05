@@ -96,9 +96,12 @@ impl AlteredGame {
     pub fn status(&self) -> BughouseGameStatus {
         self.game_confirmed.status()
     }
+    pub fn is_active(&self) -> bool {
+        self.game_confirmed.is_active()
+    }
 
     pub fn set_status(&mut self, status: BughouseGameStatus, time: GameInstant) {
-        assert!(status != BughouseGameStatus::Active);
+        assert!(!status.is_active());
         self.reset_local_changes();
         self.game_confirmed.set_status(status, time);
     }
@@ -112,7 +115,7 @@ impl AlteredGame {
             envoy, &turn_input, TurnMode::Normal, time
         )?;
 
-        if self.game_confirmed.status() != BughouseGameStatus::Active {
+        if !self.game_confirmed.is_active() {
             self.reset_local_changes();
             return Ok(turn);
         }

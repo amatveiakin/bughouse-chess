@@ -507,14 +507,14 @@ impl ClientState {
                 }
                 self.verify_game_status(game_status)?;
                 self.update_scores(scores)?;
-                if game_status != BughouseGameStatus::Active {
+                if !game_status.is_active() {
                     self.game_over_postprocess()?;
                 }
             },
             GameOver{ time, game_status, scores: new_scores } => {
                 let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot apply GameOver: no contest in progress"))?;
                 let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot apply GameOver: no game in progress"))?;
-                assert!(game_state.alt_game.status() == BughouseGameStatus::Active);
+                assert!(game_state.alt_game.is_active());
                 game_state.alt_game.set_status(game_status, time);
                 contest.scores = new_scores;
                 self.game_over_postprocess()?;
@@ -549,7 +549,7 @@ impl ClientState {
         };
         let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot make turn: no game in progress"))?;
         let GameState{ ref mut alt_game, ref mut time_pair, .. } = game_state;
-        if alt_game.status() != BughouseGameStatus::Active {
+        if !alt_game.is_active() {
             return Err(internal_error!("Cannot make turn {}: game over", turn_algebraic));
         }
         let is_my_turn = alt_game.my_id().plays_for(envoy);
@@ -597,8 +597,8 @@ impl ClientState {
         let contest = self.contest_mut().ok_or_else(|| internal_error!("Cannot update game status: no contest in progress"))?;
         let game_state = contest.game_state.as_mut().ok_or_else(|| internal_error!("Cannot update game status: no game in progress"))?;
         let GameState{ ref mut alt_game, .. } = game_state;
-        if alt_game.status() == BughouseGameStatus::Active {
-            if game_status != BughouseGameStatus::Active {
+        if alt_game.is_active() {
+            if !game_status.is_active() {
                 alt_game.set_status(game_status, game_now);
             }
             Ok(())
@@ -649,7 +649,7 @@ impl ClientState {
         let Some(ref mut game_state) = contest.game_state else {
             return;
         };
-        if game_state.alt_game.status() == BughouseGameStatus::Active {
+        if game_state.alt_game.is_active() {
             return;
         }
         let board_idx = get_board_index(display_board, game_state.alt_game.perspective());

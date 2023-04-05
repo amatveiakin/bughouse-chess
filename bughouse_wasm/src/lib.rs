@@ -235,7 +235,7 @@ impl WebClient {
 
     pub fn game_status(&self) -> String {
         if let Some(game_state) = self.state.game_state() {
-            if game_state.alt_game.status() == BughouseGameStatus::Active {
+            if game_state.alt_game.is_active() {
                 "active"
             } else {
                 "over"
@@ -527,7 +527,7 @@ impl WebClient {
     }
     pub fn chalk_down(&mut self, board_node: &str, x: f64, y: f64, alternative_mode: bool) -> JsResult<()> {
         let Some(GameState{ alt_game, .. }) = self.state.game_state() else { return Ok(()); };
-        if alt_game.status() == BughouseGameStatus::Active {
+        if alt_game.is_active() {
             return Ok(());
         }
         let Some(canvas) = self.state.chalk_canvas_mut() else { return Ok(()); };
@@ -702,7 +702,7 @@ impl WebClient {
         update_scores(&contest.scores, &contest.participants, game.status(), teaming, perspective)?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |force| my_id.plays_for(BughouseEnvoy{ board_idx, force });
-            let see_though_fog = game.status() != BughouseGameStatus::Active;
+            let see_though_fog = !game.is_active();
             let empty_area = HashSet::new();
             let fog_render_area = alt_game.fog_of_war_area(board_idx);
             let fog_cover_area = if see_though_fog { &empty_area } else { &fog_render_area };
@@ -771,7 +771,7 @@ impl WebClient {
                 let player = contest.participants.iter().find(|p| p.name == *player_name).unwrap();
                 // TODO: Show teams for the upcoming game in individual mode.
                 // TODO: Display temporary observer readiness in case of teams with 3+ members.
-                let show_readiness = game.status() != BughouseGameStatus::Active && teaming == Teaming::FixedTeams;
+                let show_readiness = !game.is_active() && teaming == Teaming::FixedTeams;
                 let player_string = participant_string(&player, show_readiness);
                 name_node.set_text_content(Some(&player_string));
                 let is_draggable = is_piece_draggable(force);
@@ -799,7 +799,7 @@ impl WebClient {
         }
         document.body()?.class_list().toggle_with_force("active-player", is_clock_ticking(&game, my_id))?;
         self.repaint_chalk()?;
-        if alt_game.status() != BughouseGameStatus::Active {
+        if !alt_game.is_active() {
             // Safe to use `game_confirmed` here, because there could be no local status
             // changes after game over.
             game_message.set_text_content(Some(&alt_game.game_confirmed().outcome()));
@@ -1383,7 +1383,7 @@ fn update_scores(
         },
         Teaming::IndividualMode => {
             assert!(scores.per_team.is_empty());
-            let show_readiness = game_status != BughouseGameStatus::Active;
+            let show_readiness = !game_status.is_active();
             let scores = scores.per_player.iter().map(|(name, score)| {
                 let participant = participants.iter().find(|p| p.name == *name).unwrap();
                 (
@@ -1436,7 +1436,7 @@ fn update_turn_log(
             }
             let is_in_fog =
                 game.chess_rules().chess_variant == ChessVariant::FogOfWar &&
-                game.status() == BughouseGameStatus::Active &&
+                game.is_active() &&
                 my_id.as_player().map_or(false, |p| p.team() != record.envoy.team())
             ;
             let algebraic = if is_in_fog {

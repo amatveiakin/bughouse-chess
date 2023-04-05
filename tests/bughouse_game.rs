@@ -100,7 +100,7 @@ fn threefold_repetition_draw_prevented_by_drops() {
             B@c4 B@g6
         ").unwrap();
     }
-    assert!(game.status() == BughouseGameStatus::Active);
+    assert!(game.is_active());
 }
 
 #[test]

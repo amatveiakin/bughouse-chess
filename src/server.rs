@@ -609,10 +609,10 @@ impl Contest {
     fn test_flags(&mut self, ctx: &mut Context, now: Instant) {
         if let Some(GameState{ game_start, ref mut game_end, ref mut game, ref mut preturns, .. }) = self.game_state {
             if let Some(game_start) = game_start {
-                if game.status() == BughouseGameStatus::Active {
+                if game.is_active() {
                     let game_now = GameInstant::from_now_game_active(game_start, now);
                     game.test_flag(game_now);
-                    if game.status() != BughouseGameStatus::Active {
+                    if !game.is_active() {
                         update_state_on_game_over(game, preturns, &mut self.participants, &mut self.scores, game_end, now);
                         let ev = BughouseServerEvent::GameOver {
                             time: game_now,
@@ -922,7 +922,7 @@ impl Contest {
         let Some(GameState{ ref mut game, ref mut preturns, game_start, ref mut game_end, .. }) = self.game_state else {
             return Err(unknown_error!("Cannot resign: no game in progress"));
         };
-        if game.status() != BughouseGameStatus::Active {
+        if !game.is_active() {
             return Err(unknown_error!("Cannot resign: game already over"));
         }
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
@@ -954,7 +954,7 @@ impl Contest {
             return Err(unknown_error!("Cannot update readiness: not joined"));
         };
         if let Some(GameState{ ref game, .. }) = self.game_state {
-            if game.status() == BughouseGameStatus::Active {
+            if game.is_active() {
                 return Err(unknown_error!("Cannot update readiness: game still in progress"));
             }
         }
@@ -983,7 +983,7 @@ impl Contest {
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
             return Err(unknown_error!("Cannot update chalk drawing: not joined"));
         };
-        if game.status() == BughouseGameStatus::Active {
+        if game.is_active() {
             return Err(unknown_error!("Cannot update chalk drawing: can draw only after game is over"));
         }
         chalkboard.set_drawing(self.participants[participant_id].name.clone(), drawing);
@@ -1061,7 +1061,7 @@ impl Contest {
                 return;
             }
             if let Some(GameState{ ref game, .. }) = self.game_state {
-                assert!(game.status() != BughouseGameStatus::Active,
+                assert!(!game.is_active(),
                     "Players must not be allowed to set is_ready flag while the game is active");
                 self.match_history.push(game.clone());
                 self.start_game(ctx, now);
@@ -1258,7 +1258,7 @@ impl Contest {
 }
 
 fn current_game_time(game_state: &GameState, now: Instant) -> GameInstant {
-    if game_state.game.status() == BughouseGameStatus::Active {
+    if game_state.game.is_active() {
         GameInstant::from_now_game_maybe_active(game_state.game_start, now)
     } else {
         // Normally `clock().total_time_elapsed()` should be the same on all boards. But
@@ -1284,7 +1284,7 @@ fn apply_turn(
     game_end: &mut Option<Instant>, now: Instant,
 ) -> Result<TurnRecord, TurnError> {
     game.try_turn_by_envoy(envoy, &turn_input, TurnMode::Normal, game_now)?;
-    if game.status() != BughouseGameStatus::Active {
+    if !game.is_active() {
         update_state_on_game_over(game, preturns, participants, scores, game_end, now);
     }
     Ok(game.last_turn_record().unwrap().trim_for_sending())

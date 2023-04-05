@@ -66,7 +66,7 @@ fn render(
             // Note. Don't clear the board to avoid blinking.
             // TODO: Show last turn by opponent.
             execute!(stdout, terminal::Clear(terminal::ClearType::FromCursorDown))?;
-            if game.status() == BughouseGameStatus::Active {
+            if game.is_active() {
                 if let BughouseParticipant::Player(my_player_id) = my_id {
                     highlight_input = my_player_id.envoys().into_iter().any(|e| game.envoy_is_active(e));
                 }

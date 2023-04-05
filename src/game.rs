@@ -143,6 +143,15 @@ pub enum BughouseGameStatus {
     Draw(DrawReason),
 }
 
+impl BughouseGameStatus {
+    pub fn is_active(&self) -> bool {
+        match self {
+            BughouseGameStatus::Active => true,
+            _ => false,
+        }
+    }
+}
+
 impl BughouseBoard {
     pub fn other(self) -> Self {
         match self {
@@ -371,6 +380,7 @@ impl BughouseGame {
     pub fn turn_log(&self) -> &Vec<TurnRecordExpanded> { &self.turn_log }
     pub fn last_turn_record(&self) -> Option<&TurnRecordExpanded> { self.turn_log.last() }
     pub fn status(&self) -> BughouseGameStatus { self.status }
+    pub fn is_active(&self) -> bool { self.status.is_active() }
 
     pub fn players(&self) -> Vec<PlayerInGame> {
         let mut ret = vec![];
@@ -402,11 +412,11 @@ impl BughouseGame {
         self.players().iter().find(|p| p.name == player_name).map(|p| p.id)
     }
     pub fn envoy_is_active(&self, envoy: BughouseEnvoy) -> bool {
-        self.status == BughouseGameStatus::Active &&
+        self.status.is_active() &&
             self.boards[envoy.board_idx].active_force() == envoy.force
     }
     pub fn turn_mode_for_envoy(&self, envoy: BughouseEnvoy) -> Result<TurnMode, TurnError> {
-        if self.status == BughouseGameStatus::Active {
+        if self.status.is_active() {
             Ok(if self.envoy_is_active(envoy) { TurnMode::Normal } else { TurnMode::Preturn })
         } else {
             Err(TurnError::GameOver)
@@ -415,7 +425,7 @@ impl BughouseGame {
 
     pub fn set_status(&mut self, status: BughouseGameStatus, now: GameInstant) {
         self.status = status;
-        if status != BughouseGameStatus::Active {
+        if !status.is_active() {
             for (_, board) in self.boards.iter_mut() {
                 board.clock_mut().stop(now);
             }
@@ -455,7 +465,7 @@ impl BughouseGame {
     )
         -> Result<Turn, TurnError>
     {
-        if self.status != BughouseGameStatus::Active {
+        if !self.status.is_active() {
             // `Board::try_turn` will also test game status, but that's not enough: the game
             // may have ended earlier on the other board.
             return Err(TurnError::GameOver);
@@ -480,7 +490,7 @@ impl BughouseGame {
         }
         let turn_expanded = make_turn_expanded(turn, turn_algebraic, turn_facts);
         self.turn_log.push(TurnRecordExpanded{ mode, envoy, turn_expanded, time: now });
-        assert!(self.status == BughouseGameStatus::Active);
+        assert!(self.status.is_active());
         self.set_status(self.game_status_for_board(board_idx), now);
         Ok(turn)
     }

@@ -290,11 +290,11 @@ pub fn bughouse_game_test() -> io::Result<()> {
                 if ret.is_ok() {
                     successful_turns += 1;
                 }
-                if game.status() != BughouseGameStatus::Active && rng.gen_bool(QUIT_INACTIVE_GAME_RATIO) {
+                if !game.is_active() && rng.gen_bool(QUIT_INACTIVE_GAME_RATIO) {
                     break;
                 }
             }
-            if game.status() != BughouseGameStatus::Active {
+            if !game.is_active() {
                 finished_games += 1;
             }
         }
@@ -346,11 +346,11 @@ pub fn altered_game_test() -> io::Result<()> {
                 });
                 apply_action(&mut alt_game, action);
                 alt_game.local_game();
-                if alt_game.status() != BughouseGameStatus::Active && rng.gen_bool(QUIT_INACTIVE_GAME_RATIO) {
+                if !alt_game.is_active() && rng.gen_bool(QUIT_INACTIVE_GAME_RATIO) {
                     break;
                 }
             }
-            if alt_game.status() != BughouseGameStatus::Active {
+            if !alt_game.is_active() {
                 finished_games += 1;
             }
         }
