@@ -3,7 +3,7 @@
 export RUST_BACKTRACE="1"
 export RUST_LOG="INFO"
 
-./bin/bughouse_console async-server --sqlite-db bughouse.db &
+./bin/bughouse_console server --sqlite-db bughouse.db &
 cd www
 npm run start &
 

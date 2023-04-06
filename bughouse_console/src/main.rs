@@ -65,12 +65,6 @@ fn main() -> io::Result<()> {
                 .about("Run as server")
                 .arg(arg!(--"sqlite-db" [DB] "Path to an sqlite database file"))
                 .arg(arg!(--"postgres-db" [DB] "Address of a postgres database"))
-        )
-        .subcommand(
-            Command::new("async-server")
-                .about("Run as server")
-                .arg(arg!(--"sqlite-db" [DB] "Path to an sqlite database file"))
-                .arg(arg!(--"postgres-db" [DB] "Address of a postgres database"))
                 .arg(arg!(--"secret-sqlite-db" [DB] "Path to the secret sqlite database file"))
                 .arg(arg!(--"secret-postgres-db" [DB] "Address of the secret postgres database"))
                 .arg(arg!(--"auth" [AUTH_OPTION] "Either NoAuth or Google. The latter enables authentication using Google OAuth2. Reads GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env variables"))
@@ -96,7 +90,7 @@ fn main() -> io::Result<()> {
         .get_matches();
 
     match matches.subcommand() {
-        Some(("async-server", sub_matches)) => {
+        Some(("server", sub_matches)) => {
             let auth_options = match sub_matches.get_one::<String>("auth").map(String::as_str) {
                 None | Some("NoAuth") => server_config::AuthOptions::NoAuth,
                 Some("Google") => server_config::AuthOptions::GoogleAuthFromEnv {
