@@ -371,10 +371,11 @@ fn reachability_by_movement_modulo_destination_square(
         PieceMovement::LikePawn => {
             let (d_row, d_col) = to - from;
             let dir_forward = direction_forward(force);
-            let second_row = SubjectiveRow::from_one_based(2).unwrap().to_row(force);
+            let src_row_subjective = SubjectiveRow::from_row(from.row, force);
             let valid_capturing_move = d_col.abs() == 1 && d_row == dir_forward;
             let valid_non_capturing_move = d_col == 0
-                && (d_row == dir_forward || (from.row == second_row && d_row == dir_forward * 2));
+                && (d_row == dir_forward
+                    || (src_row_subjective.to_one_based() <= 2 && d_row == dir_forward * 2));
             let is_path_free = || match d_row.abs() {
                 1 => true,
                 2 => grid[(from + (dir_forward, 0)).unwrap()].is_none(),
