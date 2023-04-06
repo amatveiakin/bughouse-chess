@@ -21,8 +21,8 @@ use crate::{network, tui};
 
 pub struct ClientConfig {
     pub server_address: String,
-    // TODO: Allow to create new contests from the console client.
-    pub contest_id: String,
+    // TODO: Allow to create new matches from the console client.
+    pub match_id: String,
     pub player_name: String,
 }
 
@@ -49,8 +49,8 @@ fn render(
     execute!(stdout, cursor::MoveTo(0, 0))?;
     let mut highlight_input = false;
     let mut additional_message = None;
-    if let Some(contest) = client_state.contest() {
-        if let Some(GameState { ref alt_game, time_pair, .. }) = contest.game_state {
+    if let Some(mtch) = client_state.mtch() {
+        if let Some(GameState { ref alt_game, time_pair, .. }) = mtch.game_state {
             // TODO: Show scores
             let my_id = alt_game.my_id();
             let game_now = GameInstant::from_pair_game_maybe_active(time_pair, now);
@@ -73,7 +73,7 @@ fn render(
             }
         } else {
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-            match contest.rules.bughouse_rules.teaming {
+            match mtch.rules.bughouse_rules.teaming {
                 Teaming::FixedTeams => {
                     // TODO: Fix team mode in console client.
                     unimplemented!("Fixed team mode in console client is temporary not supported.");
@@ -96,7 +96,7 @@ fn render(
                     */
                 }
                 Teaming::IndividualMode => {
-                    for p in &contest.participants {
+                    for p in &mtch.participants {
                         // TODO: Distinguish between players and observers.
                         writeln_raw(stdout, format!("  {} {}", "•", p.name))?;
                     }
@@ -131,7 +131,7 @@ fn render(
 }
 
 pub fn run(config: ClientConfig) -> io::Result<()> {
-    let contest_id = config.contest_id.trim().to_owned();
+    let match_id = config.match_id.trim().to_owned();
     let my_name = config.player_name.trim().to_owned();
     let server_addr = (config.server_address.as_str(), network::PORT)
         .to_socket_addrs()
@@ -192,7 +192,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     let mut client_state = ClientState::new(user_agent, time_zone, server_tx);
     let mut keyboard_input = String::new();
     let mut command_error = None;
-    client_state.join(contest_id, my_name.to_owned());
+    client_state.join(match_id, my_name.to_owned());
     for event in rx {
         match event {
             IncomingEvent::Network(event) => {
@@ -255,8 +255,8 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
         while let Some(event) = client_state.next_notable_event() {
             match event {
                 NotableEvent::SessionUpdated => {}
-                NotableEvent::ContestStarted(..) => {
-                    // TODO: Display contest ID to the user.
+                NotableEvent::MatchStarted(..) => {
+                    // TODO: Display match ID to the user.
                 }
                 NotableEvent::GameStarted => {
                     execute!(stdout, terminal::Clear(terminal::ClearType::All))?;

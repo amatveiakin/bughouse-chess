@@ -17,19 +17,19 @@ use crate::starter::EffectiveStartingPosition;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseServerRejection {
-    // Cannot join: a contest with given ID does not exist.
-    NoSuchContest { contest_id: String },
-    // Cannot join contest: there already is a player with this name and an active client.
+    // Cannot join: a match with given ID does not exist.
+    NoSuchMatch { match_id: String },
+    // Cannot join match: there already is a player with this name and an active client.
     PlayerAlreadyExists { player_name: String },
     // Cannot create account or join as a guest with a given name.
     InvalidPlayerName { player_name: String, reason: String },
-    // Registered user kicked out of a contest, because they joined in another client (e.g. another
+    // Registered user kicked out of a match, because they joined in another client (e.g. another
     // browser tab). We never send this for guest users, because we cannot be sure if it's them or not.
     JoinedInAnotherClient,
-    // Guest user kicked out of a contest, because a registered user with the same name has joined.
+    // Guest user kicked out of a match, because a registered user with the same name has joined.
     NameClashWithRegisteredUser,
-    // Trying to participate in a rated contest with a guest account.
-    GuestInRatedContest,
+    // Trying to participate in a rated match with a guest account.
+    GuestInRatedMatch,
     // Server is shutting down for maintenance.
     ShuttingDown,
     // Internal error. Should be investigated.
@@ -42,8 +42,8 @@ pub enum BughouseServerEvent {
     UpdateSession {
         session: Session,
     },
-    ContestWelcome {
-        contest_id: String,
+    MatchWelcome {
+        match_id: String,
         rules: Rules,
     },
     LobbyUpdated {
@@ -106,12 +106,12 @@ pub enum BughouseClientErrorReport {
 //     ready; or don't accept events for a new game until the client confirms game start.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseClientEvent {
-    NewContest {
+    NewMatch {
         rules: Rules,
         player_name: String,
     },
     Join {
-        contest_id: String,
+        match_id: String,
         player_name: String,
     },
     SetFaction {

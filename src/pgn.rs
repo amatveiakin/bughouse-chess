@@ -116,7 +116,7 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
             variant.push("Accolade");
         }
     }
-    let event = if game.contest_rules().rated {
+    let event = if game.match_rules().rated {
         "Rated Bughouse Match"
     } else {
         "Unrated Bughouse Match"

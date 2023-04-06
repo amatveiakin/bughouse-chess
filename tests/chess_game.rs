@@ -7,7 +7,7 @@ use itertools::Itertools;
 
 
 fn chess_with_rules(rules: ChessRules) -> ChessGame {
-    ChessGame::new(ContestRules::unrated(), rules, sample_chess_players())
+    ChessGame::new(MatchRules::unrated(), rules, sample_chess_players())
 }
 
 fn chess_classic() -> ChessGame { chess_with_rules(ChessRules::classic_blitz()) }
@@ -25,7 +25,7 @@ fn chess960_from_short_fen(pieces: &str) -> ChessGame {
         .unwrap();
     let starting_position = EffectiveStartingPosition::FischerRandom(pieces);
     ChessGame::new_with_starting_position(
-        ContestRules::unrated(),
+        MatchRules::unrated(),
         rules,
         starting_position,
         sample_chess_players(),

@@ -215,7 +215,7 @@ cargo run --package bughouse_console -- server
 Build & run client:
 
 ```
-cargo run --package bughouse_console -- client <server_address> <contest_id> <player_name>
+cargo run --package bughouse_console -- client <server_address> <match_id> <player_name>
 ```
 
 Note. Client requires a modern terminal with raw mode support.

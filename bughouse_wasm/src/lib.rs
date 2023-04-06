@@ -85,7 +85,7 @@ pub struct IgnorableError {
 }
 
 #[wasm_bindgen(getter_with_clone)]
-pub struct KickedFromContest {
+pub struct KickedFromMatch {
     pub message: String,
 }
 
@@ -147,8 +147,8 @@ pub struct JsEventNoop {} // in contrast to `null`, indicates that event list is
 pub struct JsEventSessionUpdated {}
 
 #[wasm_bindgen(getter_with_clone)]
-pub struct JsEventContestStarted {
-    pub contest_id: String,
+pub struct JsEventMatchStarted {
+    pub match_id: String,
 }
 
 #[wasm_bindgen]
@@ -175,7 +175,7 @@ pub struct JsEventGameExportReady {
 pub struct WebClient {
     // Improvement potential: Consider: in order to store additional information that
     //   is only relevant during game phase, add a generic `UserData` parameter to
-    //   `ContestState::Game`. Could move `chalk_canvas` there, for example.
+    //   `MatchState::Game`. Could move `chalk_canvas` there, for example.
     state: ClientState,
     server_rx: mpsc::Receiver<BughouseClientEvent>,
 }
@@ -259,19 +259,19 @@ impl WebClient {
     }
 
     pub fn lobby_waiting_explanation(&self) -> String {
-        let Some(contest) = self.state.contest() else {
+        let Some(mtch) = self.state.mtch() else {
             return "".to_owned();
         };
         type Error = ParticipantsError;
         type Warning = ParticipantsWarning;
         let ParticipantsStatus { error, warning } =
-            verify_participants(&contest.rules, contest.participants.iter());
+            verify_participants(&mtch.rules, mtch.participants.iter());
         match (error, warning) {
             (Some(Error::NotEnoughPlayers), _) => "Not enough players",
             (Some(Error::TooManyPlayersTotal), _) => "Too many players",
             (Some(Error::EmptyTeam), _) => "A team is empty",
             (Some(Error::RatedDoublePlay), _) =>
-                "Playing on two boards is only allowed in unrated contests",
+                "Playing on two boards is only allowed in unrated matches",
             (Some(Error::NotReady) | None, Some(Warning::NeedToDoublePlayAndSeatOut)) =>
                 "👉🏾 Can start, but some players will have to play on two boards while others will have to seat out",
             (Some(Error::NotReady) | None, Some(Warning::NeedToDoublePlay)) =>
@@ -291,7 +291,7 @@ impl WebClient {
             .or_else(|| self.state.session().user_info().map(|u| u.user_name.clone()))
             .ok_or(rust_error!("Player name is required if not a registered user"))
     }
-    pub fn new_contest(
+    pub fn new_match(
         &mut self, player_name: Option<String>, teaming: &str, starting_position: &str,
         chess_variant: &str, fairy_pieces: &str, starting_time: &str, drop_aggression: &str,
         pawn_drop_ranks: &str, rating: &str,
@@ -346,7 +346,7 @@ impl WebClient {
             return Err(format!("Invalid pawn drop ranks: {pawn_drop_ranks}").into());
         };
 
-        let contest_rules = ContestRules { rated };
+        let match_rules = MatchRules { rated };
         let chess_rules = ChessRules {
             starting_position,
             chess_variant,
@@ -359,22 +359,18 @@ impl WebClient {
             max_pawn_drop_rank,
             drop_aggression,
         };
-        let rules = Rules {
-            contest_rules,
-            chess_rules,
-            bughouse_rules,
-        };
+        let rules = Rules { match_rules, chess_rules, bughouse_rules };
         if let Err(message) = rules.verify() {
             return Err(IgnorableError { message }.into());
         }
         let player_name = self.finalize_player_name(player_name)?;
-        self.state.new_contest(rules, player_name);
+        self.state.new_match(rules, player_name);
         Ok(())
     }
 
-    pub fn join(&mut self, contest_id: String, player_name: Option<String>) -> JsResult<()> {
+    pub fn join(&mut self, match_id: String, player_name: Option<String>) -> JsResult<()> {
         let player_name = self.finalize_player_name(player_name)?;
-        self.state.join(contest_id, player_name);
+        self.state.join(match_id, player_name);
         Ok(())
     }
     pub fn resign(&mut self) { self.state.resign(); }
@@ -617,7 +613,7 @@ impl WebClient {
         let updated_needed = !matches!(server_event, BughouseServerEvent::Pong);
         self.state.process_server_event(server_event).map_err(|err| match err {
             EventError::IgnorableError(message) => IgnorableError { message }.into(),
-            EventError::KickedFromContest(message) => KickedFromContest { message }.into(),
+            EventError::KickedFromMatch(message) => KickedFromMatch { message }.into(),
             EventError::FatalError(message) => FatalError { message }.into(),
             EventError::InternalEvent(message) => rust_error!("{message}"),
         })?;
@@ -627,12 +623,11 @@ impl WebClient {
     pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
         match self.state.next_notable_event() {
             Some(NotableEvent::SessionUpdated) => Ok(JsEventSessionUpdated {}.into()),
-            Some(NotableEvent::ContestStarted(contest_id)) => {
+            Some(NotableEvent::MatchStarted(match_id)) => {
                 let rules_node = web_document().get_existing_element_by_id("lobby-rules")?;
-                rules_node.set_text_content(Some(
-                    &self.state.contest().unwrap().rules.to_human_readable(),
-                ));
-                Ok(JsEventContestStarted { contest_id }.into())
+                rules_node
+                    .set_text_content(Some(&self.state.mtch().unwrap().rules.to_human_readable()));
+                Ok(JsEventMatchStarted { match_id }.into())
             }
             Some(NotableEvent::GameStarted) => {
                 let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
@@ -704,20 +699,20 @@ impl WebClient {
         let document = web_document();
         let game_message = document.get_existing_element_by_id("game-message")?;
         self.update_clock()?;
-        let Some(contest) = self.state.contest() else {
+        let Some(mtch) = self.state.mtch() else {
             return Ok(());
         };
-        update_observers(&contest.participants)?;
-        let Some(GameState{ ref alt_game, .. }) = contest.game_state else {
-            update_lobby(&contest)?;
+        update_observers(&mtch.participants)?;
+        let Some(GameState{ ref alt_game, .. }) = mtch.game_state else {
+            update_lobby(&mtch)?;
             return Ok(());
         };
         // Improvement potential: Better readiness status display.
-        let teaming = contest.rules.bughouse_rules.teaming;
+        let teaming = mtch.rules.bughouse_rules.teaming;
         let game = alt_game.local_game();
         let my_id = alt_game.my_id();
         let perspective = alt_game.perspective();
-        update_scores(&contest.scores, &contest.participants, game.status(), teaming, perspective)?;
+        update_scores(&mtch.scores, &mtch.participants, game.status(), teaming, perspective)?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |force| my_id.plays_for(BughouseEnvoy { board_idx, force });
             let see_though_fog = !game.is_active();
@@ -737,7 +732,7 @@ impl WebClient {
                     let node_id = fog_of_war_id(display_board_idx, coord);
                     let node = document.get_element_by_id(&node_id);
                     if fog_render_area.contains(&coord) {
-                        let sq_hash = calculate_hash(&(&contest.contest_id, board_idx, coord));
+                        let sq_hash = calculate_hash(&(&mtch.match_id, board_idx, coord));
                         let fog_tile = sq_hash % TOTAL_FOG_TILES + 1;
                         let node = ensure_square_node(
                             display_coord,
@@ -799,7 +794,7 @@ impl WebClient {
                     player_idx,
                 ))?;
                 let player_name = board.player_name(force);
-                let player = contest.participants.iter().find(|p| p.name == *player_name).unwrap();
+                let player = mtch.participants.iter().find(|p| p.name == *player_name).unwrap();
                 // TODO: Show teams for the upcoming game in individual mode.
                 // TODO: Display temporary observer readiness in case of teams with 3+ members.
                 let show_readiness = !game.is_active() && teaming == Teaming::FixedTeams;
@@ -896,11 +891,11 @@ impl WebClient {
     }
 
     fn change_faction(&mut self, faction_modifier: impl Fn(i32) -> i32) {
-        let Some(contest) = self.state.contest() else {
+        let Some(mtch) = self.state.mtch() else {
             return;
         };
-        let allowed_factions = contest.rules.bughouse_rules.teaming.allowed_factions();
-        let current = allowed_factions.iter().position(|&f| f == contest.my_faction).unwrap();
+        let allowed_factions = mtch.rules.bughouse_rules.teaming.allowed_factions();
+        let current = allowed_factions.iter().position(|&f| f == mtch.my_faction).unwrap();
         let new = faction_modifier(current.try_into().unwrap());
         let new = new.rem_euclid(allowed_factions.len().try_into().unwrap());
         let new: usize = new.try_into().unwrap();
@@ -1125,17 +1120,17 @@ pub fn init_page() -> JsResult<()> {
 #[wasm_bindgen]
 pub fn git_version() -> String { my_git_version!().to_owned() }
 
-fn update_lobby(contest: &Contest) -> JsResult<()> {
+fn update_lobby(mtch: &Match) -> JsResult<()> {
     let document = web_document();
     let lobby_participants_node = document.get_existing_element_by_id("lobby-participants")?;
     remove_all_children(&lobby_participants_node)?;
-    for p in &contest.participants {
-        let is_me = p.name == contest.my_name;
+    for p in &mtch.participants {
+        let is_me = p.name == mtch.my_name;
         add_lobby_participant_node(p, is_me, &lobby_participants_node)?;
     }
     document
-        .get_existing_element_by_id("lobby-contest-id")?
-        .set_text_content(Some(&contest.contest_id));
+        .get_existing_element_by_id("lobby-match-id")?
+        .set_text_content(Some(&mtch.match_id));
     Ok(())
 }
 

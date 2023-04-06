@@ -84,7 +84,7 @@ thread_local! {
 fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
     loop {
         let rules = Rules {
-            contest_rules: ContestRules::unrated(),
+            match_rules: MatchRules::unrated(),
             chess_rules: ChessRules {
                 starting_position: if rng.gen::<bool>() {
                     StartingPosition::Classic
@@ -128,7 +128,7 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
 
 fn bughouse_game(rules: Rules) -> BughouseGame {
     BughouseGame::new(
-        rules.contest_rules,
+        rules.match_rules,
         rules.chess_rules,
         rules.bughouse_rules,
         &sample_bughouse_players(),

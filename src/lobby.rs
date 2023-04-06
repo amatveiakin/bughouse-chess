@@ -76,7 +76,7 @@ pub fn verify_participants<'a>(
         Teaming::IndividualMode => {}
     };
 
-    if rules.contest_rules.rated && need_to_double_play {
+    if rules.match_rules.rated && need_to_double_play {
         return ParticipantsStatus::from_error(ParticipantsError::RatedDoublePlay);
     }
 
@@ -101,13 +101,13 @@ pub fn verify_participants<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::{BughouseRules, ChessRules, ContestRules};
+    use crate::rules::{BughouseRules, ChessRules, MatchRules};
 
     fn make_rules(teaming: Teaming, rated: bool) -> Rules {
         Rules {
             chess_rules: ChessRules::classic_blitz(),
             bughouse_rules: BughouseRules { teaming, ..BughouseRules::chess_com() },
-            contest_rules: ContestRules { rated },
+            match_rules: MatchRules { rated },
         }
     }
 

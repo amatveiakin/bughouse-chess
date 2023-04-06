@@ -16,7 +16,7 @@ fn as_double_player(team: Team) -> BughouseParticipant {
 
 fn default_bughouse_game() -> BughouseGame {
     BughouseGame::new(
-        ContestRules::unrated(),
+        MatchRules::unrated(),
         ChessRules::classic_blitz(),
         BughouseRules::chess_com(),
         &sample_bughouse_players(),

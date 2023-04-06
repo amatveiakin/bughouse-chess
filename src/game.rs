@@ -1,13 +1,13 @@
 // On terminology:
 //   Participant: Somebody who is either playing or observing the game. There is
-//     a 1:1 corresponence between participants and humans connected to a contest.
+//     a 1:1 corresponence between participants and humans connected to a match.
 //   Player: A participant who is playing (not observing) in a given game. Normally
 //     there are 4 player in a game. However it is also possible to have a game with
 //     2 or 3 players if some of them are double-playing, i.e. if they play on both
 //     boards for a given team.
 //   Observer: A participant who is not playing in a given game. An observer
 //     could be temporary (if they were randomly selected to skip one game, but will
-//     play next time) or permanent (if they never play in a given contest).
+//     play next time) or permanent (if they never play in a given match).
 //   Envoy: Representative of all pieces of a given color on a given board. There are
 //     always exactly 4 envoys: (2 per team) x (2 per side). Each player controls one
 //     or two envoys.
@@ -40,7 +40,7 @@ use crate::board::{
 use crate::clock::GameInstant;
 use crate::force::Force;
 use crate::player::Team;
-use crate::rules::{BughouseRules, ChessRules, ContestRules};
+use crate::rules::{BughouseRules, ChessRules, MatchRules};
 use crate::starter::{generate_starting_position, EffectiveStartingPosition};
 
 
@@ -87,18 +87,18 @@ pub struct ChessGame {
 
 impl ChessGame {
     pub fn new(
-        contest_rules: ContestRules, rules: ChessRules, player_names: EnumMap<Force, String>,
+        match_rules: MatchRules, rules: ChessRules, player_names: EnumMap<Force, String>,
     ) -> Self {
         let starting_position = generate_starting_position(rules.starting_position);
-        Self::new_with_starting_position(contest_rules, rules, starting_position, player_names)
+        Self::new_with_starting_position(match_rules, rules, starting_position, player_names)
     }
 
     pub fn new_with_starting_position(
-        contest_rules: ContestRules, rules: ChessRules,
-        starting_position: EffectiveStartingPosition, player_names: EnumMap<Force, String>,
+        match_rules: MatchRules, rules: ChessRules, starting_position: EffectiveStartingPosition,
+        player_names: EnumMap<Force, String>,
     ) -> Self {
         let board = Board::new(
-            Rc::new(contest_rules),
+            Rc::new(match_rules),
             Rc::new(rules),
             None,
             player_names,
@@ -318,12 +318,12 @@ pub struct BughouseGame {
 
 impl BughouseGame {
     pub fn new(
-        contest_rules: ContestRules, chess_rules: ChessRules, bughouse_rules: BughouseRules,
+        match_rules: MatchRules, chess_rules: ChessRules, bughouse_rules: BughouseRules,
         players: &[PlayerInGame],
     ) -> Self {
         let starting_position = generate_starting_position(chess_rules.starting_position);
         Self::new_with_starting_position(
-            contest_rules,
+            match_rules,
             chess_rules,
             bughouse_rules,
             starting_position,
@@ -332,16 +332,16 @@ impl BughouseGame {
     }
 
     pub fn new_with_starting_position(
-        contest_rules: ContestRules, chess_rules: ChessRules, bughouse_rules: BughouseRules,
+        match_rules: MatchRules, chess_rules: ChessRules, bughouse_rules: BughouseRules,
         starting_position: EffectiveStartingPosition, players: &[PlayerInGame],
     ) -> Self {
-        let contest_rules = Rc::new(contest_rules);
+        let match_rules = Rc::new(match_rules);
         let chess_rules = Rc::new(chess_rules);
         let bughouse_rules = Rc::new(bughouse_rules);
         let player_map = make_player_map(players);
         let boards = player_map.map(|_, board_players| {
             Board::new(
-                Rc::clone(&contest_rules),
+                Rc::clone(&match_rules),
                 Rc::clone(&chess_rules),
                 Some(Rc::clone(&bughouse_rules)),
                 board_players,
@@ -358,7 +358,7 @@ impl BughouseGame {
 
     pub fn clone_from_start(&self) -> Self {
         Self::new_with_starting_position(
-            (**self.contest_rules()).clone(),
+            (**self.match_rules()).clone(),
             (**self.chess_rules()).clone(),
             (**self.bughouse_rules()).clone(),
             self.starting_position.clone(),
@@ -367,9 +367,7 @@ impl BughouseGame {
     }
 
     pub fn starting_position(&self) -> &EffectiveStartingPosition { &self.starting_position }
-    pub fn contest_rules(&self) -> &Rc<ContestRules> {
-        self.boards[BughouseBoard::A].contest_rules()
-    }
+    pub fn match_rules(&self) -> &Rc<MatchRules> { self.boards[BughouseBoard::A].match_rules() }
     pub fn chess_rules(&self) -> &Rc<ChessRules> { self.boards[BughouseBoard::A].chess_rules() }
     pub fn bughouse_rules(&self) -> &Rc<BughouseRules> {
         self.boards[BughouseBoard::A].bughouse_rules().as_ref().unwrap()

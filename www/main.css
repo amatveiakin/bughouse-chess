@@ -834,7 +834,7 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   color: red;
 }
 
-#jc-contest-id:not(:placeholder-shown) {
+#jc-match-id:not(:placeholder-shown) {
   /* This is of course a purely visual change. Actual input should be uppercased in JS. */
   text-transform: uppercase;
 }
@@ -904,11 +904,11 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   align-items: center;
   user-select: none;  /* prevent accidental name selection when choosing a team */
 }
-#lobby-contest {
+#lobby-match {
   font-size: 110%;
   margin-bottom: 0.8em;
 }
-#lobby-contest-id {
+#lobby-match-id {
   font-weight: bold;
 }
 #lobby-rules {

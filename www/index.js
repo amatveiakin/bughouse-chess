@@ -78,7 +78,7 @@ const Storage = {
 };
 
 const SearchParams = {
-    contest_id: 'contest-id',
+    match_id: 'match-id',
     server: 'server',
 };
 
@@ -98,8 +98,8 @@ const menu_signup_with_google_page = document.getElementById('menu-signup-with-g
 const menu_view_account_page = document.getElementById('menu-view-account-page');
 const menu_change_account_page = document.getElementById('menu-change-account-page');
 const menu_delete_account_page = document.getElementById('menu-delete-account-page');
-const menu_create_contest_page = document.getElementById('menu-create-contest-page');
-const menu_join_contest_page = document.getElementById('menu-join-contest-page');
+const menu_create_match_page = document.getElementById('menu-create-match-page');
+const menu_join_match_page = document.getElementById('menu-join-match-page');
 const menu_lobby_page = document.getElementById('menu-lobby-page');
 const menu_pages = document.getElementsByClassName('menu-page');
 
@@ -120,9 +120,9 @@ const view_account_change_button = document.getElementById('view-account-change-
 const view_account_delete_button = document.getElementById('view-account-delete-button');
 const change_account_email = document.getElementById('change-account-email');
 
-const create_contest_button = document.getElementById('create-contest-button');
-const join_contest_button = document.getElementById('join-contest-button');
-const jc_contest_id = document.getElementById('jc-contest-id');
+const create_match_button = document.getElementById('create-match-button');
+const join_match_button = document.getElementById('join-match-button');
+const jc_match_id = document.getElementById('jc-match-id');
 
 const ready_button = document.getElementById('ready-button');
 const resign_button = document.getElementById('resign-button');
@@ -274,10 +274,10 @@ menu_signup_page.addEventListener('submit', sign_up);
 menu_signup_with_google_page.addEventListener('submit', sign_up_with_google);
 menu_change_account_page.addEventListener('submit', change_account);
 menu_delete_account_page.addEventListener('submit', delete_account);
-create_contest_button.addEventListener('click', on_create_contest_submenu);
-join_contest_button.addEventListener('click', on_join_contest_submenu);
-menu_create_contest_page.addEventListener('submit', on_create_contest_confirm);
-menu_join_contest_page.addEventListener('submit', on_join_contest_confirm);
+create_match_button.addEventListener('click', on_create_match_submenu);
+join_match_button.addEventListener('click', on_join_match_submenu);
+menu_create_match_page.addEventListener('submit', on_create_match_confirm);
+menu_join_match_page.addEventListener('submit', on_join_match_confirm);
 
 for (const button of document.querySelectorAll('.back-button')) {
     button.addEventListener('click', pop_menu_page);
@@ -307,7 +307,7 @@ function with_error_handling(f) {
             command_result.innerText = e.msg;
         } else if (e?.constructor?.name == 'IgnorableError') {
             ignorable_error_dialog(e.message);
-        } else if (e?.constructor?.name == 'KickedFromContest') {
+        } else if (e?.constructor?.name == 'KickedFromMatch') {
             ignorable_error_dialog(e.message);
             // Need to recreate the socket because server aborts the connection here.
             // If this turns out to be buggy, could do
@@ -315,7 +315,7 @@ function with_error_handling(f) {
             // instead.
             socket = make_socket();
             open_menu();
-            push_menu_page(menu_join_contest_page);
+            push_menu_page(menu_join_match_page);
         } else if (e?.constructor?.name == 'FatalError') {
             fatal_error_dialog(e.message);
         } else if (e?.constructor?.name == 'RustError') {
@@ -564,9 +564,9 @@ function process_notable_events() {
             // Noop, but other events might be coming.
         } else if (js_event_type == 'JsEventSessionUpdated') {
             update_session();
-        } else if (js_event_type == 'JsEventContestStarted') {
+        } else if (js_event_type == 'JsEventMatchStarted') {
             const url = new URL(window.location);
-            url.searchParams.set(SearchParams.contest_id, js_event.contest_id);
+            url.searchParams.set(SearchParams.match_id, js_event.match_id);
             window.history.pushState({}, '', url);
             push_menu_page(menu_lobby_page);
         } else if (js_event_type == 'JsEventGameStarted') {
@@ -957,10 +957,10 @@ function reset_menu(page) {
     hide_menu_pages();
 
     const search_params = new URLSearchParams(window.location.search);
-    const contest_id = search_params.get(SearchParams.contest_id);
-    if (contest_id) {
-        jc_contest_id.value = contest_id;
-        push_menu_page(menu_join_contest_page);
+    const match_id = search_params.get(SearchParams.match_id);
+    if (match_id) {
+        jc_match_id.value = match_id;
+        push_menu_page(menu_join_match_page);
     } else {
         menu_start_page.style.display = 'block';
     }
@@ -1299,18 +1299,18 @@ async function delete_account(event) {
     }), 'Account deleted.');
 }
 
-function on_create_contest_submenu(event) {
-    push_menu_page(menu_create_contest_page);
+function on_create_match_submenu(event) {
+    push_menu_page(menu_create_match_page);
 }
 
-function on_join_contest_submenu(event) {
-    push_menu_page(menu_join_contest_page);
+function on_join_match_submenu(event) {
+    push_menu_page(menu_join_match_page);
 }
 
-function on_create_contest_confirm(event) {
+function on_create_match_confirm(event) {
     with_error_handling(function() {
         const data = new FormData(event.target);
-        wasm_client().new_contest(
+        wasm_client().new_match(
             data.get('player_name'),
             data.get('teaming'),
             data.get('starting_position'),
@@ -1325,11 +1325,11 @@ function on_create_contest_confirm(event) {
     });
 }
 
-function on_join_contest_confirm(event) {
+function on_join_match_confirm(event) {
     with_error_handling(function() {
         const data = new FormData(event.target);
         wasm_client().join(
-            data.get('contest_id').toUpperCase(),
+            data.get('match_id').toUpperCase(),
             data.get('player_name'),
         );
         update();

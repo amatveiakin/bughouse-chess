@@ -189,7 +189,7 @@ where
     for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
 {
     async fn create_tables(&self) -> anyhow::Result<()> {
-        // TODO: Include contest_id in finished_games.
+        // TODO: Include match_id in finished_games.
         let rowid_column_definition = DB::ROWID_COLUMN_DEFINITION;
         sqlx::query(
             format!(

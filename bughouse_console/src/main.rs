@@ -84,7 +84,7 @@ fn main() -> io::Result<()> {
             Command::new("client")
                 .about("Run as client")
                 .arg(arg!(<server_address> "Server address"))
-                .arg(arg!(<contest_id> "Contest ID"))
+                .arg(arg!(<match_id> "Match ID"))
                 .arg(arg!(<player_name> "Player name"))
         )
         .subcommand(
@@ -133,7 +133,7 @@ fn main() -> io::Result<()> {
         }
         Some(("client", sub_matches)) => client_main::run(client_main::ClientConfig {
             server_address: sub_matches.get_one::<String>("server_address").unwrap().clone(),
-            contest_id: sub_matches.get_one::<String>("contest_id").unwrap().clone(),
+            match_id: sub_matches.get_one::<String>("match_id").unwrap().clone(),
             player_name: sub_matches.get_one::<String>("player_name").unwrap().clone(),
         }),
         Some(("stress-test", sub_matches)) => stress_test::run(stress_test::StressTestConfig {

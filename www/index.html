@@ -295,10 +295,10 @@
       </div>
       <div style="height: 0.4em"></div>
       <div class="align-center">
-        <button id="create-contest-button" class="big-button">Create contest</button>
+        <button id="create-match-button" class="big-button">Create match</button>
       </div>
       <div class="align-center">
-        <button id="join-contest-button" class="big-button">Join contest</button>
+        <button id="join-match-button" class="big-button">Join match</button>
       </div>
       <div style="height: 0.4em"></div>
       <div class="flex-row">
@@ -536,7 +536,7 @@
       </div>
     </form>
 
-    <form id="menu-create-contest-page" class="menu-page" action="javascript:;">
+    <form id="menu-create-match-page" class="menu-page" action="javascript:;">
       <div class="flex-row">
         <button type="button" class="square-button back-button" title="Go back">🡨</button>
         <div class="flex-grow"></div>
@@ -546,10 +546,10 @@
         </div>
       </div>
       <div class="menu-page-body">
-        <!-- `pattern` and `maxlength` must be in sync with join contest player name field and with `is_valid_player_name` -->
+        <!-- `pattern` and `maxlength` must be in sync with join match player name field and with `is_valid_player_name` -->
         <!-- Improvement potential. Dedup player name properties (like `pattern` and `title`),
               or reuse the same <input> via dynamic css grids. -->
-        <!-- TODO: Visually separate player name from contest params. -->
+        <!-- TODO: Visually separate player name from match params. -->
         <!-- TODO: Add presets (default and chess.com). -->
         <label for="cc-player-name" class="guest-player-name">Player name</label>
         <input type="text" id="cc-player-name" name="player_name" class="guest-player-name"
@@ -722,11 +722,11 @@
         </div>
       </div>
       <div class="align-center">
-        <button id="cc-confirm-button" class="big-button">Create contest!</button>
+        <button id="cc-confirm-button" class="big-button">Create match!</button>
       </div>
     </form>
 
-    <form id="menu-join-contest-page" class="menu-page" action="javascript:;">
+    <form id="menu-join-match-page" class="menu-page" action="javascript:;">
       <div class="flex-row">
         <button type="button" class="square-button back-button" title="Go back">🡨</button>
         <div class="flex-grow"></div>
@@ -736,14 +736,14 @@
         </div>
       </div>
       <div class="menu-page-body">
-        <label for="jc-contest-id">Contest ID</label>
-        <input type="text" id="jc-contest-id" name="contest_id"
+        <label for="jc-match-id">Match ID</label>
+        <input type="text" id="jc-match-id" name="match_id"
           placeholder="&nbsp;" spellcheck="false" autocomplete="off" required
           maxlength="10" pattern="[a-zA-Z0-9]*"
-          title="Contest ID consists of Latin letters and numbers" />
+          title="Match ID consists of Latin letters and numbers" />
         <div></div>
 
-        <!-- `pattern` and `maxlength` must be in sync with join contest player name field and with `is_valid_player_name` -->
+        <!-- `pattern` and `maxlength` must be in sync with join match player name field and with `is_valid_player_name` -->
         <label for="jc-player-name" class="guest-player-name">Player name</label>
         <input type="text" id="jc-player-name" name="player_name" class="guest-player-name"
           placeholder="&nbsp;" spellcheck="false" required
@@ -752,14 +752,14 @@
         <div class="guest-player-name"></div>
       </div>
       <div class="align-center">
-        <button id="jc-confirm-button" class="big-button">Join contest!</button>
+        <button id="jc-confirm-button" class="big-button">Join match!</button>
       </div>
     </form>
 
     <div id="menu-lobby-page" class="menu-page">
       <div class="flex-row">
-        <div id="lobby-contest">Contest <span id="lobby-contest-id"></span></div>
-        <!-- TODO: Allow to leave contest (don't forget to send the message to the server) -->
+        <div id="lobby-match">Match <span id="lobby-match-id"></span></div>
+        <!-- TODO: Allow to leave match (don't forget to send the message to the server) -->
         <!-- <button type="button" class="back-button" title="Go back">Leave</button> -->
       </div>
       <div id="lobby-rules"></div>

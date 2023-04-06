@@ -39,7 +39,7 @@ use crate::session_store::{SessionId, SessionStore};
 
 const DOUBLE_TERMINATION_ABORT_THRESHOLD: Duration = Duration::from_secs(1);
 const TERMINATION_WAITING_PERIOD: Duration = Duration::from_secs(60);
-const CONTEST_GC_INACTIVITY_THRESHOLD: Duration = Duration::from_secs(3600 * 24);
+const MATCH_GC_INACTIVITY_THRESHOLD: Duration = Duration::from_secs(3600 * 24);
 
 macro_rules! unknown_error {
     ($($arg:tt)*) => {
@@ -54,8 +54,8 @@ enum Execution {
     // The server runs normally.
     Running,
 
-    // The server is in graceful shutdown mode. It will not allow to start new contests or
-    // new games within existing contests and it will automatically shut down when there are
+    // The server is in graceful shutdown mode. It will not allow to start new matches or
+    // new games within existing matches and it will automatically shut down when there are
     // no more games running.
     ShuttingDown {
         // The moment shutdown was requested initially.
@@ -92,13 +92,13 @@ pub struct GameState {
 
 impl GameState {
     pub fn game(&self) -> &BughouseGame { &self.game }
-    pub fn rated(&self) -> bool { self.game.contest_rules().rated }
+    pub fn rated(&self) -> bool { self.game.match_rules().rated }
     pub fn start_offset_time(&self) -> Option<time::OffsetDateTime> { self.game_start_offset_time }
 }
 
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-struct ContestId(String);
+struct MatchId(String);
 
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -144,7 +144,7 @@ pub struct ClientId(usize);
 
 pub struct Client {
     events_tx: mpsc::Sender<BughouseServerEvent>,
-    contest_id: Option<ContestId>,
+    match_id: Option<MatchId>,
     participant_id: Option<ParticipantId>,
     session_id: Option<SessionId>,
     logging_id: String,
@@ -173,7 +173,7 @@ impl Clients {
         let now = Instant::now();
         let client = Client {
             events_tx,
-            contest_id: None,
+            match_id: None,
             participant_id: None,
             session_id,
             logging_id,
@@ -199,13 +199,13 @@ impl Clients {
         self.map.remove(&id).map(|client| client.logging_id)
     }
 
-    // Sends the event to each client who has joined the contest.
+    // Sends the event to each client who has joined the match.
     //
     // Improvement potential. Do not iterate over all clients. Keep the list of clients
-    // in each contest.
-    fn broadcast(&mut self, contest_id: &ContestId, event: &BughouseServerEvent) {
+    // in each match.
+    fn broadcast(&mut self, match_id: &MatchId, event: &BughouseServerEvent) {
         for client in self.map.values_mut() {
-            if client.contest_id.as_ref() == Some(contest_id) {
+            if client.match_id.as_ref() == Some(match_id) {
                 client.send(event.clone());
             }
         }
@@ -232,15 +232,15 @@ impl ops::IndexMut<ClientId> for Clients {
 
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-enum ContestActivity {
+enum MatchActivity {
     Present,
     Past(Instant),
 }
 
 #[derive(Debug)]
-struct Contest {
-    contest_id: ContestId,
-    contest_creation: Instant,
+struct Match {
+    match_id: MatchId,
+    match_creation: Instant,
     rules: Rules,
     participants: Participants,
     scores: Scores,
@@ -260,7 +260,7 @@ struct Context<'a, 'b> {
 
 struct CoreServerState {
     execution: Execution,
-    contests: HashMap<ContestId, Contest>,
+    matches: HashMap<MatchId, Match>,
 }
 
 type EventResult = Result<(), BughouseServerRejection>;
@@ -326,11 +326,10 @@ impl ServerState {
 
     #[allow(non_snake_case)]
     pub fn TEST_override_board_assignment(
-        &mut self, contest_id: String, assignment: Vec<PlayerInGame>,
+        &mut self, match_id: String, assignment: Vec<PlayerInGame>,
     ) {
-        let contest_id = ContestId(contest_id);
-        self.core.contests.get_mut(&contest_id).unwrap().board_assignment_override =
-            Some(assignment);
+        let match_id = MatchId(match_id);
+        self.core.matches.get_mut(&match_id).unwrap().board_assignment_override = Some(assignment);
     }
 }
 
@@ -338,12 +337,12 @@ impl CoreServerState {
     fn new() -> Self {
         CoreServerState {
             execution: Execution::Running,
-            contests: HashMap::new(),
+            matches: HashMap::new(),
         }
     }
 
-    fn make_contest(&mut self, now: Instant, rules: Rules) -> Result<ContestId, String> {
-        rules.verify().map_err(|err| format!("Invalid contest rules: {err}"))?;
+    fn make_match(&mut self, now: Instant, rules: Rules) -> Result<MatchId, String> {
+        rules.verify().map_err(|err| format!("Invalid match rules: {err}"))?;
         // Exclude confusing characters:
         //   - 'O' and '0' (easy to confuse);
         //   - 'I' (looks like '1'; keep '1' because confusion in the other direction seems less likely).
@@ -355,10 +354,10 @@ impl CoreServerState {
         const MAX_ATTEMPTS_PER_LEN: usize = 100;
         let mut rng = rand::thread_rng();
         let mut id_len = MIN_ID_LEN;
-        let mut id = ContestId(String::new());
+        let mut id = MatchId(String::new());
         let mut attempts_at_this_len = 0;
-        while id.0.is_empty() || self.contests.contains_key(&id) {
-            id = ContestId(
+        while id.0.is_empty() || self.matches.contains_key(&id) {
+            id = MatchId(
                 (&mut rng)
                     .sample_iter(rand::distributions::Uniform::from(0..ALPHABET.len()))
                     .map(|idx| ALPHABET[idx])
@@ -371,11 +370,11 @@ impl CoreServerState {
                 attempts_at_this_len = 0;
             }
         }
-        // TODO: Verify that time limit is not too large: the contest will not be GCed while the
+        // TODO: Verify that time limit is not too large: the match will not be GCed while the
         //   clock's ticking even if all players left.
-        let contest = Contest {
-            contest_id: id.clone(),
-            contest_creation: now,
+        let mtch = Match {
+            match_id: id.clone(),
+            match_creation: now,
             rules,
             participants: Participants::new(),
             scores: Scores::new(),
@@ -384,7 +383,7 @@ impl CoreServerState {
             game_state: None,
             board_assignment_override: None,
         };
-        assert!(self.contests.insert(id.clone(), contest).is_none());
+        assert!(self.matches.insert(id.clone(), mtch).is_none());
         Ok(id)
     }
 
@@ -421,7 +420,7 @@ impl CoreServerState {
 
         ctx.clients[client_id].connection_monitor.register_incoming(now);
 
-        // First, process events that don't require a contest.
+        // First, process events that don't require a match.
         match &event {
             BughouseClientEvent::ReportPerformace(..) => {
                 // Only used by server hooks.
@@ -438,15 +437,15 @@ impl CoreServerState {
             _ => {}
         };
 
-        let contest_id = match &event {
-            BughouseClientEvent::NewContest { rules, .. } => {
+        let match_id = match &event {
+            BughouseClientEvent::NewMatch { rules, .. } => {
                 if !matches!(self.execution, Execution::Running) {
                     ctx.clients[client_id].send_rejection(BughouseServerRejection::ShuttingDown);
                     return;
                 }
-                ctx.clients[client_id].contest_id = None;
+                ctx.clients[client_id].match_id = None;
                 ctx.clients[client_id].participant_id = None;
-                let contest_id = match self.make_contest(now, rules.clone()) {
+                let match_id = match self.make_match(now, rules.clone()) {
                     Ok(id) => id,
                     Err(message) => {
                         ctx.clients[client_id]
@@ -455,80 +454,80 @@ impl CoreServerState {
                     }
                 };
                 info!(
-                    "Contest {} created by client {}",
-                    contest_id.0, ctx.clients[client_id].logging_id
+                    "Match {} created by client {}",
+                    match_id.0, ctx.clients[client_id].logging_id
                 );
-                Some(contest_id)
+                Some(match_id)
             }
-            BughouseClientEvent::Join { contest_id, .. } => {
+            BughouseClientEvent::Join { match_id, .. } => {
                 // Improvement potential: Log cases when a client reconnects to their current
-                //   contest. This likely indicates a client error.
-                ctx.clients[client_id].contest_id = None;
+                //   match. This likely indicates a client error.
+                ctx.clients[client_id].match_id = None;
                 ctx.clients[client_id].participant_id = None;
-                Some(ContestId(contest_id.clone()))
+                Some(MatchId(match_id.clone()))
             }
-            _ => ctx.clients[client_id].contest_id.clone(),
+            _ => ctx.clients[client_id].match_id.clone(),
         };
 
-        let Some(contest_id) = contest_id else {
-            // We've already processed all events that do not depend on a contest.
+        let Some(match_id) = match_id else {
+            // We've already processed all events that do not depend on a match.
             ctx.clients[client_id].send_rejection(
-                unknown_error!("Cannot process event: no contest in progress")
+                unknown_error!("Cannot process event: no match in progress")
             );
             return;
         };
 
-        let Some(contest) = self.contests.get_mut(&contest_id) else {
-            // The only way to have a contest_id with no contest is when a client is trying
-            // to join with a bad contest_id. In other cases we are getting contest_id from
-            // trusted internal sources, so the contest must exist as well.
+        let Some(mtch) = self.matches.get_mut(&match_id) else {
+            // The only way to have a match_id with no match is when a client is trying
+            // to join with a bad match_id. In other cases we are getting match_id from
+            // trusted internal sources, so the match must exist as well.
             assert!(matches!(event, BughouseClientEvent::Join{ .. }));
-            ctx.clients[client_id].send_rejection(BughouseServerRejection::NoSuchContest {
-                contest_id: contest_id.0
+            ctx.clients[client_id].send_rejection(BughouseServerRejection::NoSuchMatch {
+                match_id: match_id.0
             });
             return;
         };
 
         // Test flags first. Thus we make sure that turns and other actions are
         // not allowed after the time is over.
-        contest.test_flags(ctx, now);
-        contest.process_client_event(ctx, client_id, self.execution, now, event);
-        contest.post_process(ctx, self.execution, now);
+        mtch.test_flags(ctx, now);
+        mtch.process_client_event(ctx, client_id, self.execution, now, event);
+        mtch.post_process(ctx, self.execution, now);
     }
 
     fn on_tick(&mut self, ctx: &mut Context, now: Instant) {
-        self.gc_old_contests(now);
+        self.gc_old_matches(now);
         self.check_client_connections(ctx, now);
-        for contest in self.contests.values_mut() {
-            contest.test_flags(ctx, now);
-            contest.post_process(ctx, self.execution, now);
+        for mtch in self.matches.values_mut() {
+            mtch.test_flags(ctx, now);
+            mtch.post_process(ctx, self.execution, now);
         }
-        if !matches!(self.execution, Execution::Running) && self.num_active_contests(now) == 0 {
-            println!("No more active contests left. Shutting down.");
+        if !matches!(self.execution, Execution::Running) && self.num_active_matches(now) == 0 {
+            println!("No more active matches left. Shutting down.");
             shutdown();
         }
     }
 
     pub fn on_terminate(&mut self, ctx: &mut Context, now: Instant) {
         const ABORT_INSTRUCTION: &str = "Press Ctrl+C twice within a second to abort immediately.";
-        let num_active_contests = self.num_active_contests(now);
+        let num_active_matches = self.num_active_matches(now);
         match self.execution {
             Execution::Running => {
-                if num_active_contests == 0 {
-                    println!("There are no active contests. Shutting down immediately!");
+                if num_active_matches == 0 {
+                    println!("There are no active matches. Shutting down immediately!");
                     shutdown();
                 } else {
                     printdoc!("
                         Shutdown requested!
-                        The server will not allow to start new contests or games. It will terminate as
-                        soon as there are no active contests. There are currently {num_active_contests} active contests.
+                        The server will not allow to start new matches or games. It will terminate as
+                        soon as there are no active matches. There are currently {num_active_matches} active matches.
                         {ABORT_INSTRUCTION}
                     ");
                     self.execution = Execution::ShuttingDown {
                         shutting_down_since: now,
                         last_termination_request: now,
                     };
-                    self.contests.values().for_each(|contest| {
+                    self.matches.values().for_each(|mtch| {
                         // Immediately notify clients who ate still in the lobby: they wouldn't be able
                         // to do anything meaningful. Let other players finish their games.
                         //
@@ -537,10 +536,10 @@ impl CoreServerState {
                         //   - Server code will be simpler. There will be exactly two points when a
                         //     shutdown notice should be sent: to all existing clients when termination
                         //     is requested and to new clients as soon as they are connected (to the
-                        //     server, not to the contest).
+                        //     server, not to the match).
                         //   - Clients will get the relevant information sooner.
-                        if contest.game_state.is_none() {
-                            contest.broadcast(
+                        if mtch.game_state.is_none() {
+                            mtch.broadcast(
                                 ctx,
                                 &BughouseServerEvent::Rejection(
                                     BughouseServerRejection::ShuttingDown,
@@ -562,9 +561,9 @@ impl CoreServerState {
                 } else {
                     let shutdown_duration_sec = now.duration_since(shutting_down_since).as_secs();
                     println!(
-                        "Shutdown was requested {}s ago. Waiting for {} active contests to finish.\n{}",
+                        "Shutdown was requested {}s ago. Waiting for {} active matches to finish.\n{}",
                         shutdown_duration_sec,
-                        num_active_contests,
+                        num_active_matches,
                         ABORT_INSTRUCTION,
                     );
                 }
@@ -573,21 +572,21 @@ impl CoreServerState {
         }
     }
 
-    fn num_active_contests(&self, now: Instant) -> usize {
-        self.contests
+    fn num_active_matches(&self, now: Instant) -> usize {
+        self.matches
             .values()
-            .filter(|contest| match contest.latest_activity() {
-                ContestActivity::Present => true,
-                ContestActivity::Past(t) => now.duration_since(t) <= TERMINATION_WAITING_PERIOD,
+            .filter(|mtch| match mtch.latest_activity() {
+                MatchActivity::Present => true,
+                MatchActivity::Past(t) => now.duration_since(t) <= TERMINATION_WAITING_PERIOD,
             })
             .count()
     }
 
-    fn gc_old_contests(&mut self, now: Instant) {
-        // Improvement potential. GC unused contests (zero games and/or no players) sooner.
-        self.contests.retain(|_, contest| match contest.latest_activity() {
-            ContestActivity::Present => true,
-            ContestActivity::Past(t) => now.duration_since(t) <= CONTEST_GC_INACTIVITY_THRESHOLD,
+    fn gc_old_matches(&mut self, now: Instant) {
+        // Improvement potential. GC unused matches (zero games and/or no players) sooner.
+        self.matches.retain(|_, mtch| match mtch.latest_activity() {
+            MatchActivity::Present => true,
+            MatchActivity::Past(t) => now.duration_since(t) <= MATCH_GC_INACTIVITY_THRESHOLD,
         });
     }
 
@@ -600,26 +599,26 @@ impl CoreServerState {
     }
 }
 
-impl Contest {
-    fn latest_activity(&self) -> ContestActivity {
+impl Match {
+    fn latest_activity(&self) -> MatchActivity {
         if let Some(GameState { game_creation, game_start, game_end, .. }) = self.game_state {
             if let Some(game_end) = game_end {
-                ContestActivity::Past(game_end)
+                MatchActivity::Past(game_end)
             } else if game_start.is_some() {
-                ContestActivity::Present
+                MatchActivity::Present
             } else {
-                // Since `latest_activity` is used for things like contest GC, we do not want to
+                // Since `latest_activity` is used for things like match GC, we do not want to
                 // count the period between game creation and game start as activity:
-                //   - In a normal case players will start the game soon, so the contest will not
+                //   - In a normal case players will start the game soon, so the match will not
                 //     be GCed;
-                //   - In a pathological case the contest could stay in this state indefinitely,
-                //     leading to an unrecoverable leak. The only safe time to consider a contest to
+                //   - In a pathological case the match could stay in this state indefinitely,
+                //     leading to an unrecoverable leak. The only safe time to consider a match to
                 //     be active is when a game is when the game is active and the clock's ticking,
                 //     because this period is inherently time-bound.
-                ContestActivity::Past(game_creation)
+                MatchActivity::Past(game_creation)
             }
         } else {
-            ContestActivity::Past(self.contest_creation)
+            MatchActivity::Past(self.match_creation)
         }
     }
 
@@ -663,7 +662,7 @@ impl Contest {
             self.game_state.as_ref(),
             self.match_history.len() + 1,
         );
-        ctx.clients.broadcast(&self.contest_id, event);
+        ctx.clients.broadcast(&self.match_id, event);
     }
 
     fn process_client_event(
@@ -671,11 +670,11 @@ impl Contest {
         event: BughouseClientEvent,
     ) {
         let result = match event {
-            BughouseClientEvent::NewContest { player_name, .. } => {
-                // The contest was created earlier.
+            BughouseClientEvent::NewMatch { player_name, .. } => {
+                // The match was created earlier.
                 self.join_participant(ctx, client_id, execution, now, player_name)
             }
-            BughouseClientEvent::Join { contest_id: _, player_name } => {
+            BughouseClientEvent::Join { match_id: _, player_name } => {
                 self.join_participant(ctx, client_id, execution, now, player_name)
             }
             BughouseClientEvent::SetFaction { faction } => {
@@ -699,13 +698,13 @@ impl Contest {
                 self.process_request_export(ctx, client_id, format)
             }
             BughouseClientEvent::ReportPerformace(..) => {
-                unreachable!("Contest-independent event must be processed separately");
+                unreachable!("Match-independent event must be processed separately");
             }
             BughouseClientEvent::ReportError(..) => {
-                unreachable!("Contest-independent event must be processed separately");
+                unreachable!("Match-independent event must be processed separately");
             }
             BughouseClientEvent::Ping => {
-                unreachable!("Contest-independent event must be processed separately");
+                unreachable!("Match-independent event must be processed separately");
             }
         };
         if let Err(err) = result {
@@ -717,7 +716,7 @@ impl Contest {
         &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution, now: Instant,
         player_name: String,
     ) -> EventResult {
-        assert!(ctx.clients[client_id].contest_id.is_none());
+        assert!(ctx.clients[client_id].match_id.is_none());
         assert!(ctx.clients[client_id].participant_id.is_none());
 
         let registered_user_name = ctx.clients[client_id]
@@ -734,9 +733,9 @@ impl Contest {
                 ));
             }
         }
-        // Improvement potential: Reject earlier if a guest is trying to create a rated contest.
-        if self.rules.contest_rules.rated && !is_registered_user {
-            return Err(BughouseServerRejection::GuestInRatedContest);
+        // Improvement potential: Reject earlier if a guest is trying to create a rated match.
+        if self.rules.match_rules.rated && !is_registered_user {
+            return Err(BughouseServerRejection::GuestInRatedMatch);
         }
 
         if let Some(ref game_state) = self.game_state {
@@ -784,9 +783,9 @@ impl Contest {
                     is_ready: false,
                 })
             });
-            ctx.clients[client_id].contest_id = Some(self.contest_id.clone());
+            ctx.clients[client_id].match_id = Some(self.match_id.clone());
             ctx.clients[client_id].participant_id = Some(participant_id);
-            ctx.clients[client_id].send(self.make_contest_welcome_event());
+            ctx.clients[client_id].send(self.make_match_welcome_event());
             // LobbyUpdated should precede GameStarted, because this is how the client gets their
             // team in FixedTeam mode.
             self.send_lobby_updated(ctx);
@@ -828,10 +827,10 @@ impl Contest {
                 return Err(BughouseServerRejection::ShuttingDown);
             }
             info!(
-                "Client {} join contest {} as {}",
-                ctx.clients[client_id].logging_id, self.contest_id.0, player_name
+                "Client {} join match {} as {}",
+                ctx.clients[client_id].logging_id, self.match_id.0, player_name
             );
-            ctx.clients[client_id].contest_id = Some(self.contest_id.clone());
+            ctx.clients[client_id].match_id = Some(self.match_id.clone());
             let participant_id = self.participants.add_participant(Participant {
                 name: player_name,
                 is_registered_user,
@@ -841,7 +840,7 @@ impl Contest {
                 is_ready: false,
             });
             ctx.clients[client_id].participant_id = Some(participant_id);
-            ctx.clients[client_id].send(self.make_contest_welcome_event());
+            ctx.clients[client_id].send(self.make_match_welcome_event());
             self.send_lobby_updated(ctx);
             Ok(())
         }
@@ -854,7 +853,7 @@ impl Contest {
             return Err(unknown_error!("Cannot set faction: not joined"));
         };
         if self.game_state.is_some() {
-            return Err(unknown_error!("Cannot set faction: contest already started"));
+            return Err(unknown_error!("Cannot set faction: match already started"));
         }
         match (faction, self.rules.bughouse_rules.teaming) {
             (Faction::Fixed(_), Teaming::FixedTeams) => {}
@@ -1164,10 +1163,10 @@ impl Contest {
 
     fn start_game(&mut self, ctx: &mut Context, now: Instant) {
         self.reset_readiness();
-        self.randomize_fixed_teams(); // non-trivial only in the beginning of a contest
+        self.randomize_fixed_teams(); // non-trivial only in the beginning of a match
         let players = self.assign_boards();
         let game = BughouseGame::new(
-            self.rules.contest_rules.clone(),
+            self.rules.match_rules.clone(),
             self.rules.chess_rules.clone(),
             self.rules.bughouse_rules.clone(),
             &players,
@@ -1200,9 +1199,9 @@ impl Contest {
         }
     }
 
-    fn make_contest_welcome_event(&self) -> BughouseServerEvent {
-        BughouseServerEvent::ContestWelcome {
-            contest_id: self.contest_id.0.clone(),
+    fn make_match_welcome_event(&self) -> BughouseServerEvent {
+        BughouseServerEvent::MatchWelcome {
+            match_id: self.match_id.0.clone(),
             rules: self.rules.clone(),
         }
     }
@@ -1212,7 +1211,7 @@ impl Contest {
         &self, now: Instant, participant_id: Option<ParticipantId>,
     ) -> BughouseServerEvent {
         let Some(game_state) = &self.game_state else {
-            panic!("Expected ContestState::Game");
+            panic!("Expected MatchState::Game");
         };
         let player_bughouse_id =
             participant_id.and_then(|id| game_state.game.find_player(&self.participants[id].name));
@@ -1239,7 +1238,7 @@ impl Contest {
 
     fn reset_readiness(&mut self) { self.participants.iter_mut().for_each(|p| p.is_ready = false); }
 
-    // Randomize fixed teams in the beginning of a contest.
+    // Randomize fixed teams in the beginning of a match.
     //
     // Algorithm: shuffle players, then iterate the resulting shuffled array and assign
     // teams. Note that it would be incorrect to go in the player order and assign a random

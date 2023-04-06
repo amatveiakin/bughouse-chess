@@ -37,7 +37,7 @@ pub enum SubjectiveGameResult {
 #[derive(Clone, Debug)]
 pub enum NotableEvent {
     SessionUpdated,
-    ContestStarted(String), // contains ContestID
+    MatchStarted(String), // contains MatchID
     GameStarted,
     GameOver(SubjectiveGameResult),
     TurnMade(BughouseEnvoy),
@@ -50,8 +50,8 @@ pub enum NotableEvent {
 pub enum EventError {
     // An action has failed. Inform the user and continue.
     IgnorableError(String),
-    // The client has been kicked from the contest, but can rejoin.
-    KickedFromContest(String),
+    // The client has been kicked from the match, but can rejoin.
+    KickedFromMatch(String),
     // The client cannot continue operating, but *not* an internal error.
     FatalError(String),
     // Internal logic error. Should be debugged (or demoted). Could be ignored for now.
@@ -77,11 +77,11 @@ pub struct GameState {
 }
 
 #[derive(Debug)]
-pub struct Contest {
-    pub contest_id: String,
+pub struct Match {
+    pub match_id: String,
     pub my_name: String,
     pub my_faction: Faction,
-    // Rules applied in every game of the contest.
+    // Rules applied in every game of the match.
     pub rules: Rules,
     // All players including those not participating in the current game.
     pub participants: Vec<Participant>,
@@ -96,11 +96,11 @@ pub struct Contest {
 }
 
 #[derive(Debug)]
-enum ContestState {
+enum MatchState {
     NotConnected,
     Creating { my_name: String },
-    Joining { contest_id: String, my_name: String },
-    Connected(Contest),
+    Joining { match_id: String, my_name: String },
+    Connected(Match),
 }
 
 struct Connection {
@@ -123,7 +123,7 @@ pub struct ClientState {
     user_agent: String,
     time_zone: String,
     connection: Connection,
-    contest_state: ContestState,
+    match_state: MatchState,
     notable_event_queue: VecDeque<NotableEvent>,
     meter_box: MeterBox,
     ping_meter: Meter,
@@ -155,7 +155,7 @@ impl ClientState {
             user_agent,
             time_zone,
             connection: Connection::new(events_tx),
-            contest_state: ContestState::NotConnected,
+            match_state: MatchState::NotConnected,
             notable_event_queue: VecDeque::new(),
             meter_box,
             ping_meter,
@@ -164,43 +164,43 @@ impl ClientState {
     }
 
     pub fn session(&self) -> &Session { &self.session }
-    pub fn contest(&self) -> Option<&Contest> {
-        if let ContestState::Connected(ref c) = self.contest_state {
-            Some(c)
+    pub fn mtch(&self) -> Option<&Match> {
+        if let MatchState::Connected(ref m) = self.match_state {
+            Some(m)
         } else {
             None
         }
     }
-    fn contest_mut(&mut self) -> Option<&mut Contest> {
-        if let ContestState::Connected(ref mut c) = self.contest_state {
-            Some(c)
+    fn mtch_mut(&mut self) -> Option<&mut Match> {
+        if let MatchState::Connected(ref mut m) = self.match_state {
+            Some(m)
         } else {
             None
         }
     }
-    pub fn is_ready(&self) -> Option<bool> { self.contest().map(|c| c.is_ready) }
-    pub fn contest_id(&self) -> Option<&String> { self.contest().map(|c| &c.contest_id) }
+    pub fn is_ready(&self) -> Option<bool> { self.mtch().map(|m| m.is_ready) }
+    pub fn match_id(&self) -> Option<&String> { self.mtch().map(|m| &m.match_id) }
     pub fn game_state(&self) -> Option<&GameState> {
-        self.contest().and_then(|c| c.game_state.as_ref())
+        self.mtch().and_then(|m| m.game_state.as_ref())
     }
     fn game_state_mut(&mut self) -> Option<&mut GameState> {
-        self.contest_mut().and_then(|c| c.game_state.as_mut())
+        self.mtch_mut().and_then(|m| m.game_state.as_mut())
     }
     // TODO: Reduce public mutability. This is used only for drag&drop, so limit the mutable API to that.
     pub fn alt_game_mut(&mut self) -> Option<&mut AlteredGame> {
         self.game_state_mut().map(|s| &mut s.alt_game)
     }
 
-    pub fn my_faction(&self) -> Option<Faction> { self.contest().map(|c| c.my_faction) }
+    pub fn my_faction(&self) -> Option<Faction> { self.mtch().map(|m| m.my_faction) }
     pub fn my_id(&self) -> Option<BughouseParticipant> {
         self.game_state().map(|s| s.alt_game.my_id())
     }
     pub fn my_name(&self) -> Option<&str> {
-        match &self.contest_state {
-            ContestState::NotConnected => None,
-            ContestState::Creating { my_name } => Some(&my_name),
-            ContestState::Joining { my_name, .. } => Some(&my_name),
-            ContestState::Connected(Contest { my_name, .. }) => Some(&my_name),
+        match &self.match_state {
+            MatchState::NotConnected => None,
+            MatchState::Creating { my_name } => Some(&my_name),
+            MatchState::Joining { my_name, .. } => Some(&my_name),
+            MatchState::Connected(Match { my_name, .. }) => Some(&my_name),
         }
     }
     pub fn relation_to(&self, name: &str) -> PlayerRelation {
@@ -220,8 +220,8 @@ impl ClientState {
     }
 
     pub fn first_game_countdown_left(&self) -> Option<Duration> {
-        self.contest().and_then(|c| {
-            c.first_game_countdown_since.map(|t| {
+        self.mtch().and_then(|m| {
+            m.first_game_countdown_since.map(|t| {
                 FIRST_GAME_COUNTDOWN_DURATION.saturating_sub(Instant::now().duration_since(t))
             })
         })
@@ -245,28 +245,28 @@ impl ClientState {
         self.connection.health_monitor.current_turnaround_time(now)
     }
 
-    pub fn new_contest(&mut self, rules: Rules, my_name: String) {
-        self.contest_state = ContestState::Creating { my_name: my_name.clone() };
+    pub fn new_match(&mut self, rules: Rules, my_name: String) {
+        self.match_state = MatchState::Creating { my_name: my_name.clone() };
         self.connection
-            .send(BughouseClientEvent::NewContest { rules, player_name: my_name });
+            .send(BughouseClientEvent::NewMatch { rules, player_name: my_name });
     }
-    pub fn join(&mut self, contest_id: String, my_name: String) {
+    pub fn join(&mut self, match_id: String, my_name: String) {
         self.connection.send(BughouseClientEvent::Join {
-            contest_id: contest_id.clone(),
+            match_id: match_id.clone(),
             player_name: my_name.clone(),
         });
-        self.contest_state = ContestState::Joining { contest_id, my_name };
+        self.match_state = MatchState::Joining { match_id, my_name };
     }
     pub fn set_faction(&mut self, faction: Faction) {
-        if let Some(contest) = self.contest_mut() {
-            contest.my_faction = faction;
+        if let Some(mtch) = self.mtch_mut() {
+            mtch.my_faction = faction;
             self.connection.send(BughouseClientEvent::SetFaction { faction });
         }
     }
     pub fn resign(&mut self) { self.connection.send(BughouseClientEvent::Resign); }
     pub fn set_ready(&mut self, is_ready: bool) {
-        if let Some(contest) = self.contest_mut() {
-            contest.is_ready = is_ready;
+        if let Some(mtch) = self.mtch_mut() {
+            mtch.is_ready = is_ready;
             self.connection.send(BughouseClientEvent::SetReady { is_ready });
         }
     }
@@ -370,9 +370,9 @@ impl ClientState {
         match event {
             Rejection(rejection) => {
                 let error = match rejection {
-                    BughouseServerRejection::NoSuchContest{ contest_id } => {
+                    BughouseServerRejection::NoSuchMatch{ match_id } => {
                         EventError::IgnorableError(format!(
-                            "Contest {contest_id} does not exist."
+                            "Match {match_id} does not exist."
                         ))
                     },
                     BughouseServerRejection::PlayerAlreadyExists{ player_name } => {
@@ -388,20 +388,20 @@ impl ClientState {
                         ))
                     },
                     BughouseServerRejection::JoinedInAnotherClient => {
-                        EventError::KickedFromContest("\
-                            You have joined the contest in another browser tab. Only one tab per \
-                            contest can be active at a time.
+                        EventError::KickedFromMatch("\
+                            You have joined the mtch in another browser tab. Only one tab per \
+                            mtch can be active at a time.
                         ".to_owned())
                     },
                     BughouseServerRejection::NameClashWithRegisteredUser => {
-                        EventError::KickedFromContest("\
+                        EventError::KickedFromMatch("\
                             A registered user with the same name has joined. Registered users have \
                             priority over name selection. Please choose another name and join again.
                         ".to_owned())
                     },
-                    BughouseServerRejection::GuestInRatedContest => {
+                    BughouseServerRejection::GuestInRatedMatch => {
                         EventError::IgnorableError("\
-                            Guests cannot join rated contests. Please register an account and join \
+                            Guests cannot join rated matches. Please register an account and join \
                             again.
                         ".to_owned())
                     },
@@ -416,8 +416,8 @@ impl ClientState {
                         internal_error!("Got error from server: {}", message)
                     },
                 };
-                if matches!(error, EventError::KickedFromContest(_)) {
-                    self.contest_state = ContestState::NotConnected;
+                if matches!(error, EventError::KickedFromMatch(_)) {
+                    self.match_state = MatchState::NotConnected;
                 }
                 return Err(error);
             }
@@ -425,29 +425,30 @@ impl ClientState {
                 self.session = session;
                 self.notable_event_queue.push_back(NotableEvent::SessionUpdated);
             }
-            ContestWelcome { contest_id, rules } => {
-                let my_name = match &self.contest_state {
-                    ContestState::Creating { my_name } => my_name.clone(),
-                    ContestState::Joining { contest_id: id, my_name } => {
-                        if contest_id != *id {
-                            return Err(internal_error!("Cannot apply ContestWelcome: expected contest {id}, but got {contest_id}"));
+            MatchWelcome { match_id, rules } => {
+                let my_name = match &self.match_state {
+                    MatchState::Creating { my_name } => my_name.clone(),
+                    MatchState::Joining { match_id: id, my_name } => {
+                        if match_id != *id {
+                            return Err(internal_error!(
+                                "Cannot apply MatchWelcome: expected match {id}, but got {match_id}"
+                            ));
                         }
                         my_name.clone()
                     }
                     _ => {
                         return Err(internal_error!(
-                            "Cannot apply ContestWelcome: not expecting a new contest"
+                            "Cannot apply MatchWelcome: not expecting a new match"
                         ))
                     }
                 };
-                self.notable_event_queue
-                    .push_back(NotableEvent::ContestStarted(contest_id.clone()));
+                self.notable_event_queue.push_back(NotableEvent::MatchStarted(match_id.clone()));
                 // `Observer` is a safe faction default that wouldn't allow us to try acting as
                 // a player if we are in fact an observer. We'll get the real faction afterwards
                 // in a `LobbyUpdated` event.
                 let my_faction = Faction::Observer;
-                self.contest_state = ContestState::Connected(Contest {
-                    contest_id,
+                self.match_state = MatchState::Connected(Match {
+                    match_id,
                     my_name,
                     my_faction,
                     rules,
@@ -459,32 +460,30 @@ impl ClientState {
                 });
             }
             LobbyUpdated { participants } => {
-                let contest = self.contest_mut().ok_or_else(|| {
-                    internal_error!("Cannot apply LobbyUpdated: no contest in progress")
+                let mtch = self.mtch_mut().ok_or_else(|| {
+                    internal_error!("Cannot apply LobbyUpdated: no match in progress")
                 })?;
                 // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
                 //   (e.g. is_ready from another player) arrived before is_ready update from this
                 //   client reached the server. Same for `my_team`.
-                let me = participants.iter().find(|p| p.name == contest.my_name).unwrap();
-                contest.is_ready = me.is_ready;
-                contest.my_faction = me.faction;
-                contest.participants = participants;
+                let me = participants.iter().find(|p| p.name == mtch.my_name).unwrap();
+                mtch.is_ready = me.is_ready;
+                mtch.my_faction = me.faction;
+                mtch.participants = participants;
             }
             FirstGameCountdownStarted => {
-                let contest = self.contest_mut().ok_or_else(|| {
-                    internal_error!(
-                        "Cannot apply FirstGameCountdownStarted: no contest in progress"
-                    )
+                let mtch = self.mtch_mut().ok_or_else(|| {
+                    internal_error!("Cannot apply FirstGameCountdownStarted: no match in progress")
                 })?;
-                contest.first_game_countdown_since = Some(now);
+                mtch.first_game_countdown_since = Some(now);
             }
             FirstGameCountdownCancelled => {
-                let contest = self.contest_mut().ok_or_else(|| {
+                let mtch = self.mtch_mut().ok_or_else(|| {
                     internal_error!(
-                        "Cannot apply FirstGameCountdownCancelled: no contest in progress"
+                        "Cannot apply FirstGameCountdownCancelled: no match in progress"
                     )
                 })?;
-                contest.first_game_countdown_since = None;
+                mtch.first_game_countdown_since = None;
             }
             GameStarted {
                 starting_position,
@@ -501,23 +500,23 @@ impl ClientState {
                 } else {
                     Some(WallGameTimePair::new(now, time.approximate()))
                 };
-                let contest = self.contest_mut().ok_or_else(|| {
-                    internal_error!("Cannot apply GameStarted: no contest in progress")
+                let mtch = self.mtch_mut().ok_or_else(|| {
+                    internal_error!("Cannot apply GameStarted: no match in progress")
                 })?;
                 let game = BughouseGame::new_with_starting_position(
-                    contest.rules.contest_rules.clone(),
-                    contest.rules.chess_rules.clone(),
-                    contest.rules.bughouse_rules.clone(),
+                    mtch.rules.match_rules.clone(),
+                    mtch.rules.chess_rules.clone(),
+                    mtch.rules.bughouse_rules.clone(),
                     starting_position,
                     &players,
                 );
-                let my_id = match game.find_player(&contest.my_name) {
+                let my_id = match game.find_player(&mtch.my_name) {
                     Some(id) => BughouseParticipant::Player(id),
                     None => BughouseParticipant::Observer,
                 };
                 let alt_game = AlteredGame::new(my_id, game);
                 let perspective = alt_game.perspective();
-                contest.game_state = Some(GameState {
+                mtch.game_state = Some(GameState {
                     alt_game,
                     time_pair,
                     chalkboard: Chalkboard::new(),
@@ -552,23 +551,23 @@ impl ClientState {
                 }
             }
             GameOver { time, game_status, scores: new_scores } => {
-                let contest = self.contest_mut().ok_or_else(|| {
-                    internal_error!("Cannot apply GameOver: no contest in progress")
+                let mtch = self.mtch_mut().ok_or_else(|| {
+                    internal_error!("Cannot apply GameOver: no match in progress")
                 })?;
-                let game_state = contest
+                let game_state = mtch
                     .game_state
                     .as_mut()
                     .ok_or_else(|| internal_error!("Cannot apply GameOver: no game in progress"))?;
                 assert!(game_state.alt_game.is_active());
                 game_state.alt_game.set_status(game_status, time);
-                contest.scores = new_scores;
+                mtch.scores = new_scores;
                 self.game_over_postprocess()?;
             }
             ChalkboardUpdated { chalkboard } => {
-                let contest = self.contest_mut().ok_or_else(|| {
-                    internal_error!("Cannot apply ChalkboardUpdated: no contest in progress")
+                let mtch = self.mtch_mut().ok_or_else(|| {
+                    internal_error!("Cannot apply ChalkboardUpdated: no match in progress")
                 })?;
-                let game_state = contest.game_state.as_mut().ok_or_else(|| {
+                let game_state = mtch.game_state.as_mut().ok_or_else(|| {
                     internal_error!("Cannot apply ChalkboardUpdated: no game in progress")
                 })?;
                 game_state.chalkboard = chalkboard;
@@ -593,10 +592,10 @@ impl ClientState {
         &mut self, turn_record: TurnRecord, generate_notable_events: bool,
     ) -> Result<(), EventError> {
         let TurnRecord { envoy, turn_algebraic, time } = turn_record;
-        let ContestState::Connected(contest) = &mut self.contest_state else {
-            return Err(internal_error!("Cannot make turn: no contest in progress"));
+        let MatchState::Connected(mtch) = &mut self.match_state else {
+            return Err(internal_error!("Cannot make turn: no match in progress"));
         };
-        let game_state = contest
+        let game_state = mtch
             .game_state
             .as_mut()
             .ok_or_else(|| internal_error!("Cannot make turn: no game in progress"))?;
@@ -637,10 +636,10 @@ impl ClientState {
     }
 
     fn verify_game_status(&mut self, game_status: BughouseGameStatus) -> Result<(), EventError> {
-        let contest = self
-            .contest_mut()
-            .ok_or_else(|| internal_error!("Cannot verify game status: no contest in progress"))?;
-        let game_state = contest
+        let mtch = self
+            .mtch_mut()
+            .ok_or_else(|| internal_error!("Cannot verify game status: no match in progress"))?;
+        let game_state = mtch
             .game_state
             .as_mut()
             .ok_or_else(|| internal_error!("Cannot verify game status: no game in progress"))?;
@@ -658,10 +657,10 @@ impl ClientState {
     fn update_game_status(
         &mut self, game_status: BughouseGameStatus, game_now: GameInstant,
     ) -> Result<(), EventError> {
-        let contest = self
-            .contest_mut()
-            .ok_or_else(|| internal_error!("Cannot update game status: no contest in progress"))?;
-        let game_state = contest
+        let mtch = self
+            .mtch_mut()
+            .ok_or_else(|| internal_error!("Cannot update game status: no match in progress"))?;
+        let game_state = mtch
             .game_state
             .as_mut()
             .ok_or_else(|| internal_error!("Cannot update game status: no game in progress"))?;
@@ -677,10 +676,10 @@ impl ClientState {
     }
 
     fn game_over_postprocess(&mut self) -> Result<(), EventError> {
-        let contest = self
-            .contest_mut()
-            .ok_or_else(|| internal_error!("Cannot process game over: no contest in progress"))?;
-        let game_state = contest
+        let mtch = self
+            .mtch_mut()
+            .ok_or_else(|| internal_error!("Cannot process game over: no match in progress"))?;
+        let game_state = mtch
             .game_state
             .as_mut()
             .ok_or_else(|| internal_error!("Cannot process game over: no game in progress"))?;
@@ -708,10 +707,10 @@ impl ClientState {
     }
 
     fn update_scores(&mut self, new_scores: Scores) -> Result<(), EventError> {
-        let contest = self
-            .contest_mut()
-            .ok_or_else(|| internal_error!("Cannot update scores: no contest in progress"))?;
-        contest.scores = new_scores;
+        let mtch = self
+            .mtch_mut()
+            .ok_or_else(|| internal_error!("Cannot update scores: no match in progress"))?;
+        mtch.scores = new_scores;
         Ok(())
     }
 
@@ -719,27 +718,27 @@ impl ClientState {
     where
         F: FnOnce(&mut Chalkboard, String, BughouseBoard),
     {
-        let Some(contest) = self.contest_mut() else {
+        let Some(mtch) = self.mtch_mut() else {
             return;
         };
-        let Some(ref mut game_state) = contest.game_state else {
+        let Some(ref mut game_state) = mtch.game_state else {
             return;
         };
         if game_state.alt_game.is_active() {
             return;
         }
         let board_idx = get_board_index(display_board, game_state.alt_game.perspective());
-        f(&mut game_state.chalkboard, contest.my_name.clone(), board_idx);
+        f(&mut game_state.chalkboard, mtch.my_name.clone(), board_idx);
         self.send_chalk_drawing_update();
     }
 
     fn send_chalk_drawing_update(&mut self) {
-        // Caller must ensure that contest and game exist.
-        let contest = self.contest().unwrap();
-        let game_state = contest.game_state.as_ref().unwrap();
+        // Caller must ensure that match and game exist.
+        let mtch = self.mtch().unwrap();
+        let game_state = mtch.game_state.as_ref().unwrap();
         let drawing = game_state
             .chalkboard
-            .drawings_by(&contest.my_name)
+            .drawings_by(&mtch.my_name)
             .cloned()
             .unwrap_or_else(|| ChalkDrawing::new());
         self.connection.send(BughouseClientEvent::UpdateChalkDrawing { drawing })

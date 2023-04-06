@@ -77,7 +77,7 @@ pub enum Teaming {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ContestRules {
+pub struct MatchRules {
     pub rated: bool,
 }
 
@@ -92,7 +92,7 @@ pub struct ChessRules {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BughouseRules {
     // Improvement potential. Should `teaming` reside in `BughouseRules` or be moved to
-    //   a separate struct (e.g. `ContestRules`)?
+    //   a separate struct (e.g. `MatchRules`)?
     pub teaming: Teaming,
     pub min_pawn_drop_rank: SubjectiveRow,
     pub max_pawn_drop_rank: SubjectiveRow,
@@ -101,7 +101,7 @@ pub struct BughouseRules {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Rules {
-    pub contest_rules: ContestRules,
+    pub match_rules: MatchRules,
     pub chess_rules: ChessRules,
     pub bughouse_rules: BughouseRules,
 }
@@ -115,7 +115,7 @@ impl Teaming {
     }
 }
 
-impl ContestRules {
+impl MatchRules {
     pub fn unrated() -> Self { Self { rated: false } }
 }
 
@@ -190,7 +190,7 @@ impl Rules {
         Ok(())
     }
 
-    // Try to keep in sync with "New contest" dialog.
+    // Try to keep in sync with "New match" dialog.
     pub fn to_human_readable(&self) -> String {
         let teaming = match self.bughouse_rules.teaming {
             Teaming::FixedTeams => "Fixed Teams",
@@ -211,7 +211,7 @@ impl Rules {
         let time_control = self.chess_rules.time_control.to_string();
         let drop_aggression = self.bughouse_rules.drop_aggression_string();
         let pawn_drop_ranks = self.bughouse_rules.pawn_drop_ranks_string();
-        let rating = match self.contest_rules.rated {
+        let rating = match self.match_rules.rated {
             true => "Rated",
             false => "Unrated",
         };
