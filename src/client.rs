@@ -140,9 +140,14 @@ const LOW_TIME_WARNING_THRESHOLDS: &[Duration] = &[
 ];
 
 macro_rules! internal_error {
-    ($($arg:tt)*) => {
-        EventError::InternalEvent(format!($($arg)*))
-    }
+    () => {
+        EventError::InternalEvent(format!("Internal error at {}:{}.", file!(), line!()))
+    };
+    ($($arg:tt)+) => {
+        EventError::InternalEvent(format!(
+            "Internal error at {}:{}: {}.", file!(), line!(), format!($($arg)*)
+        ))
+    };
 }
 
 impl ClientState {
@@ -430,17 +435,11 @@ impl ClientState {
                     MatchState::Creating { my_name } => my_name.clone(),
                     MatchState::Joining { match_id: id, my_name } => {
                         if match_id != *id {
-                            return Err(internal_error!(
-                                "Cannot apply MatchWelcome: expected match {id}, but got {match_id}"
-                            ));
+                            return Err(internal_error!("Expected match {id}, but got {match_id}"));
                         }
                         my_name.clone()
                     }
-                    _ => {
-                        return Err(internal_error!(
-                            "Cannot apply MatchWelcome: not expecting a new match"
-                        ))
-                    }
+                    _ => return Err(internal_error!()),
                 };
                 self.notable_event_queue.push_back(NotableEvent::MatchStarted(match_id.clone()));
                 // `Observer` is a safe faction default that wouldn't allow us to try acting as
@@ -460,9 +459,7 @@ impl ClientState {
                 });
             }
             LobbyUpdated { participants } => {
-                let mtch = self.mtch_mut().ok_or_else(|| {
-                    internal_error!("Cannot apply LobbyUpdated: no match in progress")
-                })?;
+                let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
                 // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
                 //   (e.g. is_ready from another player) arrived before is_ready update from this
                 //   client reached the server. Same for `my_team`.
@@ -472,17 +469,11 @@ impl ClientState {
                 mtch.participants = participants;
             }
             FirstGameCountdownStarted => {
-                let mtch = self.mtch_mut().ok_or_else(|| {
-                    internal_error!("Cannot apply FirstGameCountdownStarted: no match in progress")
-                })?;
+                let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
                 mtch.first_game_countdown_since = Some(now);
             }
             FirstGameCountdownCancelled => {
-                let mtch = self.mtch_mut().ok_or_else(|| {
-                    internal_error!(
-                        "Cannot apply FirstGameCountdownCancelled: no match in progress"
-                    )
-                })?;
+                let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
                 mtch.first_game_countdown_since = None;
             }
             GameStarted {
@@ -500,9 +491,7 @@ impl ClientState {
                 } else {
                     Some(WallGameTimePair::new(now, time.approximate()))
                 };
-                let mtch = self.mtch_mut().ok_or_else(|| {
-                    internal_error!("Cannot apply GameStarted: no match in progress")
-                })?;
+                let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
                 let game = BughouseGame::new_with_starting_position(
                     mtch.rules.match_rules.clone(),
                     mtch.rules.chess_rules.clone(),
@@ -551,25 +540,16 @@ impl ClientState {
                 }
             }
             GameOver { time, game_status, scores: new_scores } => {
-                let mtch = self.mtch_mut().ok_or_else(|| {
-                    internal_error!("Cannot apply GameOver: no match in progress")
-                })?;
-                let game_state = mtch
-                    .game_state
-                    .as_mut()
-                    .ok_or_else(|| internal_error!("Cannot apply GameOver: no game in progress"))?;
+                let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
+                let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
                 assert!(game_state.alt_game.is_active());
                 game_state.alt_game.set_status(game_status, time);
                 mtch.scores = new_scores;
                 self.game_over_postprocess()?;
             }
             ChalkboardUpdated { chalkboard } => {
-                let mtch = self.mtch_mut().ok_or_else(|| {
-                    internal_error!("Cannot apply ChalkboardUpdated: no match in progress")
-                })?;
-                let game_state = mtch.game_state.as_mut().ok_or_else(|| {
-                    internal_error!("Cannot apply ChalkboardUpdated: no game in progress")
-                })?;
+                let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
+                let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
                 game_state.chalkboard = chalkboard;
             }
             GameExportReady { content } => {
@@ -593,12 +573,9 @@ impl ClientState {
     ) -> Result<(), EventError> {
         let TurnRecord { envoy, turn_algebraic, time } = turn_record;
         let MatchState::Connected(mtch) = &mut self.match_state else {
-            return Err(internal_error!("Cannot make turn: no match in progress"));
+            return Err(internal_error!());
         };
-        let game_state = mtch
-            .game_state
-            .as_mut()
-            .ok_or_else(|| internal_error!("Cannot make turn: no game in progress"))?;
+        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
         let GameState { ref mut alt_game, ref mut time_pair, .. } = game_state;
         if !alt_game.is_active() {
             return Err(internal_error!("Cannot make turn {}: game over", turn_algebraic));
@@ -636,13 +613,8 @@ impl ClientState {
     }
 
     fn verify_game_status(&mut self, game_status: BughouseGameStatus) -> Result<(), EventError> {
-        let mtch = self
-            .mtch_mut()
-            .ok_or_else(|| internal_error!("Cannot verify game status: no match in progress"))?;
-        let game_state = mtch
-            .game_state
-            .as_mut()
-            .ok_or_else(|| internal_error!("Cannot verify game status: no game in progress"))?;
+        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
+        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
         let GameState { ref mut alt_game, .. } = game_state;
         if game_status != alt_game.status() {
             return Err(internal_error!(
@@ -657,13 +629,8 @@ impl ClientState {
     fn update_game_status(
         &mut self, game_status: BughouseGameStatus, game_now: GameInstant,
     ) -> Result<(), EventError> {
-        let mtch = self
-            .mtch_mut()
-            .ok_or_else(|| internal_error!("Cannot update game status: no match in progress"))?;
-        let game_state = mtch
-            .game_state
-            .as_mut()
-            .ok_or_else(|| internal_error!("Cannot update game status: no game in progress"))?;
+        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
+        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
         let GameState { ref mut alt_game, .. } = game_state;
         if alt_game.is_active() {
             if !game_status.is_active() {
@@ -676,18 +643,13 @@ impl ClientState {
     }
 
     fn game_over_postprocess(&mut self) -> Result<(), EventError> {
-        let mtch = self
-            .mtch_mut()
-            .ok_or_else(|| internal_error!("Cannot process game over: no match in progress"))?;
-        let game_state = mtch
-            .game_state
-            .as_mut()
-            .ok_or_else(|| internal_error!("Cannot process game over: no game in progress"))?;
+        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
+        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
         let GameState { ref mut alt_game, .. } = game_state;
         if let BughouseParticipant::Player(my_player_id) = alt_game.my_id() {
             let game_status = match alt_game.status() {
                 BughouseGameStatus::Active => {
-                    return Err(internal_error!("Cannot process game over: game not over"));
+                    return Err(internal_error!());
                 }
                 BughouseGameStatus::Victory(team, _) => {
                     if team == my_player_id.team() {
@@ -707,9 +669,7 @@ impl ClientState {
     }
 
     fn update_scores(&mut self, new_scores: Scores) -> Result<(), EventError> {
-        let mtch = self
-            .mtch_mut()
-            .ok_or_else(|| internal_error!("Cannot update scores: no match in progress"))?;
+        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
         mtch.scores = new_scores;
         Ok(())
     }
