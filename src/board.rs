@@ -608,6 +608,7 @@ pub enum TurnError {
     DropAggression,
     NoGameInProgress,
     GameOver,
+    WaybackIsActive,
 }
 
 pub type Reserve = EnumMap<PieceKind, u8>;

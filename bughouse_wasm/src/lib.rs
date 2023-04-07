@@ -636,7 +636,7 @@ impl WebClient {
                 let game_message = web_document().get_existing_element_by_id("game-message")?;
                 game_message.set_text_content(None);
                 let my_id = alt_game.my_id();
-                render_grids(alt_game.perspective())?;
+                render_boards(alt_game.perspective())?;
                 setup_participation_mode(my_id)?;
                 for display_board_idx in DisplayBoard::iter() {
                     scroll_log_to_bottom(display_board_idx)?;
@@ -721,6 +721,8 @@ impl WebClient {
             let fog_cover_area = if see_though_fog { &empty_area } else { &fog_render_area };
             let display_board_idx = get_display_board_index(board_idx, perspective);
             let board_orientation = get_board_orientation(display_board_idx, perspective);
+            let board_node =
+                document.get_existing_element_by_id(&board_node_id(display_board_idx))?;
             let piece_layer =
                 document.get_existing_element_by_id(&piece_layer_id(display_board_idx))?;
             let fog_of_war_layer =
@@ -809,11 +811,21 @@ impl WebClient {
                     is_draggable,
                 )?;
             }
-            let latest_turn =
-                game.turn_log().iter().rev().find(|record| record.envoy.board_idx == board_idx);
+            let wayback_turn_idx = alt_game.wayback_turn_index(board_idx);
+            board_node
+                .class_list()
+                .toggle_with_force("wayback", wayback_turn_idx.is_some())?;
+            let latest_turn = match wayback_turn_idx {
+                Some(turn_idx) => game.turn_log().iter().find(|record| {
+                    record.envoy.board_idx == board_idx && record.index().as_str() >= turn_idx
+                }),
+                None => {
+                    game.turn_log().iter().rev().find(|record| record.envoy.board_idx == board_idx)
+                }
+            };
             {
                 let latest_turn_highlight = latest_turn
-                    .filter(|record| !my_id.plays_for(record.envoy))
+                    .filter(|record| !my_id.plays_for(record.envoy) || wayback_turn_idx.is_some())
                     .map(|record| &record.turn_expanded);
                 self.set_turn_highlights(
                     TurnHighlight::LatestTurn,
@@ -833,7 +845,7 @@ impl WebClient {
                     fog_cover_area,
                 )?;
             }
-            update_turn_log(&game, my_id, board_idx, display_board_idx)?;
+            update_turn_log(&game, my_id, board_idx, display_board_idx, wayback_turn_idx)?;
         }
         document
             .body()?
@@ -877,6 +889,19 @@ impl WebClient {
             .sorted_by_key(|(metric, _)| metric.as_str())
             .map(|(metric, stats)| format!("{metric}: {stats}"))
             .join("\n")
+    }
+
+    pub fn wayback_to_turn(&mut self, board_id: &str, turn_idx: Option<String>) -> JsResult<()> {
+        let Some(alt_game) = self.state.alt_game_mut() else {
+            return Ok(());
+        };
+        if alt_game.is_active() {
+            return Ok(());
+        }
+        let display_board_idx = parse_board_id(board_id)?;
+        let board_idx = get_board_index(display_board_idx, alt_game.perspective());
+        alt_game.wayback_to_turn(board_idx, turn_idx);
+        Ok(())
     }
 
     fn show_turn_result(&self, turn_result: Result<(), TurnError>) -> JsResult<()> {
@@ -1112,7 +1137,7 @@ fn scroll_log_to_bottom(board_idx: DisplayBoard) -> JsResult<()> {
 #[wasm_bindgen]
 pub fn init_page() -> JsResult<()> {
     generate_svg_markers()?;
-    render_grids(Perspective::for_participant(BughouseParticipant::Observer))?;
+    render_boards(Perspective::for_participant(BughouseParticipant::Observer))?;
     render_starting()?;
     Ok(())
 }
@@ -1500,28 +1525,33 @@ fn update_observers(participants: &[Participant]) -> JsResult<()> {
     Ok(())
 }
 
-fn render_grids(perspective: Perspective) -> JsResult<()> {
+fn render_boards(perspective: Perspective) -> JsResult<()> {
     for board_idx in DisplayBoard::iter() {
-        render_grid(board_idx, perspective)?;
+        render_board(board_idx, perspective)?;
     }
     Ok(())
 }
 
 fn update_turn_log(
     game: &BughouseGame, my_id: BughouseParticipant, board_idx: BughouseBoard,
-    display_board_idx: DisplayBoard,
+    display_board_idx: DisplayBoard, wayback_turn_idx: Option<&str>,
 ) -> JsResult<()> {
     let document = web_document();
+    let log_scroll_area_node =
+        document.get_existing_element_by_id(&turn_log_scroll_area_node_id(display_board_idx))?;
+    log_scroll_area_node
+        .class_list()
+        .toggle_with_force("wayback", wayback_turn_idx.is_some())?;
     let log_node = document.get_existing_element_by_id(&turn_log_node_id(display_board_idx))?;
     remove_all_children(&log_node)?;
-    let mut turn_number = 0;
+    let mut prev_number = 0;
     for record in game.turn_log().iter() {
         if record.envoy.board_idx == board_idx {
             let force = record.envoy.force;
-            let mut turn_number_str = "".to_owned();
-            if force == Force::White || record.mode == TurnMode::Preturn {
-                turn_number += 1;
-                turn_number_str = format!("{turn_number}.");
+            let mut turn_number_str = String::new();
+            if prev_number != record.number {
+                turn_number_str = format!("{}.", record.number);
+                prev_number = record.number;
             }
             let is_in_fog = game.chess_rules().chess_variant == ChessVariant::FogOfWar
                 && game.is_active()
@@ -1544,6 +1574,10 @@ fn update_turn_log(
                 "class",
                 &format!("log-turn-record log-turn-record-{}", force_id(force)),
             )?;
+            line_node.set_attribute("data-turn-index", &record.index())?;
+            if Some(record.index().as_str()) == wayback_turn_idx {
+                line_node.class_list().add_1("wayback-current-turn")?;
+            }
 
             let turn_number_node = document.create_element("span")?;
             turn_number_node.set_text_content(Some(&turn_number_str));
@@ -1603,10 +1637,46 @@ fn setup_participation_mode(participant_id: BughouseParticipant) -> JsResult<()>
 }
 
 fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()> {
-    let board_orientation = get_board_orientation(board_idx, perspective);
     let text_h_padding = 0.07;
     let text_v_padding = 0.09;
+    let board_orientation = get_board_orientation(board_idx, perspective);
+    let document = web_document();
+    let layer = document.get_existing_element_by_id(&square_grid_layer_id(board_idx))?;
+    for row in Row::all() {
+        for col in Col::all() {
+            let sq = document.create_svg_element("rect")?;
+            let display_coord = to_display_coord(Coord::new(row, col), board_orientation);
+            let DisplayFCoord { x, y } = DisplayFCoord::square_pivot(display_coord);
+            sq.set_attribute("x", &x.to_string())?;
+            sq.set_attribute("y", &y.to_string())?;
+            sq.set_attribute("width", "1")?;
+            sq.set_attribute("height", "1")?;
+            sq.set_attribute("class", &square_color_class(row, col))?;
+            layer.append_child(&sq)?;
+            if display_coord.x == 0 {
+                let caption = document.create_svg_element("text")?;
+                caption.set_text_content(Some(&String::from(row.to_algebraic())));
+                caption.set_attribute("x", &(x + text_h_padding).to_string())?;
+                caption.set_attribute("y", &(y + text_v_padding).to_string())?;
+                caption.set_attribute("dominant-baseline", "hanging")?;
+                caption.set_attribute("class", &square_text_color_class(row, col))?;
+                layer.append_child(&caption)?;
+            }
+            if display_coord.y == NUM_ROWS - 1 {
+                let caption = document.create_svg_element("text")?;
+                caption.set_text_content(Some(&String::from(col.to_algebraic())));
+                caption.set_attribute("x", &(x + 1.0 - text_h_padding).to_string())?;
+                caption.set_attribute("y", &(y + 1.0 - text_v_padding).to_string())?;
+                caption.set_attribute("text-anchor", "end")?;
+                caption.set_attribute("class", &square_text_color_class(row, col))?;
+                layer.append_child(&caption)?;
+            }
+        }
+    }
+    Ok(())
+}
 
+fn render_board(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()> {
     let make_board_rect = |document: &WebDocument| -> JsResult<web_sys::Element> {
         let rect = document.create_svg_element("rect")?;
         let pos = DisplayFCoord::square_pivot(DisplayCoord { x: 0, y: 0 });
@@ -1622,52 +1692,27 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
     svg.set_attribute("viewBox", &format!("0 0 {NUM_COLS} {NUM_ROWS}"))?;
     remove_all_children(&svg)?;
 
+    let add_layer = |id: String| -> JsResult<()> {
+        let layer = document.create_svg_element("g")?;
+        layer.set_attribute("id", &id)?;
+        // TODO: Less hacky way to do this.
+        if let Some(class) = id.strip_suffix("-primary").or(id.strip_suffix("-secondary")) {
+            layer.set_attribute("class", class)?;
+        }
+        svg.append_child(&layer)?;
+        Ok(())
+    };
+
     let shadow = make_board_rect(&document)?;
     shadow.set_attribute("class", "board-shadow")?;
     svg.append_child(&shadow)?;
 
-    for row in Row::all() {
-        for col in Col::all() {
-            let sq = document.create_svg_element("rect")?;
-            let display_coord = to_display_coord(Coord::new(row, col), board_orientation);
-            let DisplayFCoord { x, y } = DisplayFCoord::square_pivot(display_coord);
-            sq.set_attribute("x", &x.to_string())?;
-            sq.set_attribute("y", &y.to_string())?;
-            sq.set_attribute("width", "1")?;
-            sq.set_attribute("height", "1")?;
-            sq.set_attribute("class", &square_color_class(row, col))?;
-            svg.append_child(&sq)?;
-            if display_coord.x == 0 {
-                let caption = document.create_svg_element("text")?;
-                caption.set_text_content(Some(&String::from(row.to_algebraic())));
-                caption.set_attribute("x", &(x + text_h_padding).to_string())?;
-                caption.set_attribute("y", &(y + text_v_padding).to_string())?;
-                caption.set_attribute("dominant-baseline", "hanging")?;
-                caption.set_attribute("class", &square_text_color_class(row, col))?;
-                svg.append_child(&caption)?;
-            }
-            if display_coord.y == NUM_ROWS - 1 {
-                let caption = document.create_svg_element("text")?;
-                caption.set_text_content(Some(&String::from(col.to_algebraic())));
-                caption.set_attribute("x", &(x + 1.0 - text_h_padding).to_string())?;
-                caption.set_attribute("y", &(y + 1.0 - text_v_padding).to_string())?;
-                caption.set_attribute("text-anchor", "end")?;
-                caption.set_attribute("class", &square_text_color_class(row, col))?;
-                svg.append_child(&caption)?;
-            }
-        }
-    }
+    add_layer(square_grid_layer_id(board_idx))?;
+    render_grid(board_idx, perspective)?;
 
     let border = make_board_rect(&document)?;
     border.set_attribute("class", "board-border")?;
     svg.append_child(&border)?;
-
-    let add_layer = |id: String| -> JsResult<()> {
-        let layer = document.create_svg_element("g")?;
-        layer.set_attribute("id", &id)?;
-        svg.append_child(&layer)?;
-        Ok(())
-    };
 
     add_layer(square_highlight_layer_id(SquareHighlightLayer::Turn, board_idx))?;
     add_layer(chalk_highlight_layer_id(board_idx))?;
@@ -1825,6 +1870,10 @@ fn turn_log_scroll_area_node_id(board_idx: DisplayBoard) -> String {
 
 fn turn_log_node_id(board_idx: DisplayBoard) -> String {
     format!("turn-log-{}", board_id(board_idx))
+}
+
+fn square_grid_layer_id(board_idx: DisplayBoard) -> String {
+    format!("square-grid-layer-{}", board_id(board_idx))
 }
 
 fn piece_layer_id(board_idx: DisplayBoard) -> String {

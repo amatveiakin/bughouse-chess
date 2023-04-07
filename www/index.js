@@ -218,6 +218,7 @@ console.log('bughouse.pro client version:', wasm.git_version());
 set_up_drag_and_drop();
 set_up_chalk_drawing();
 set_up_menu_pointers();
+set_up_log_navigation();
 
 let wasm_client_object = make_wasm_client();
 let wasm_client_panicked = false;
@@ -918,6 +919,21 @@ function set_up_menu_pointers() {
     const menu = document.getElementById('menu-dialog');
     menu.addEventListener('mousedown', mouse_down);
     menu.addEventListener('contextmenu', context_menu);
+}
+
+function set_up_log_navigation() {
+    for (const board of ['primary', 'secondary']) {
+        const area_node = document.getElementById(`turn-log-scroll-area-${board}`);
+        area_node.addEventListener('click', (event) => {
+            with_error_handling(function() {
+                // TODO: Convenient ways to navigate (including keyboard) and to reset.
+                const turn_node = event.target.closest('[data-turn-index]');
+                const turn_index = turn_node?.getAttribute('data-turn-index');
+                wasm_client().wayback_to_turn(board, turn_index);
+                update();
+            });
+        });
+    }
 }
 
 function find_player_name_input(page) {

@@ -58,10 +58,12 @@ pub struct TurnRecord {
 
 #[derive(Clone, Debug)]
 pub struct TurnRecordExpanded {
+    pub number: u32,
     pub mode: TurnMode,
     pub envoy: BughouseEnvoy,
     pub turn_expanded: TurnExpanded,
     pub time: GameInstant,
+    pub board_after: Board,
 }
 
 impl TurnRecordExpanded {
@@ -74,6 +76,17 @@ impl TurnRecordExpanded {
             turn_algebraic: self.turn_expanded.algebraic.format(AlgebraicCharset::Ascii),
             time: self.time,
         }
+    }
+
+    // Lexicographics order of indices is guaranteed to correspond to turn order.
+    pub fn index(&self) -> String {
+        // Note. Black suffix should be lexicographically greater than white suffix.
+        // Note. Not using "a"/"b" because it could be confused with board index.
+        let force = match self.envoy.force {
+            Force::White => "w",
+            Force::Black => "x",
+        };
+        format!("{:08}-{}", self.number, force)
     }
 }
 
@@ -316,6 +329,7 @@ pub struct BughouseGame {
     status: BughouseGameStatus,
 }
 
+// Improvement potential. Remove mutable access to fields.
 impl BughouseGame {
     pub fn new(
         match_rules: MatchRules, chess_rules: ChessRules, bughouse_rules: BughouseRules,
@@ -372,7 +386,6 @@ impl BughouseGame {
     pub fn bughouse_rules(&self) -> &Rc<BughouseRules> {
         self.boards[BughouseBoard::A].bughouse_rules().as_ref().unwrap()
     }
-    // Improvement potential. Remove mutable access to the boards.
     pub fn board_mut(&mut self, idx: BughouseBoard) -> &mut Board { &mut self.boards[idx] }
     pub fn board(&self, idx: BughouseBoard) -> &Board { &self.boards[idx] }
     pub fn boards(&self) -> &EnumMap<BughouseBoard, Board> { &self.boards }
@@ -380,6 +393,7 @@ impl BughouseGame {
         self.boards[envoy.board_idx].reserve(envoy.force)
     }
     pub fn turn_log(&self) -> &Vec<TurnRecordExpanded> { &self.turn_log }
+    pub fn turn_log_mut(&mut self) -> &mut Vec<TurnRecordExpanded> { &mut self.turn_log }
     pub fn last_turn_record(&self) -> Option<&TurnRecordExpanded> { self.turn_log.last() }
     pub fn status(&self) -> BughouseGameStatus { self.status }
     pub fn is_active(&self) -> bool { self.status.is_active() }
@@ -498,8 +512,24 @@ impl BughouseGame {
         if let Some(ref capture) = turn_facts.capture {
             other_board.receive_capture(&capture);
         }
+        let prev_number = self
+            .turn_log
+            .iter()
+            .rev()
+            .find(|record| record.envoy.board_idx == board_idx)
+            .map_or(0, |record| record.number);
+        let inc_number = envoy.force == Force::White || mode == TurnMode::Preturn;
+        let number = if inc_number { prev_number + 1 } else { prev_number };
         let turn_expanded = make_turn_expanded(turn, turn_algebraic, turn_facts);
-        self.turn_log.push(TurnRecordExpanded { mode, envoy, turn_expanded, time: now });
+        self.turn_log.push(TurnRecordExpanded {
+            number,
+            mode,
+            envoy,
+            turn_expanded,
+            time: now,
+            // Improvement potential: Show reserve prior to the next turn rather than after this one.
+            board_after: self.boards[board_idx].clone(),
+        });
         assert!(self.status.is_active());
         self.set_status(self.game_status_for_board(board_idx), now);
         Ok(turn)

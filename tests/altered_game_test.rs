@@ -23,18 +23,18 @@ fn default_bughouse_game() -> BughouseGame {
     )
 }
 
-const GAME_START: GameInstant = GameInstant::game_start();
+const T0: GameInstant = GameInstant::game_start();
 
 
 // Regression test: shouldn't panic if there's a drag depending on a local turn that was reverted.
 #[test]
 fn drag_depends_on_reverted_preturn() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(Black A)), default_bughouse_game());
-    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e4", GAME_START).unwrap();
-    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "e6", GAME_START).unwrap();
-    alt_game.try_local_turn(A, drag_move!(E6 -> E5), GAME_START).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e4", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "e6", T0).unwrap();
+    alt_game.try_local_turn(A, drag_move!(E6 -> E5), T0).unwrap();
     alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::E5)).unwrap();
-    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e5", GAME_START).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e5", T0).unwrap();
     assert_eq!(
         alt_game.drag_piece_drop(Coord::E4, PieceKind::Queen),
         Err(PieceDragError::DragNoLongerPossible)
@@ -47,13 +47,11 @@ fn drag_depends_on_reverted_preturn() {
 #[test]
 fn start_drag_with_a_preturn() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), default_bughouse_game());
-    alt_game.try_local_turn(A, drag_move!(E2 -> E3), GAME_START).unwrap();
-    alt_game.try_local_turn(A, drag_move!(E3 -> E4), GAME_START).unwrap();
+    alt_game.try_local_turn(A, drag_move!(E2 -> E3), T0).unwrap();
+    alt_game.try_local_turn(A, drag_move!(E3 -> E4), T0).unwrap();
     alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::E4)).unwrap();
-    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e3", GAME_START).unwrap();
-    alt_game
-        .apply_remote_turn_algebraic(envoy!(Black A), "Nc6", GAME_START)
-        .unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e3", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "Nc6", T0).unwrap();
     let drag_result = alt_game.drag_piece_drop(Coord::E5, PieceKind::Queen).unwrap();
     assert_eq!(drag_result, drag_move!(E4 -> E5));
 }
@@ -65,45 +63,43 @@ fn start_drag_with_a_preturn() {
 #[test]
 fn pure_preturn_persistent() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(Black A)), default_bughouse_game());
-    alt_game.try_local_turn(A, algebraic_turn("e5"), GAME_START).unwrap();
-    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e4", GAME_START).unwrap();
+    alt_game.try_local_turn(A, algebraic_turn("e5"), T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e4", T0).unwrap();
     assert!(alt_game.local_game().board(A).grid()[Coord::E5].is(piece!(Black Pawn)));
 }
 
 #[test]
 fn preturn_invalidated() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), default_bughouse_game());
-    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e4", GAME_START).unwrap();
-    alt_game.try_local_turn(A, algebraic_turn("e5"), GAME_START).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e4", T0).unwrap();
+    alt_game.try_local_turn(A, algebraic_turn("e5"), T0).unwrap();
     assert!(alt_game.local_game().board(A).grid()[Coord::E5].is(piece!(White Pawn)));
 
-    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "e5", GAME_START).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "e5", T0).unwrap();
     assert!(alt_game.local_game().board(A).grid()[Coord::E5].is(piece!(Black Pawn)));
 }
 
 #[test]
 fn preturn_after_local_turn_persistent() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), default_bughouse_game());
-    alt_game.try_local_turn(A, algebraic_turn("e4"), GAME_START).unwrap();
-    alt_game.try_local_turn(A, algebraic_turn("e5"), GAME_START).unwrap();
+    alt_game.try_local_turn(A, algebraic_turn("e4"), T0).unwrap();
+    alt_game.try_local_turn(A, algebraic_turn("e5"), T0).unwrap();
     assert!(alt_game.local_game().board(A).grid()[Coord::E5].is(piece!(White Pawn)));
 
-    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e4", GAME_START).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e4", T0).unwrap();
     assert!(alt_game.local_game().board(A).grid()[Coord::E5].is(piece!(White Pawn)));
 
-    alt_game
-        .apply_remote_turn_algebraic(envoy!(Black A), "Nc6", GAME_START)
-        .unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "Nc6", T0).unwrap();
     assert!(alt_game.local_game().board(A).grid()[Coord::E5].is(piece!(White Pawn)));
 }
 
 #[test]
 fn two_preturns_forbidden() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), default_bughouse_game());
-    alt_game.try_local_turn(A, drag_move!(E2 -> E4), GAME_START).unwrap();
-    alt_game.try_local_turn(A, drag_move!(D2 -> D4), GAME_START).unwrap();
+    alt_game.try_local_turn(A, drag_move!(E2 -> E4), T0).unwrap();
+    alt_game.try_local_turn(A, drag_move!(D2 -> D4), T0).unwrap();
     assert_eq!(
-        alt_game.try_local_turn(A, drag_move!(F2 -> F4), GAME_START),
+        alt_game.try_local_turn(A, drag_move!(F2 -> F4), T0),
         Err(TurnError::PreturnLimitReached)
     );
 }
@@ -111,15 +107,42 @@ fn two_preturns_forbidden() {
 #[test]
 fn cannot_make_turns_on_other_board() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(Black A)), default_bughouse_game());
-    assert_eq!(
-        alt_game.try_local_turn(B, drag_move!(E2 -> E4), GAME_START),
-        Err(TurnError::NotPlayer)
-    );
+    assert_eq!(alt_game.try_local_turn(B, drag_move!(E2 -> E4), T0), Err(TurnError::NotPlayer));
 }
 
 #[test]
 fn double_play() {
     let mut alt_game = AlteredGame::new(as_double_player(Team::Red), default_bughouse_game());
-    alt_game.try_local_turn(A, drag_move!(E2 -> E4), GAME_START).unwrap();
-    alt_game.try_local_turn(B, drag_move!(D7 -> D5), GAME_START).unwrap();
+    alt_game.try_local_turn(A, drag_move!(E2 -> E4), T0).unwrap();
+    alt_game.try_local_turn(B, drag_move!(D7 -> D5), T0).unwrap();
+}
+
+#[test]
+fn wayback_affects_fog_of_war() {
+    let game = BughouseGame::new(
+        MatchRules::unrated(),
+        ChessRules {
+            chess_variant: ChessVariant::FogOfWar,
+            ..ChessRules::classic_blitz()
+        },
+        BughouseRules::chess_com(),
+        &sample_bughouse_players(),
+    );
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), game);
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e4", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "d5", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "xd5", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "e5", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "Qe2", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "Nc6", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "Qxe5", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "Nf6", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "Qxe8", T0).unwrap();
+    assert_eq!(
+        alt_game.status(),
+        BughouseGameStatus::Victory(Team::Red, VictoryReason::Checkmate)
+    );
+    assert!(!alt_game.fog_of_war_area(A).contains(&Coord::D8));
+    alt_game.wayback_to_turn(A, Some("00000002-w".to_owned()));
+    assert!(alt_game.fog_of_war_area(A).contains(&Coord::D8));
 }

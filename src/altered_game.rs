@@ -74,6 +74,8 @@ pub struct AlteredGame {
     game_confirmed: BughouseGame,
     // Local changes to the game state.
     alterations: EnumMap<BughouseBoard, Alterations>,
+    // Historical position that the user is currently viewing.
+    wayback_turn_index: EnumMap<BughouseBoard, Option<String>>,
     // Drag&drop state if making turn by mouse or touch.
     piece_drag: Option<PieceDrag>,
 }
@@ -84,6 +86,7 @@ impl AlteredGame {
             my_id,
             game_confirmed,
             alterations: enum_map! { _ => Alterations::default() },
+            wayback_turn_index: enum_map! { _ => None },
             piece_drag: None,
         }
     }
@@ -188,6 +191,7 @@ impl AlteredGame {
 
     pub fn local_game(&self) -> BughouseGame {
         let mut game = self.game_with_local_turns(true);
+        self.apply_wayback(&mut game);
         self.apply_drag(&mut game).unwrap();
         game
     }
@@ -199,24 +203,27 @@ impl AlteredGame {
                 if let BughouseParticipant::Player(my_player_id) = self.my_id {
                     // Don't use `local_game`: preturns and drags should not reveal new areas.
                     let mut game = self.game_with_local_turns(false);
+                    let wayback_active = self.apply_wayback_for_board(&mut game, board_idx);
                     let force = get_bughouse_force(my_player_id.team(), board_idx);
                     let mut visible = game.board(board_idx).fog_free_area(force);
                     // ... but do show preturn pieces themselves:
-                    if let Some((ref turn_input, turn_time)) =
-                        self.alterations[board_idx].local_preturn
-                    {
-                        let envoy = self.my_id.envoy_for(board_idx).unwrap();
-                        game.try_turn_by_envoy(envoy, turn_input, TurnMode::Preturn, turn_time)
-                            .unwrap();
-                        let turn_expanded = &game.last_turn_record().unwrap().turn_expanded;
-                        if let Some((_, sq)) = turn_expanded.relocation {
-                            visible.insert(sq);
-                        }
-                        if let Some((_, sq)) = turn_expanded.relocation_extra {
-                            visible.insert(sq);
-                        }
-                        if let Some(sq) = turn_expanded.drop {
-                            visible.insert(sq);
+                    if !wayback_active {
+                        if let Some((ref turn_input, turn_time)) =
+                            self.alterations[board_idx].local_preturn
+                        {
+                            let envoy = self.my_id.envoy_for(board_idx).unwrap();
+                            game.try_turn_by_envoy(envoy, turn_input, TurnMode::Preturn, turn_time)
+                                .unwrap();
+                            let turn_expanded = &game.last_turn_record().unwrap().turn_expanded;
+                            if let Some((_, sq)) = turn_expanded.relocation {
+                                visible.insert(sq);
+                            }
+                            if let Some((_, sq)) = turn_expanded.relocation_extra {
+                                visible.insert(sq);
+                            }
+                            if let Some(sq) = turn_expanded.drop {
+                                visible.insert(sq);
+                            }
                         }
                     }
                     Coord::all().filter(|c| !visible.contains(c)).collect()
@@ -235,6 +242,22 @@ impl AlteredGame {
         Ok(mode)
     }
 
+    pub fn wayback_turn_index(&self, board_idx: BughouseBoard) -> Option<&str> {
+        self.wayback_turn_index[board_idx].as_deref()
+    }
+    pub fn wayback_to_turn(&mut self, board_idx: BughouseBoard, turn_idx: Option<String>) {
+        self.abort_drag_piece_on_board(board_idx);
+        let last_turn_idx = self
+            .local_game()
+            .turn_log()
+            .iter()
+            .rev()
+            .find(|record| record.envoy.board_idx == board_idx)
+            .map(|record| record.index());
+        let turn_idx = if turn_idx == last_turn_idx { None } else { turn_idx };
+        self.wayback_turn_index[board_idx] = turn_idx;
+    }
+
     pub fn piece_drag_state(&self) -> &Option<PieceDrag> { &self.piece_drag }
 
     pub fn start_drag_piece(
@@ -246,6 +269,9 @@ impl AlteredGame {
         let Some(my_envoy) = my_player_id.envoy_for(board_idx) else {
             return Err(PieceDragError::DragForbidden);
         };
+        if self.wayback_turn_index[board_idx].is_some() {
+            return Err(PieceDragError::DragForbidden);
+        }
         if self.piece_drag.is_some() {
             return Err(PieceDragError::DragAlreadyStarted);
         }
@@ -271,6 +297,14 @@ impl AlteredGame {
     }
 
     pub fn abort_drag_piece(&mut self) { self.piece_drag = None; }
+
+    pub fn abort_drag_piece_on_board(&mut self, board_idx: BughouseBoard) {
+        if let Some(ref mut drag) = self.piece_drag {
+            if drag.board_idx == board_idx {
+                self.piece_drag = None;
+            }
+        }
+    }
 
     // Stop drag and returns turn on success. The client should then manually apply this
     // turn via `make_turn`.
@@ -352,6 +386,29 @@ impl AlteredGame {
         game
     }
 
+    fn apply_wayback_for_board(&self, game: &mut BughouseGame, board_idx: BughouseBoard) -> bool {
+        let Some(ref turn_idx) = self.wayback_turn_index[board_idx] else {
+            return false;
+        };
+        for turn in game.turn_log() {
+            if turn.envoy.board_idx == board_idx && turn.index() >= *turn_idx {
+                let turn_time = turn.time;
+                let board_after = turn.board_after.clone();
+                let board = game.board_mut(board_idx);
+                *board = board_after;
+                board.clock_mut().stop(turn_time);
+                break;
+            }
+        }
+        true
+    }
+
+    fn apply_wayback(&self, game: &mut BughouseGame) {
+        for board_idx in BughouseBoard::iter() {
+            self.apply_wayback_for_board(game, board_idx);
+        }
+    }
+
     fn apply_drag(&self, game: &mut BughouseGame) -> Result<(), String> {
         let Some(ref drag) = self.piece_drag else {
             return Ok(());
@@ -391,6 +448,9 @@ impl AlteredGame {
         let Some(envoy) = self.my_id.envoy_for(board_idx) else {
             return Err(TurnError::NotPlayer);
         };
+        if self.wayback_turn_index[board_idx].is_some() {
+            return Err(TurnError::WaybackIsActive);
+        }
         if self.alterations[board_idx].local_preturn.is_some() {
             return Err(TurnError::PreturnLimitReached);
         }

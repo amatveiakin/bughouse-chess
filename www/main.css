@@ -354,6 +354,13 @@ body.observer .reserve {
   filter: url(#reserve-shadow-gray);
 }
 
+.board.wayback {
+  filter: url(#wayback-filter);
+}
+.board.wayback .square-grid-layer {
+  filter: saturate(0.8);
+}
+
 #player-name-container-primary-top,
 #player-name-container-primary-bottom {
   /* Align right and put status emojis (like “⚠️” on the right).
@@ -534,6 +541,9 @@ dialog ::-webkit-scrollbar-thumb {
   overflow-y: scroll;
   box-shadow: 0.05em 0.05em 0.2em #00000080;
 }
+.turn-log-scroll-area.wayback {
+  box-shadow: 0.1em 0.1em 0.4em #000000ff;
+}
 .turn-log {
   height: 0;
   white-space: pre;
@@ -552,6 +562,10 @@ dialog ::-webkit-scrollbar-thumb {
 }
 .log-turn-record {
   padding: 0.15em 0.3em;
+}
+.log-turn-record.wayback-current-turn {
+  border: 0.2em solid #00b000;
+  border-radius: 0.5em;
 }
 .log-turn-record-white {
   background-color: #ffffff0c;
