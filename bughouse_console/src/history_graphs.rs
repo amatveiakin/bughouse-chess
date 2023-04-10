@@ -178,12 +178,17 @@ pub fn meta_stats_graph_html<T>(stats: &GroupStats<T>) -> String {
         .iter()
         .map(|ms| ms.team_rating_predictor_loss_sum / (ms.game_count as f64))
         .collect::<Vec<_>>();
+    let team_pointrate_ys = ms
+        .iter()
+        .map(|ms| ms.team_pointrate_predictor_loss_sum / (ms.game_count as f64))
+        .collect::<Vec<_>>();
     let make_trace = |ys, name| plotly::Scatter::new(xs.clone(), ys)
         .name(name)
         .mode(plotly::common::Mode::LinesMarkers)
         .marker(plotly::common::Marker::default().size(4));
     plot.add_trace(make_trace(team_elo_ys, "team_elo"));
     plot.add_trace(make_trace(team_rating_ys, "team_rating"));
+    plot.add_trace(make_trace(team_pointrate_ys, "team_pointrate"));
     plot.add_trace(make_trace(player_rating_ys, "player_rating"));
     plot.to_inline_html(None)
 }

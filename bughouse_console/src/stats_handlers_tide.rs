@@ -5,7 +5,7 @@ use tide::{Request, Response, StatusCode};
 use tide_jsx::*;
 use time::OffsetDateTime;
 
-use crate::game_stats::{GroupStats, RawStats, ComputeMetaStats};
+use crate::game_stats::{ComputeMetaStats, GroupStats, RawStats};
 use crate::history_graphs;
 use crate::persistence::{self, DatabaseReader};
 

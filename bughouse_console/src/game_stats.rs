@@ -42,6 +42,15 @@ impl RawStats {
             update_index: new_update_index,
         }
     }
+    // Returns average points per game or 0.5 if no games were played.
+    pub fn pointrate(&self) -> f64 {
+        let count = self.wins + self.losses + self.draws;
+        if count == 0 {
+            0.5
+        } else {
+          (self.wins as f64 + 0.5 * self.draws as f64) / (count as f64)
+        }
+    }
 }
 
 impl Default for RawStats {
@@ -71,6 +80,7 @@ pub struct MetaStats {
     pub player_rating_predictor_loss_sum: f64,
     pub team_rating_predictor_loss_sum: f64,
     pub team_elo_predictor_loss_sum: f64,
+    pub team_pointrate_predictor_loss_sum: f64,
     pub game_count: usize,
 }
 
@@ -133,6 +143,17 @@ fn process_game(
     let meta_stats = match compute_meta_stats {
         ComputeMetaStats::No => None,
         ComputeMetaStats::Yes => {
+            let prior_red_team_pointrate = prior_stats.red_team.pointrate();
+            let prior_blue_team_pointrate = prior_stats.blue_team.pointrate();
+            let sum_pointrate = prior_red_team_pointrate + prior_blue_team_pointrate;
+
+            let (red_team_pointrate_expected_score, blue_team_pointrate_expected_score) =
+                if sum_pointrate == 0.0 {
+                    (0.5, 0.5)
+            } else {
+                (prior_red_team_pointrate / sum_pointrate,
+                 prior_blue_team_pointrate / sum_pointrate)
+            };
             let (elo_expected_red_score, elo_expected_blue_score) =
                 elo::expected_score(&prior_red_team_elo, &prior_blue_team_elo);
             let (expected_red_team_score, expected_blue_team_score) = weng_lin::expected_score(
@@ -166,6 +187,11 @@ fn process_game(
                 actual_red_score,
                 actual_blue_score,
             );
+            ms.team_pointrate_predictor_loss_sum += predictor_loss_function(
+                red_team_pointrate_expected_score,
+                blue_team_pointrate_expected_score,
+                actual_red_score,
+                actual_blue_score);
             Some(ms)
         }
     };
