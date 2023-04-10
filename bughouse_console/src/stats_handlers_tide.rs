@@ -5,7 +5,7 @@ use tide::{Request, Response, StatusCode};
 use tide_jsx::*;
 use time::OffsetDateTime;
 
-use crate::game_stats::{GroupStats, RawStats};
+use crate::game_stats::{GroupStats, RawStats, ComputeMetaStats};
 use crate::history_graphs;
 use crate::persistence::{self, DatabaseReader};
 
@@ -33,6 +33,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
             .get(|req| Self::handle_history(req, history_graphs::XAxis::UpdateIndex));
         app.at("/dyn/history/pertime")
             .get(|req| Self::handle_history(req, history_graphs::XAxis::Timestamp));
+        app.at("/dyn/meta/history").get(|req| Self::handle_meta_stats_history(req));
 
         app.with(tide::log::LogMiddleware::new());
 
@@ -148,7 +149,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
         let mut all_stats = GroupStats::default();
 
         for (_, game) in games.into_iter() {
-            all_stats.update(&game)?;
+            all_stats.update(&game, ComputeMetaStats::No)?;
         }
 
         let mut final_player_stats = process_stats(all_stats.per_player.into_iter());
@@ -301,7 +302,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
         let mut all_stats = GroupStats::<Vec<RawStats>>::default();
 
         for (_, game) in games.into_iter() {
-            all_stats.update(&game)?;
+            all_stats.update(&game, ComputeMetaStats::No)?;
         }
 
         if x_axis == crate::history_graphs::XAxis::Date {
@@ -320,6 +321,40 @@ impl<ST: SuitableServerState> Handlers<ST> {
             <body>
                 {raw!(players_history_graph_html.as_str())}
                 {raw!(teams_history_graph_html.as_str())}
+            </body>
+            </html>
+        };
+        let mut resp = Response::new(StatusCode::Ok);
+        resp.set_content_type(Mime::from("text/html; charset=UTF-8"));
+        resp.set_body(h);
+        Ok(resp)
+    }
+
+    async fn handle_meta_stats_history(req: Request<ST>) -> tide::Result {
+        let now = OffsetDateTime::now_utc();
+        let games = req
+            .state()
+            .db()
+            .finished_games(OffsetDateTime::UNIX_EPOCH..now, /*only_rated=*/ true)
+            .await
+            .map_err(anyhow::Error::from)?;
+
+        // TODO: initialize from a persisted state and only look at games played since the last
+        // committed game.
+        let mut all_stats = GroupStats::<RawStats>::default();
+
+        for (_, game) in games.into_iter() {
+            all_stats.update(&game, ComputeMetaStats::Yes)?;
+        }
+
+        let graph_html = history_graphs::meta_stats_graph_html(&all_stats);
+        let h: String = html! {
+            <html>
+            <head>
+                {raw!(r#"<script src="https://cdn.plot.ly/plotly-2.16.1.min.js"></script>"#)}
+            </head>
+            <body>
+                {raw!(graph_html.as_str())}
             </body>
             </html>
         };
