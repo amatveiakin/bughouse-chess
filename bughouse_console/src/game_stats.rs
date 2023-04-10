@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use log::error;
-use skillratings::elo::{elo, EloConfig, EloRating};
-use skillratings::weng_lin::{weng_lin, weng_lin_two_teams, WengLinConfig, WengLinRating};
+use skillratings::elo::{self, elo, EloConfig, EloRating};
+use skillratings::weng_lin::{self, weng_lin, weng_lin_two_teams, WengLinConfig, WengLinRating};
 use skillratings::Outcomes;
 use time::OffsetDateTime;
 
@@ -63,6 +63,15 @@ pub struct GroupStats<Stats> {
     pub per_player: HashMap<String, Stats>,
     pub per_team: HashMap<[String; 2], Stats>,
     pub update_index: usize,
+    pub meta_stats: Vec<MetaStats>,
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct MetaStats {
+    pub player_rating_predictor_loss_sum: f64,
+    pub team_rating_predictor_loss_sum: f64,
+    pub team_elo_predictor_loss_sum: f64,
+    pub game_count: usize,
 }
 
 struct GameStats {
@@ -70,6 +79,13 @@ struct GameStats {
     blue_team: RawStats,
     red_players: [RawStats; 2],
     blue_players: [RawStats; 2],
+    meta_stats: Option<MetaStats>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComputeMetaStats {
+    No,
+    Yes,
 }
 
 fn default_elo() -> EloRating { EloRating { rating: 1600.0 } }
@@ -78,36 +94,84 @@ fn default_weng_lin() -> WengLinRating { WengLinRating::new() }
 
 fn process_game(
     result: &str, prior_stats: GameStats, game_end_time: Option<OffsetDateTime>,
-    update_index: usize,
+    update_index: usize, compute_meta_stats: ComputeMetaStats,
 ) -> GameStats {
-    let (red_outcome, blue_outcome) = match result {
-        "DRAW" => (Outcomes::DRAW, Outcomes::DRAW),
-        "VICTORY_RED" => (Outcomes::WIN, Outcomes::LOSS),
-        "VICTORY_BLUE" => (Outcomes::LOSS, Outcomes::WIN),
+    let (red_outcome, blue_outcome, actual_red_score, actual_blue_score) = match result {
+        "DRAW" => (Outcomes::DRAW, Outcomes::DRAW, 0.5, 0.5),
+        "VICTORY_RED" => (Outcomes::WIN, Outcomes::LOSS, 1.0, 0.0),
+        "VICTORY_BLUE" => (Outcomes::LOSS, Outcomes::WIN, 0.0, 1.0),
         _ => {
             error!("Ignoring unrecognized game result '{}'", result);
             return prior_stats;
         }
     };
-    let (red_team_elo, blue_team_elo) = elo(
-        &prior_stats.red_team.elo.unwrap_or_else(default_elo),
-        &prior_stats.blue_team.elo.unwrap_or_else(default_elo),
-        &red_outcome,
-        &EloConfig { k: 20.0 },
-    );
+    let prior_red_team_elo = prior_stats.red_team.elo.unwrap_or_else(default_elo);
+    let prior_blue_team_elo = prior_stats.blue_team.elo.unwrap_or_else(default_elo);
+    let (red_team_elo, blue_team_elo) =
+        elo(&prior_red_team_elo, &prior_blue_team_elo, &red_outcome, &EloConfig { k: 20.0 });
+
+    let prior_red_team_rating = prior_stats.red_team.rating.unwrap_or_else(default_weng_lin);
+    let prior_blue_team_rating = prior_stats.blue_team.rating.unwrap_or_else(default_weng_lin);
     let (red_team_rating, blue_team_rating) = weng_lin(
-        &prior_stats.red_team.rating.unwrap_or_else(default_weng_lin),
-        &prior_stats.blue_team.rating.unwrap_or_else(default_weng_lin),
+        &prior_red_team_rating,
+        &prior_blue_team_rating,
         &red_outcome,
         &WengLinConfig::default(),
     );
+
+    let prior_red_players_ratings =
+        prior_stats.red_players.map(|p| p.rating.unwrap_or_else(default_weng_lin));
+    let prior_blue_players_ratings =
+        prior_stats.blue_players.map(|p| p.rating.unwrap_or_else(default_weng_lin));
     let (red_players_rating, blue_players_rating) = weng_lin_two_teams(
-        &prior_stats.red_players.map(|p| p.rating.unwrap_or_else(default_weng_lin)),
-        &prior_stats.blue_players.map(|p| p.rating.unwrap_or_else(default_weng_lin)),
+        &prior_red_players_ratings,
+        &prior_blue_players_ratings,
         &red_outcome,
         &WengLinConfig::default(),
     );
+
+    let meta_stats = match compute_meta_stats {
+        ComputeMetaStats::No => None,
+        ComputeMetaStats::Yes => {
+            let (elo_expected_red_score, elo_expected_blue_score) =
+                elo::expected_score(&prior_red_team_elo, &prior_blue_team_elo);
+            let (expected_red_team_score, expected_blue_team_score) = weng_lin::expected_score(
+                &prior_red_team_rating,
+                &prior_blue_team_rating,
+                &WengLinConfig::default(),
+            );
+            let (expected_red_players_score, expected_blue_players_score) =
+                weng_lin::expected_score_teams(
+                    &prior_red_players_ratings,
+                    &prior_blue_players_ratings,
+                    &WengLinConfig::default(),
+                );
+            let mut ms = prior_stats.meta_stats.unwrap_or_default();
+            ms.game_count += 1;
+            ms.player_rating_predictor_loss_sum += predictor_loss_function(
+                expected_red_players_score,
+                expected_blue_players_score,
+                actual_red_score,
+                actual_blue_score,
+            );
+            ms.team_rating_predictor_loss_sum += predictor_loss_function(
+                expected_red_team_score,
+                expected_blue_team_score,
+                actual_red_score,
+                actual_blue_score,
+            );
+            ms.team_elo_predictor_loss_sum += predictor_loss_function(
+                elo_expected_red_score,
+                elo_expected_blue_score,
+                actual_red_score,
+                actual_blue_score,
+            );
+            Some(ms)
+        }
+    };
+
     GameStats {
+        meta_stats,
         red_team: prior_stats.red_team.update(
             red_outcome,
             Some(red_team_elo),
@@ -201,7 +265,9 @@ impl<Stats> GroupStats<Stats>
 where
     Self: StatStore,
 {
-    pub fn update(&mut self, game: &GameResultRow) -> anyhow::Result<()> {
+    pub fn update(
+        &mut self, game: &GameResultRow, compute_meta_stats: ComputeMetaStats,
+    ) -> anyhow::Result<()> {
         self.update_index += 1;
         let red_team = sort([game.player_red_a.clone(), game.player_red_b.clone()]);
         let blue_team = sort([game.player_blue_a.clone(), game.player_blue_b.clone()]);
@@ -212,9 +278,11 @@ where
                 blue_team: self.get_team(&blue_team),
                 red_players: map_arr_ref(&red_team, |p| self.get_player(p)),
                 blue_players: map_arr_ref(&blue_team, |p| self.get_player(p)),
+                meta_stats: self.meta_stats.last().cloned(),
             },
             game.game_end_time,
             self.update_index,
+            compute_meta_stats,
         );
         self.update_team(&red_team, new_stats.red_team);
         self.update_team(&blue_team, new_stats.blue_team);
@@ -224,8 +292,18 @@ where
         for i in 0..blue_team.len() {
             self.update_player(&blue_team[i], new_stats.blue_players[i]);
         }
+        if let Some(new_meta_stats) = new_stats.meta_stats {
+            self.meta_stats.push(new_meta_stats);
+        }
         Ok(())
     }
+}
+
+fn predictor_loss_function(expected1: f64, expected2: f64, actual1: f64, actual2: f64) -> f64 {
+    // In reality expected1 + expected2 = actual1 + actual2 = 1.
+    // But we keep it this way for symmetry & in case the game becomes
+    // not 100% antagonistic.
+    0.5 * ((expected1 - actual1).powi(2) + (expected2 - actual2).powi(2))
 }
 
 pub fn sort<A, T>(mut array: A) -> A

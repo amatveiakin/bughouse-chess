@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 use crate::game_stats::{GroupStats, RawStats};
 // for colorizer plugins in editors
 const fn rgb(x: u8, y: u8, z: u8) -> (u8, u8, u8) { (x, y, z) }
@@ -153,6 +155,36 @@ pub fn teams_elo_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxis) ->
 
         plot.add_trace(elo_trace);
     }
+    plot.to_inline_html(None)
+}
+
+pub fn meta_stats_graph_html<T>(stats: &GroupStats<T>) -> String {
+    let mut plot = plotly::Plot::new();
+    let layout = plot.layout().clone().title(
+        "Cumulative mean-square error for score predicion".into());
+    plot.set_layout(layout);
+    let ms = &stats.meta_stats;
+    let xs = (0..ms.len()).collect::<Vec<_>>();
+    let team_elo_ys = 
+        ms
+        .iter()
+        .map(|ms| ms.team_elo_predictor_loss_sum / (ms.game_count as f64))
+        .collect::<Vec<_>>();
+    let player_rating_ys = ms
+        .iter()
+        .map(|ms| ms.player_rating_predictor_loss_sum / (ms.game_count as f64))
+        .collect::<Vec<_>>();
+    let team_rating_ys = ms
+        .iter()
+        .map(|ms| ms.team_rating_predictor_loss_sum / (ms.game_count as f64))
+        .collect::<Vec<_>>();
+    let make_trace = |ys, name| plotly::Scatter::new(xs.clone(), ys)
+        .name(name)
+        .mode(plotly::common::Mode::LinesMarkers)
+        .marker(plotly::common::Marker::default().size(4));
+    plot.add_trace(make_trace(team_elo_ys, "team_elo"));
+    plot.add_trace(make_trace(team_rating_ys, "team_rating"));
+    plot.add_trace(make_trace(player_rating_ys, "player_rating"));
     plot.to_inline_html(None)
 }
 
