@@ -92,7 +92,6 @@ pub struct GameState {
 
 impl GameState {
     pub fn game(&self) -> &BughouseGame { &self.game }
-    pub fn rated(&self) -> bool { self.game.match_rules().rated }
     pub fn start_offset_time(&self) -> Option<time::OffsetDateTime> { self.game_start_offset_time }
 }
 
@@ -407,8 +406,6 @@ impl CoreServerState {
     fn on_client_event(
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, event: BughouseClientEvent,
     ) {
-        ctx.hooks.on_client_event(&event);
-
         if !ctx.clients.map.contains_key(&client_id) {
             // TODO: Should there be an exception for `BughouseClientEvent::ReportError`?
             // TODO: Improve logging. Consider:
@@ -422,8 +419,8 @@ impl CoreServerState {
 
         // First, process events that don't require a match.
         match &event {
-            BughouseClientEvent::ReportPerformace(..) => {
-                // Only used by server hooks.
+            BughouseClientEvent::ReportPerformace(perf) => {
+                ctx.hooks.on_client_performance_report(perf);
                 return;
             }
             BughouseClientEvent::ReportError(report) => {
@@ -625,6 +622,7 @@ impl Match {
     fn test_flags(&mut self, ctx: &mut Context, now: Instant) {
         if let Some(GameState {
             game_start,
+            game_start_offset_time,
             ref mut game_end,
             ref mut game,
             ref mut preturns,
@@ -636,11 +634,15 @@ impl Match {
                     let game_now = GameInstant::from_now_game_active(game_start, now);
                     game.test_flag(game_now);
                     if !game.is_active() {
-                        update_state_on_game_over(
+                        let round = self.match_history.len() + 1;
+                        update_on_game_over(
+                            ctx,
+                            round,
                             game,
                             preturns,
                             &mut self.participants,
                             &mut self.scores,
+                            game_start_offset_time,
                             game_end,
                             now,
                         );
@@ -657,11 +659,6 @@ impl Match {
     }
 
     fn broadcast(&self, ctx: &mut Context, event: &BughouseServerEvent) {
-        ctx.hooks.on_server_broadcast_event(
-            event,
-            self.game_state.as_ref(),
-            self.match_history.len() + 1,
-        );
         ctx.clients.broadcast(&self.match_id, event);
     }
 
@@ -873,12 +870,13 @@ impl Match {
         turn_input: TurnInput,
     ) -> EventResult {
         let Some(GameState{
-                ref mut game_start,
-                ref mut game_start_offset_time,
-                ref mut game_end,
-                ref mut game,
-                ref mut preturns, ..
-            }) = self.game_state else {
+            ref mut game_start,
+            ref mut game_start_offset_time,
+            ref mut game_end,
+            ref mut game,
+            ref mut preturns,
+            ..
+        }) = self.game_state else {
             return Err(unknown_error!("Cannot make turn: no game in progress"));
         };
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
@@ -891,6 +889,7 @@ impl Match {
             return Err(unknown_error!("Cannot make turn: player does not play on this board"));
         };
         let scores = &mut self.scores;
+        let round = self.match_history.len() + 1;
         let participants = &mut self.participants;
         let mode = game.turn_mode_for_envoy(envoy);
         match mode {
@@ -898,6 +897,8 @@ impl Match {
                 let mut turns = vec![];
                 let game_now = GameInstant::from_now_game_maybe_active(*game_start, now);
                 if let Ok(turn_event) = apply_turn(
+                    ctx,
+                    round,
                     game_now,
                     envoy,
                     turn_input,
@@ -905,6 +906,7 @@ impl Match {
                     preturns,
                     participants,
                     scores,
+                    *game_start_offset_time,
                     game_end,
                     now,
                 ) {
@@ -916,6 +918,8 @@ impl Match {
                     let opponent = envoy.opponent();
                     if let Some(preturn) = preturns.remove(&opponent) {
                         if let Ok(preturn_event) = apply_turn(
+                            ctx,
+                            round,
                             game_now,
                             opponent,
                             preturn,
@@ -923,6 +927,7 @@ impl Match {
                             preturns,
                             participants,
                             scores,
+                            *game_start_offset_time,
                             game_end,
                             now,
                         ) {
@@ -986,7 +991,14 @@ impl Match {
     fn process_resign(
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
     ) -> EventResult {
-        let Some(GameState{ ref mut game, ref mut preturns, game_start, ref mut game_end, .. }) = self.game_state else {
+        let Some(GameState{
+            ref mut game,
+            ref mut preturns,
+            game_start,
+            game_start_offset_time,
+            ref mut game_end,
+            ..
+        }) = self.game_state else {
             return Err(unknown_error!("Cannot resign: no game in progress"));
         };
         if !game.is_active() {
@@ -1006,7 +1018,18 @@ impl Match {
         let participants = &mut self.participants;
         let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
         game.set_status(status, game_now);
-        update_state_on_game_over(game, preturns, participants, scores, game_end, now);
+        let round = self.match_history.len() + 1;
+        update_on_game_over(
+            ctx,
+            round,
+            game,
+            preturns,
+            participants,
+            scores,
+            game_start_offset_time,
+            game_end,
+            now,
+        );
         let ev = BughouseServerEvent::GameOver {
             time: game_now,
             game_status: status,
@@ -1368,20 +1391,34 @@ fn current_game_time(game_state: &GameState, now: Instant) -> GameInstant {
 }
 
 fn apply_turn(
-    game_now: GameInstant, envoy: BughouseEnvoy, turn_input: TurnInput, game: &mut BughouseGame,
-    preturns: &mut Preturns, participants: &mut Participants, scores: &mut Scores,
-    game_end: &mut Option<Instant>, now: Instant,
+    ctx: &mut Context, round: usize, game_now: GameInstant, envoy: BughouseEnvoy,
+    turn_input: TurnInput, game: &mut BughouseGame, preturns: &mut Preturns,
+    participants: &mut Participants, scores: &mut Scores,
+    game_start_offset_time: Option<time::OffsetDateTime>, game_end: &mut Option<Instant>,
+    now: Instant,
 ) -> Result<TurnRecord, TurnError> {
     game.try_turn_by_envoy(envoy, &turn_input, TurnMode::Normal, game_now)?;
     if !game.is_active() {
-        update_state_on_game_over(game, preturns, participants, scores, game_end, now);
+        update_on_game_over(
+            ctx,
+            round,
+            game,
+            preturns,
+            participants,
+            scores,
+            game_start_offset_time,
+            game_end,
+            now,
+        );
     }
     Ok(game.last_turn_record().unwrap().trim_for_sending())
 }
 
-fn update_state_on_game_over(
-    game: &BughouseGame, preturns: &mut Preturns, participants: &mut Participants,
-    scores: &mut Scores, game_end: &mut Option<Instant>, now: Instant,
+fn update_on_game_over(
+    ctx: &mut Context, round: usize, game: &BughouseGame, preturns: &mut Preturns,
+    participants: &mut Participants, scores: &mut Scores,
+    game_start_offset_time: Option<time::OffsetDateTime>, game_end: &mut Option<Instant>,
+    now: Instant,
 ) {
     assert!(game_end.is_none());
     *game_end = Some(now);
@@ -1417,6 +1454,7 @@ fn update_state_on_game_over(
             p.games_played += 1;
         }
     }
+    ctx.hooks.on_game_over(game, game_start_offset_time, round);
 }
 
 fn player_preturns(preturns: &Preturns, player: BughousePlayer) -> Vec<(BughouseBoard, TurnInput)> {

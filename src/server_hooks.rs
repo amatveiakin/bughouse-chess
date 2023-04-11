@@ -1,20 +1,22 @@
-use crate::event::{BughouseClientEvent, BughouseServerEvent};
-use crate::server::GameState;
+use crate::event::BughouseClientPerformance;
+use crate::game::BughouseGame;
 
 
 pub trait ServerHooks {
-    fn on_client_event(&mut self, event: &BughouseClientEvent);
-    fn on_server_broadcast_event(
-        &mut self, event: &BughouseServerEvent, game: Option<&GameState>, round: usize,
+    fn on_client_performance_report(&mut self, perf: &BughouseClientPerformance);
+    fn on_game_over(
+        &mut self, game: &BughouseGame, game_start_offset_time: Option<time::OffsetDateTime>,
+        round: usize,
     );
 }
 
 pub struct NoopServerHooks {}
 
 impl ServerHooks for NoopServerHooks {
-    fn on_client_event(&mut self, _event: &BughouseClientEvent) {}
-    fn on_server_broadcast_event(
-        &mut self, _event: &BughouseServerEvent, _game: Option<&GameState>, _round: usize,
+    fn on_client_performance_report(&mut self, _perf: &BughouseClientPerformance) {}
+    fn on_game_over(
+        &mut self, _game: &BughouseGame, _game_start_offset_time: Option<time::OffsetDateTime>,
+        _round: usize,
     ) {
     }
 }
