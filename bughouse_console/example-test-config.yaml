@@ -1,0 +1,9 @@
+database_options: !Sqlite bughouse.db
+secret_database_options: !Sqlite bughouse-private.db
+auth_options: !Google
+  callback_is_https: false
+  client_id_source: !EnvVar GOOGLE_CLIENT_ID
+  client_secret_source: !EnvVar GOOGLE_CLIENT_SECRET
+session_options: WithNewRandomSecret
+static_content_url_prefix: http://localhost:8080
+allowed_origin: Any

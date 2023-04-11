@@ -14,6 +14,7 @@ use oauth2::{
 use serde::Deserialize;
 use url::Url;
 
+use crate::server_config::StringSource;
 
 // Hash password to PHC string ($argon2id$v=19$...). It incorporates the salt too.
 pub fn hash_password(password: &str) -> anyhow::Result<String> {
@@ -61,16 +62,12 @@ impl NewSessionQuery {
 }
 
 impl GoogleAuth {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(client_id_source: StringSource,
+               client_secret_source: StringSource) -> anyhow::Result<Self> {
         // See https://accounts.google.com/.well-known/openid-configuration
-        let google_client_id = ClientId::new(
-            env::var("GOOGLE_CLIENT_ID")
-                .context("Missing the GOOGLE_CLIENT_ID environment variable.")?,
-        );
-        let google_client_secret = ClientSecret::new(
-            env::var("GOOGLE_CLIENT_SECRET")
-                .context("Missing the GOOGLE_CLIENT_SECRET environment variable.")?,
-        );
+        let google_client_id = ClientId::new(client_id_source.get()?);
+        let google_client_secret = ClientSecret::new(client_secret_source.get()?);
+
         let auth_url = AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_owned())
             .context("Invalid authorization endpoint URL")?;
         let token_url = TokenUrl::new("https://oauth2.googleapis.com/token".to_owned())
