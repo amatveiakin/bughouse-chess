@@ -31,6 +31,7 @@ reqwest = { version = "0.11.14", features = ["json"] }
 scopeguard = "1.1.0"
 serde = "1.0.149"
 serde_json = "1.0.89"
+serde_yaml = "0.9.21"
 skillratings = "0.22.0"
 sqlx = { version = "0.6.2", features = ["postgres", "sqlite", "runtime-async-std-rustls", "time"] }
 tide = "0.16.0"

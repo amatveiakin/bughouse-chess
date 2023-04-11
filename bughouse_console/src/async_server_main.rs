@@ -138,9 +138,14 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
 ) {
     let (google_auth, auth_callback_is_https) = match config.auth_options {
         AuthOptions::NoAuth => (None, false),
-        AuthOptions::GoogleAuthFromEnv { callback_is_https } => {
-            (Some(auth::GoogleAuth::new().unwrap()), callback_is_https)
-        }
+        AuthOptions::Google {
+            callback_is_https,
+            client_id_source,
+            client_secret_source,
+        } => (
+            Some(auth::GoogleAuth::new(client_id_source, client_secret_source).unwrap()),
+            callback_is_https,
+        ),
     };
     let mut app = tide::with_state(Arc::new(HttpServerStateImpl {
         sessions_enabled: config.session_options != SessionOptions::NoSessions,

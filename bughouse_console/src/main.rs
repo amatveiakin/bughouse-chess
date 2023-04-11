@@ -45,7 +45,7 @@ mod stress_test;
 use std::io;
 
 use clap::{arg, Command};
-use server_config::DatabaseOptions;
+use server_config::{DatabaseOptions, ServerConfig, StringSource};
 
 fn main() -> io::Result<()> {
     env_logger::Builder::new()
@@ -73,6 +73,7 @@ fn main() -> io::Result<()> {
                 .arg(arg!(--"static-content-url-prefix" [URL_PREFIX] "Prefix of URLs where static content is served. Generated links referencing static content are based on this URL"))
                 .arg(arg!(--"allowed-origin" [ORIGIN] "Allowed origin for websocket requests or * for skipping the check. Only use * for testing")
                     .default_value("https://bughouse.pro"))
+                .arg(arg!(--"config-file" [FILE] "Path to the configuration file in yaml-serialized ServerConfig. When specified, other flags are ignored"))
         )
         .subcommand(
             Command::new("client")
@@ -91,38 +92,7 @@ fn main() -> io::Result<()> {
 
     match matches.subcommand() {
         Some(("server", sub_matches)) => {
-            let auth_options = match sub_matches.get_one::<String>("auth").map(String::as_str) {
-                None | Some("NoAuth") => server_config::AuthOptions::NoAuth,
-                Some("Google") => server_config::AuthOptions::GoogleAuthFromEnv {
-                    callback_is_https: sub_matches.get_flag("auth-callback-is-https"),
-                },
-                Some(a) => panic!("Unrecognized auth option {a}"),
-            };
-            let session_options = if sub_matches.get_flag("enable-sessions") {
-                crate::server_config::SessionOptions::WithNewRandomSecret
-            } else {
-                crate::server_config::SessionOptions::NoSessions
-            };
-
-            let allowed_origin =
-                match sub_matches.get_one::<String>("allowed-origin").map(String::as_str) {
-                    None => panic!("--allowed-origin must be specified"),
-                    Some("*") => crate::server_config::AllowedOrigin::Any,
-                    Some(o) => crate::server_config::AllowedOrigin::ThisSite(o.to_owned()),
-                };
-
-            let static_content_url_prefix = sub_matches
-                .get_one::<String>("static-content-url-prefix")
-                .cloned()
-                .unwrap_or(String::new());
-            async_server_main::run(server_config::ServerConfig {
-                database_options: database_options_from_args(sub_matches),
-                secret_database_options: secret_database_options_from_args(sub_matches),
-                auth_options,
-                session_options,
-                static_content_url_prefix,
-                allowed_origin,
-            });
+            async_server_main::run(server_config_from_args(sub_matches));
             Ok(())
         }
         Some(("client", sub_matches)) => client_main::run(client_main::ClientConfig {
@@ -154,5 +124,49 @@ fn database_options(sqlite: Option<&String>, postgres: Option<&String>) -> Datab
         (Some(_), Some(_)) => panic!("Sqlite and postgres can not be specified simultanously."),
         (Some(db), None) => DatabaseOptions::Sqlite(db.clone()),
         (None, Some(db)) => DatabaseOptions::Postgres(db.clone()),
+    }
+}
+
+fn read_config_file(filename: &String) -> ServerConfig {
+    let contents = std::fs::read_to_string(filename).expect("Reading config file");
+    serde_yaml::from_str(&contents).expect("Parsing config file")
+}
+
+fn server_config_from_args(args: &clap::ArgMatches) -> ServerConfig {
+    if let Some(filename) = args.get_one("config-file") {
+        return read_config_file(filename);
+    }
+    let auth_options = match args.get_one::<String>("auth").map(String::as_str) {
+        None | Some("NoAuth") => server_config::AuthOptions::NoAuth,
+        Some("Google") => server_config::AuthOptions::Google {
+            callback_is_https: args.get_flag("auth-callback-is-https"),
+            client_id_source: StringSource::EnvVar("GOOGLE_CLIENT_ID".to_owned()),
+            client_secret_source: StringSource::EnvVar("GOOGLE_CLIENT_SECRET".to_owned()),
+        },
+        Some(a) => panic!("Unrecognized auth option {a}"),
+    };
+    let session_options = if args.get_flag("enable-sessions") {
+        crate::server_config::SessionOptions::WithNewRandomSecret
+    } else {
+        crate::server_config::SessionOptions::NoSessions
+    };
+
+    let allowed_origin = match args.get_one::<String>("allowed-origin").map(String::as_str) {
+        None => panic!("--allowed-origin must be specified"),
+        Some("*") => crate::server_config::AllowedOrigin::Any,
+        Some(o) => crate::server_config::AllowedOrigin::ThisSite(o.to_owned()),
+    };
+
+    let static_content_url_prefix = args
+        .get_one::<String>("static-content-url-prefix")
+        .cloned()
+        .unwrap_or(String::new());
+    ServerConfig {
+        database_options: database_options_from_args(args),
+        secret_database_options: secret_database_options_from_args(args),
+        auth_options,
+        session_options,
+        static_content_url_prefix,
+        allowed_origin,
     }
 }
