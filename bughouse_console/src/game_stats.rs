@@ -48,7 +48,7 @@ impl RawStats {
         if count == 0 {
             0.5
         } else {
-          (self.wins as f64 + 0.5 * self.draws as f64) / (count as f64)
+            (self.wins as f64 + 0.5 * self.draws as f64) / (count as f64)
         }
     }
 }
@@ -150,10 +150,12 @@ fn process_game(
             let (red_team_pointrate_expected_score, blue_team_pointrate_expected_score) =
                 if sum_pointrate == 0.0 {
                     (0.5, 0.5)
-            } else {
-                (prior_red_team_pointrate / sum_pointrate,
-                 prior_blue_team_pointrate / sum_pointrate)
-            };
+                } else {
+                    (
+                        prior_red_team_pointrate / sum_pointrate,
+                        prior_blue_team_pointrate / sum_pointrate,
+                    )
+                };
             let (elo_expected_red_score, elo_expected_blue_score) =
                 elo::expected_score(&prior_red_team_elo, &prior_blue_team_elo);
             let (expected_red_team_score, expected_blue_team_score) = weng_lin::expected_score(
@@ -191,7 +193,8 @@ fn process_game(
                 red_team_pointrate_expected_score,
                 blue_team_pointrate_expected_score,
                 actual_red_score,
-                actual_blue_score);
+                actual_blue_score,
+            );
             Some(ms)
         }
     };

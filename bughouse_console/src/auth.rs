@@ -1,5 +1,3 @@
-use std::env;
-
 use anyhow::{anyhow, Context};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
@@ -62,8 +60,9 @@ impl NewSessionQuery {
 }
 
 impl GoogleAuth {
-    pub fn new(client_id_source: StringSource,
-               client_secret_source: StringSource) -> anyhow::Result<Self> {
+    pub fn new(
+        client_id_source: StringSource, client_secret_source: StringSource,
+    ) -> anyhow::Result<Self> {
         // See https://accounts.google.com/.well-known/openid-configuration
         let google_client_id = ClientId::new(client_id_source.get()?);
         let google_client_secret = ClientSecret::new(client_secret_source.get()?);
