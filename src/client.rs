@@ -394,8 +394,8 @@ impl ClientState {
                     },
                     BughouseServerRejection::JoinedInAnotherClient => {
                         EventError::KickedFromMatch("\
-                            You have joined the mtch in another browser tab. Only one tab per \
-                            mtch can be active at a time.
+                            You have joined the match in another browser tab. Only one tab per \
+                            match can be active at a time.
                         ".to_owned())
                     },
                     BughouseServerRejection::NameClashWithRegisteredUser => {
