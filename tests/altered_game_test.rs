@@ -26,9 +26,10 @@ fn default_bughouse_game() -> BughouseGame {
 const T0: GameInstant = GameInstant::game_start();
 
 
-// Regression test: shouldn't panic if there's a drag depending on a local turn that was reverted.
+// Regression test: shouldn't panic if there's a drag depending on a preturn that was reverted,
+// because another piece blocked the target square.
 #[test]
-fn drag_depends_on_reverted_preturn() {
+fn drag_depends_on_preturn_to_blocked_square() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(Black A)), default_bughouse_game());
     alt_game.apply_remote_turn_algebraic(envoy!(White A), "e4", T0).unwrap();
     alt_game.apply_remote_turn_algebraic(envoy!(Black A), "e6", T0).unwrap();
@@ -37,6 +38,22 @@ fn drag_depends_on_reverted_preturn() {
     alt_game.apply_remote_turn_algebraic(envoy!(White A), "e5", T0).unwrap();
     assert_eq!(
         alt_game.drag_piece_drop(Coord::E4, PieceKind::Queen),
+        Err(PieceDragError::DragNoLongerPossible)
+    );
+}
+
+// Regression test: shouldn't panic if there's a drag depending on a preturn that was reverted,
+// because preturn piece was captured.
+#[test]
+fn drag_depends_on_preturn_with_captured_piece() {
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(Black A)), default_bughouse_game());
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e4", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "d5", T0).unwrap();
+    alt_game.try_local_turn(A, drag_move!(D5 -> D4), T0).unwrap();
+    alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::D4)).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "xd5", T0).unwrap();
+    assert_eq!(
+        alt_game.drag_piece_drop(Coord::D3, PieceKind::Queen),
         Err(PieceDragError::DragNoLongerPossible)
     );
 }

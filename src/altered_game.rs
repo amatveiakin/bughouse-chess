@@ -409,32 +409,27 @@ impl AlteredGame {
         }
     }
 
-    fn apply_drag(&self, game: &mut BughouseGame) -> Result<(), String> {
+    fn apply_drag(&self, game: &mut BughouseGame) -> Result<(), ()> {
         let Some(ref drag) = self.piece_drag else {
             return Ok(());
         };
-        // Unwrap ok: cannot start the drag if not playing on this board.
-        let envoy = self.my_id.envoy_for(drag.board_idx).unwrap();
+        let envoy = self.my_id.envoy_for(drag.board_idx).ok_or(())?;
         let board = game.board_mut(drag.board_idx);
         match drag.source {
             PieceDragSource::Defunct => {}
             PieceDragSource::Board(coord) => {
-                let piece = board.grid_mut()[coord].take().unwrap(); // note: `take` modifies the board
+                // Note: `take` modifies the board
+                let piece = board.grid_mut()[coord].take().ok_or(())?;
                 let expected = (envoy.force, drag.piece_kind);
                 let actual = (piece.force, piece.kind);
                 if expected != actual {
-                    return Err(format!(
-                        "Drag piece mismatch. Expected {expected:?}, found {actual:?}"
-                    ));
+                    return Err(());
                 }
             }
             PieceDragSource::Reserve => {
                 let reserve = board.reserve_mut(envoy.force);
                 if reserve[drag.piece_kind] <= 0 {
-                    return Err(format!(
-                        "Drag piece missing in reserve: {:?} {:?}",
-                        envoy.force, drag.piece_kind
-                    ));
+                    return Err(());
                 }
                 reserve[drag.piece_kind] -= 1;
             }
