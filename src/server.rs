@@ -898,7 +898,9 @@ impl Match {
         let scores = &mut self.scores;
         let participants = &mut self.participants;
 
-        if turn_requests.iter().any(|r| r.envoy == envoy) {
+        if turn_requests.iter().filter(|r| r.envoy == envoy).count()
+            > self.rules.chess_rules.max_preturns_per_board()
+        {
             return Err(unknown_error!("Only one premove is supported"));
         }
         let request = TurnRequest { envoy, turn_input };

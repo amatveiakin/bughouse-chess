@@ -106,6 +106,9 @@
       <filter id="reserve-shadow-gray">
         <feDropShadow dx=0 dy=0 stdDeviation=0.1 flood-color="#a2a2a2" flood-opacity=1 />
       </filter>
+      <filter id="glowing-duck">
+        <feDropShadow dx=0 dy=0 stdDeviation=0.1 flood-color="#c3e27d" flood-opacity=1 />
+      </filter>
       <radialGradient id="drag-start-gradient">
         <stop offset="0%" stop-color="#ffffff" stop-opacity=0.5 />
         <stop offset="30%" stop-color="#ffffff" stop-opacity=0 />
@@ -643,6 +646,7 @@
         <select id="cc-fairy-pieces" name="fairy_pieces">
           <option value="no-fairy" selected>No fairy</option>
           <option value="accolade">Accolade</option>
+          <option value="duck-chess">Duck chess</option>
         </select>
         <div class="tooltip">
           <div class="tooltip-text">
@@ -655,6 +659,12 @@
               Confer knighthood to any piece! Combine a Knight with a Bishop, a Rook or a Queen to get
               a Cardinal, an Empress or an Amazon respectively. Combine by moving one piece onto another
               or by dropping one piece onto another. If captured, the piece falls back apart.
+            </p>
+            <p>
+              <i>Duck chess.</i>
+              Here comes the duck. A duck occupies one square on the board and cannot be captured.
+              Each turn consists of two parts. First, a regular bughouse turn. Second, moving the
+              duck to any free square on the board. Quack!
             </p>
           </div>
         </div>

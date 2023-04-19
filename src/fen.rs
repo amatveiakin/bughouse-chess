@@ -8,7 +8,7 @@ use crate::board::Board;
 use crate::coord::{Col, Coord, Row, NUM_COLS, NUM_ROWS};
 use crate::force::Force;
 use crate::grid::Grid;
-use crate::piece::{CastleDirection, PieceKind, PieceOnBoard, PieceOrigin};
+use crate::piece::{CastleDirection, PieceForce, PieceKind, PieceOnBoard, PieceOrigin};
 
 
 fn force_notation(force: Force) -> char {
@@ -18,20 +18,23 @@ fn force_notation(force: Force) -> char {
     }
 }
 
-fn piece_notation(kind: PieceKind, force: Force) -> char {
+fn piece_notation(kind: PieceKind, force: PieceForce) -> char {
     let s = kind.to_full_algebraic();
     match force {
-        Force::White => s.to_ascii_uppercase(),
-        Force::Black => s.to_ascii_lowercase(),
+        PieceForce::Neutral => s,
+        PieceForce::White => s.to_ascii_uppercase(),
+        PieceForce::Black => s.to_ascii_lowercase(),
     }
 }
 
-fn notation_to_piece(ch: char) -> Option<(PieceKind, Force)> {
+fn notation_to_piece(ch: char) -> Option<(PieceKind, PieceForce)> {
     let kind = PieceKind::from_algebraic_char(ch.to_ascii_uppercase())?;
-    let force = if ch.is_ascii_uppercase() {
-        Force::White
+    let force = if kind.is_neutral() {
+        PieceForce::Neutral
+    } else if ch.is_ascii_uppercase() {
+        PieceForce::White
     } else {
-        Force::Black
+        PieceForce::Black
     };
     Some((kind, force))
 }

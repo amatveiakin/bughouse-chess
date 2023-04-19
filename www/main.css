@@ -350,6 +350,10 @@ body.observer .reserve {
   filter: url(#reserve-shadow-gray);
 }
 
+.glowing-duck {
+  filter: saturate(1.5) url(#glowing-duck);
+}
+
 .board.wayback {
   filter: url(#wayback-filter);
 }

@@ -23,6 +23,7 @@ import black_cardinal from '../assets/pieces/black-cardinal.png';
 import black_empress from '../assets/pieces/black-empress.png';
 import black_amazon from '../assets/pieces/black-amazon.png';
 import black_king from '../assets/pieces/black-king.png';
+import duck from '../assets/pieces/duck.png';
 
 import fog_1 from '../assets/fog-of-war/fog-1.png';
 import fog_2 from '../assets/fog-of-war/fog-2.png';
@@ -193,6 +194,7 @@ load_svg_images([
     { path: black_empress, symbol: 'black-empress' },
     { path: black_amazon, symbol: 'black-amazon' },
     { path: black_king, symbol: 'black-king' },
+    { path: duck, symbol: 'duck' },
     { path: fog_1, symbol: 'fog-1', size: FOG_TILE_SIZE },
     { path: fog_2, symbol: 'fog-2', size: FOG_TILE_SIZE },
     { path: fog_3, symbol: 'fog-3', size: FOG_TILE_SIZE },
@@ -718,13 +720,18 @@ function set_up_drag_and_drop() {
             // Note. For a mouse we can simple assume that drag_element is null here. For multi-touch
             //   screens however this is not always the case.
             if (!drag_element && event.target.classList.contains('draggable') && is_main_pointer(event)) {
+                const source = event.target.getAttribute('data-bughouse-location');
+                const drag_source_board_idx = wasm_client().start_drag_piece(source);
+
+                if (drag_source_board_idx == 'abort') {
+                    return;
+                }
+
                 drag_element = event.target;
                 drag_element.classList.add('dragged');
                 // Dissociate image from the board/reserve:
                 drag_element.id = null;
 
-                const source = drag_element.getAttribute('data-bughouse-location');
-                const drag_source_board_idx = wasm_client().start_drag_piece(source);
                 drag_source_board = document.getElementById(`board-${drag_source_board_idx}`);
 
                 // Reparent: bring on top; (if reserve) remove shadow by extracting from reserve group.

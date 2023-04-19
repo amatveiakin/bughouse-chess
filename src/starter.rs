@@ -3,9 +3,8 @@ use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::coord::{Col, Coord, Row, NUM_ROWS};
-use crate::force::Force;
 use crate::grid::Grid;
-use crate::piece::{PieceKind, PieceOnBoard, PieceOrigin};
+use crate::piece::{PieceForce, PieceKind, PieceOnBoard, PieceOrigin};
 use crate::rules::StartingPosition;
 
 
@@ -16,7 +15,7 @@ pub enum EffectiveStartingPosition {
 }
 
 fn new_white(kind: PieceKind) -> PieceOnBoard {
-    PieceOnBoard::new(kind, PieceOrigin::Innate, Force::White)
+    PieceOnBoard::new(kind, PieceOrigin::Innate, PieceForce::White)
 }
 
 fn setup_white_pawns_on_2nd_row(grid: &mut Grid) {
@@ -28,12 +27,12 @@ fn setup_white_pawns_on_2nd_row(grid: &mut Grid) {
 fn setup_black_pieces_mirrorlike(grid: &mut Grid) {
     for coord in Coord::all() {
         if let Some(piece) = grid[coord] {
-            if piece.force == Force::White {
+            if piece.force == PieceForce::White {
                 let mirror_row =
                     Row::from_zero_based(NUM_ROWS - coord.row.to_zero_based() - 1).unwrap();
                 let mirror_coord = Coord::new(mirror_row, coord.col);
                 assert!(grid[mirror_coord].is_none(), "{:?}", grid);
-                grid[mirror_coord] = Some(PieceOnBoard { force: Force::Black, ..piece });
+                grid[mirror_coord] = Some(PieceOnBoard { force: PieceForce::Black, ..piece });
             }
         }
     }

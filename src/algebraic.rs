@@ -40,6 +40,7 @@ pub enum AlgebraicTurn {
     Move(AlgebraicMove),
     Drop(AlgebraicDrop),
     Castle(CastleDirection),
+    PlaceDuck(Coord),
 }
 
 
@@ -54,6 +55,7 @@ impl AlgebraicTurn {
         let drop_re = once_cell_regex!(&format!(r"^({piece})@([a-h][1-8])$", piece = PIECE_RE));
         let a_castling_re = once_cell_regex!("^(0-0-0|O-O-O)$");
         let h_castling_re = once_cell_regex!("^(0-0|O-O)$");
+        let place_duck_re = once_cell_regex!("^@([a-h][1-8])$");
         if let Some(cap) = move_re.captures(notation) {
             let piece_kind = cap
                 .get(1)
@@ -84,6 +86,9 @@ impl AlgebraicTurn {
             Some(AlgebraicTurn::Castle(CastleDirection::ASide))
         } else if h_castling_re.is_match(notation) {
             Some(AlgebraicTurn::Castle(CastleDirection::HSide))
+        } else if let Some(cap) = place_duck_re.captures(notation) {
+            let to = Coord::from_algebraic(cap.get(1).unwrap().as_str()).unwrap();
+            Some(AlgebraicTurn::PlaceDuck(to))
         } else {
             None
         }
@@ -119,20 +124,19 @@ impl AlgebraicTurn {
             AlgebraicTurn::Drop(drop) => {
                 format!("{}@{}", drop.piece_kind.to_full_algebraic(), drop.to.to_algebraic())
             }
-            AlgebraicTurn::Castle(dir) => (match dir {
-                CastleDirection::ASide => "O-O-O",
-                CastleDirection::HSide => "O-O",
-            })
-            .to_owned(),
+            AlgebraicTurn::Castle(dir) => match dir {
+                CastleDirection::ASide => "O-O-O".to_owned(),
+                CastleDirection::HSide => "O-O".to_owned(),
+            },
+            AlgebraicTurn::PlaceDuck(to) => format!("@{}", to.to_algebraic()),
         }
     }
 
     pub fn format_in_the_fog(&self) -> String {
         match self {
             AlgebraicTurn::Move(..) | AlgebraicTurn::Castle(..) => "🌫".to_owned(),
-            AlgebraicTurn::Drop(drop) => {
-                format!("{}@🌫", drop.piece_kind.to_full_algebraic())
-            }
+            AlgebraicTurn::Drop(drop) => format!("{}@🌫", drop.piece_kind.to_full_algebraic()),
+            AlgebraicTurn::PlaceDuck(..) => self.format(AlgebraicCharset::AuxiliaryUnicode),
         }
     }
 }

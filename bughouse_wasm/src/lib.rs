@@ -314,6 +314,7 @@ impl WebClient {
         let fairy_pieces = match fairy_pieces {
             "no-fairy" => FairyPieces::NoFairy,
             "accolade" => FairyPieces::Accolade,
+            "duck-chess" => FairyPieces::DuckChess,
             _ => return Err(format!("Invalid fairy pieces: {fairy_pieces}").into()),
         };
         let drop_aggression = match drop_aggression {
@@ -417,9 +418,11 @@ impl WebClient {
             // Improvement potential. More conistent legal moves highlighting. Perhaps, add
             //   a config with "Yes" / "No" / "If fairy chess" values.
             let rules = alt_game.chess_rules();
-            if rules.fairy_pieces != FairyPieces::NoFairy
-                && rules.chess_variant != ChessVariant::FogOfWar
-            {
+            let nontrivial_fairy_pieces = match rules.fairy_pieces {
+                FairyPieces::NoFairy | FairyPieces::DuckChess => false,
+                FairyPieces::Accolade => true,
+            };
+            if nontrivial_fairy_pieces && rules.chess_variant != ChessVariant::FogOfWar {
                 for dest in alt_game.local_game().board(board_idx).legal_turn_destinations(coord) {
                     set_square_highlight(
                         None,
@@ -714,7 +717,14 @@ impl WebClient {
         let perspective = alt_game.perspective();
         update_scores(&mtch.scores, &mtch.participants, game.status(), teaming, perspective)?;
         for (board_idx, board) in game.boards() {
-            let is_piece_draggable = |force| my_id.plays_for(BughouseEnvoy { board_idx, force });
+            let is_piece_draggable = |piece_force| {
+                my_id
+                    .envoy_for(board_idx)
+                    .map_or(false, |e| board.can_potentially_move_piece(e.force, piece_force))
+            };
+            let is_glowing_duck = |piece: PieceOnBoard| {
+                game.is_active() && piece.kind == PieceKind::Duck && board.is_duck_turn()
+            };
             let see_though_fog = alt_game.see_though_fog();
             let empty_area = HashSet::new();
             let fog_render_area = alt_game.fog_of_war_area(board_idx);
@@ -779,6 +789,8 @@ impl WebClient {
                         node.remove_attribute("class")?;
                         node.class_list()
                             .toggle_with_force("draggable", is_piece_draggable(piece.force))?;
+                        node.class_list()
+                            .toggle_with_force("glowing-duck", is_glowing_duck(piece))?;
                     } else {
                         // Rust-upgrade (https://github.com/rust-lang/rust/issues/91345):
                         //   `map` -> `inspect`.
@@ -802,7 +814,7 @@ impl WebClient {
                 let show_readiness = !game.is_active() && teaming == Teaming::FixedTeams;
                 let player_string = participant_string(&player, show_readiness);
                 name_node.set_text_content(Some(&player_string));
-                let is_draggable = is_piece_draggable(force);
+                let is_draggable = is_piece_draggable(force.into());
                 update_reserve(
                     board.reserve(force),
                     force,
@@ -1180,7 +1192,7 @@ fn participant_string(p: &Participant, show_readiness: bool) -> String {
 
 // Standalone chess piece icon to be used outside of SVG area.
 fn make_piece_icon(
-    piece_kind: PieceKind, force: Force, classes: &[&str],
+    piece_kind: PieceKind, force: PieceForce, classes: &[&str],
 ) -> JsResult<web_sys::Element> {
     let document = web_document();
     let svg_node = document.create_svg_element("svg")?;
@@ -1293,7 +1305,7 @@ fn render_reserve(
     let mut x = (max_width - width - 1.0) / 2.0; // center reserve
     let y = reserve_y_pos(player_idx);
     for (piece_kind, amount) in reserve_iter {
-        let filename = piece_path(piece_kind, force);
+        let filename = piece_path(piece_kind, force.into());
         for iter in 0..amount {
             if iter > 0 {
                 x += piece_sep;
@@ -1321,13 +1333,17 @@ fn update_reserve(
     let reserve_iter = reserve
         .iter()
         .filter(|(kind, &amount)| {
-            // Normally we leave space for all pieces that can be in reserve, so that the
-            // pieces don't shift too much and you don't misclick after receiving a new
-            // reserve piece. We make an exception  for the king: it could be captured in
-            // some game variants (e.g. Fog-of-war) and by the time you get a Kind in reserve
-            // misclicks are not a problem, because the game is over.
-            assert!(amount == 0 || kind.can_be_in_reserve() || *kind == PieceKind::King);
-            kind.can_be_in_reserve() || amount > 0
+            match kind.reservable() {
+                // Leave space for all `PieceReservable::Always` pieces, so that the icons
+                // don't shift too much and the user does not misclick after receiving a new
+                // reserve piece.
+                PieceReservable::Always => true,
+                PieceReservable::Never => {
+                    assert!(amount == 0);
+                    false
+                }
+                PieceReservable::InSpecialCases => amount > 0,
+            }
         })
         .map(|(kind, &amount)| (kind, amount));
     render_reserve(force, board_idx, player_idx, is_draggable, piece_kind_sep, reserve_iter)
@@ -1524,7 +1540,7 @@ fn update_turn_log(
 
                 let capture_classes = [
                     "log-capture",
-                    &format!("log-capture-{}", force_id(capture.force)),
+                    &format!("log-capture-{}", piece_force_id(capture.force)),
                 ];
                 for &kind in capture.piece_kinds.iter() {
                     let capture_node = make_piece_icon(kind, capture.force, &capture_classes)?;
@@ -1694,6 +1710,14 @@ fn force_id(force: Force) -> &'static str {
     match force {
         Force::White => "white",
         Force::Black => "black",
+    }
+}
+
+fn piece_force_id(force: PieceForce) -> &'static str {
+    match force {
+        PieceForce::White => "white",
+        PieceForce::Black => "black",
+        PieceForce::Neutral => "neutral",
     }
 }
 
@@ -1876,8 +1900,8 @@ fn square_color_class(row: Row, col: Col) -> &'static str {
     }
 }
 
-fn piece_path(piece_kind: PieceKind, force: Force) -> &'static str {
-    use Force::*;
+fn piece_path(piece_kind: PieceKind, force: PieceForce) -> &'static str {
+    use PieceForce::*;
     use PieceKind::*;
     match (force, piece_kind) {
         (White, Pawn) => "#white-pawn",
@@ -1898,6 +1922,8 @@ fn piece_path(piece_kind: PieceKind, force: Force) -> &'static str {
         (Black, Empress) => "#black-empress",
         (Black, Amazon) => "#black-amazon",
         (Black, King) => "#black-king",
+        (_, Duck) => "#duck",
+        (Neutral, _) => panic!("There is no neutral representation for {piece_kind:?}"),
     }
 }
 

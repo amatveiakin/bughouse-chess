@@ -1,4 +1,3 @@
-use enum_map::enum_map;
 use indoc::formatdoc;
 use serde::{Deserialize, Serialize};
 use time::macros::format_description;
@@ -112,6 +111,13 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
     }
     match game.chess_rules().fairy_pieces {
         FairyPieces::NoFairy => {}
+        FairyPieces::DuckChess => {
+            // TODO(duck): Improve duck notation. Here's the suggested notation:
+            //   https://duckchess.com/#:~:text=Finally%2C%20the%20standard%20notation%20for,duck%20being%20placed%20at%20g5.
+            // Note that it interacts questionably with bughouse, because it reuses the '@' symbol.
+            // On the other hand, it's still unambiguous, so maybe it's ok.
+            variant.push("DuckChess");
+        }
         FairyPieces::Accolade => {
             variant.push("Accolade");
         }
@@ -182,18 +188,14 @@ fn envoy_notation(envoy: BughouseEnvoy) -> &'static str {
 pub fn export_to_bpgn(_format: BughouseExportFormat, game: &BughouseGame, round: usize) -> String {
     let header = make_bughouse_bpng_header(game, round);
     let mut doc = TextDocument::new();
-    let mut full_turn_idx = enum_map! { _ => 1 };
     for turn_record in game.turn_log() {
-        let TurnRecordExpanded { envoy, turn_expanded, .. } = turn_record;
+        let TurnRecordExpanded { number, envoy, turn_expanded, .. } = turn_record;
         let turn_notation = format!(
             "{}{}. {}",
-            full_turn_idx[envoy.board_idx],
+            number,
             envoy_notation(*envoy),
             turn_expanded.algebraic.format(AlgebraicCharset::Ascii),
         );
-        if envoy.force == Force::Black {
-            full_turn_idx[envoy.board_idx] += 1;
-        }
         doc.push_word(&turn_notation);
     }
     format!("{}{}", header, doc.render())

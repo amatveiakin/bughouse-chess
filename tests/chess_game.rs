@@ -129,3 +129,23 @@ fn fog_of_war_en_passant() {
     let mut game = chess_with_rules(rules);
     replay_log(&mut game, "1.e4 a6 2.e5 d5 3.×d6").unwrap();
 }
+
+#[test]
+fn duck_chess_en_passant() {
+    let rules = ChessRules {
+        fairy_pieces: FairyPieces::DuckChess,
+        ..ChessRules::classic_blitz()
+    };
+    let mut game = chess_with_rules(rules);
+    replay_log(&mut game, "1.e4 @h6 a6 @h3  2.e5 @h6 d5 @h3  3.×d6").unwrap();
+}
+
+#[test]
+fn duck_cannot_stay_in_place() {
+    let rules = ChessRules {
+        fairy_pieces: FairyPieces::DuckChess,
+        ..ChessRules::classic_blitz()
+    };
+    let mut game = chess_with_rules(rules);
+    assert_eq!(replay_log(&mut game, "1.e4 @d4 d5 @d4"), Err(TurnError::MustChangeDuckPosition));
+}

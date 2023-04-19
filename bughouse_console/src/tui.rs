@@ -54,7 +54,9 @@ fn render_reserve(reserve: &Reserve, force: Force) -> String {
     let mut stacks = Vec::new();
     for (piece_kind, &amount) in reserve.iter() {
         if amount > 0 {
-            stacks.push(String::from(piece_to_pictogram(piece_kind, force)).repeat(amount.into()));
+            stacks.push(
+                String::from(piece_to_pictogram(piece_kind, force.into())).repeat(amount.into()),
+            );
         }
     }
     format!(

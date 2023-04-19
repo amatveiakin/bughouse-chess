@@ -30,7 +30,7 @@ use crate::game::{
     get_bughouse_force, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
     BughouseParticipant, TurnRecord, TurnRecordExpanded,
 };
-use crate::piece::{CastleDirection, PieceKind};
+use crate::piece::{CastleDirection, PieceForce, PieceKind};
 use crate::rules::{BughouseRules, ChessRules, ChessVariant};
 
 
@@ -61,6 +61,7 @@ pub enum PieceDragSource {
 pub struct PieceDrag {
     pub board_idx: BughouseBoard,
     pub piece_kind: PieceKind,
+    pub piece_force: PieceForce,
     pub source: PieceDragSource,
 }
 
@@ -211,14 +212,20 @@ impl AlteredGame {
             let wayback_turn_idx = self.wayback_turn_index(board_idx);
             let turn_log = board_turn_log_modulo_wayback(&game, board_idx, wayback_turn_idx);
 
-            if let Some(r) = turn_log.last() {
-                if !my_id.plays_for(r.envoy) || wayback_turn_idx.is_some() {
-                    highlights.extend(get_turn_highlights(
-                        TurnHighlightFamily::LatestTurn,
-                        board_idx,
-                        &r.turn_expanded,
-                        fog_cover_area,
-                    ));
+            if let Some(latest_turn_record) = turn_log.last() {
+                if !my_id.plays_for(latest_turn_record.envoy) || wayback_turn_idx.is_some() {
+                    // Highlight all components of the latest megaturn. Normally this would be exactly one
+                    // turn, but in duck chess it's both the regular piece and the duck.
+                    for r in
+                        turn_log.iter().rev().take_while(|r| r.envoy == latest_turn_record.envoy)
+                    {
+                        highlights.extend(get_turn_highlights(
+                            TurnHighlightFamily::LatestTurn,
+                            board_idx,
+                            &r.turn_expanded,
+                            fog_cover_area,
+                        ));
+                    }
                 }
             }
 
@@ -258,7 +265,7 @@ impl AlteredGame {
                         let game_with_preturns = self.game_with_local_turns(true);
                         for coord in Coord::all() {
                             if let Some(piece) = game_with_preturns.board(board_idx).grid()[coord] {
-                                if piece.force == force {
+                                if piece.force.is_owned_by_or_neutral(force) {
                                     visible.insert(coord);
                                 }
                             }
@@ -315,22 +322,28 @@ impl AlteredGame {
         }
         let game = self.game_with_local_turns(true);
         let board = game.board(board_idx);
-        let (piece_kind, source) = match start {
+        let (piece_kind, piece_force, source) = match start {
             PieceDragStart::Board(coord) => {
                 let piece = board.grid()[coord].ok_or(PieceDragError::PieceNotFound)?;
-                if piece.force != my_envoy.force {
+                if !board.can_potentially_move_piece(my_envoy.force, piece.force) {
                     return Err(PieceDragError::DragForbidden);
                 }
-                (piece.kind, PieceDragSource::Board(coord))
+                (piece.kind, piece.force, PieceDragSource::Board(coord))
             }
             PieceDragStart::Reserve(piece_kind) => {
                 if board.reserve(my_envoy.force)[piece_kind] <= 0 {
                     return Err(PieceDragError::PieceNotFound);
                 }
-                (piece_kind, PieceDragSource::Reserve)
+                let piece_force = piece_kind.reserve_piece_force(my_envoy.force);
+                (piece_kind, piece_force, PieceDragSource::Reserve)
             }
         };
-        self.piece_drag = Some(PieceDrag { board_idx, piece_kind, source });
+        self.piece_drag = Some(PieceDrag {
+            board_idx,
+            piece_kind,
+            piece_force,
+            source,
+        });
         Ok(())
     }
 
@@ -349,10 +362,7 @@ impl AlteredGame {
     pub fn drag_piece_drop(
         &mut self, dest: Coord, promote_to: PieceKind,
     ) -> Result<TurnInput, PieceDragError> {
-        let BughouseParticipant::Player(my_player_id) = self.my_id else {
-            return Err(PieceDragError::DragForbidden);
-        };
-        let PieceDrag { board_idx, piece_kind, source } =
+        let PieceDrag { piece_kind, piece_force, source, .. } =
             self.piece_drag.take().ok_or(PieceDragError::NoDragInProgress)?;
 
         match source {
@@ -362,15 +372,20 @@ impl AlteredGame {
                 if source_coord == dest {
                     return Err(PieceDragError::Cancelled);
                 }
-                // Unwrap ok: cannot start the drag if not playing on this board.
-                let force = my_player_id.envoy_for(board_idx).unwrap().force;
-                let first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
-                let last_row = SubjectiveRow::from_one_based(8).unwrap().to_row(force);
+                if piece_kind == PieceKind::Duck {
+                    return Ok(TurnInput::DragDrop(Turn::PlaceDuck(dest)));
+                }
                 let d_col = dest.col - source_coord.col;
-                let is_castling = piece_kind == King
-                    && (d_col.abs() >= 2)
-                    && (source_coord.row == first_row && dest.row == first_row);
-                let is_promotion = piece_kind == Pawn && dest.row == last_row;
+                let mut is_castling = false;
+                let mut is_promotion = false;
+                if let Ok(force) = piece_force.try_into() {
+                    let first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
+                    let last_row = SubjectiveRow::from_one_based(8).unwrap().to_row(force);
+                    is_castling = piece_kind == King
+                        && (d_col.abs() >= 2)
+                        && (source_coord.row == first_row && dest.row == first_row);
+                    is_promotion = piece_kind == Pawn && dest.row == last_row;
+                }
                 if is_castling {
                     use CastleDirection::*;
                     let dir = if d_col > 0 { HSide } else { ASide };
@@ -384,6 +399,9 @@ impl AlteredGame {
                 }
             }
             PieceDragSource::Reserve => {
+                if piece_kind == PieceKind::Duck {
+                    return Ok(TurnInput::DragDrop(Turn::PlaceDuck(dest)));
+                }
                 Ok(TurnInput::DragDrop(Turn::Drop(TurnDrop { piece_kind, to: dest })))
             }
         }
@@ -492,7 +510,7 @@ impl AlteredGame {
             PieceDragSource::Board(coord) => {
                 // Note: `take` modifies the board
                 let piece = board.grid_mut()[coord].take().ok_or(())?;
-                let expected = (envoy.force, drag.piece_kind);
+                let expected = (drag.piece_force, drag.piece_kind);
                 let actual = (piece.force, piece.kind);
                 if expected != actual {
                     return Err(());
@@ -518,7 +536,7 @@ impl AlteredGame {
         if self.wayback_turn_index[board_idx].is_some() {
             return Err(TurnError::WaybackIsActive);
         }
-        if self.num_preturns_on_board(board_idx) >= 1 {
+        if self.num_preturns_on_board(board_idx) >= self.chess_rules().max_preturns_per_board() {
             return Err(TurnError::PreturnLimitReached);
         }
         let mut game = self.game_with_local_turns(true);

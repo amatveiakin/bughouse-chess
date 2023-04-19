@@ -16,8 +16,8 @@ use crate::coord::{Col, Coord, Row, SubjectiveRow};
 use crate::force::Force;
 use crate::grid::{Grid, GridForRepetitionDraw};
 use crate::piece::{
-    accolade_combine_pieces, CastleDirection, PieceForRepetitionDraw, PieceKind, PieceMovement,
-    PieceOnBoard, PieceOrigin,
+    accolade_combine_pieces, CastleDirection, PieceForRepetitionDraw, PieceForce, PieceKind,
+    PieceMovement, PieceOnBoard, PieceOrigin, PieceReservable,
 };
 use crate::rules::{BughouseRules, ChessRules, DropAggression, FairyPieces, MatchRules};
 use crate::starter::{generate_starting_grid, starting_piece_row, EffectiveStartingPosition};
@@ -64,20 +64,24 @@ fn combine_pieces(
     rules: &ChessRules, first: PieceOnBoard, second: PieceOnBoard,
 ) -> Option<PieceOnBoard> {
     match rules.fairy_pieces {
-        FairyPieces::NoFairy => None,
+        FairyPieces::NoFairy | FairyPieces::DuckChess => None,
         FairyPieces::Accolade => accolade_combine_pieces(first, second),
     }
 }
 
-fn find_king(grid: &Grid, force: Force) -> Option<Coord> {
+fn find_piece(grid: &Grid, predicate: impl Fn(PieceOnBoard) -> bool) -> Option<Coord> {
     for pos in Coord::all() {
         if let Some(piece) = grid[pos] {
-            if piece.kind == PieceKind::King && piece.force == force {
+            if predicate(piece) {
                 return Some(pos);
             }
         }
     }
     None
+}
+
+fn find_king(grid: &Grid, force: Force) -> Option<Coord> {
+    find_piece(grid, |p| p.kind == PieceKind::King && p.force == force.into())
 }
 
 fn should_promote(force: Force, piece_kind: PieceKind, to: Coord) -> bool {
@@ -88,15 +92,22 @@ fn should_promote(force: Force, piece_kind: PieceKind, to: Coord) -> bool {
 fn get_capture(
     grid: &Grid, from: Coord, to: Coord, en_passant_target: Option<Coord>,
 ) -> Option<Coord> {
+    use PieceForce::*;
     let piece = grid[from].unwrap();
     if let Some(target_piece) = grid[to] {
-        if target_piece.force != piece.force {
-            return Some(to);
+        match (piece.force, target_piece.force) {
+            (White, Black) | (Black, White) => return Some(to),
+            (White, White) | (Black, Black) => return None,
+            // Duck cannot be captured. Could require checking piece kind if other neutral pieces
+            // are introduced.
+            (_, Neutral) | (Neutral, _) => return None,
         }
     } else if let Some(en_passant_target) = en_passant_target {
         if piece.kind == PieceKind::Pawn && to == en_passant_target {
-            let row = (en_passant_target.row + direction_forward(piece.force.opponent())).unwrap();
-            return Some(Coord::new(row, en_passant_target.col));
+            if let Ok(force) = Force::try_from(piece.force) {
+                let row = (en_passant_target.row + direction_forward(force.opponent())).unwrap();
+                return Some(Coord::new(row, en_passant_target.col));
+            }
         }
     }
     None
@@ -169,8 +180,11 @@ fn legal_castling_destinations(
     if piece.kind != PieceKind::King {
         return vec![];
     }
+    let Ok(force) = Force::try_from(piece.force) else {
+        return vec![];
+    };
     let mut dst_cols = vec![];
-    for (dir, rook_col) in castling_rights[piece.force] {
+    for (dir, rook_col) in castling_rights[force] {
         if let Some(rook_col) = rook_col {
             if (rook_col - from.col).abs() == 1 {
                 dst_cols.push(rook_col);
@@ -192,7 +206,7 @@ fn legal_castling_destinations(
 fn king_force(grid: &Grid, king_pos: Coord) -> Force {
     let piece = grid[king_pos].unwrap();
     assert_eq!(piece.kind, PieceKind::King);
-    piece.force
+    piece.force.try_into().unwrap()
 }
 
 // Grid is guaratneed to be returned intact.
@@ -205,7 +219,7 @@ fn is_chess_mate_to(
     let force = king_force(grid, king_pos);
     for from in Coord::all() {
         if let Some(piece) = grid[from] {
-            if piece.force == force {
+            if piece.force == force.into() {
                 for to in legal_move_destinations(rules, grid, from, en_passant_target) {
                     let capture_or = get_capture(grid, from, to, en_passant_target);
                     // Zero out capture separately because of en passant.
@@ -235,7 +249,7 @@ fn is_bughouse_mate_to(
         if grid[pos].is_none() {
             let grid = grid.scoped_set(
                 pos,
-                Some(PieceOnBoard::new(PieceKind::Queen, PieceOrigin::Dropped, force)),
+                Some(PieceOnBoard::new(PieceKind::Queen, PieceOrigin::Dropped, force.into())),
             );
             if !is_check_to(rules, &grid, king_pos) {
                 return false;
@@ -249,7 +263,9 @@ fn is_check_to(rules: &ChessRules, grid: &Grid, king_pos: Coord) -> bool {
     let force = king_force(grid, king_pos);
     for from in Coord::all() {
         if let Some(piece) = grid[from] {
-            if piece.force != force && reachability(rules, grid, from, king_pos, true).ok() {
+            if piece.force == force.opponent().into()
+                && reachability(rules, grid, from, king_pos, true).ok()
+            {
                 return true;
             }
         }
@@ -290,6 +306,9 @@ fn generic_reachability(
                     } else {
                         return Blocked;
                     }
+                } else if dst_piece.force == PieceForce::Neutral {
+                    // Duck cannot be captured.
+                    return Blocked;
                 }
             }
             Reachable
@@ -326,7 +345,7 @@ fn generic_reachability_modulo_destination_square(
 }
 
 fn reachability_by_movement_modulo_destination_square(
-    grid: &Grid, from: Coord, to: Coord, force: Force, capturing: Capturing,
+    grid: &Grid, from: Coord, to: Coord, force: PieceForce, capturing: Capturing,
     movement: PieceMovement,
 ) -> Reachability {
     use Reachability::*;
@@ -369,6 +388,7 @@ fn reachability_by_movement_modulo_destination_square(
             Impossible
         }
         PieceMovement::LikePawn => {
+            let force = force.try_into().unwrap(); // unwrap ok: pawns cannot be neutral
             let (d_row, d_col) = to - from;
             let dir_forward = direction_forward(force);
             let src_row_subjective = SubjectiveRow::from_row(from.row, force);
@@ -398,6 +418,13 @@ fn reachability_by_movement_modulo_destination_square(
                 }
             };
             combine_reachability(capturing_reachability, non_capturing_reachability)
+        }
+        PieceMovement::FreeSquare => {
+            if grid[to].is_some() {
+                Blocked
+            } else {
+                Reachable
+            }
         }
     }
 }
@@ -461,21 +488,21 @@ pub struct CastlingRelocations {
 #[derive(Clone, Debug)]
 struct TurnOutcome {
     new_grid: Grid,
-    castling_relocations: Option<CastlingRelocations>,
-    capture: Option<Capture>,
+    facts: TurnFacts,
 }
 
 #[derive(Clone, Debug)]
 pub struct TurnFacts {
     pub castling_relocations: Option<CastlingRelocations>,
     pub capture: Option<Capture>,
+    pub reserve_reduction: Option<PieceKind>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Capture {
     pub from: Coord,
     pub piece_kinds: Vec<PieceKind>,
-    pub force: Force,
+    pub force: PieceForce,
 }
 
 // Note. Generally speaking, it's impossible to detect castling based on king movement in Chess960.
@@ -484,6 +511,12 @@ pub enum Turn {
     Move(TurnMove),
     Drop(TurnDrop),
     Castle(CastleDirection),
+    // Use a special turn kind for duck relocations instead of `Move`/`Drop`, because:
+    //   - Is enables duck preturns. With a regular `Move` duck preturns would fail because
+    //     the duck is no longer in the source location;
+    //   - It gives more control over the algebraic notation (we still don't get the proper
+    //     notation for duck chess, but at least it's something).
+    PlaceDuck(Coord),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -606,6 +639,11 @@ pub enum TurnError {
     DropPosition,
     DropBlocked,
     DropAggression,
+    NotDuckChess,
+    DuckPlacementIsSpecialTurnKind,
+    MustMovePieceBeforeDuck,
+    MustPlaceDuck,
+    MustChangeDuckPosition,
     NoGameInProgress,
     GameOver,
     WaybackIsActive,
@@ -665,6 +703,7 @@ pub struct Board {
     position_count: HashMap<PositionForRepetitionDraw, u32>,
     clock: Clock,
     active_force: Force,
+    is_duck_turn: bool,
 }
 
 impl Board {
@@ -675,6 +714,10 @@ impl Board {
     ) -> Board {
         let time_control = chess_rules.time_control.clone();
         let castling_rights = initial_castling_rights(starting_position);
+        let mut reserves = enum_map! { _ => enum_map!{ _ => 0 } };
+        if chess_rules.fairy_pieces == FairyPieces::DuckChess {
+            reserves[Force::White][PieceKind::Duck] += 1;
+        }
         let mut board = Board {
             match_rules,
             chess_rules,
@@ -684,11 +727,12 @@ impl Board {
             grid: generate_starting_grid(starting_position),
             castling_rights: enum_map! { _ => castling_rights },
             en_passant_target: None,
-            reserves: enum_map! { _ => enum_map!{ _ => 0 } },
+            reserves,
             total_drops: 0,
             position_count: HashMap::new(),
             clock: Clock::new(time_control),
             active_force: Force::White,
+            is_duck_turn: false,
         };
         board.log_position_for_repetition_draw();
         board
@@ -710,6 +754,7 @@ impl Board {
     pub fn clock(&self) -> &Clock { &self.clock }
     pub fn clock_mut(&mut self) -> &mut Clock { &mut self.clock }
     pub fn active_force(&self) -> Force { self.active_force }
+    pub fn is_duck_turn(&self) -> bool { self.is_duck_turn }
 
     pub fn is_bughouse(&self) -> bool { self.bughouse_rules.is_some() }
     pub fn turn_owner(&self, mode: TurnMode) -> Force {
@@ -734,6 +779,14 @@ impl Board {
         }
     }
 
+    // Whether a given side can move a given piece, now or later.
+    pub fn can_potentially_move_piece(&self, envoy_force: Force, piece_force: PieceForce) -> bool {
+        match Force::try_from(piece_force) {
+            Err(()) => true,
+            Ok(force) => force == envoy_force,
+        }
+    }
+
     // Does not test flag. Will not update game status if a player has zero time left.
     pub fn try_turn(
         &mut self, turn: Turn, mode: TurnMode, now: GameInstant,
@@ -742,10 +795,9 @@ impl Board {
         //   - First, check turn validity and determine the outcome (does not change
         //     game state, can fail if the turn is invalid).
         //   - Second, apply the outcome (changes game state, cannot fail).
-        let TurnOutcome { new_grid, castling_relocations, capture } =
-            self.turn_outcome(turn, mode)?;
-        self.apply_turn(turn, mode, new_grid, capture.clone(), now);
-        Ok(TurnFacts { castling_relocations, capture })
+        let TurnOutcome { new_grid, facts } = self.turn_outcome(turn, mode)?;
+        self.apply_turn(turn, mode, new_grid, &facts, now);
+        Ok(facts)
     }
 
     pub fn parse_turn_input(
@@ -780,14 +832,16 @@ impl Board {
         let mut ret = HashSet::new();
         for from in Coord::all() {
             if let Some(piece) = self.grid[from] {
-                if piece.force == force {
+                if piece.force == force.into() {
                     ret.insert(from);
                     ret.extend(visibility_from(
                         &self.chess_rules,
                         &self.grid,
                         from,
                         self.en_passant_target,
-                    ));
+                    ))
+                } else if piece.force == PieceForce::Neutral {
+                    ret.insert(from);
                 }
             }
         }
@@ -811,10 +865,30 @@ impl Board {
         }
     }
 
+    fn update_turn_stage_and_active_force(&mut self, mode: TurnMode) {
+        let next_active_force = match mode {
+            TurnMode::Normal => self.active_force.opponent(),
+            TurnMode::Preturn => self.active_force,
+        };
+        match self.chess_rules.fairy_pieces {
+            FairyPieces::NoFairy | FairyPieces::Accolade => {
+                self.active_force = next_active_force;
+            }
+            FairyPieces::DuckChess => {
+                if self.is_duck_turn {
+                    self.is_duck_turn = false;
+                    self.active_force = next_active_force;
+                } else {
+                    self.is_duck_turn = true;
+                }
+            }
+        }
+    }
+
     fn apply_turn(
-        &mut self, turn: Turn, mode: TurnMode, new_grid: Grid, capture: Option<Capture>,
-        now: GameInstant,
+        &mut self, turn: Turn, mode: TurnMode, new_grid: Grid, facts: &TurnFacts, now: GameInstant,
     ) {
+        assert_eq!(self.is_duck_turn, matches!(turn, Turn::PlaceDuck(_)));
         let force = self.turn_owner(mode);
         match &turn {
             Turn::Move(mv) => {
@@ -824,9 +898,9 @@ impl Board {
                     self.castling_rights[force].clear();
                 } else if piece.kind == PieceKind::Rook && mv.from.row == first_row {
                     remove_castling_right(&mut self.castling_rights[force], mv.from.col);
-                } else if let Some(ref capture) = capture {
+                } else if let Some(capture) = &facts.capture {
                     let opponent = force.opponent();
-                    assert_eq!(capture.force, opponent);
+                    assert_eq!(capture.force, opponent.into());
                     let opponent_first_row =
                         SubjectiveRow::from_one_based(1).unwrap().to_row(opponent);
                     if mv.to.row == opponent_first_row && &capture.piece_kinds == &[PieceKind::Rook]
@@ -841,17 +915,25 @@ impl Board {
             Turn::Castle(_) => {
                 self.castling_rights[force].clear();
             }
+            Turn::PlaceDuck(_) => {}
         }
         self.grid = new_grid;
-        if let Turn::Drop(drop) = turn {
-            let reserve_left = &mut self.reserves[force][drop.piece_kind];
-            assert!(*reserve_left > 0);
-            *reserve_left -= 1;
+        if let Some(piece_kind) = facts.reserve_reduction {
+            let reserve_left = &mut self.reserves[force][piece_kind];
+            if *reserve_left > 0 {
+                *reserve_left -= 1;
+            } else {
+                if mode == TurnMode::Normal {
+                    panic!("Must have verified reserve earlier");
+                }
+            }
         }
 
         match mode {
             TurnMode::Normal => {
-                self.en_passant_target = get_en_passant_target(&self.grid, turn);
+                if !self.is_duck_turn {
+                    self.en_passant_target = get_en_passant_target(&self.grid, turn);
+                }
                 if self.chess_rules.enable_check_and_mate() {
                     let opponent_king_pos = find_king(&self.grid, force.opponent()).unwrap();
                     if self.is_bughouse() {
@@ -874,18 +956,19 @@ impl Board {
                         }
                     }
                 } else {
-                    if let Some(ref capture) = capture {
+                    if let Some(capture) = &facts.capture {
                         if capture.piece_kinds.contains(&PieceKind::King) {
                             self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
                         }
                     }
                 }
-                self.active_force = force.opponent();
+                self.update_turn_stage_and_active_force(mode);
                 self.clock.new_turn(self.active_force, now);
                 self.log_position_for_repetition_draw();
             }
             TurnMode::Preturn => {
                 self.en_passant_target = None;
+                self.update_turn_stage_and_active_force(mode);
             }
         }
     }
@@ -950,10 +1033,17 @@ impl Board {
         let mut new_grid = self.grid.clone();
         let mut capture = None;
         let mut castling_relocations = None;
+        let mut reserve_reduction = None;
         match turn {
             Turn::Move(mv) => {
                 let piece = new_grid[mv.from].ok_or(TurnError::PieceMissing)?;
-                if piece.force != force {
+                if piece.kind == PieceKind::Duck {
+                    return Err(TurnError::DuckPlacementIsSpecialTurnKind);
+                }
+                if self.is_duck_turn {
+                    return Err(TurnError::MustPlaceDuck);
+                }
+                if piece.force != force.into() {
                     return Err(TurnError::WrongTurnOrder);
                 }
                 let mut capture_pos_or = None;
@@ -997,8 +1087,11 @@ impl Board {
                 if should_promote(force, piece.kind, mv.to) {
                     if let Some(promote_to) = mv.promote_to {
                         if promote_to.can_be_promotion_target() {
-                            new_grid[mv.to] =
-                                Some(PieceOnBoard::new(promote_to, PieceOrigin::Promoted, force));
+                            new_grid[mv.to] = Some(PieceOnBoard::new(
+                                promote_to,
+                                PieceOrigin::Promoted,
+                                force.into(),
+                            ));
                         } else {
                             return Err(TurnError::BadPromotion);
                         }
@@ -1024,6 +1117,12 @@ impl Board {
             }
             Turn::Drop(drop) => {
                 let bughouse_rules = self.bughouse_rules.as_ref().ok_or(TurnError::DropFobidden)?;
+                if drop.piece_kind == PieceKind::Duck {
+                    return Err(TurnError::DuckPlacementIsSpecialTurnKind);
+                }
+                if self.is_duck_turn {
+                    return Err(TurnError::MustPlaceDuck);
+                }
                 let to_subjective_row = SubjectiveRow::from_row(drop.to.row, force);
                 if drop.piece_kind == PieceKind::Pawn
                     && (to_subjective_row < bughouse_rules.min_pawn_drop_rank
@@ -1035,7 +1134,9 @@ impl Board {
                 if self.reserves[force][drop.piece_kind] < 1 {
                     return Err(TurnError::DropPieceMissing);
                 }
-                let mut new_piece = PieceOnBoard::new(drop.piece_kind, PieceOrigin::Dropped, force);
+                let piece_force = drop.piece_kind.reserve_piece_force(force);
+                let mut new_piece =
+                    PieceOnBoard::new(drop.piece_kind, PieceOrigin::Dropped, piece_force);
                 if let Some(dst_piece) = new_grid[drop.to] {
                     if let Some(combined_piece) =
                         combine_pieces(&self.chess_rules, new_piece, dst_piece)
@@ -1051,6 +1152,7 @@ impl Board {
                     }
                 }
                 new_grid[drop.to] = Some(new_piece);
+                reserve_reduction = Some(drop.piece_kind);
             }
             Turn::Castle(dir) => {
                 // TODO: More castling tests. Include cases:
@@ -1069,6 +1171,9 @@ impl Board {
                 //      both when it's possible (the other rook is further away)
                 //      and impossible (the other rook is in the way).
 
+                if self.is_duck_turn {
+                    return Err(TurnError::MustPlaceDuck);
+                }
                 let row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
                 // King can be missing in case of pre-turns.
                 let king_from =
@@ -1127,13 +1232,47 @@ impl Board {
                     rook: (rook_from, rook_to),
                 });
             }
+            Turn::PlaceDuck(to) => {
+                if self.chess_rules.fairy_pieces != FairyPieces::DuckChess {
+                    return Err(TurnError::NotDuckChess);
+                }
+                if !self.is_duck_turn {
+                    return Err(TurnError::MustMovePieceBeforeDuck);
+                }
+                let from = find_piece(&new_grid, |p| p.kind == PieceKind::Duck);
+                let duck = if let Some(from) = from {
+                    if to == from {
+                        return Err(TurnError::MustChangeDuckPosition);
+                    }
+                    new_grid[from].take().unwrap()
+                } else {
+                    if self.reserves[force][PieceKind::Duck] == 0 && mode == TurnMode::Normal {
+                        // This shouldn't really happen.
+                        return Err(TurnError::DropPieceMissing);
+                    }
+                    reserve_reduction = Some(PieceKind::Duck);
+                    PieceOnBoard::new(PieceKind::Duck, PieceOrigin::Dropped, PieceForce::Neutral)
+                };
+                if new_grid[to].is_some() {
+                    return Err(TurnError::PathBlocked);
+                }
+                new_grid[to] = Some(duck);
+            }
         }
-        Ok(TurnOutcome { new_grid, castling_relocations, capture })
+        let facts = TurnFacts {
+            castling_relocations,
+            capture,
+            reserve_reduction,
+        };
+        Ok(TurnOutcome { new_grid, facts })
     }
 
     pub fn receive_capture(&mut self, capture: &Capture) {
         for &kind in capture.piece_kinds.iter() {
-            self.reserves[capture.force][kind] += 1;
+            assert!(kind.reservable() != PieceReservable::Never);
+            // Unwrap ok: duck cannot be captured.
+            let force = capture.force.try_into().unwrap();
+            self.reserves[force][kind] += 1;
         }
     }
 
@@ -1144,13 +1283,13 @@ impl Board {
                 TurnMode::Normal => {
                     let force = self.turn_owner(mode);
                     let piece = self.grid[mv.from].ok_or(TurnError::PieceMissing)?;
-                    if piece.force != force {
+                    if piece.force != force.into() {
                         return Err(TurnError::WrongTurnOrder);
                     }
                     if piece.kind == PieceKind::King {
                         if let Some(dst_piece) = self.grid[mv.to] {
                             let first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
-                            let maybe_is_special_castling = dst_piece.force == force
+                            let maybe_is_special_castling = dst_piece.force == force.into()
                                 && dst_piece.kind == PieceKind::Rook
                                 && mv.to.row == first_row;
                             if maybe_is_special_castling {
@@ -1187,11 +1326,14 @@ impl Board {
                 if mv.promote_to.is_some() != should_promote(force, mv.piece_kind, mv.to) {
                     return Err(TurnError::BadPromotion);
                 }
+                if self.is_duck_turn {
+                    return Err(TurnError::MustPlaceDuck);
+                }
                 let mut turn = None;
                 let mut potentially_reachable = false;
                 for from in Coord::all() {
                     if let Some(piece) = self.grid[from] {
-                        if (piece.force == force
+                        if (piece.force == force.into()
                             && piece.kind == mv.piece_kind
                             && mv.from_row.unwrap_or(from.row) == from.row
                             && mv.from_col.unwrap_or(from.col) == from.col)
@@ -1269,6 +1411,7 @@ impl Board {
                 Ok(Turn::Drop(TurnDrop { piece_kind: drop.piece_kind, to: drop.to }))
             }
             AlgebraicTurn::Castle(dir) => Ok(Turn::Castle(*dir)),
+            AlgebraicTurn::PlaceDuck(to) => Ok(Turn::PlaceDuck(*to)),
         }
     }
 
@@ -1330,6 +1473,7 @@ impl Board {
                 to: drop.to,
             })),
             Turn::Castle(dir) => Some(AlgebraicTurn::Castle(dir)),
+            Turn::PlaceDuck(to) => Some(AlgebraicTurn::PlaceDuck(to)),
         }
     }
 }

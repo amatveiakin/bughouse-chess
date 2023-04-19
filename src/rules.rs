@@ -52,6 +52,24 @@ pub enum ChessVariant {
 pub enum FairyPieces {
     NoFairy,
 
+    // A duck occupies one square on the board and cannot be captured. Each turn consists of
+    // two parts. First, a regular bughouse move. Second, moving the duck to any free square
+    // on the board.
+    //
+    // We currently record duck relocation as a separate turn. An alternative would be to
+    // pack both parts in a single turns. There are different trade-offs associated with each
+    // option, so this decision could be revised.
+    // Pros of a single combined turn:
+    //   - Can undo subturns until the superturn if finished;
+    //   - Can read/parse tense algebraic notation where duck relocation is appended to the turn;
+    //   - Easier to make sure that a single full local turn/preturn is allowed.
+    // Pros of multiple consecutive turn:
+    //   - The inability to undo subturns can be viewed as a feature;
+    //   - Simple Turn/TurnInput structure;
+    //   - Can see opponent's subturns immediately;
+    //   - Less risk of history horizontal overflow.
+    DuckChess,
+
     // Can "glue" a Knight to a Bishop, a Rook or a Queen by moving one piece onto another
     // or dropping one piece onto another. Could move a Knight onto a piece, could move a
     // piece onto a Knight - both are fine. When captured the piece falls back apart. Other
@@ -134,9 +152,18 @@ impl ChessRules {
     // end with a mate.
     // If false, there are no checks and mates. The game ends when the king is captured.
     pub fn enable_check_and_mate(&self) -> bool {
-        match self.chess_variant {
-            ChessVariant::Standard => true,
-            ChessVariant::FogOfWar => false,
+        match (self.chess_variant, self.fairy_pieces) {
+            (ChessVariant::Standard, FairyPieces::NoFairy | FairyPieces::Accolade) => true,
+            (ChessVariant::FogOfWar, _) | (_, FairyPieces::DuckChess) => false,
+        }
+    }
+
+    // Conceptually we always allow a single preturn, but this may technically require several
+    // preturns in game modes where each turn has multiple stages.
+    pub fn max_preturns_per_board(&self) -> usize {
+        match self.fairy_pieces {
+            FairyPieces::DuckChess => 2,
+            _ => 1,
         }
     }
 }
@@ -183,10 +210,21 @@ impl Rules {
         if self.chess_rules.chess_variant == ChessVariant::FogOfWar
             && self.bughouse_rules.drop_aggression != DropAggression::MateAllowed
         {
-            return Err("Fog-of-war variant is played until a king is captured. \
+            return Err("Fog-of-war chess is played until a king is captured. \
                 Drop aggression must be set to \"mate allowed\""
                 .to_owned());
         }
+        if self.chess_rules.fairy_pieces == FairyPieces::DuckChess
+            && self.bughouse_rules.drop_aggression != DropAggression::MateAllowed
+        {
+            return Err("Duck chess is played until a king is captured. \
+                Drop aggression must be set to \"mate allowed\""
+                .to_owned());
+        }
+        assert!(
+            self.chess_rules.enable_check_and_mate()
+                || self.bughouse_rules.drop_aggression == DropAggression::MateAllowed
+        );
         Ok(())
     }
 
@@ -206,6 +244,7 @@ impl Rules {
         };
         let fairy_pieces = match self.chess_rules.fairy_pieces {
             FairyPieces::NoFairy => "None",
+            FairyPieces::DuckChess => "Duck chess",
             FairyPieces::Accolade => "Accolade",
         };
         let time_control = self.chess_rules.time_control.to_string();

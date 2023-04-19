@@ -96,11 +96,10 @@ impl fmt::Debug for GridForRepetitionDraw {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::force::Force;
-    use crate::piece::{PieceKind, PieceOrigin};
+    use crate::piece::{PieceForce, PieceKind, PieceOrigin};
 
     fn make_piece(kind: PieceKind) -> PieceOnBoard {
-        PieceOnBoard::new(kind, PieceOrigin::Innate, Force::White)
+        PieceOnBoard::new(kind, PieceOrigin::Innate, PieceForce::White)
     }
 
     #[test]

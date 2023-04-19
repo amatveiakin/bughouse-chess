@@ -36,6 +36,7 @@ pub enum PieceMovement {
         max_leaps: Option<u8>, // always >= 2
     },
     LikePawn,
+    FreeSquare, // move to any square; cannot capture
 }
 
 #[derive(
@@ -51,6 +52,17 @@ pub enum PieceKind {
     Empress,  // == Rook + Knight
     Amazon,   // == Queen + Knight
     King,
+    Duck,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+pub enum PieceForce {
+    White,
+    Black,
+    // Piece that does belong to either side. See also: `PieceKind::is_neutral`.
+    // Note that for pieces in reserve the owner isn't tracked in quite the same
+    // way as for pieces on board.
+    Neutral,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -66,7 +78,7 @@ pub enum PieceOrigin {
 pub struct PieceOnBoard {
     pub kind: PieceKind,
     pub origin: PieceOrigin,
-    pub force: Force,
+    pub force: PieceForce,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, EnumIter, Serialize, Deserialize)]
@@ -79,7 +91,23 @@ pub enum CastleDirection {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct PieceForRepetitionDraw {
     pub kind: PieceKind,
-    pub force: Force,
+    pub force: PieceForce,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum PieceReservable {
+    // A piece can show up in reserve during the course of a normal play. UIs that support
+    // drag&drop should reserve space for such pieces in order to reduce surprise.
+    Always,
+
+    // A piece can never be in reserve. Game engine could panic if it is.
+    Never,
+
+    // A piece can be in reserve only in special cases, e.g. before the game starts or after
+    // the game ends. UIs should not reserve space for such pieces. Adding such a piece to
+    // reserve in the middle of the game can lead to poor user experience when the user wants
+    // to drag a piece, but it changes last moment.
+    InSpecialCases,
 }
 
 
@@ -149,6 +177,7 @@ impl PieceKind {
             PieceKind::Empress => &[leap!(1, 2), ride!(0, 1)],
             PieceKind::Amazon => &[leap!(1, 2), ride!(1, 1), ride!(0, 1)],
             PieceKind::King => &[leap!(1, 1), leap!(0, 1)],
+            PieceKind::Duck => &[PieceMovement::FreeSquare],
         }
     }
 
@@ -162,6 +191,7 @@ impl PieceKind {
         PieceKind::Empress : 'E',
         PieceKind::Amazon : 'A',
         PieceKind::King : 'K',
+        PieceKind::Duck : 'D',
     );
 
     pub fn to_algebraic_for_move(self) -> String {
@@ -172,18 +202,36 @@ impl PieceKind {
         }
     }
 
-    pub fn can_be_in_reserve(self) -> bool {
+    pub fn is_neutral(self) -> bool {
         use PieceKind::*;
         match self {
-            Cardinal | Empress | Amazon | King => false,
-            Pawn | Knight | Bishop | Rook | Queen => true,
+            Duck => true,
+            Pawn | Knight | Bishop | Rook | Queen | Cardinal | Empress | Amazon | King => false,
+        }
+    }
+
+    pub fn reserve_piece_force(self, reserve_owner: Force) -> PieceForce {
+        if self.is_neutral() {
+            PieceForce::Neutral
+        } else {
+            reserve_owner.into()
+        }
+    }
+
+    pub fn reservable(self) -> PieceReservable {
+        use PieceKind::*;
+        match self {
+            Pawn | Knight | Bishop | Rook | Queen => PieceReservable::Always,
+            Cardinal | Empress | Amazon => PieceReservable::Never,
+            King => PieceReservable::InSpecialCases, // after game over in games with kind capture
+            Duck => PieceReservable::InSpecialCases, // before game start
         }
     }
 
     pub fn can_be_promotion_target(self) -> bool {
         use PieceKind::*;
         match self {
-            Pawn | Cardinal | Empress | Amazon | King => false,
+            Pawn | Cardinal | Empress | Amazon | King | Duck => false,
             Knight | Bishop | Rook | Queen => true,
         }
     }
@@ -203,7 +251,7 @@ pub fn accolade_combine_piece_kinds(first: PieceKind, second: PieceKind) -> Opti
     };
     match base_piece {
         Knight => None,                      // knight itself
-        Pawn | King => None,                 // not combinable
+        Pawn | King | Duck => None,          // not combinable
         Cardinal | Empress | Amazon => None, // already combined
         Bishop => Some(Cardinal),
         Rook => Some(Empress),
@@ -227,8 +275,8 @@ pub fn accolade_combine_pieces(first: PieceOnBoard, second: PieceOnBoard) -> Opt
     return Some(PieceOnBoard { kind, origin, force });
 }
 
-pub fn piece_to_pictogram(piece_kind: PieceKind, force: Force) -> char {
-    use self::Force::*;
+pub fn piece_to_pictogram(piece_kind: PieceKind, force: PieceForce) -> char {
+    use self::PieceForce::*;
     use self::PieceKind::*;
     match (force, piece_kind) {
         (White, Pawn) => '♙',
@@ -243,7 +291,38 @@ pub fn piece_to_pictogram(piece_kind: PieceKind, force: Force) -> char {
         (Black, Rook) => '♜',
         (Black, Queen) => '♛',
         (Black, King) => '♚',
+        // Normally `(Neutral, Duck)` would suffice. However a duck could be considered
+        // to have an owner when it's in reserve in the beginning of the game.
+        (_, Duck) => piece_kind.to_full_algebraic(),
         (White, _) => piece_kind.to_full_algebraic().to_ascii_uppercase(),
         (Black, _) => piece_kind.to_full_algebraic().to_ascii_lowercase(),
+        (Neutral, _) => panic!("There is no neutral representation for {piece_kind:?}"),
+    }
+}
+
+impl PieceForce {
+    pub fn is_owned_by_or_neutral(self, force: Force) -> bool {
+        self == force.into() || self == PieceForce::Neutral
+    }
+}
+
+impl From<Force> for PieceForce {
+    fn from(force: Force) -> Self {
+        match force {
+            Force::White => PieceForce::White,
+            Force::Black => PieceForce::Black,
+        }
+    }
+}
+
+impl TryFrom<PieceForce> for Force {
+    type Error = ();
+
+    fn try_from(piece_force: PieceForce) -> Result<Self, Self::Error> {
+        match piece_force {
+            PieceForce::White => Ok(Force::White),
+            PieceForce::Black => Ok(Force::Black),
+            PieceForce::Neutral => Err(()),
+        }
     }
 }

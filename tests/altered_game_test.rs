@@ -25,6 +25,18 @@ fn default_game() -> BughouseGame {
     )
 }
 
+fn duck_chess_game() -> BughouseGame {
+    BughouseGame::new(
+        MatchRules::unrated(),
+        ChessRules {
+            fairy_pieces: FairyPieces::DuckChess,
+            ..ChessRules::classic_blitz()
+        },
+        BughouseRules::chess_com(),
+        &sample_bughouse_players(),
+    )
+}
+
 fn fog_of_war_bughouse_game() -> BughouseGame {
     BughouseGame::new(
         MatchRules::unrated(),
@@ -47,6 +59,12 @@ macro_rules! turn_highlight {
             item: TurnHighlightItem::$item,
         }
     };
+}
+
+fn turn_highlights_sorted(alt_game: &AlteredGame) -> Vec<TurnHighlight> {
+    let mut highlights = alt_game.turn_highlights();
+    highlights.sort_by_key(|h| (h.board_idx, h.coord.row_col()));
+    highlights
 }
 
 const T0: GameInstant = GameInstant::game_start();
@@ -157,9 +175,7 @@ fn turn_highlights() {
     alt_game.apply_remote_turn(envoy!(White B), &alg("xd5"), T0).unwrap();
     alt_game.try_local_turn(A, alg("e4"), T0).unwrap();
     alt_game.try_local_turn(A, alg("xd5"), T0).unwrap();
-    let mut highlights = alt_game.turn_highlights();
-    highlights.sort_by_key(|h| (h.board_idx, h.coord.row_col()));
-    assert_eq!(highlights, vec![
+    assert_eq!(turn_highlights_sorted(&alt_game), vec![
         turn_highlight!(A E4 : BelowFog Preturn MoveFrom),
         turn_highlight!(A D5 : BelowFog Preturn MoveTo), // don't use `Capture` for preturns
         turn_highlight!(B E4 : BelowFog LatestTurn MoveFrom),
@@ -181,6 +197,79 @@ fn double_play() {
 }
 
 #[test]
+fn cannot_move_duck_instead_of_piece() {
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), duck_chess_game());
+    assert_eq!(
+        alt_game.try_local_turn(A, drag_move!(@ A6), T0),
+        Err(TurnError::MustMovePieceBeforeDuck)
+    );
+    alt_game.try_local_turn(A, drag_move!(E2 -> E4), T0).unwrap();
+    alt_game.try_local_turn(A, drag_move!(@ B6), T0).unwrap();
+    // Must order must be followed for preturns as well:
+    assert_eq!(
+        alt_game.try_local_turn(A, drag_move!(@ C6), T0),
+        Err(TurnError::MustMovePieceBeforeDuck)
+    );
+}
+
+#[test]
+fn cannot_move_piece_instead_of_duck() {
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), duck_chess_game());
+    alt_game.try_local_turn(A, drag_move!(E2 -> E4), T0).unwrap();
+    assert_eq!(
+        alt_game.try_local_turn(A, drag_move!(D2 -> D4), T0),
+        Err(TurnError::MustPlaceDuck)
+    );
+    alt_game.try_local_turn(A, drag_move!(@ A6), T0).unwrap();
+    alt_game.try_local_turn(A, drag_move!(F2 -> F4), T0).unwrap();
+    // Must order must be followed for preturns as well:
+    assert_eq!(
+        alt_game.try_local_turn(A, drag_move!(G2 -> G4), T0),
+        Err(TurnError::MustPlaceDuck)
+    );
+}
+
+#[test]
+fn two_preturns_allowed_in_duck_chess() {
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), duck_chess_game());
+    alt_game.try_local_turn(A, drag_move!(E2 -> E4), T0).unwrap();
+    alt_game.try_local_turn(A, drag_move!(@ A6), T0).unwrap();
+    alt_game.try_local_turn(A, drag_move!(D2 -> D4), T0).unwrap();
+    alt_game.try_local_turn(A, drag_move!(@ B6), T0).unwrap();
+    // Third preturn is still not allowed.
+    assert_eq!(
+        alt_game.try_local_turn(A, drag_move!(F2 -> F4), T0),
+        Err(TurnError::PreturnLimitReached)
+    );
+}
+
+#[test]
+fn turn_highlights_in_duck_chess() {
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), duck_chess_game());
+    alt_game.apply_remote_turn(envoy!(White A), &alg("e4"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &alg("@c6"), T0).unwrap();
+
+    // Highlight the first part of the megaturn as soon as it's made.
+    alt_game.apply_remote_turn(envoy!(Black A), &alg("d5"), T0).unwrap();
+    assert_eq!(turn_highlights_sorted(&alt_game), vec![
+        turn_highlight!(A D5 : BelowFog LatestTurn MoveTo),
+        turn_highlight!(A D7 : BelowFog LatestTurn MoveFrom),
+    ]);
+
+    // Both the normal piece and the duck should be highlighted when the megaturn is competed.
+    alt_game.apply_remote_turn(envoy!(Black A), &alg("@c3"), T0).unwrap();
+    assert_eq!(turn_highlights_sorted(&alt_game), vec![
+        turn_highlight!(A C3 : BelowFog LatestTurn Drop),
+        turn_highlight!(A D5 : BelowFog LatestTurn MoveTo),
+        turn_highlight!(A D7 : BelowFog LatestTurn MoveFrom),
+    ]);
+
+    // No highlights in the midst of the current player turn.
+    alt_game.apply_remote_turn(envoy!(White A), &alg("Nf3"), T0).unwrap();
+    assert!(turn_highlights_sorted(&alt_game).is_empty());
+}
+
+#[test]
 fn preturn_fog_of_war() {
     let mut alt_game =
         AlteredGame::new(as_single_player(envoy!(Black A)), fog_of_war_bughouse_game());
@@ -192,6 +281,47 @@ fn preturn_fog_of_war() {
     alt_game.apply_remote_turn(envoy!(White A), &alg("Nc3"), T0).unwrap();
     assert!(!alt_game.fog_of_war_area(A).contains(&Coord::E5));
     assert!(!alt_game.fog_of_war_area(A).contains(&Coord::E4));
+}
+
+#[test]
+fn duck_visible_in_the_fog() {
+    let game = BughouseGame::new(
+        MatchRules::unrated(),
+        ChessRules {
+            chess_variant: ChessVariant::FogOfWar,
+            fairy_pieces: FairyPieces::DuckChess,
+            ..ChessRules::classic_blitz()
+        },
+        BughouseRules::chess_com(),
+        &sample_bughouse_players(),
+    );
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), game);
+    alt_game.apply_remote_turn(envoy!(White A), &alg("e3"), T0).unwrap();
+    assert!(alt_game.fog_of_war_area(A).contains(&Coord::D6));
+    alt_game.apply_remote_turn(envoy!(White A), &alg("@d6"), T0).unwrap();
+    assert!(!alt_game.fog_of_war_area(A).contains(&Coord::D6));
+}
+
+#[test]
+fn wayback_turn_highlight() {
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), default_game());
+    alt_game.apply_remote_turn(envoy!(White A), &alg("e4"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &alg("e5"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &alg("Nc3"), T0).unwrap();
+    // Normally we don't highlight turns by the current player ...
+    assert!(turn_highlights_sorted(&alt_game).is_empty());
+    alt_game.apply_remote_turn(envoy!(Black A), &alg("Nf6"), T0).unwrap();
+    alt_game.set_status(BughouseGameStatus::Victory(Team::Red, VictoryReason::Resignation), T0);
+
+    alt_game.wayback_to_turn(A, Some("00000002-w".to_owned()));
+    // ... but we do if we're waybacking.
+    assert_eq!(turn_highlights_sorted(&alt_game), vec![
+        turn_highlight!(A B1 : BelowFog LatestTurn MoveFrom),
+        turn_highlight!(A C3 : BelowFog LatestTurn MoveTo),
+    ]);
+    // Sanity check: verify that we went to the right turn.
+    assert!(alt_game.local_game().board(A).grid()[Coord::C3].is_some());
+    assert!(alt_game.local_game().board(A).grid()[Coord::F6].is_none());
 }
 
 #[test]

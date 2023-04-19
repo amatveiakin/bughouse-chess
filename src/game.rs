@@ -78,6 +78,7 @@ impl TurnRecordExpanded {
         }
     }
 
+    // Improvement potential: Can we simply use the index in the `turn_log`?
     // Lexicographics order of indices is guaranteed to correspond to turn order.
     pub fn index(&self) -> String {
         // Note. Black suffix should be lexicographically greater than white suffix.
@@ -86,7 +87,9 @@ impl TurnRecordExpanded {
             Force::White => "w",
             Force::Black => "x",
         };
-        format!("{:08}-{}", self.number, force)
+        let id_duck_turn = matches!(self.turn_expanded.turn, Turn::PlaceDuck(_));
+        let duck_suffix = if id_duck_turn { "d" } else { "" };
+        format!("{:08}-{}{}", self.number, force, duck_suffix)
     }
 }
 
@@ -125,7 +128,7 @@ impl ChessGame {
 
     pub fn test_flag(&mut self, now: GameInstant) { self.board.test_flag(now); }
 
-    // Function from `try_turn...` familiy do not test flag internally. They will not update
+    // Function from `try_turn...` family do not test flag internally. They will not update
     // game status if a player has zero time left.
     // Thus it's recommended to `test_flag` first.
     pub fn try_turn(
@@ -499,6 +502,7 @@ impl BughouseGame {
         let board = &mut self.boards[board_idx];
         let envoy = BughouseEnvoy { board_idx, force: board.turn_owner(mode) };
         let turn = board.parse_turn_input(turn_input, mode)?;
+        let is_duck_turn = board.is_duck_turn();
         // `turn_to_algebraic` must be called before `try_turn`, because algebraic form depend
         // on the current position.
         let turn_algebraic = board.turn_to_algebraic(turn, mode, AlgebraicDetails::ShortAlgebraic);
@@ -520,7 +524,8 @@ impl BughouseGame {
             .rev()
             .find(|record| record.envoy.board_idx == board_idx)
             .map_or(0, |record| record.number);
-        let inc_number = envoy.force == Force::White || mode == TurnMode::Preturn;
+        let inc_number =
+            (envoy.force == Force::White || mode == TurnMode::Preturn) && !is_duck_turn;
         let number = if inc_number { prev_number + 1 } else { prev_number };
         let turn_expanded = make_turn_expanded(turn, turn_algebraic, turn_facts);
         self.turn_log.push(TurnRecordExpanded {
@@ -624,6 +629,9 @@ fn make_turn_expanded(turn: Turn, algebraic: AlgebraicTurn, facts: TurnFacts) ->
             let castling_relocations = facts.castling_relocations.unwrap();
             relocation = Some(castling_relocations.king);
             relocation_extra = Some(castling_relocations.rook);
+        }
+        Turn::PlaceDuck(to) => {
+            drop = Some(to);
         }
     }
     TurnExpanded {

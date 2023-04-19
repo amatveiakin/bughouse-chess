@@ -7,7 +7,7 @@ use bughouse_chess::*;
 #[derive(Clone, Copy, Debug)]
 pub struct PieceMatcher {
     pub kind: PieceKind,
-    pub force: Force,
+    pub force: PieceForce,
 }
 
 pub trait PieceIs {
@@ -28,7 +28,7 @@ impl PieceIs for Option<PieceOnBoard> {
 macro_rules! piece {
     ($force:ident $kind:ident) => {
         common::PieceMatcher {
-            force: bughouse_chess::Force::$force,
+            force: bughouse_chess::PieceForce::$force,
             kind: bughouse_chess::PieceKind::$kind,
         }
     };
@@ -55,6 +55,17 @@ macro_rules! drag_move {
             to: bughouse_chess::Coord::$to,
             promote_to: None,
         }))
+    };
+    ($piece_kind:ident @ $to:ident) => {
+        bughouse_chess::TurnInput::DragDrop(bughouse_chess::Turn::Drop(bughouse_chess::TurnDrop {
+            piece_kind: bughouse_chess::PieceKind::$piece_kind,
+            to: bughouse_chess::Coord::$to,
+        }))
+    };
+    (@ $to:ident) => {
+        bughouse_chess::TurnInput::DragDrop(bughouse_chess::Turn::PlaceDuck(
+            bughouse_chess::Coord::$to,
+        ))
     };
 }
 
