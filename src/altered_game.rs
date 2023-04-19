@@ -8,23 +8,31 @@
 // Only one preturn is allowed, but it's possible to have two unconfirmed local turns: one
 // normal and one preturn.
 
+// Improvement potential: Reduce the number of times large entities are recomputed
+// (e.g.`turn_highlights` recomputes `local_game` and `fog_of_war_area`, which are presumably
+// already available by the time it's used). Ideas:
+//   - Cache latest result and reevaluate when invalidated;
+//   - Replace all existing read-only methods with one "get visual representation" method that
+//     contain all the information required in order to render the game.
+
 use std::cmp;
 use std::collections::HashSet;
 use std::rc::Rc;
 
 use enum_map::{enum_map, EnumMap};
+use itertools::Itertools;
 use strum::IntoEnumIterator;
 
-use crate::board::{Turn, TurnDrop, TurnError, TurnInput, TurnMode, TurnMove};
+use crate::board::{Turn, TurnDrop, TurnError, TurnExpanded, TurnInput, TurnMode, TurnMove};
 use crate::clock::GameInstant;
 use crate::coord::{Coord, SubjectiveRow};
 use crate::display::Perspective;
 use crate::game::{
-    get_bughouse_force, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
+    get_bughouse_force, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
+    BughouseParticipant,
 };
 use crate::piece::{CastleDirection, PieceKind};
 use crate::rules::{BughouseRules, ChessRules, ChessVariant};
-use crate::BughouseBoard;
 
 
 #[derive(Clone, Copy, Debug)]
@@ -55,6 +63,35 @@ pub struct PieceDrag {
     pub board_idx: BughouseBoard,
     pub piece_kind: PieceKind,
     pub source: PieceDragSource,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TurnHighlightLayer {
+    BelowFog,
+    AboveFog,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TurnHighlightFamily {
+    Preturn,
+    LatestTurn,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TurnHighlightItem {
+    MoveFrom,
+    MoveTo,
+    Drop,
+    Capture,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct TurnHighlight {
+    pub board_idx: BughouseBoard,
+    pub coord: Coord,
+    pub layer: TurnHighlightLayer,
+    pub family: TurnHighlightFamily,
+    pub item: TurnHighlightItem,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -195,6 +232,58 @@ impl AlteredGame {
         self.apply_drag(&mut game).unwrap();
         game
     }
+
+    pub fn turn_highlights(&self) -> Vec<TurnHighlight> {
+        let my_id = self.my_id;
+        let game = self.local_game();
+        let mut highlights = vec![];
+
+        for board_idx in BughouseBoard::iter() {
+            let see_though_fog = self.see_though_fog();
+            let empty_area = HashSet::new();
+            let fog_render_area = self.fog_of_war_area(board_idx);
+            let fog_cover_area = if see_though_fog { &empty_area } else { &fog_render_area };
+
+            let wayback_turn_idx = self.wayback_turn_index(board_idx);
+
+            let latest_turn_record = match wayback_turn_idx {
+                Some(turn_idx) => game
+                    .turn_log()
+                    .iter()
+                    .find(|r| r.envoy.board_idx == board_idx && r.index().as_str() >= turn_idx),
+                None => {
+                    game.turn_log().iter().rev().find(|record| record.envoy.board_idx == board_idx)
+                }
+            };
+
+            if let Some(r) = latest_turn_record {
+                if !my_id.plays_for(r.envoy) || wayback_turn_idx.is_some() {
+                    highlights.extend(get_turn_highlights(
+                        TurnHighlightFamily::LatestTurn,
+                        board_idx,
+                        &r.turn_expanded,
+                        fog_cover_area,
+                    ));
+                }
+                if r.mode == TurnMode::Preturn {
+                    highlights.extend(get_turn_highlights(
+                        TurnHighlightFamily::Preturn,
+                        board_idx,
+                        &r.turn_expanded,
+                        fog_cover_area,
+                    ));
+                }
+            }
+        }
+        highlights
+            .into_iter()
+            .into_grouping_map_by(|h| (h.board_idx, h.coord))
+            .max_by_key(|_, h| turn_highlight_z_index(h))
+            .into_values()
+            .collect()
+    }
+
+    pub fn see_though_fog(&self) -> bool { !self.is_active() }
 
     pub fn fog_of_war_area(&self, board_idx: BughouseBoard) -> HashSet<Coord> {
         match self.chess_rules().chess_variant {
@@ -459,4 +548,76 @@ impl AlteredGame {
         };
         Ok(mode)
     }
+}
+
+// Tuple values are compared lexicographically. Higher values overshadow lower values.
+fn turn_highlight_z_index(highlight: &TurnHighlight) -> (u8, u8, u8) {
+    (
+        match highlight.layer {
+            TurnHighlightLayer::AboveFog => 1,
+            TurnHighlightLayer::BelowFog => 0,
+        },
+        match highlight.family {
+            TurnHighlightFamily::Preturn => 1,
+            TurnHighlightFamily::LatestTurn => 0,
+        },
+        match highlight.item {
+            // Capture coincides with MoveTo (except for en-passant) and should take priority.
+            // Whether MoveTo is above MoveFrom determines how sequences of preturns with a single
+            // piece are rendered. The current approach if to highlight intermediate squares as
+            // MoveTo, but this is a pretty arbitrary choice.
+            TurnHighlightItem::Capture => 3,
+            TurnHighlightItem::MoveTo => 2,
+            TurnHighlightItem::Drop => 1,
+            TurnHighlightItem::MoveFrom => 0,
+        },
+    )
+}
+
+fn get_turn_highlight_basis(turn_expanded: &TurnExpanded) -> Vec<(TurnHighlightItem, Coord)> {
+    let mut highlights = vec![];
+    if let Some((from, to)) = turn_expanded.relocation {
+        highlights.push((TurnHighlightItem::MoveFrom, from));
+        highlights.push((TurnHighlightItem::MoveTo, to));
+    }
+    if let Some((from, to)) = turn_expanded.relocation_extra {
+        highlights.push((TurnHighlightItem::MoveFrom, from));
+        highlights.push((TurnHighlightItem::MoveTo, to));
+    }
+    if let Some(drop) = turn_expanded.drop {
+        highlights.push((TurnHighlightItem::Drop, drop));
+    }
+    if let Some(ref capture) = turn_expanded.capture {
+        highlights.push((TurnHighlightItem::Capture, capture.from));
+    }
+    highlights
+}
+
+fn get_turn_highlights(
+    family: TurnHighlightFamily, board_idx: BughouseBoard, turn: &TurnExpanded,
+    fog_of_war_area: &HashSet<Coord>,
+) -> Vec<TurnHighlight> {
+    get_turn_highlight_basis(turn)
+        .into_iter()
+        .filter_map(|(item, coord)| {
+            // Highlights of all visible squares should be rendered below the fog. Semantically
+            // there is no difference: the highlight will be visible anyway. But visually it's more
+            // appealing in cases when a highlight overlaps with a fog sprite extending from a
+            // neighboring square.
+            let mut layer = TurnHighlightLayer::BelowFog;
+
+            // Check whether the highlight is visible in the fog.
+            if fog_of_war_area.contains(&coord) {
+                if item == TurnHighlightItem::Capture {
+                    // A piece owned by the current player before it was captured. Location
+                    // information is known to the player.
+                    layer = TurnHighlightLayer::AboveFog;
+                } else {
+                    return None;
+                }
+            }
+
+            Some(TurnHighlight { family, item, board_idx, coord, layer })
+        })
+        .collect()
 }

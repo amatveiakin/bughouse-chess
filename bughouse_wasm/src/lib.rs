@@ -715,7 +715,7 @@ impl WebClient {
         update_scores(&mtch.scores, &mtch.participants, game.status(), teaming, perspective)?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |force| my_id.plays_for(BughouseEnvoy { board_idx, force });
-            let see_though_fog = !game.is_active();
+            let see_though_fog = alt_game.see_though_fog();
             let empty_area = HashSet::new();
             let fog_render_area = alt_game.fog_of_war_area(board_idx);
             let fog_cover_area = if see_though_fog { &empty_area } else { &fog_render_area };
@@ -815,36 +815,7 @@ impl WebClient {
             board_node
                 .class_list()
                 .toggle_with_force("wayback", wayback_turn_idx.is_some())?;
-            let latest_turn = match wayback_turn_idx {
-                Some(turn_idx) => game.turn_log().iter().find(|record| {
-                    record.envoy.board_idx == board_idx && record.index().as_str() >= turn_idx
-                }),
-                None => {
-                    game.turn_log().iter().rev().find(|record| record.envoy.board_idx == board_idx)
-                }
-            };
-            {
-                let latest_turn_highlight = latest_turn
-                    .filter(|record| !my_id.plays_for(record.envoy) || wayback_turn_idx.is_some())
-                    .map(|record| &record.turn_expanded);
-                self.set_turn_highlights(
-                    TurnHighlight::LatestTurn,
-                    latest_turn_highlight,
-                    display_board_idx,
-                    fog_cover_area,
-                )?;
-            }
-            {
-                let pre_turn_highlight = latest_turn
-                    .filter(|record| record.mode == TurnMode::Preturn)
-                    .map(|record| &record.turn_expanded);
-                self.set_turn_highlights(
-                    TurnHighlight::Preturn,
-                    pre_turn_highlight,
-                    display_board_idx,
-                    fog_cover_area,
-                )?;
-            }
+            self.update_turn_highlights()?;
             update_turn_log(&game, my_id, board_idx, display_board_idx, wayback_turn_idx)?;
         }
         document
@@ -1006,51 +977,21 @@ impl WebClient {
         Ok(())
     }
 
-    fn set_turn_highlights(
-        &self, highlight: TurnHighlight, turn: Option<&TurnExpanded>, board_idx: DisplayBoard,
-        fog_of_war_area: &HashSet<Coord>,
-    ) -> JsResult<()> {
-        let class_prefix = match highlight {
-            TurnHighlight::LatestTurn => "latest",
-            TurnHighlight::Preturn => "pre",
-        };
-        let id_prefix = format!("{}-{}", class_prefix, board_id(board_idx));
+    fn update_turn_highlights(&self) -> JsResult<()> {
         // Optimization potential: do not reset highlights that stay in place.
-        //   ... or replace with a single clear_square_highlight_layer and remove all IDs.
-        reset_square_highlight(&format!("{}-turn-from", id_prefix))?;
-        reset_square_highlight(&format!("{}-turn-to", id_prefix))?;
-        reset_square_highlight(&format!("{}-turn-from-extra", id_prefix))?;
-        reset_square_highlight(&format!("{}-turn-to-extra", id_prefix))?;
-        reset_square_highlight(&format!("{}-drop-to", id_prefix))?;
-        reset_square_highlight(&format!("{}-capture", id_prefix))?;
-        reset_square_highlight(&format!("{}-capture-above", id_prefix))?;
+        clear_square_highlight_layer(SquareHighlightLayer::Turn)?;
+        clear_square_highlight_layer(SquareHighlightLayer::TurnAbove)?;
         let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
             return Ok(());
         };
-        let board_orientation = get_board_orientation(board_idx, alt_game.perspective());
-        if let Some(turn) = turn {
-            for (mut suffix, coord) in turn_highlights(turn) {
-                let mut layer = SquareHighlightLayer::Turn;
-                if fog_of_war_area.contains(&coord) {
-                    if suffix == "capture" {
-                        // A piece owned by the current player before it was captured. Location
-                        // information is known to the player.
-                        suffix = "capture-above";
-                        layer = SquareHighlightLayer::TurnAbove;
-                    } else {
-                        continue;
-                    }
-                }
-                let id = format!("{}-{}", id_prefix, suffix);
-                let class = format!("{}-{}", class_prefix, suffix);
-                set_square_highlight(
-                    Some(&id),
-                    &class,
-                    layer,
-                    board_idx,
-                    Some(to_display_coord(coord, board_orientation)),
-                )?;
-            }
+        for h in alt_game.turn_highlights() {
+            let class = format!("turn-highlight {}", turn_highlight_class_id(&h));
+            let display_board_idx = get_display_board_index(h.board_idx, alt_game.perspective());
+            let board_orientation =
+                get_board_orientation(display_board_idx, alt_game.perspective());
+            let layer = turn_highlight_layer(h.layer);
+            let display_coord = to_display_coord(h.coord, board_orientation);
+            set_square_highlight(None, &class, layer, display_board_idx, Some(display_coord))?;
         }
         Ok(())
     }
@@ -1075,12 +1016,6 @@ enum SquareHighlightLayer {
     Turn,      // last turn, preturn
     TurnAbove, // like `Turn`, but above the fog of war
     Drag,      // drag start, drag hover, legal moves
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum TurnHighlight {
-    Preturn,
-    LatestTurn,
 }
 
 struct WebDocument(web_sys::Document);
@@ -1207,16 +1142,9 @@ fn set_square_highlight(
         let Some(id) = id else {
             return Err(rust_error!(r#"Cannot reset square highlight without ID; class is "{class}""#));
         };
-        reset_square_highlight(id)?;
-    }
-    Ok(())
-}
-
-fn reset_square_highlight(id: &str) -> JsResult<()> {
-    let document = web_document();
-    let node = document.get_element_by_id(id);
-    if let Some(node) = node {
-        node.remove();
+        if let Some(node) = document.get_element_by_id(id) {
+            node.remove();
+        }
     }
     Ok(())
 }
@@ -1762,28 +1690,6 @@ fn generate_svg_markers() -> JsResult<()> {
     Ok(())
 }
 
-fn turn_highlights(turn_expanded: &TurnExpanded) -> Vec<(&'static str, Coord)> {
-    let mut highlights = vec![];
-    if let Some(relocation) = turn_expanded.relocation {
-        let (from, to) = relocation;
-        highlights.push(("turn-from", from));
-        highlights.push(("turn-to", to));
-    }
-    if let Some(relocation_extra) = turn_expanded.relocation_extra {
-        let (from, to) = relocation_extra;
-        highlights.push(("turn-from-extra", from));
-        highlights.push(("turn-to-extra", to));
-    }
-    if let Some(drop) = turn_expanded.drop {
-        highlights.push(("drop-to", drop));
-    }
-    if let Some(ref capture) = turn_expanded.capture {
-        highlights.retain(|(_, coord)| *coord != capture.from);
-        highlights.push(("capture", capture.from));
-    }
-    highlights
-}
-
 fn force_id(force: Force) -> &'static str {
     match force {
         Force::White => "white",
@@ -1882,6 +1788,30 @@ fn piece_layer_id(board_idx: DisplayBoard) -> String {
 
 fn fog_of_war_layer_id(board_idx: DisplayBoard) -> String {
     format!("fog-of-war-layer-{}", board_id(board_idx))
+}
+
+fn turn_highlight_layer(layer: TurnHighlightLayer) -> SquareHighlightLayer {
+    match layer {
+        TurnHighlightLayer::AboveFog => SquareHighlightLayer::TurnAbove,
+        TurnHighlightLayer::BelowFog => SquareHighlightLayer::Turn,
+    }
+}
+fn turn_highlight_class_id(h: &TurnHighlight) -> String {
+    let family = match h.family {
+        TurnHighlightFamily::LatestTurn => "latest",
+        TurnHighlightFamily::Preturn => "pre",
+    };
+    let item = match h.item {
+        TurnHighlightItem::MoveFrom => "from",
+        TurnHighlightItem::MoveTo => "to",
+        TurnHighlightItem::Drop => "drop",
+        TurnHighlightItem::Capture => "capture",
+    };
+    let layer = match h.layer {
+        TurnHighlightLayer::AboveFog => "-above",
+        TurnHighlightLayer::BelowFog => "",
+    };
+    format!("{}-turn-{}{}", family, item, layer)
 }
 
 fn square_highlight_layer_id(layer: SquareHighlightLayer, board_idx: DisplayBoard) -> String {

@@ -23,6 +23,18 @@ fn default_bughouse_game() -> BughouseGame {
     )
 }
 
+macro_rules! turn_highlight {
+    ($board_idx:ident $coord:ident : $layer:ident $family:ident $item:ident) => {
+        TurnHighlight {
+            board_idx: BughouseBoard::$board_idx,
+            coord: Coord::$coord,
+            layer: TurnHighlightLayer::$layer,
+            family: TurnHighlightFamily::$family,
+            item: TurnHighlightItem::$item,
+        }
+    };
+}
+
 const T0: GameInstant = GameInstant::game_start();
 
 
@@ -119,6 +131,26 @@ fn two_preturns_forbidden() {
         alt_game.try_local_turn(A, drag_move!(F2 -> F4), T0),
         Err(TurnError::PreturnLimitReached)
     );
+}
+
+#[test]
+fn turn_highlights() {
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), default_bughouse_game());
+    alt_game.apply_remote_turn_algebraic(envoy!(White A), "e3", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(Black A), "d5", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(White B), "e4", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(Black B), "d5", T0).unwrap();
+    alt_game.apply_remote_turn_algebraic(envoy!(White B), "xd5", T0).unwrap();
+    alt_game.try_local_turn(A, drag_move!(E3 -> E4), T0).unwrap();
+    alt_game.try_local_turn(A, drag_move!(E4 -> D5), T0).unwrap();
+    let mut highlights = alt_game.turn_highlights();
+    highlights.sort_by_key(|h| (h.board_idx, h.coord.row_col()));
+    assert_eq!(highlights, vec![
+        turn_highlight!(A E4 : BelowFog Preturn MoveFrom),
+        turn_highlight!(A D5 : BelowFog Preturn MoveTo), // don't use `Capture` for preturns
+        turn_highlight!(B E4 : BelowFog LatestTurn MoveFrom),
+        turn_highlight!(B D5 : BelowFog LatestTurn Capture),
+    ]);
 }
 
 #[test]

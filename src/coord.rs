@@ -122,6 +122,7 @@ impl ops::Sub for Col {
 }
 
 
+// No `Ord` because there is no single obvious order. Use `Coord::row_col` to compare by row first.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Coord {
     pub row: Row,
@@ -140,6 +141,7 @@ impl Coord {
     pub fn to_algebraic(&self) -> String {
         format!("{}{}", self.col.to_algebraic(), self.row.to_algebraic())
     }
+    pub fn row_col(&self) -> (Row, Col) { (self.row, self.col) }
     pub fn all() -> impl Iterator<Item = Coord> {
         Row::all().cartesian_product(Col::all()).map(|(row, col)| Coord { row, col })
     }

@@ -224,35 +224,31 @@ body.symmetric #page {
   opacity: 0.5;
 }
 
-.latest-turn-from,
-.latest-turn-from-extra {
+.latest-turn-from {
   fill: #acbd38;
   opacity: 0.5;
 }
-.latest-drop-to,
 .latest-turn-to,
-.latest-turn-to-extra {
+.latest-turn-drop {
   fill: #a7c000;
   opacity: 0.5;
 }
 
-.pre-turn-from,
-.pre-turn-from-extra {
+.pre-turn-from {
   fill: #7238bd;
   opacity: 0.5;
 }
-.pre-drop-to,
 .pre-turn-to,
-.pre-turn-to-extra {
+.pre-turn-drop {
   fill: #5800c0;
   opacity: 0.5;
 }
 
-.latest-capture {
+.latest-turn-capture {
   fill: #4dcc7d;
   opacity: 0.5;
 }
-.latest-capture-above {
+.latest-turn-capture-above {
   fill: #4dcc7d;
   opacity: 0.4;
 }
