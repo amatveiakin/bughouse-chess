@@ -78,11 +78,9 @@ fn debug_format_piece(piece: &PieceOnBoard) -> String {
 impl fmt::Debug for Grid {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Grid ")?;
-        f.debug_list()
+        f.debug_map()
             .entries(Coord::all().filter_map(|coord| {
-                self[coord].map(|piece| {
-                    format!("{} => {}", coord.to_algebraic(), debug_format_piece(&piece))
-                })
+                self[coord].map(|piece| (coord.to_algebraic(), debug_format_piece(&piece)))
             }))
             .finish()
     }
