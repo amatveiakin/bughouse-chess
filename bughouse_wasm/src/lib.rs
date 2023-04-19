@@ -837,7 +837,7 @@ impl WebClient {
             return Ok(());
         };
         let now = Instant::now();
-        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
+        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now).approximate();
         let game = alt_game.local_game();
         for (board_idx, board) in game.boards() {
             let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());

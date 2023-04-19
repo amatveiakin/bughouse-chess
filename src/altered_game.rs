@@ -5,8 +5,8 @@
 // (or may not) panic if server command doesn't make sense (e.g. invalid chess move), but it
 // shall not panic on bogus local turns and other invalid user actions.
 //
-// Only one preturn is allowed, but it's possible to have two unconfirmed local turns: one
-// normal and one preturn.
+// Only one preturn is allowed (for game-design reasons, this is not a technical limitation).
+// It is still possible to have two unconfirmed local turns: one normal and one preturn.
 
 // Improvement potential: Reduce the number of times large entities are recomputed
 // (e.g.`turn_highlights` recomputes `local_game` and `fog_of_war_area`, which are presumably
@@ -15,7 +15,6 @@
 //   - Replace all existing read-only methods with one "get visual representation" method that
 //     contain all the information required in order to render the game.
 
-use std::cmp;
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -29,7 +28,7 @@ use crate::coord::{Coord, SubjectiveRow};
 use crate::display::Perspective;
 use crate::game::{
     get_bughouse_force, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
-    BughouseParticipant,
+    BughouseParticipant, TurnRecord, TurnRecordExpanded,
 };
 use crate::piece::{CastleDirection, PieceKind};
 use crate::rules::{BughouseRules, ChessRules, ChessVariant};
@@ -94,23 +93,18 @@ pub struct TurnHighlight {
     pub item: TurnHighlightItem,
 }
 
-#[derive(Default, Clone, Debug)]
-struct Alterations {
-    // Local turn (TurnMode::Normal) not confirmed by the server yet, but displayed on the
-    // client. Always a valid turn for the `game_confirmed`.
-    local_turn: Option<(TurnInput, GameInstant)>,
-    // Local preturn (TurnMode::Preturn). Executed after `local_turn` if the latter exists.
-    local_preturn: Option<(TurnInput, GameInstant)>,
-}
-
 #[derive(Clone, Debug)]
 pub struct AlteredGame {
     // All local actions are assumed to be made on behalf of this player.
     my_id: BughouseParticipant,
     // State as it has been confirmed by the server.
     game_confirmed: BughouseGame,
-    // Local changes to the game state.
-    alterations: EnumMap<BughouseBoard, Alterations>,
+    // Local changes of two kinds:
+    //   - Local turns (TurnMode::Normal) not confirmed by the server yet, but displayed on the
+    //     client. Always valid turns for the `game_confirmed`.
+    //   - Local preturns (TurnMode::Preturn).
+    // The turns are executed sequentially. Preturns always follow normal turns.
+    local_turns: Vec<TurnRecord>,
     // Historical position that the user is currently viewing.
     wayback_turn_index: EnumMap<BughouseBoard, Option<String>>,
     // Drag&drop state if making turn by mouse or touch.
@@ -122,7 +116,7 @@ impl AlteredGame {
         AlteredGame {
             my_id,
             game_confirmed,
-            alterations: enum_map! { _ => Alterations::default() },
+            local_turns: Vec::new(),
             wayback_turn_index: enum_map! { _ => None },
             piece_drag: None,
         }
@@ -144,71 +138,41 @@ impl AlteredGame {
         self.game_confirmed.set_status(status, time);
     }
 
-    pub fn apply_remote_turn_algebraic(
-        &mut self, envoy: BughouseEnvoy, turn_algebraic: &str, time: GameInstant,
+    pub fn apply_remote_turn(
+        &mut self, envoy: BughouseEnvoy, turn_input: &TurnInput, time: GameInstant,
     ) -> Result<Turn, TurnError> {
-        let turn_input = TurnInput::Algebraic(turn_algebraic.to_owned());
+        let mut original_game_confirmed = self.game_confirmed.clone();
         let turn =
             self.game_confirmed
-                .try_turn_by_envoy(envoy, &turn_input, TurnMode::Normal, time)?;
+                .try_turn_by_envoy(envoy, turn_input, TurnMode::Normal, time)?;
 
         if !self.game_confirmed.is_active() {
             self.reset_local_changes();
             return Ok(turn);
         }
 
-        if self.my_id.plays_on_board(envoy.board_idx) {
-            let alterations = &mut self.alterations[envoy.board_idx];
-            // Something on our board has changed. Time to figure out which local turns to keep.
-            // An alternative solution would've been to annotate each turn with turn number and
-            // remove all obsolete turns. But that's boring. So here we go...
-            if self.my_id.plays_for(envoy) {
-                // The server confirmed a turn made by us. If a local turn exists, that must be
-                // it. Thus the local copy must be discarded.
-                //
-                // It's possible that in addition to a local turn there exists a local preturn.
-                // This is fine, and it should still be treated as a preturn until the opponent
-                // makes a turn.
-                //
-                // However it is not possible to have just a local preturn (without the normal
-                // turn) in this context: the preturn would never be confirmed until the opponent
-                // makes their turn.
-                //
-                // On the other hand, it is possible to receive a turn from the server while not
-                // having any local turns. This happens if preturn cancellation didn't make it
-                // to the server in time.
-                if alterations.local_turn.is_none() {
-                    assert!(alterations.local_preturn.is_none());
-                }
-                alterations.local_turn = None;
-            } else {
-                // A server sent us a turn made by our opponent. Therefore we cannot have a
-                // pending local turn - that would be out of order. But we could have a pending
-                // preturn. This preturn, if it exists, should be re-applied as a normal turn
-                // to the updated board. As the result, it could be cancelled (either because
-                // the position has changed or simply because it is now a subject to stricter
-                // verification).
-                //
-                // Note that if the preturn is still valid, we would normally get it back
-                // together with the opponent's turn in the same `TurnsMade` event. But we
-                // cannot count on this: it is possible that our preturn has not reached the
-                // server by the time the server processed opponent's turn.
-                assert!(alterations.local_turn.is_none());
-                if let Some((turn_input, original_time)) = alterations.local_preturn.take() {
-                    // Make sure we don't go back in time by making a turn before a confirmed
-                    // opponent's turn. An alternative solution would be to allow only `Approximate`
-                    // time measurement everywhere in the client code (including tests).
-                    let my_board = self.game_confirmed.board(envoy.board_idx);
-                    let opponent_turn_time = my_board.clock().total_time_elapsed();
-                    let t = cmp::max(original_time.elapsed_since_start(), opponent_turn_time);
-                    let turn_time =
-                        GameInstant::from_duration(t).set_measurement(original_time.measurement());
-                    // A-a-and we are ready to reapply the preturn. As a normal turn now.
-                    // Ignore any errors: it's normal for preturns to fail.
-                    _ = self.try_local_turn_ignore_drag(envoy.board_idx, turn_input, turn_time);
+        for (turn_idx, turn_record) in self.local_turns.iter().enumerate() {
+            if turn_record.envoy == envoy {
+                let local_turn =
+                    original_game_confirmed.apply_turn_record(turn_record, TurnMode::Normal);
+                if local_turn == Ok(turn) {
+                    // The server confirmed a turn made by this player. Discard the local copy.
+                    self.local_turns.remove(turn_idx);
+                    break;
+                } else {
+                    // The server sent a turn made by this player, but it's different from the local
+                    // turn. The entire turn sequence on this board is now invalid. One way this
+                    // could have happened is if the user made a preturn, cancelled it and made new
+                    // preturns locally, but the cancellation didn't get to the server in time, so
+                    // the server applied earlier preturn version. We don't want to apply subsequent
+                    // preturns based on a different game history: if the first turn changed, the
+                    // user probably wants to make different turns based on that.
+                    self.local_turns.retain(|r| r.envoy != envoy);
+                    break;
                 }
             }
         }
+        self.discard_invalid_local_turns();
 
         let mut game = self.game_with_local_turns(true);
         if self.apply_drag(&mut game).is_err() {
@@ -245,18 +209,9 @@ impl AlteredGame {
             let fog_cover_area = if see_though_fog { &empty_area } else { &fog_render_area };
 
             let wayback_turn_idx = self.wayback_turn_index(board_idx);
+            let turn_log = board_turn_log_modulo_wayback(&game, board_idx, wayback_turn_idx);
 
-            let latest_turn_record = match wayback_turn_idx {
-                Some(turn_idx) => game
-                    .turn_log()
-                    .iter()
-                    .find(|r| r.envoy.board_idx == board_idx && r.index().as_str() >= turn_idx),
-                None => {
-                    game.turn_log().iter().rev().find(|record| record.envoy.board_idx == board_idx)
-                }
-            };
-
-            if let Some(r) = latest_turn_record {
+            if let Some(r) = turn_log.last() {
                 if !my_id.plays_for(r.envoy) || wayback_turn_idx.is_some() {
                     highlights.extend(get_turn_highlights(
                         TurnHighlightFamily::LatestTurn,
@@ -265,6 +220,9 @@ impl AlteredGame {
                         fog_cover_area,
                     ));
                 }
+            }
+
+            for r in turn_log.iter() {
                 if r.mode == TurnMode::Preturn {
                     highlights.extend(get_turn_highlights(
                         TurnHighlightFamily::Preturn,
@@ -297,21 +255,12 @@ impl AlteredGame {
                     let mut visible = game.board(board_idx).fog_free_area(force);
                     // ... but do show preturn pieces themselves:
                     if !wayback_active {
-                        if let Some((ref turn_input, turn_time)) =
-                            self.alterations[board_idx].local_preturn
-                        {
-                            let envoy = self.my_id.envoy_for(board_idx).unwrap();
-                            game.try_turn_by_envoy(envoy, turn_input, TurnMode::Preturn, turn_time)
-                                .unwrap();
-                            let turn_expanded = &game.last_turn_record().unwrap().turn_expanded;
-                            if let Some((_, sq)) = turn_expanded.relocation {
-                                visible.insert(sq);
-                            }
-                            if let Some((_, sq)) = turn_expanded.relocation_extra {
-                                visible.insert(sq);
-                            }
-                            if let Some(sq) = turn_expanded.drop {
-                                visible.insert(sq);
+                        let game_with_preturns = self.game_with_local_turns(true);
+                        for coord in Coord::all() {
+                            if let Some(piece) = game_with_preturns.board(board_idx).grid()[coord] {
+                                if piece.force == force {
+                                    visible.insert(coord);
+                                }
                             }
                         }
                     }
@@ -445,34 +394,68 @@ impl AlteredGame {
         // cancel preturn while dragging. If this is desired, a proper check needs to be
         // done (like in `apply_remote_turn_algebraic`).
         self.piece_drag = None;
-        self.alterations[board_idx].local_preturn.take().is_some()
+        if self.num_preturns_on_board(board_idx) == 0 {
+            return false;
+        }
+        for (turn_idx, turn_record) in self.local_turns.iter().enumerate().rev() {
+            if turn_record.envoy.board_idx == board_idx {
+                self.local_turns.remove(turn_idx);
+                return true;
+            }
+        }
+        unreachable!(); // must have found a preturn, since num_preturns_on_board > 0
     }
 
     fn reset_local_changes(&mut self) {
-        self.alterations = enum_map! { _ => Alterations::default() };
+        self.local_turns.clear();
         self.piece_drag = None;
+    }
+
+    fn discard_invalid_local_turns(&mut self) {
+        // Although we don't allow it currently, this function is written in a way that supports
+        // turns cross-board turn dependencies.
+        let mut game = self.game_confirmed.clone();
+        let mut is_board_ok = enum_map! { _ => true };
+        self.local_turns.retain(|turn_record| {
+            let is_ok = game
+                .turn_mode_for_envoy(turn_record.envoy)
+                .and_then(|mode| game.apply_turn_record(&turn_record, mode))
+                .is_ok();
+            if !is_ok {
+                // Whenever we find an invalid turn, discard all subsequent turns on that board.
+                is_board_ok[turn_record.envoy.board_idx] = false;
+            }
+            is_board_ok[turn_record.envoy.board_idx]
+        });
     }
 
     fn game_with_local_turns(&self, include_preturns: bool) -> BughouseGame {
         let mut game = self.game_confirmed.clone();
-        for board_idx in BughouseBoard::iter() {
-            let Some(envoy) = self.my_id.envoy_for(board_idx) else {
-                continue;
-            };
-            let alterations = &self.alterations[board_idx];
+        for turn_record in self.local_turns.iter() {
             // Note. Not calling `test_flag`, because only server records flag defeat.
             // Unwrap ok: turn correctness (according to the `mode`) has already been verified.
-            if let Some((ref turn_input, turn_time)) = alterations.local_turn {
-                game.try_turn_by_envoy(envoy, turn_input, TurnMode::Normal, turn_time).unwrap();
+            let mode = game.turn_mode_for_envoy(turn_record.envoy).unwrap();
+            if mode == TurnMode::Preturn && !include_preturns {
+                // Do not break because we can still get in-order turns on the other board.
+                continue;
             }
-            if include_preturns {
-                if let Some((ref turn_input, turn_time)) = alterations.local_preturn {
-                    game.try_turn_by_envoy(envoy, turn_input, TurnMode::Preturn, turn_time)
-                        .unwrap();
-                }
-            }
+            game.apply_turn_record(&turn_record, mode).unwrap();
         }
         game
+    }
+
+    fn num_preturns_on_board(&self, board_idx: BughouseBoard) -> usize {
+        let mut game = self.game_confirmed.clone();
+        let mut num_preturns = 0;
+        for turn_record in self.local_turns.iter() {
+            // Unwrap ok: turn correctness (according to the `mode`) has already been verified.
+            let mode = game.turn_mode_for_envoy(turn_record.envoy).unwrap();
+            if turn_record.envoy.board_idx == board_idx && mode == TurnMode::Preturn {
+                num_preturns += 1;
+            }
+            game.apply_turn_record(&turn_record, mode).unwrap();
+        }
+        num_preturns
     }
 
     fn apply_wayback_for_board(&self, game: &mut BughouseGame, board_idx: BughouseBoard) -> bool {
@@ -535,19 +518,47 @@ impl AlteredGame {
         if self.wayback_turn_index[board_idx].is_some() {
             return Err(TurnError::WaybackIsActive);
         }
-        if self.alterations[board_idx].local_preturn.is_some() {
+        if self.num_preturns_on_board(board_idx) >= 1 {
             return Err(TurnError::PreturnLimitReached);
         }
         let mut game = self.game_with_local_turns(true);
         let mode = game.turn_mode_for_envoy(envoy)?;
         game.try_turn_by_envoy(envoy, &turn_input, mode, time)?;
-        let alterations = &mut self.alterations[board_idx];
-        match mode {
-            TurnMode::Normal => alterations.local_turn = Some((turn_input, time)),
-            TurnMode::Preturn => alterations.local_preturn = Some((turn_input, time)),
-        };
+        // Note: cannot use `game.turn_log().last()` here! It will change the input method, and this
+        // can cause subtle differences in preturn execution. For example, when making algebraic
+        // turns you can require the turn be capturing by using "x". This information will be lost
+        // if using TurnInput::Explicit.
+        self.local_turns.push(TurnRecord { envoy, turn_input, time });
         Ok(mode)
     }
+}
+
+fn board_turn_log_modulo_wayback(
+    game: &BughouseGame, board_idx: BughouseBoard, wayback_turn_idx: Option<&str>,
+) -> Vec<TurnRecordExpanded> {
+    let mut turn_log = game
+        .turn_log()
+        .iter()
+        .filter(|r| r.envoy.board_idx == board_idx)
+        .cloned()
+        .collect_vec();
+    if let Some(wayback_turn_idx) = wayback_turn_idx {
+        let mut wayback_turn_found = false;
+        turn_log.retain(|r| {
+            // The first turn with this condition should be kept, the rest should be deleted.
+            if r.index().as_str() >= wayback_turn_idx {
+                if !wayback_turn_found {
+                    wayback_turn_found = true;
+                    true
+                } else {
+                    false
+                }
+            } else {
+                true
+            }
+        });
+    }
+    turn_log
 }
 
 // Tuple values are compared lexicographically. Higher values overshadow lower values.

@@ -65,6 +65,8 @@ impl GameInstant {
             measurement: pair.game_t.measurement,
         }
     }
+    // TODO: Fix: due to the `None` branch, the users have to call `.approximate()` even in places
+    // where you'd expect it to be implied (from the `pair`).
     pub fn from_pair_game_maybe_active(
         pair: Option<WallGameTimePair>, now: Instant,
     ) -> GameInstant {

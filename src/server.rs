@@ -1,10 +1,10 @@
 // Improvement potential. Replace `game.find_player(&self.players[participant_id].name)`
 //   with a direct mapping (participant_id -> player_bughouse_id).
 
-use std::collections::{hash_map, BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::time::Duration;
-use std::{cmp, iter, ops};
+use std::{cmp, iter, mem, ops};
 
 use enum_map::enum_map;
 use indoc::printdoc;
@@ -15,7 +15,7 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use strum::IntoEnumIterator;
 
-use crate::board::{TurnError, TurnInput, TurnMode, VictoryReason};
+use crate::board::{TurnInput, TurnMode, VictoryReason};
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
 use crate::event::{
@@ -47,8 +47,6 @@ macro_rules! unknown_error {
     }
 }
 
-type Preturns = HashMap<BughouseEnvoy, TurnInput>;
-
 #[derive(Clone, Copy, Debug)]
 enum Execution {
     // The server runs normally.
@@ -73,6 +71,12 @@ pub enum IncomingEvent {
     Terminate,
 }
 
+#[derive(Clone, Debug)]
+pub struct TurnRequest {
+    pub envoy: BughouseEnvoy,
+    pub turn_input: TurnInput,
+}
+
 #[derive(Debug)]
 pub struct GameState {
     game: BughouseGame,
@@ -86,7 +90,10 @@ pub struct GameState {
     game_start: Option<Instant>,
     game_start_offset_time: Option<time::OffsetDateTime>,
     game_end: Option<Instant>,
-    preturns: Preturns,
+    // Turns requestd by clients that have been executed yet. Presumably because
+    // these are preturns, but maybe we'll have other reasons in the future, e.g.
+    // attemping to drop an as-of-yet-missing piece.
+    turn_requests: Vec<TurnRequest>,
     chalkboard: Chalkboard,
 }
 
@@ -625,7 +632,7 @@ impl Match {
             game_start_offset_time,
             ref mut game_end,
             ref mut game,
-            ref mut preturns,
+            ref mut turn_requests,
             ..
         }) = self.game_state
         {
@@ -639,7 +646,7 @@ impl Match {
                             ctx,
                             round,
                             game,
-                            preturns,
+                            turn_requests,
                             &mut self.participants,
                             &mut self.scores,
                             game_start_offset_time,
@@ -874,7 +881,7 @@ impl Match {
             ref mut game_start_offset_time,
             ref mut game_end,
             ref mut game,
-            ref mut preturns,
+            ref mut turn_requests,
             ..
         }) = self.game_state else {
             return Err(unknown_error!("Cannot make turn: no game in progress"));
@@ -889,90 +896,54 @@ impl Match {
             return Err(unknown_error!("Cannot make turn: player does not play on this board"));
         };
         let scores = &mut self.scores;
-        let round = self.match_history.len() + 1;
         let participants = &mut self.participants;
-        let mode = game.turn_mode_for_envoy(envoy);
-        match mode {
-            Ok(TurnMode::Normal) => {
-                let mut turns = vec![];
-                let game_now = GameInstant::from_now_game_maybe_active(*game_start, now);
-                if let Ok(turn_event) = apply_turn(
+
+        if turn_requests.iter().any(|r| r.envoy == envoy) {
+            return Err(unknown_error!("Only one premove is supported"));
+        }
+        let request = TurnRequest { envoy, turn_input };
+        turn_requests.push(request);
+
+        let mut turns = vec![];
+        // Note. Turn resolution is currently O(N^2) where N is the number of turns in the queue,
+        // but this is fine because in practice N is very low.
+        while let Some(turn_event) = resolve_one_turn(now, *game_start, game, turn_requests) {
+            turns.push(turn_event);
+            if game_start.is_none() {
+                *game_start = Some(now);
+                *game_start_offset_time = Some(time::OffsetDateTime::now_utc());
+            }
+            if !game.is_active() {
+                let round = self.match_history.len() + 1;
+                update_on_game_over(
                     ctx,
                     round,
-                    game_now,
-                    envoy,
-                    turn_input,
                     game,
-                    preturns,
+                    turn_requests,
                     participants,
                     scores,
                     *game_start_offset_time,
                     game_end,
                     now,
-                ) {
-                    if game_start.is_none() {
-                        *game_start = Some(now);
-                        *game_start_offset_time = Some(time::OffsetDateTime::now_utc());
-                    }
-                    turns.push(turn_event);
-                    let opponent = envoy.opponent();
-                    if let Some(preturn) = preturns.remove(&opponent) {
-                        if let Ok(preturn_event) = apply_turn(
-                            ctx,
-                            round,
-                            game_now,
-                            opponent,
-                            preturn,
-                            game,
-                            preturns,
-                            participants,
-                            scores,
-                            *game_start_offset_time,
-                            game_end,
-                            now,
-                        ) {
-                            turns.push(preturn_event);
-                        } else {
-                            // Ignore error: It is completely fine for a preturn to fail.
-                        }
-                    }
-                } else {
-                    // Ignore error: We are processing this as a normal turn, but it is possible
-                    // that the client hasn't seen last opponent's turn yet and sent this as a
-                    // preturn.
-                    // This could be made into an error if `BughouseClientEvent::MakeTurn`
-                    // distinguishes between in-order turns and preturns (even in this case,
-                    // TurnError::GameOver needs to be silenced though).
-                }
-                let ev = BughouseServerEvent::TurnsMade {
-                    turns,
-                    game_status: game.status(),
-                    scores: scores.clone(),
-                };
-                self.broadcast(ctx, &ev);
-                Ok(())
-            }
-            Ok(TurnMode::Preturn) => match preturns.entry(envoy) {
-                hash_map::Entry::Occupied(_) => {
-                    Err(unknown_error!("Only one premove is supported"))
-                }
-                hash_map::Entry::Vacant(entry) => {
-                    entry.insert(turn_input);
-                    Ok(())
-                }
-            },
-            Err(_) => {
-                // Ignore error: This could fail if the game ended by flag or on the other board
-                // while the turn was in flight.
-                Ok(())
+                );
+                break;
             }
         }
+        if !turns.is_empty() {
+            let ev = BughouseServerEvent::TurnsMade {
+                turns,
+                game_status: game.status(),
+                scores: scores.clone(),
+            };
+            self.broadcast(ctx, &ev);
+        }
+        Ok(())
     }
 
     fn process_cancel_preturn(
         &mut self, ctx: &mut Context, client_id: ClientId, board_idx: BughouseBoard,
     ) -> EventResult {
-        let Some(GameState{ ref game, ref mut preturns, .. }) = self.game_state else {
+        let Some(GameState{ ref game, ref mut turn_requests, .. }) = self.game_state else {
             return Err(unknown_error!("Cannot cancel pre-turn: no game in progress"));
         };
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
@@ -984,7 +955,12 @@ impl Match {
         let Some(envoy) = player_bughouse_id.envoy_for(board_idx) else {
             return Err(unknown_error!("Cannot cancel pre-turn: player does not play on this board"));
         };
-        preturns.remove(&envoy);
+        for (idx, r) in turn_requests.iter().enumerate().rev() {
+            if r.envoy == envoy {
+                turn_requests.remove(idx);
+                break;
+            }
+        }
         Ok(())
     }
 
@@ -993,7 +969,7 @@ impl Match {
     ) -> EventResult {
         let Some(GameState{
             ref mut game,
-            ref mut preturns,
+            ref mut turn_requests,
             game_start,
             game_start_offset_time,
             ref mut game_end,
@@ -1023,7 +999,7 @@ impl Match {
             ctx,
             round,
             game,
-            preturns,
+            turn_requests,
             participants,
             scores,
             game_start_offset_time,
@@ -1201,7 +1177,7 @@ impl Match {
             game_start: None,
             game_start_offset_time: None,
             game_end: None,
-            preturns: HashMap::new(),
+            turn_requests: Vec::new(),
             chalkboard: Chalkboard::new(),
         });
         self.broadcast(ctx, &self.make_game_start_event(now, None));
@@ -1239,7 +1215,7 @@ impl Match {
         let player_bughouse_id =
             participant_id.and_then(|id| game_state.game.find_player(&self.participants[id].name));
         let preturns = if let Some(player_bughouse_id) = player_bughouse_id {
-            player_preturns(&game_state.preturns, player_bughouse_id)
+            player_turn_requests(&game_state.turn_requests, player_bughouse_id)
         } else {
             vec![]
         };
@@ -1390,39 +1366,49 @@ fn current_game_time(game_state: &GameState, now: Instant) -> GameInstant {
     }
 }
 
-fn apply_turn(
-    ctx: &mut Context, round: usize, game_now: GameInstant, envoy: BughouseEnvoy,
-    turn_input: TurnInput, game: &mut BughouseGame, preturns: &mut Preturns,
-    participants: &mut Participants, scores: &mut Scores,
-    game_start_offset_time: Option<time::OffsetDateTime>, game_end: &mut Option<Instant>,
-    now: Instant,
-) -> Result<TurnRecord, TurnError> {
-    game.try_turn_by_envoy(envoy, &turn_input, TurnMode::Normal, game_now)?;
-    if !game.is_active() {
-        update_on_game_over(
-            ctx,
-            round,
-            game,
-            preturns,
-            participants,
-            scores,
-            game_start_offset_time,
-            game_end,
-            now,
-        );
+fn resolve_one_turn(
+    now: Instant, game_start: Option<Instant>, game: &mut BughouseGame,
+    turn_requests: &mut Vec<TurnRequest>,
+) -> Option<TurnRecord> {
+    let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
+    let mut iter = mem::take(turn_requests).into_iter();
+    while let Some(r) = iter.next() {
+        match game.turn_mode_for_envoy(r.envoy) {
+            Ok(TurnMode::Normal) => {
+                match game.try_turn_by_envoy(r.envoy, &r.turn_input, TurnMode::Normal, game_now) {
+                    Ok(_) => {
+                        // Discard this turn, but keep the rest.
+                        turn_requests.extend(iter);
+                        return Some(game.last_turn_record().unwrap().trim_for_sending());
+                    }
+                    Err(_) => {
+                        // Discard. Ignore error: It is completely fine for a preturn to fail. Even
+                        // an valid in-order turn can fail, e.g. if the game ended on the board
+                        // board in the meantime.
+                    }
+                }
+            }
+            Ok(TurnMode::Preturn) => {
+                // Keep the turn for now.
+                turn_requests.push(r);
+            }
+            Err(_) => {
+                // Discard. Ignore error (see above).
+            }
+        }
     }
-    Ok(game.last_turn_record().unwrap().trim_for_sending())
+    None
 }
 
 fn update_on_game_over(
-    ctx: &mut Context, round: usize, game: &BughouseGame, preturns: &mut Preturns,
+    ctx: &mut Context, round: usize, game: &BughouseGame, turn_requests: &mut Vec<TurnRequest>,
     participants: &mut Participants, scores: &mut Scores,
     game_start_offset_time: Option<time::OffsetDateTime>, game_end: &mut Option<Instant>,
     now: Instant,
 ) {
     assert!(game_end.is_none());
     *game_end = Some(now);
-    preturns.clear();
+    turn_requests.clear();
     let team_scores = match game.status() {
         BughouseGameStatus::Active => {
             panic!("It just so happens that the game here is only mostly over")
@@ -1457,24 +1443,14 @@ fn update_on_game_over(
     ctx.hooks.on_game_over(game, game_start_offset_time, round);
 }
 
-fn player_preturns(preturns: &Preturns, player: BughousePlayer) -> Vec<(BughouseBoard, TurnInput)> {
-    let preturns_or = match player {
-        BughousePlayer::SinglePlayer(envoy) => vec![(envoy.board_idx, preturns.get(&envoy))],
-        BughousePlayer::DoublePlayer(team) => BughouseBoard::iter()
-            .map(|board_idx| {
-                let envoy = BughouseEnvoy {
-                    board_idx,
-                    force: get_bughouse_force(team, board_idx),
-                };
-                (board_idx, preturns.get(&envoy))
-            })
-            .collect_vec(),
-    };
-    return preturns_or
-        .into_iter()
-        .filter(|(_, turn)| turn.is_some())
-        .map(|(board_idx, turn)| (board_idx, turn.unwrap().clone()))
-        .collect();
+fn player_turn_requests(
+    turn_requests: &Vec<TurnRequest>, player: BughousePlayer,
+) -> Vec<(BughouseBoard, TurnInput)> {
+    turn_requests
+        .iter()
+        .filter(|r| player.plays_for(r.envoy))
+        .map(|r| (r.envoy.board_idx, r.turn_input.clone()))
+        .collect()
 }
 
 fn get_next_players<'a>(

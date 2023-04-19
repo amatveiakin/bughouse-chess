@@ -48,7 +48,7 @@ enum Action {
     },
     ApplyRemoteTurn {
         envoy: BughouseEnvoy,
-        turn_algebraic: String,
+        turn_input: TurnInput,
         time: GameInstant,
     },
     LocalTurn {
@@ -256,8 +256,9 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
                         .turn_expanded
                         .algebraic
                         .format(AlgebraicCharset::Ascii);
+                    let turn_input = TurnInput::Algebraic(turn_algebraic);
                     let time = GameInstant::game_start();
-                    return Some(Action::ApplyRemoteTurn { envoy, turn_algebraic, time });
+                    return Some(Action::ApplyRemoteTurn { envoy, turn_input, time });
                 }
             }
             return None;
@@ -295,8 +296,8 @@ fn apply_action(alt_game: &mut AlteredGame, action: Action) {
     use Action::*;
     match action {
         SetStatus { status, time } => _ = alt_game.set_status(status, time),
-        ApplyRemoteTurn { envoy, turn_algebraic, time } => {
-            _ = alt_game.apply_remote_turn_algebraic(envoy, &turn_algebraic, time)
+        ApplyRemoteTurn { envoy, turn_input, time } => {
+            _ = alt_game.apply_remote_turn(envoy, &turn_input, time)
         }
         LocalTurn { board_idx, turn_input, time } => {
             _ = alt_game.try_local_turn(board_idx, turn_input, time)

@@ -53,7 +53,7 @@ fn render(
         if let Some(GameState { ref alt_game, time_pair, .. }) = mtch.game_state {
             // TODO: Show scores
             let my_id = alt_game.my_id();
-            let game_now = GameInstant::from_pair_game_maybe_active(time_pair, now);
+            let game_now = GameInstant::from_pair_game_maybe_active(time_pair, now).approximate();
             let game = alt_game.local_game();
             writeln_raw(
                 stdout,

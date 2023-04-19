@@ -32,7 +32,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoEnumIterator};
 
-use crate::algebraic::{AlgebraicCharset, AlgebraicDetails, AlgebraicTurn};
+use crate::algebraic::{AlgebraicDetails, AlgebraicTurn};
 use crate::board::{
     Board, ChessGameStatus, DrawReason, Reserve, Turn, TurnError, TurnExpanded, TurnFacts,
     TurnInput, TurnMode, VictoryReason,
@@ -48,11 +48,11 @@ pub const MIN_PLAYERS: usize = 2;
 pub const TOTAL_ENVOYS: usize = 4;
 pub const TOTAL_ENVOYS_PER_TEAM: usize = 2;
 
-// Stripped version of `TurnRecordExpanded`. For sending turns across network.
+// All information required in order to replay a turn.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TurnRecord {
     pub envoy: BughouseEnvoy,
-    pub turn_algebraic: String,
+    pub turn_input: TurnInput,
     pub time: GameInstant,
 }
 
@@ -73,7 +73,7 @@ impl TurnRecordExpanded {
         assert_eq!(self.mode, TurnMode::Normal);
         TurnRecord {
             envoy: self.envoy,
-            turn_algebraic: self.turn_expanded.algebraic.format(AlgebraicCharset::Ascii),
+            turn_input: TurnInput::Explicit(self.turn_expanded.turn),
             time: self.time,
         }
     }
@@ -545,6 +545,12 @@ impl BughouseGame {
             return Err(TurnError::WrongTurnOrder);
         }
         self.try_turn(envoy.board_idx, turn_input, mode, now)
+    }
+
+    pub fn apply_turn_record(
+        &mut self, turn_record: &TurnRecord, mode: TurnMode,
+    ) -> Result<Turn, TurnError> {
+        self.try_turn_by_envoy(turn_record.envoy, &turn_record.turn_input, mode, turn_record.time)
     }
 
     pub fn outcome(&self) -> String {

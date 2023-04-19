@@ -334,7 +334,7 @@ impl ClientState {
         let board_idx = get_board_index(display_board, alt_game.perspective());
         let my_envoy = alt_game.my_id().envoy_for(board_idx).ok_or(TurnError::NotPlayer)?;
         let now = Instant::now();
-        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
+        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now).approximate();
         alt_game.try_local_turn(board_idx, turn_input.clone(), game_now)?;
         self.connection.send(BughouseClientEvent::MakeTurn { board_idx, turn_input });
         self.notable_event_queue.push_back(NotableEvent::TurnMade(my_envoy));
@@ -517,7 +517,8 @@ impl ClientState {
                 }
                 for (board_idx, preturn) in preturns.into_iter() {
                     let now = Instant::now();
-                    let game_now = GameInstant::from_pair_game_maybe_active(time_pair, now);
+                    let game_now =
+                        GameInstant::from_pair_game_maybe_active(time_pair, now).approximate();
                     // Unwrap ok: we just created the `game_state`.
                     let alt_game = self.alt_game_mut().unwrap();
                     // Unwrap ok: this is a preturn made by this very client before reconnection.
@@ -571,14 +572,14 @@ impl ClientState {
     fn apply_remote_turn(
         &mut self, turn_record: TurnRecord, generate_notable_events: bool,
     ) -> Result<(), EventError> {
-        let TurnRecord { envoy, turn_algebraic, time } = turn_record;
+        let TurnRecord { envoy, turn_input, time } = turn_record;
         let MatchState::Connected(mtch) = &mut self.match_state else {
             return Err(internal_error!());
         };
         let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
         let GameState { ref mut alt_game, ref mut time_pair, .. } = game_state;
         if !alt_game.is_active() {
-            return Err(internal_error!("Cannot make turn {}: game over", turn_algebraic));
+            return Err(internal_error!("Cannot make turn {:?}: game over", turn_input));
         }
         let is_my_turn = alt_game.my_id().plays_for(envoy);
         let now = Instant::now();
@@ -588,15 +589,9 @@ impl ClientState {
             *time_pair = Some(WallGameTimePair::new(now, game_start));
         }
         let old_reserve_size = reserve_size(alt_game, envoy);
-        alt_game
-            .apply_remote_turn_algebraic(envoy, &turn_algebraic, time)
-            .map_err(|err| {
-                internal_error!(
-                    "Got impossible turn from server: {}, error: {:?}",
-                    turn_algebraic,
-                    err
-                )
-            })?;
+        alt_game.apply_remote_turn(envoy, &turn_input, time).map_err(|err| {
+            internal_error!("Got impossible turn from server: {:?}, error: {:?}", turn_input, err)
+        })?;
         let new_reserve_size = reserve_size(alt_game, envoy);
         if generate_notable_events {
             if !is_my_turn {
