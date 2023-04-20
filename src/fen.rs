@@ -5,10 +5,9 @@ use itertools::Itertools;
 use strum::IntoEnumIterator;
 
 use crate::board::Board;
-use crate::coord::{Col, Coord, Row, NUM_COLS, NUM_ROWS};
+use crate::coord::{Col, Coord, Row};
 use crate::force::Force;
-use crate::grid::Grid;
-use crate::piece::{CastleDirection, PieceForce, PieceKind, PieceOnBoard, PieceOrigin};
+use crate::piece::{CastleDirection, PieceForce, PieceKind};
 
 
 fn force_notation(force: Force) -> char {
@@ -25,18 +24,6 @@ fn piece_notation(kind: PieceKind, force: PieceForce) -> char {
         PieceForce::White => s.to_ascii_uppercase(),
         PieceForce::Black => s.to_ascii_lowercase(),
     }
-}
-
-fn notation_to_piece(ch: char) -> Option<(PieceKind, PieceForce)> {
-    let kind = PieceKind::from_algebraic_char(ch.to_ascii_uppercase())?;
-    let force = if kind.is_neutral() {
-        PieceForce::Neutral
-    } else if ch.is_ascii_uppercase() {
-        PieceForce::White
-    } else {
-        PieceForce::Black
-    };
-    Some((kind, force))
 }
 
 fn col_notation(col: Col, force: Force) -> char {
@@ -111,57 +98,4 @@ pub fn starting_position_to_shredder_fen(board: &Board) -> String {
         half_turn_clock,
         full_turn_index
     )
-}
-
-// TODO: Support import or remove this function
-pub fn shredder_fen_to_starting_grid(fen: &str) -> Result<Grid, String> {
-    let (
-        grid_notation,
-        active_force_notation,
-        _castling_notation,
-        en_passant_target_notation,
-        half_turn_clock,
-        full_turn_index,
-    ) = fen.split_whitespace().collect_tuple().ok_or_else(|| {
-        "Invalid Shredder-FEN format. Expected: piece_placement_data active_color\
-        castling_availability en_passant_target_square halfmove_clock fullmove_number"
-            .to_owned()
-    })?;
-    let is_starting_pos = active_force_notation == "w"
-        && en_passant_target_notation == "-"
-        && half_turn_clock == "0"
-        && full_turn_index == "1";
-    if !is_starting_pos {
-        return Err("Only starting positions are supported".to_owned());
-    }
-    let rows = grid_notation.split('/').collect_vec();
-    if rows.len() != usize::from(NUM_ROWS) {
-        return Err(format!("Expected {NUM_ROWS} rows, found '{grid_notation}'"));
-    }
-    let mut grid = Grid::new();
-    for (row_idx, row_fen) in rows.into_iter().rev().enumerate() {
-        let mut col_idx = 0;
-        for ch in row_fen.chars() {
-            if let Some(skip) = ch.to_digit(10) {
-                col_idx += skip;
-            } else {
-                let coord = Coord::new(
-                    Row::from_zero_based(row_idx.try_into().unwrap()).unwrap(),
-                    Col::from_zero_based(col_idx.try_into().unwrap()).unwrap(),
-                );
-                let (piece_kind, force) = notation_to_piece(ch)
-                    .ok_or_else(|| format!("Illegal piece notation: '{ch}'"))?;
-                grid[coord] = Some(PieceOnBoard {
-                    kind: piece_kind,
-                    origin: PieceOrigin::Innate,
-                    force,
-                });
-                col_idx += 1;
-            }
-        }
-        if col_idx != u32::from(NUM_COLS) {
-            return Err(format!("Expected {NUM_COLS} cols, found '{row_fen}'"));
-        }
-    }
-    Ok(grid)
 }
