@@ -57,9 +57,10 @@ impl AlgebraicTurn {
         let h_castling_re = once_cell_regex!("^(0-0|O-O)$");
         let place_duck_re = once_cell_regex!("^@([a-h][1-8])$");
         if let Some(cap) = move_re.captures(notation) {
-            let piece_kind = cap
-                .get(1)
-                .map_or(PieceKind::Pawn, |m| PieceKind::from_algebraic(m.as_str()).unwrap());
+            let piece_kind = match cap.get(1) {
+                None => PieceKind::Pawn,
+                Some(m) => PieceKind::from_algebraic(m.as_str())?,
+            };
             let from_col = cap
                 .get(2)
                 .map(|m| Col::from_algebraic(as_single_char(m.as_str()).unwrap()).unwrap());
@@ -68,7 +69,10 @@ impl AlgebraicTurn {
                 .map(|m| Row::from_algebraic(as_single_char(m.as_str()).unwrap()).unwrap());
             let capturing = cap.get(4).is_some();
             let to = Coord::from_algebraic(cap.get(5).unwrap().as_str()).unwrap();
-            let promote_to = cap.get(6).map(|m| PieceKind::from_algebraic(m.as_str()).unwrap());
+            let promote_to = match cap.get(6) {
+                None => None,
+                Some(m) => Some(PieceKind::from_algebraic(m.as_str())?),
+            };
             let _mark = cap.get(7).map(|m| m.as_str()); // TODO: Test check/mate
             Some(AlgebraicTurn::Move(AlgebraicMove {
                 piece_kind,
@@ -79,7 +83,7 @@ impl AlgebraicTurn {
                 promote_to,
             }))
         } else if let Some(cap) = drop_re.captures(notation) {
-            let piece_kind = PieceKind::from_algebraic(cap.get(1).unwrap().as_str()).unwrap();
+            let piece_kind = PieceKind::from_algebraic(cap.get(1).unwrap().as_str())?;
             let to = Coord::from_algebraic(cap.get(2).unwrap().as_str()).unwrap();
             Some(AlgebraicTurn::Drop(AlgebraicDrop { piece_kind, to }))
         } else if a_castling_re.is_match(notation) {
