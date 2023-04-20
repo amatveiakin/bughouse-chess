@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::coord::{Col, Coord, Row, NUM_ROWS};
 use crate::grid::Grid;
-use crate::piece::{PieceForce, PieceKind, PieceOnBoard, PieceOrigin};
+use crate::piece::{PieceForce, PieceId, PieceKind, PieceOnBoard, PieceOrigin};
 use crate::rules::StartingPosition;
 
 
@@ -15,7 +15,7 @@ pub enum EffectiveStartingPosition {
 }
 
 fn new_white(kind: PieceKind) -> PieceOnBoard {
-    PieceOnBoard::new(kind, PieceOrigin::Innate, PieceForce::White)
+    PieceOnBoard::new(PieceId::tmp(), kind, PieceOrigin::Innate, PieceForce::White)
 }
 
 fn setup_white_pawns_on_2nd_row(grid: &mut Grid) {
@@ -34,6 +34,14 @@ fn setup_black_pieces_mirrorlike(grid: &mut Grid) {
                 assert!(grid[mirror_coord].is_none(), "{:?}", grid);
                 grid[mirror_coord] = Some(PieceOnBoard { force: PieceForce::Black, ..piece });
             }
+        }
+    }
+}
+
+fn assign_piece_ids(grid: &mut Grid, piece_id: &mut PieceId) {
+    for coord in Coord::all() {
+        if let Some(piece) = grid[coord] {
+            grid[coord] = Some(PieceOnBoard { id: piece_id.inc(), ..piece });
         }
     }
 }
@@ -81,7 +89,9 @@ pub fn starting_piece_row(starting_position: &EffectiveStartingPosition) -> &[Pi
     }
 }
 
-pub fn generate_starting_grid(starting_position: &EffectiveStartingPosition) -> Grid {
+pub fn generate_starting_grid(
+    starting_position: &EffectiveStartingPosition, piece_id: &mut PieceId,
+) -> Grid {
     let mut grid = Grid::new();
     for (col, piece_kind) in starting_piece_row(starting_position).iter().enumerate() {
         let coord = Coord::new(Row::_1, Col::from_zero_based(col.try_into().unwrap()).unwrap());
@@ -89,5 +99,6 @@ pub fn generate_starting_grid(starting_position: &EffectiveStartingPosition) -> 
     }
     setup_white_pawns_on_2nd_row(&mut grid);
     setup_black_pieces_mirrorlike(&mut grid);
+    assign_piece_ids(&mut grid, piece_id);
     grid
 }

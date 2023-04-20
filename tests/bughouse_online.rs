@@ -15,6 +15,7 @@ use bughouse_chess::session_store::SessionStore;
 use bughouse_chess::*;
 use common::*;
 use itertools::Itertools;
+use BughouseBoard::{A, B};
 
 
 fn default_chess_rules() -> ChessRules { ChessRules::classic_blitz() }
@@ -22,6 +23,7 @@ fn default_chess_rules() -> ChessRules { ChessRules::classic_blitz() }
 fn default_bughouse_rules() -> BughouseRules {
     BughouseRules {
         teaming: Teaming::FixedTeams,
+        promotion: Promotion::Upgrade,
         min_pawn_drop_rank: SubjectiveRow::from_one_based(2).unwrap(),
         max_pawn_drop_rank: SubjectiveRow::from_one_based(6).unwrap(),
         drop_aggression: DropAggression::NoChessMate,
@@ -209,9 +211,14 @@ impl World {
     fn default_clients(
         &mut self,
     ) -> (String, TestClientId, TestClientId, TestClientId, TestClientId) {
+        self.default_clients_with_rules(default_chess_rules(), default_bughouse_rules())
+    }
+    fn default_clients_with_rules(
+        &mut self, chess_rules: ChessRules, bughouse_rules: BughouseRules,
+    ) -> (String, TestClientId, TestClientId, TestClientId, TestClientId) {
         let [cl1, cl2, cl3, cl4] = self.new_clients();
 
-        let mtch = self.new_match(cl1, "p1");
+        let mtch = self.new_match_with_rules(cl1, "p1", chess_rules, bughouse_rules);
         self[cl1].state.set_faction(Faction::Fixed(Team::Red));
         self.process_all_events();
 
@@ -233,7 +240,6 @@ impl World {
         self.process_all_events();
         (mtch, cl1, cl2, cl3, cl4)
     }
-
 
     fn process_outgoing_events_for(&mut self, client_id: TestClientId) -> bool {
         self.clients[client_id.0].process_outgoing_events(&mut self.server)
@@ -728,9 +734,65 @@ fn turn_after_game_ended_on_another_board() {
     world.process_all_events();
 }
 
+// Even if multiple turns have been made on the other board, the promo steal should still execute
+// properly thanks to the piece ID tracking.
+#[test]
+fn high_latency_stealing() {
+    let mut world = World::new();
+    let (_, cl1, cl2, cl3, cl4) =
+        world.default_clients_with_rules(default_chess_rules(), BughouseRules {
+            promotion: Promotion::Steal,
+            ..default_bughouse_rules()
+        });
+
+    world[cl4].make_turn("Nc3").unwrap();
+    world.process_all_events();
+
+    world[cl1].make_turn("a4").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("h5").unwrap();
+    world.process_all_events();
+    world[cl1].make_turn("a5").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("h4").unwrap();
+    world.process_all_events();
+    world[cl1].make_turn("a6").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("h3").unwrap();
+    world.process_all_events();
+    world[cl1].make_turn("xb7").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("xg2").unwrap();
+    world.process_all_events();
+    // Improvement potential: track piece ID for algebraic notation (see `PromotionTarget::Steal`
+    // comment) and replace with monstrosity with
+    //   world[cl1].make_turn("xc8=Nc3").unwrap();
+    let steal_target_id = world[cl1].local_game().board(B).grid()[Coord::C3].unwrap().id;
+    world[cl1]
+        .make_turn(TurnInput::DragDrop(Turn::Move(TurnMove {
+            from: Coord::B7,
+            to: Coord::C8,
+            promote_to: Some(PromotionTarget::Steal((PieceKind::Knight, steal_target_id))),
+        })))
+        .unwrap();
+
+    world[cl2].make_turn("e5").unwrap();
+    world.process_events_for(cl2).unwrap();
+    world[cl4].make_turn("Nb5").unwrap();
+    world.process_events_for(cl4).unwrap();
+    world[cl2].make_turn("d5").unwrap();
+    world.process_events_for(cl2).unwrap();
+    world[cl4].make_turn("Nxc7").unwrap();
+    world.process_events_for(cl4).unwrap();
+    world.process_events_for(cl2).unwrap();
+
+    assert!(world[cl2].local_game().board(B).grid()[Coord::C7].is(piece!(White Knight)));
+    world.process_all_events();
+    assert!(world[cl2].local_game().board(B).grid()[Coord::C7].is_none());
+}
+
 #[test]
 fn three_players() {
-    use BughouseBoard::*;
     use DisplayBoard::*;
 
     let mut world = World::new();
@@ -804,9 +866,7 @@ fn five_players() {
     // The player who does not participate should still be able to see the game.
     world[cl1].make_turn("e4").unwrap();
     world.process_all_events();
-    assert!(
-        world[cl5].local_game().board(BughouseBoard::A).grid()[Coord::E4].is(piece!(White Pawn))
-    );
+    assert!(world[cl5].local_game().board(A).grid()[Coord::E4].is(piece!(White Pawn)));
 }
 
 #[test]
@@ -850,14 +910,10 @@ fn two_matches() {
     world[cl1].make_turn("e4").unwrap();
     world[cl5].make_turn("Nc3").unwrap();
     world.process_all_events();
-    assert!(
-        world[cl2].local_game().board(BughouseBoard::A).grid()[Coord::E4].is(piece!(White Pawn))
-    );
-    assert!(world[cl2].local_game().board(BughouseBoard::A).grid()[Coord::C3].is_none());
-    assert!(world[cl6].local_game().board(BughouseBoard::A).grid()[Coord::E4].is_none());
-    assert!(
-        world[cl6].local_game().board(BughouseBoard::A).grid()[Coord::C3].is(piece!(White Knight))
-    );
+    assert!(world[cl2].local_game().board(A).grid()[Coord::E4].is(piece!(White Pawn)));
+    assert!(world[cl2].local_game().board(A).grid()[Coord::C3].is_none());
+    assert!(world[cl6].local_game().board(A).grid()[Coord::E4].is_none());
+    assert!(world[cl6].local_game().board(A).grid()[Coord::C3].is(piece!(White Knight)));
 }
 
 #[test]

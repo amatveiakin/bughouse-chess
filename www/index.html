@@ -109,6 +109,13 @@
       <filter id="glowing-duck">
         <feDropShadow dx=0 dy=0 stdDeviation=0.1 flood-color="#c3e27d" flood-opacity=1 />
       </filter>
+      <filter id="glowing-steal">
+        <!-- TODO: Consider using this quadruple-shadow style in other filters -->
+        <feDropShadow dx=+0.03 dy=+0.03 stdDeviation=0.03 flood-color="#8cccc8" flood-opacity=0.7 />
+        <feDropShadow dx=+0.03 dy=-0.03 stdDeviation=0.03 flood-color="#8cccc8" flood-opacity=0.7 />
+        <feDropShadow dx=-0.03 dy=+0.03 stdDeviation=0.03 flood-color="#8cccc8" flood-opacity=0.7 />
+        <feDropShadow dx=-0.03 dy=-0.03 stdDeviation=0.03 flood-color="#8cccc8" flood-opacity=0.7 />
+      </filter>
       <radialGradient id="drag-start-gradient">
         <stop offset="0%" stop-color="#ffffff" stop-opacity=0.5 />
         <stop offset="30%" stop-color="#ffffff" stop-opacity=0 />
@@ -674,11 +681,38 @@
           placeholder="m:ss" spellcheck="false" autocomplete="off" required
           value="5:00" pattern="[0-9]+:[0-5][0-9]"
           title="Starting time in “m:ss” format." />
-          <div class="tooltip">
-            <div class="tooltip-text">
-              <p>Starting time in “m:ss” format. Increments and delays are not allowed.</p>
-            </div>
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>Starting time in “m:ss” format. Increments and delays are not allowed.</p>
           </div>
+        </div>
+
+        <label for="cc-promotion">Promotion</label>
+        <select id="cc-promotion" name="promotion">
+          <option value="upgrade">Upgrade</option>
+          <option value="discard">Discard</option>
+          <option value="steal">Steal</option>
+        </select>
+        <div class="tooltip">
+          <div class="tooltip-text">
+            <p>
+              <i>Upgrade.</i>
+              Regular promotion rules. Note that there is currently no UI to choose promotion
+              target. By default a pawn will be promoted to a Queen. Hold Shift to promote to a
+              Knight. Use algebraic input to promote to a Rook or a Bishop.
+            </p>
+            <p>
+              <i>Discard.</i>
+              Upon reaching the last rank the pawn is lost and goes to your opponent's reserve. You
+              get nothing. C'est la vie.
+            </p>
+            <p>
+              <i>Steal.</i>
+              Expropriate your partner opponent's piece when promoting a pawn! Can only steal a
+              piece from the board, not from reserve. Cannot check player by stealing their piece.
+            </p>
+          </div>
+        </div>
 
         <label for="cc-drop-aggression">Drop aggression</label>
         <select id="cc-drop-aggression" name="drop_aggression">

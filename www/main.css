@@ -224,6 +224,26 @@ body.symmetric #page {
   opacity: 0.5;
 }
 
+.partial-turn-from {
+  fill: #94c3c0;
+  opacity: 0.6;
+}
+.partial-turn-to,
+.partial-turn-drop {
+  fill: #70c3be;
+  opacity: 0.6;
+}
+
+.partial-turn-from-above {
+  fill: #94c3c0;
+  opacity: 0.5;
+}
+.partial-turn-to-above,
+.partial-turn-drop-above {
+  fill: #70c3be;
+  opacity: 0.5;
+}
+
 .latest-turn-from {
   fill: #acbd38;
   opacity: 0.5;
@@ -352,6 +372,11 @@ body.observer .reserve {
 
 .glowing-duck {
   filter: saturate(1.5) url(#glowing-duck);
+}
+.glowing-steal {
+  /* `sepia` + `hue-rotate` allows to colorize into a given color (in this case, blue);
+     `contrast` + `saturate` + `brightness` are chosen to make both black and white pieces look ok */
+  filter: contrast(0.9) sepia(0.3) saturate(2) brightness(1.05) hue-rotate(120deg) url(#glowing-steal);
 }
 
 .board.wayback {
@@ -573,20 +598,24 @@ dialog ::-webkit-scrollbar-thumb {
 .log-turn-record-black {
   background-color: #0000001a;
 }
+.log-turn-record-intervention {
+  background-color: #373c00;
+}
 .log-capture-separator {
   margin: 0 0.15em;
   user-select: none;
 }
-.log-capture {
+.log-capture,
+.log-steal {
   display: inline-block;
   height: 1em;
   scale: 120%;
   margin-right: -0.3em;
 }
-.log-capture-white {
+.log-piece-white {
   opacity: 75%;
 }
-.log-capture-black {
+.log-piece-black {
   background: radial-gradient(circle farthest-corner, #ffffff28 50%, #ffffff00 80%);
 }
 

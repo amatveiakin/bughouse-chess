@@ -22,7 +22,9 @@ use enum_map::{enum_map, EnumMap};
 use itertools::Itertools;
 use strum::IntoEnumIterator;
 
-use crate::board::{Turn, TurnDrop, TurnError, TurnExpanded, TurnInput, TurnMode, TurnMove};
+use crate::board::{
+    PromotionTarget, Turn, TurnDrop, TurnError, TurnExpanded, TurnInput, TurnMode, TurnMove,
+};
 use crate::clock::GameInstant;
 use crate::coord::{Coord, SubjectiveRow};
 use crate::display::Perspective;
@@ -31,8 +33,13 @@ use crate::game::{
     BughouseParticipant, TurnRecord, TurnRecordExpanded,
 };
 use crate::piece::{CastleDirection, PieceForce, PieceKind};
-use crate::rules::{BughouseRules, ChessRules, ChessVariant};
+use crate::rules::{BughouseRules, ChessRules, ChessVariant, Promotion};
 
+
+#[derive(Clone, Copy, Debug)]
+pub enum PartialTurnInput {
+    StealPromotionMove((Coord, Coord)),
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum PieceDragStart {
@@ -73,6 +80,7 @@ pub enum TurnHighlightLayer {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TurnHighlightFamily {
+    PartialTurn,
     Preturn,
     LatestTurn,
 }
@@ -100,6 +108,8 @@ pub struct AlteredGame {
     my_id: BughouseParticipant,
     // State as it has been confirmed by the server.
     game_confirmed: BughouseGame,
+    // Partial turn input (e.g. move of a pawn to the last rank without a promotion choice).
+    partial_turn_input: Option<(BughouseBoard, PartialTurnInput)>,
     // Local changes of two kinds:
     //   - Local turns (TurnMode::Normal) not confirmed by the server yet, but displayed on the
     //     client. Always valid turns for the `game_confirmed`.
@@ -117,6 +127,7 @@ impl AlteredGame {
         AlteredGame {
             my_id,
             game_confirmed,
+            partial_turn_input: None,
             local_turns: Vec::new(),
             wayback_turn_index: enum_map! { _ => None },
             piece_drag: None,
@@ -198,6 +209,10 @@ impl AlteredGame {
         game
     }
 
+    pub fn partial_turn_input(&self) -> Option<(BughouseBoard, PartialTurnInput)> {
+        self.partial_turn_input
+    }
+
     pub fn turn_highlights(&self) -> Vec<TurnHighlight> {
         let my_id = self.my_id;
         let game = self.local_game();
@@ -235,6 +250,16 @@ impl AlteredGame {
                         TurnHighlightFamily::Preturn,
                         board_idx,
                         &r.turn_expanded,
+                        fog_cover_area,
+                    ));
+                }
+            }
+
+            if let Some((input_board_idx, ref partial_input)) = self.partial_turn_input {
+                if input_board_idx == board_idx {
+                    highlights.extend(get_partial_turn_highlights(
+                        board_idx,
+                        partial_input,
                         fog_cover_area,
                     ));
                 }
@@ -282,8 +307,9 @@ impl AlteredGame {
     pub fn try_local_turn(
         &mut self, board_idx: BughouseBoard, turn_input: TurnInput, time: GameInstant,
     ) -> Result<TurnMode, TurnError> {
-        let mode = self.try_local_turn_ignore_drag(board_idx, turn_input, time)?;
+        self.partial_turn_input = None;
         self.piece_drag = None;
+        let mode = self.try_local_turn_ignore_drag(board_idx, turn_input, time)?;
         Ok(mode)
     }
 
@@ -303,6 +329,32 @@ impl AlteredGame {
         self.wayback_turn_index[board_idx] = turn_idx;
     }
 
+    // Improvement: Less ad-hoc solution for "gluing" board index to TurnInput; use it here, in
+    // `drag_piece_drop` and in `BughouseClientEvent::MakeTurn`.
+    pub fn click_piece(
+        &mut self, board_idx: BughouseBoard, coord: Coord,
+    ) -> Option<(BughouseBoard, TurnInput)> {
+        if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
+            match partial_input {
+                PartialTurnInput::StealPromotionMove((from, to)) => {
+                    if board_idx == input_board_idx.other() {
+                        let game = self.game_with_local_turns(true);
+                        if let Some(piece) = game.board(board_idx).grid()[coord] {
+                            let full_input = TurnInput::DragDrop(Turn::Move(TurnMove {
+                                from,
+                                to,
+                                promote_to: Some(PromotionTarget::Steal((piece.kind, piece.id))),
+                            }));
+                            self.partial_turn_input = None;
+                            return Some((input_board_idx, full_input));
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
     pub fn piece_drag_state(&self) -> &Option<PieceDrag> { &self.piece_drag }
 
     pub fn start_drag_piece(
@@ -314,6 +366,11 @@ impl AlteredGame {
         let Some(my_envoy) = my_player_id.envoy_for(board_idx) else {
             return Err(PieceDragError::DragForbidden);
         };
+        if let Some((input_board_idx, _)) = self.partial_turn_input {
+            if input_board_idx == board_idx {
+                return Err(PieceDragError::DragForbidden);
+            }
+        }
         if self.wayback_turn_index[board_idx].is_some() {
             return Err(PieceDragError::DragForbidden);
         }
@@ -361,9 +418,13 @@ impl AlteredGame {
     // turn via `make_turn`.
     pub fn drag_piece_drop(
         &mut self, dest: Coord, promote_to: PieceKind,
-    ) -> Result<TurnInput, PieceDragError> {
-        let PieceDrag { piece_kind, piece_force, source, .. } =
-            self.piece_drag.take().ok_or(PieceDragError::NoDragInProgress)?;
+    ) -> Result<Option<TurnInput>, PieceDragError> {
+        let PieceDrag {
+            board_idx,
+            piece_kind,
+            piece_force,
+            source,
+        } = self.piece_drag.take().ok_or(PieceDragError::NoDragInProgress)?;
 
         match source {
             PieceDragSource::Defunct => Err(PieceDragError::DragNoLongerPossible),
@@ -373,7 +434,7 @@ impl AlteredGame {
                     return Err(PieceDragError::Cancelled);
                 }
                 if piece_kind == PieceKind::Duck {
-                    return Ok(TurnInput::DragDrop(Turn::PlaceDuck(dest)));
+                    return Ok(Some(TurnInput::DragDrop(Turn::PlaceDuck(dest))));
                 }
                 let d_col = dest.col - source_coord.col;
                 let mut is_castling = false;
@@ -389,20 +450,47 @@ impl AlteredGame {
                 if is_castling {
                     use CastleDirection::*;
                     let dir = if d_col > 0 { HSide } else { ASide };
-                    Ok(TurnInput::DragDrop(Turn::Castle(dir)))
+                    Ok(Some(TurnInput::DragDrop(Turn::Castle(dir))))
                 } else {
-                    Ok(TurnInput::DragDrop(Turn::Move(TurnMove {
-                        from: source_coord,
-                        to: dest,
-                        promote_to: if is_promotion { Some(promote_to) } else { None },
-                    })))
+                    if is_promotion {
+                        match self.bughouse_rules().promotion {
+                            // TODO: Use partial_turn_input to allow proper promotion target choice.
+                            Promotion::Upgrade => {
+                                Ok(Some(TurnInput::DragDrop(Turn::Move(TurnMove {
+                                    from: source_coord,
+                                    to: dest,
+                                    promote_to: Some(PromotionTarget::Upgrade(promote_to)),
+                                }))))
+                            }
+                            Promotion::Discard => {
+                                Ok(Some(TurnInput::DragDrop(Turn::Move(TurnMove {
+                                    from: source_coord,
+                                    to: dest,
+                                    promote_to: Some(PromotionTarget::Discard),
+                                }))))
+                            }
+                            Promotion::Steal => {
+                                self.partial_turn_input = Some((
+                                    board_idx,
+                                    PartialTurnInput::StealPromotionMove((source_coord, dest)),
+                                ));
+                                Ok(None)
+                            }
+                        }
+                    } else {
+                        Ok(Some(TurnInput::DragDrop(Turn::Move(TurnMove {
+                            from: source_coord,
+                            to: dest,
+                            promote_to: None,
+                        }))))
+                    }
                 }
             }
             PieceDragSource::Reserve => {
                 if piece_kind == PieceKind::Duck {
-                    return Ok(TurnInput::DragDrop(Turn::PlaceDuck(dest)));
+                    return Ok(Some(TurnInput::DragDrop(Turn::PlaceDuck(dest))));
                 }
-                Ok(TurnInput::DragDrop(Turn::Drop(TurnDrop { piece_kind, to: dest })))
+                Ok(Some(TurnInput::DragDrop(Turn::Drop(TurnDrop { piece_kind, to: dest }))))
             }
         }
     }
@@ -410,8 +498,16 @@ impl AlteredGame {
     pub fn cancel_preturn(&mut self, board_idx: BughouseBoard) -> bool {
         // Note: Abort drag just to be safe. In practice existing GUI doesn't allow to
         // cancel preturn while dragging. If this is desired, a proper check needs to be
-        // done (like in `apply_remote_turn_algebraic`).
+        // done (like in `apply_remote_turn`).
         self.piece_drag = None;
+
+        if let Some((input_board_idx, _)) = self.partial_turn_input {
+            if input_board_idx == board_idx {
+                self.partial_turn_input = None;
+                return false;
+            }
+        }
+
         if self.num_preturns_on_board(board_idx) == 0 {
             return false;
         }
@@ -447,17 +543,27 @@ impl AlteredGame {
         });
     }
 
-    fn game_with_local_turns(&self, include_preturns: bool) -> BughouseGame {
+    fn game_with_local_turns(&self, include_pre_and_partial_turns: bool) -> BughouseGame {
         let mut game = self.game_confirmed.clone();
         for turn_record in self.local_turns.iter() {
             // Note. Not calling `test_flag`, because only server records flag defeat.
             // Unwrap ok: turn correctness (according to the `mode`) has already been verified.
             let mode = game.turn_mode_for_envoy(turn_record.envoy).unwrap();
-            if mode == TurnMode::Preturn && !include_preturns {
+            if mode == TurnMode::Preturn && !include_pre_and_partial_turns {
                 // Do not break because we can still get in-order turns on the other board.
                 continue;
             }
             game.apply_turn_record(&turn_record, mode).unwrap();
+        }
+        if include_pre_and_partial_turns {
+            if let Some((board_idx, partial_input)) = self.partial_turn_input {
+                match partial_input {
+                    PartialTurnInput::StealPromotionMove((from, to)) => {
+                        let grid = game.board_mut(board_idx).grid_mut();
+                        grid[to] = grid[from].take();
+                    }
+                }
+            }
         }
         game
     }
@@ -587,6 +693,9 @@ fn turn_highlight_z_index(highlight: &TurnHighlight) -> (u8, u8, u8) {
             TurnHighlightLayer::BelowFog => 0,
         },
         match highlight.family {
+            // Partial moves are the most important, because they help with the turn that user
+            // inputs right now.
+            TurnHighlightFamily::PartialTurn => 2,
             TurnHighlightFamily::Preturn => 1,
             TurnHighlightFamily::LatestTurn => 0,
         },
@@ -603,6 +712,35 @@ fn turn_highlight_z_index(highlight: &TurnHighlight) -> (u8, u8, u8) {
     )
 }
 
+fn make_turn_highlight(
+    board_idx: BughouseBoard, coord: Coord, family: TurnHighlightFamily, item: TurnHighlightItem,
+    fog_of_war_area: &HashSet<Coord>,
+) -> Option<TurnHighlight> {
+    // Highlights of all visible squares should be rendered below the fog. Semantically there is no
+    // difference: the highlight will be visible anyway. But visually it's more appealing because it
+    // doesn't obstruct the pieces and the edges of fog sprite extending from neighboring squares.
+    let mut layer = TurnHighlightLayer::BelowFog;
+
+    if fog_of_war_area.contains(&coord) {
+        // Show the highlight in the fog when it doesn't give new information to the player.
+        let show_in_fog = match (family, item) {
+            // A piece owned by the current player before it was captured.
+            (TurnHighlightFamily::LatestTurn, TurnHighlightItem::Capture) => true,
+            // A turn made by the current player.
+            (TurnHighlightFamily::Preturn | TurnHighlightFamily::PartialTurn, _) => true,
+            // Default case: potentially new information.
+            _ => false,
+        };
+        if show_in_fog {
+            layer = TurnHighlightLayer::AboveFog;
+        } else {
+            return None;
+        }
+    }
+
+    Some(TurnHighlight { board_idx, coord, layer, family, item })
+}
+
 fn get_turn_highlight_basis(turn_expanded: &TurnExpanded) -> Vec<(TurnHighlightItem, Coord)> {
     let mut highlights = vec![];
     if let Some((from, to)) = turn_expanded.relocation {
@@ -616,37 +754,51 @@ fn get_turn_highlight_basis(turn_expanded: &TurnExpanded) -> Vec<(TurnHighlightI
     if let Some(drop) = turn_expanded.drop {
         highlights.push((TurnHighlightItem::Drop, drop));
     }
-    if let Some(ref capture) = turn_expanded.capture {
-        highlights.push((TurnHighlightItem::Capture, capture.from));
+    for capture in turn_expanded.captures.iter() {
+        if let Some(from) = capture.from {
+            highlights.push((TurnHighlightItem::Capture, from));
+        }
     }
     highlights
+}
+
+fn get_partial_turn_highlight_basis(
+    partial_input: &PartialTurnInput,
+) -> Vec<(TurnHighlightItem, Coord)> {
+    match partial_input {
+        PartialTurnInput::StealPromotionMove((from, to)) => vec![
+            (TurnHighlightItem::MoveFrom, *from),
+            (TurnHighlightItem::MoveTo, *to),
+        ],
+    }
+}
+
+fn expand_turn_highlights(
+    basic_highlights: Vec<(TurnHighlightItem, Coord)>, family: TurnHighlightFamily,
+    board_idx: BughouseBoard, fog_of_war_area: &HashSet<Coord>,
+) -> Vec<TurnHighlight> {
+    basic_highlights
+        .into_iter()
+        .filter_map(|(item, coord)| {
+            make_turn_highlight(board_idx, coord, family, item, fog_of_war_area)
+        })
+        .collect()
 }
 
 fn get_turn_highlights(
     family: TurnHighlightFamily, board_idx: BughouseBoard, turn: &TurnExpanded,
     fog_of_war_area: &HashSet<Coord>,
 ) -> Vec<TurnHighlight> {
-    get_turn_highlight_basis(turn)
-        .into_iter()
-        .filter_map(|(item, coord)| {
-            // Highlights of all visible squares should be rendered below the fog. Semantically
-            // there is no difference: the highlight will be visible anyway. But visually it's more
-            // appealing in cases when a highlight overlaps with a fog sprite extending from a
-            // neighboring square.
-            let mut layer = TurnHighlightLayer::BelowFog;
+    expand_turn_highlights(get_turn_highlight_basis(turn), family, board_idx, fog_of_war_area)
+}
 
-            // Check whether the highlight is visible in the fog.
-            if fog_of_war_area.contains(&coord) {
-                if item == TurnHighlightItem::Capture {
-                    // A piece owned by the current player before it was captured. Location
-                    // information is known to the player.
-                    layer = TurnHighlightLayer::AboveFog;
-                } else {
-                    return None;
-                }
-            }
-
-            Some(TurnHighlight { family, item, board_idx, coord, layer })
-        })
-        .collect()
+fn get_partial_turn_highlights(
+    board_idx: BughouseBoard, partial_input: &PartialTurnInput, fog_of_war_area: &HashSet<Coord>,
+) -> Vec<TurnHighlight> {
+    expand_turn_highlights(
+        get_partial_turn_highlight_basis(partial_input),
+        TurnHighlightFamily::PartialTurn,
+        board_idx,
+        &fog_of_war_area,
+    )
 }

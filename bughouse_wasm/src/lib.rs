@@ -293,8 +293,8 @@ impl WebClient {
     }
     pub fn new_match(
         &mut self, player_name: Option<String>, teaming: &str, starting_position: &str,
-        chess_variant: &str, fairy_pieces: &str, starting_time: &str, drop_aggression: &str,
-        pawn_drop_ranks: &str, rating: &str,
+        chess_variant: &str, fairy_pieces: &str, starting_time: &str, promotion: &str,
+        drop_aggression: &str, pawn_drop_ranks: &str, rating: &str,
     ) -> JsResult<()> {
         let teaming = match teaming {
             "fixed-teams" => Teaming::FixedTeams,
@@ -323,6 +323,12 @@ impl WebClient {
             "no-bughouse-mate" => DropAggression::NoBughouseMate,
             "mate-allowed" => DropAggression::MateAllowed,
             _ => return Err(format!("Invalid drop aggression: {drop_aggression}").into()),
+        };
+        let promotion = match promotion {
+            "upgrade" => Promotion::Upgrade,
+            "discard" => Promotion::Discard,
+            "steal" => Promotion::Steal,
+            _ => return Err(format!("Invalid promotion: {promotion}").into()),
         };
         let rated = match rating {
             "rated" => true,
@@ -356,6 +362,7 @@ impl WebClient {
         };
         let bughouse_rules = BughouseRules {
             teaming,
+            promotion,
             min_pawn_drop_rank,
             max_pawn_drop_rank,
             drop_aggression,
@@ -394,6 +401,23 @@ impl WebClient {
         // if turn_command == "bad" { return Err("Test unknown error".into()); }
         let turn_result = self.state.execute_turn_command(turn_command);
         self.show_turn_result(turn_result)
+    }
+
+    pub fn click_piece(&mut self, source: &str) -> JsResult<()> {
+        let Some(alt_game) = self.state.alt_game_mut() else {
+            return Ok(());
+        };
+        let Some((display_board_idx, coord)) = parse_piece_id(source) else {
+            return Ok(());
+        };
+        let board_idx = get_board_index(display_board_idx, alt_game.perspective());
+        if let Some((input_board_idx, turn_input)) = alt_game.click_piece(board_idx, coord) {
+            let display_input_board_idx =
+                get_display_board_index(input_board_idx, alt_game.perspective());
+            let turn_result = self.state.make_turn(display_input_board_idx, turn_input);
+            self.show_turn_result(turn_result)?;
+        }
+        Ok(())
     }
 
     pub fn start_drag_piece(&mut self, source: &str) -> JsResult<String> {
@@ -438,10 +462,13 @@ impl WebClient {
             return Err(rust_error!("Illegal drag source: {source:?}"));
         };
         let board_idx = get_board_index(display_board_idx, alt_game.perspective());
-        alt_game
-            .start_drag_piece(board_idx, source)
-            .map_err(|err| rust_error!("Drag&drop error: {:?}", err))?;
-        Ok(board_id(display_board_idx).to_owned())
+        match alt_game.start_drag_piece(board_idx, source) {
+            Ok(_) => Ok(board_id(display_board_idx).to_owned()),
+            Err(_) => {
+                self.reset_drag_highlights()?;
+                Ok("abort".to_owned())
+            }
+        }
     }
 
     pub fn drag_piece(&mut self, x: f64, y: f64) -> JsResult<()> {
@@ -478,8 +505,11 @@ impl WebClient {
             let dest_coord = from_display_coord(dest_display, board_orientation).unwrap();
             let promote_to = if alternative_promotion { Knight } else { Queen };
             match alt_game.drag_piece_drop(dest_coord, promote_to) {
-                Ok(turn) => {
-                    let turn_result = self.state.make_turn(display_board_idx, turn);
+                Ok(None) => {
+                    // Probably a partial turn input. Awaiting completion.
+                }
+                Ok(Some(turn_input)) => {
+                    let turn_result = self.state.make_turn(display_board_idx, turn_input);
                     self.show_turn_result(turn_result)?;
                 }
                 Err(PieceDragError::DragNoLongerPossible) => {
@@ -725,6 +755,21 @@ impl WebClient {
             let is_glowing_duck = |piece: PieceOnBoard| {
                 game.is_active() && piece.kind == PieceKind::Duck && board.is_duck_turn()
             };
+            let is_glowing_steal = |piece: PieceOnBoard| {
+                let Some((input_board_idx, partial_input)) = alt_game.partial_turn_input() else {
+                    return false;
+                };
+                match partial_input {
+                    PartialTurnInput::StealPromotionMove(_) => {
+                        let Some(envoy) = my_id.envoy_for(input_board_idx) else {
+                            return false;
+                        };
+                        board_idx == input_board_idx.other()
+                            && piece.force == envoy.force.into()
+                            && piece.kind.can_be_steal_promotion_target()
+                    }
+                }
+            };
             let see_though_fog = alt_game.see_though_fog();
             let empty_area = HashSet::new();
             let fog_render_area = alt_game.fog_of_war_area(board_idx);
@@ -791,6 +836,8 @@ impl WebClient {
                             .toggle_with_force("draggable", is_piece_draggable(piece.force))?;
                         node.class_list()
                             .toggle_with_force("glowing-duck", is_glowing_duck(piece))?;
+                        node.class_list()
+                            .toggle_with_force("glowing-steal", is_glowing_steal(piece))?;
                     } else {
                         // Rust-upgrade (https://github.com/rust-lang/rust/issues/91345):
                         //   `map` -> `inspect`.
@@ -1489,6 +1536,7 @@ fn update_turn_log(
     let log_node = document.get_existing_element_by_id(&turn_log_node_id(display_board_idx))?;
     remove_all_children(&log_node)?;
     let mut prev_number = 0;
+    let mut prev_index = String::new();
     for record in game.turn_log().iter() {
         if record.envoy.board_idx == board_idx {
             let force = record.envoy.force;
@@ -1505,11 +1553,11 @@ fn update_turn_log(
             } else {
                 record.turn_expanded.algebraic.format(AlgebraicCharset::AuxiliaryUnicode)
             };
-            let (algebraic, capture) = match record.mode {
-                TurnMode::Normal => (algebraic, record.turn_expanded.capture.clone()),
+            let (algebraic, captures) = match record.mode {
+                TurnMode::Normal => (algebraic, record.turn_expanded.captures.clone()),
                 TurnMode::Preturn => (
                     format!("({})", algebraic),
-                    None, // don't show captures for preturns: too unpredictable and messes with braces
+                    vec![], // don't show captures for preturns: too unpredictable and messes with braces
                 ),
             };
 
@@ -1522,6 +1570,7 @@ fn update_turn_log(
             if Some(record.index().as_str()) == wayback_turn_idx {
                 line_node.class_list().add_1("wayback-current-turn")?;
             }
+            prev_index = record.index().clone();
 
             let turn_number_node = document.create_element("span")?;
             turn_number_node.set_text_content(Some(&turn_number_str));
@@ -1532,23 +1581,55 @@ fn update_turn_log(
             algebraic_node.set_text_content(Some(&algebraic));
             line_node.append_child(&algebraic_node)?;
 
-            if let Some(capture) = capture {
+            if !captures.is_empty() {
                 let capture_sep_node = document.create_element("span")?;
                 capture_sep_node.set_text_content(Some("·"));
                 capture_sep_node.set_attribute("class", "log-capture-separator")?;
                 line_node.append_child(&capture_sep_node)?;
 
-                let capture_classes = [
-                    "log-capture",
-                    &format!("log-capture-{}", piece_force_id(capture.force)),
-                ];
-                for &kind in capture.piece_kinds.iter() {
-                    let capture_node = make_piece_icon(kind, capture.force, &capture_classes)?;
+                for capture in captures.iter() {
+                    let capture_classes = [
+                        "log-capture",
+                        &format!("log-piece-{}", piece_force_id(capture.force)),
+                    ];
+                    let capture_node =
+                        make_piece_icon(capture.piece_kind, capture.force, &capture_classes)?;
                     line_node.append_child(&capture_node)?;
                 }
             }
 
             log_node.append_child(&line_node)?;
+        } else {
+            // Add records for turns made on the other board when appropriate.
+            if !record.turn_expanded.steals.is_empty() {
+                let line_node = document.create_element("div")?;
+                line_node.set_attribute(
+                    "class",
+                    &format!("log-turn-record log-turn-record-intervention"),
+                )?;
+                // Clicking on the steal will send you the previous turn on this board.
+                line_node.set_attribute("data-turn-index", &prev_index)?;
+
+                let turn_number_node = document.create_element("span")?;
+                turn_number_node.set_attribute("class", "log-turn-number")?;
+                line_node.append_child(&turn_number_node)?;
+
+                let algebraic_node = document.create_element("span")?;
+                algebraic_node.set_text_content(Some("🫳"));
+                line_node.append_child(&algebraic_node)?;
+
+                for steal in record.turn_expanded.steals.iter() {
+                    let capture_classes = [
+                        "log-steal",
+                        &format!("log-piece-{}", piece_force_id(steal.force)),
+                    ];
+                    let steal_node =
+                        make_piece_icon(steal.piece_kind, steal.force, &capture_classes)?;
+                    line_node.append_child(&steal_node)?;
+                }
+
+                log_node.append_child(&line_node)?;
+            }
         }
     }
     // Note. The log will be scrolled to bottom whenever a turn is made on a given board (see
@@ -1822,6 +1903,7 @@ fn turn_highlight_layer(layer: TurnHighlightLayer) -> SquareHighlightLayer {
 }
 fn turn_highlight_class_id(h: &TurnHighlight) -> String {
     let family = match h.family {
+        TurnHighlightFamily::PartialTurn => "partial",
         TurnHighlightFamily::LatestTurn => "latest",
         TurnHighlightFamily::Preturn => "pre",
     };

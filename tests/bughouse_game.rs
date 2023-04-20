@@ -2,6 +2,7 @@ mod common;
 
 use bughouse_chess::test_util::*;
 use bughouse_chess::*;
+use common::*;
 
 
 fn bughouse_chess_com() -> BughouseGame {
@@ -131,4 +132,91 @@ fn threefold_repetition_draw_ignores_reserve() {
     )
     .unwrap();
     assert!(game.status() == BughouseGameStatus::Draw(DrawReason::ThreefoldRepetition));
+}
+
+#[test]
+fn discard_promotion() {
+    let mut game = BughouseGame::new(
+        MatchRules::unrated(),
+        ChessRules::classic_blitz(),
+        BughouseRules {
+            promotion: Promotion::Discard,
+            ..BughouseRules::chess_com()
+        },
+        &sample_bughouse_players(),
+    );
+    replay_log(
+        &mut game,
+        "
+        1A.a4  1a.h5
+        2A.a5  2a.h4
+        3A.a6  3a.h3
+        4A.xb7  4a.g5
+        5A.xc8=.
+    ",
+    )
+    .unwrap();
+    assert!(game.board(BughouseBoard::A).grid()[Coord::C8].is_none());
+    assert_eq!(game.board(BughouseBoard::B).reserve(Force::White)[PieceKind::Pawn], 1);
+}
+
+// Test that promoted piece is not downgraded to a pawn on capture if it's promoted by stealing.
+#[test]
+fn steal_promotion_piece_goes_back_unchanged() {
+    let mut game = BughouseGame::new(
+        MatchRules::unrated(),
+        ChessRules::classic_blitz(),
+        BughouseRules {
+            promotion: Promotion::Steal,
+            ..BughouseRules::chess_com()
+        },
+        &sample_bughouse_players(),
+    );
+    replay_log(
+        &mut game,
+        "
+        1A.a4  1a.h5
+        2A.a5  2a.h4
+        3A.a6  3a.h3
+        4A.xb7  4a.g5
+        5A.xc8=Qd1
+    ",
+    )
+    .unwrap();
+    assert!(game.board(BughouseBoard::A).grid()[Coord::C8].is(piece!(White Queen)));
+    assert_eq!(game.board(BughouseBoard::B).reserve(Force::White)[PieceKind::Pawn], 1);
+    assert_eq!(game.board(BughouseBoard::B).reserve(Force::White)[PieceKind::Queen], 0);
+    replay_log(&mut game, "5a.Qxc8").unwrap();
+    assert_eq!(game.board(BughouseBoard::B).reserve(Force::White)[PieceKind::Pawn], 1);
+    assert_eq!(game.board(BughouseBoard::B).reserve(Force::White)[PieceKind::Queen], 1);
+}
+
+#[test]
+fn cannot_check_by_stealing() {
+    let mut game = BughouseGame::new(
+        MatchRules::unrated(),
+        ChessRules::classic_blitz(),
+        BughouseRules {
+            promotion: Promotion::Steal,
+            ..BughouseRules::chess_com()
+        },
+        &sample_bughouse_players(),
+    );
+    assert_eq!(
+        replay_log(
+            &mut game,
+            "
+            1B.h4  1b.g5
+            1B.xg5  2b.Nf6
+            1B.Rxh7  2b.Nc6
+            1B.Rxh8
+            1A.a4  1a.h5
+            2A.a5  2a.h4
+            3A.a6  3a.h3
+            4A.b4  4a.xg2
+            5A.b5  5a.xh1=Bf8
+            "
+        ),
+        Err(TurnError::CannotCheckByStealing)
+    );
 }

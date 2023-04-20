@@ -109,6 +109,8 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
                 } else {
                     Teaming::IndividualMode
                 },
+                // Improvement potential: Test other promotion strategies.
+                promotion: Promotion::Upgrade,
                 min_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)).unwrap(),
                 max_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)).unwrap(),
                 drop_aggression: match rng.gen_range(0..4) {
@@ -178,9 +180,10 @@ fn random_turn(rng: &mut rand::rngs::ThreadRng) -> Turn {
         // if they are potentially on the last row.
         let from = random_coord(rng);
         let to = random_coord(rng);
+
         let promote_to = if to.row == Row::_1 || to.row == Row::_8 && rng.gen_bool(PROMOTION_RATIO)
         {
-            Some(random_piece(rng))
+            Some(PromotionTarget::Upgrade(random_piece(rng)))
         } else {
             None
         };

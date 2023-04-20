@@ -16,12 +16,13 @@ use crate::coord::{Col, Coord, Row, SubjectiveRow};
 use crate::force::Force;
 use crate::grid::{Grid, GridForRepetitionDraw};
 use crate::piece::{
-    accolade_combine_pieces, CastleDirection, PieceForRepetitionDraw, PieceForce, PieceKind,
-    PieceMovement, PieceOnBoard, PieceOrigin, PieceReservable,
+    accolade_combine_pieces, CastleDirection, PieceForRepetitionDraw, PieceForce, PieceId,
+    PieceKind, PieceMovement, PieceOnBoard, PieceOrigin, PieceReservable,
 };
 use crate::rules::{BughouseRules, ChessRules, DropAggression, FairyPieces, MatchRules};
 use crate::starter::{generate_starting_grid, starting_piece_row, EffectiveStartingPosition};
 use crate::util::sort_two;
+use crate::AlgebraicPromotionTarget;
 
 
 fn tuple_abs((a, b): (i8, i8)) -> (u8, u8) {
@@ -61,11 +62,11 @@ fn col_range_inclusive((col_min, col_max): (Col, Col)) -> impl Iterator<Item = C
 }
 
 fn combine_pieces(
-    rules: &ChessRules, first: PieceOnBoard, second: PieceOnBoard,
+    rules: &ChessRules, id: PieceId, first: PieceOnBoard, second: PieceOnBoard,
 ) -> Option<PieceOnBoard> {
     match rules.fairy_pieces {
         FairyPieces::NoFairy | FairyPieces::DuckChess => None,
-        FairyPieces::Accolade => accolade_combine_pieces(first, second),
+        FairyPieces::Accolade => accolade_combine_pieces(id, first, second),
     }
 }
 
@@ -79,6 +80,8 @@ fn find_piece(grid: &Grid, predicate: impl Fn(PieceOnBoard) -> bool) -> Option<C
     }
     None
 }
+
+fn find_piece_by_id(grid: &Grid, id: PieceId) -> Option<Coord> { find_piece(grid, |p| p.id == id) }
 
 fn find_king(grid: &Grid, force: Force) -> Option<Coord> {
     find_piece(grid, |p| p.kind == PieceKind::King && p.force == force.into())
@@ -115,7 +118,7 @@ fn get_capture(
 
 fn get_en_passant_target(grid: &Grid, turn: Turn) -> Option<Coord> {
     if let Turn::Move(mv) = turn {
-        let piece_kind = grid[mv.to].unwrap().kind;
+        let piece_kind = grid[mv.to]?.kind;
         if piece_kind == PieceKind::Pawn
             && mv.to.col == mv.from.col
             && (mv.to.row - mv.from.row).abs() == 2
@@ -249,7 +252,12 @@ fn is_bughouse_mate_to(
         if grid[pos].is_none() {
             let grid = grid.scoped_set(
                 pos,
-                Some(PieceOnBoard::new(PieceKind::Queen, PieceOrigin::Dropped, force.into())),
+                Some(PieceOnBoard::new(
+                    PieceId::tmp(),
+                    PieceKind::Queen,
+                    PieceOrigin::Dropped,
+                    force.into(),
+                )),
             );
             if !is_check_to(rules, &grid, king_pos) {
                 return false;
@@ -301,7 +309,7 @@ fn generic_reachability(
             if let Some(dst_piece) = grid[to] {
                 let src_piece = grid[from].unwrap();
                 if dst_piece.force == src_piece.force {
-                    if combine_pieces(rules, src_piece, dst_piece).is_some() {
+                    if combine_pieces(rules, PieceId::tmp(), src_piece, dst_piece).is_some() {
                         return Reachable;
                     } else {
                         return Blocked;
@@ -494,15 +502,36 @@ struct TurnOutcome {
 #[derive(Clone, Debug)]
 pub struct TurnFacts {
     pub castling_relocations: Option<CastlingRelocations>,
-    pub capture: Option<Capture>,
+    pub next_piece_id: PieceId,
     pub reserve_reduction: Option<PieceKind>,
+    pub captures: Vec<Capture>,
+    pub steals: Vec<Steal>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Capture {
-    pub from: Coord,
-    pub piece_kinds: Vec<PieceKind>,
+    pub from: Option<Coord>,
+    pub piece_kind: PieceKind,
     pub force: PieceForce,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Steal {
+    pub piece_id: PieceId,
+    pub piece_kind: PieceKind,
+    pub force: PieceForce,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum PromotionTarget {
+    Upgrade(PieceKind),
+    Discard,
+    // `Coord` would be sufficient in a local game, but `PieceId` is more robust when playing online
+    // and pieces on the other boards move quickly. At implemented, we don't have the same benefit
+    // with algebraic input. If this becomes a problem, one way to deal with it would be convert
+    // `TurnInput` to contain a parsed turn representation with additional flags that convey all
+    // additional information (e.g. `must_capture == true` if algebraic input contained "x").
+    Steal((PieceKind, PieceId)),
 }
 
 // Note. Generally speaking, it's impossible to detect castling based on king movement in Chess960.
@@ -523,7 +552,7 @@ pub enum Turn {
 pub struct TurnMove {
     pub from: Coord,
     pub to: Coord,
-    pub promote_to: Option<PieceKind>,
+    pub promote_to: Option<PromotionTarget>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -572,7 +601,8 @@ pub struct TurnExpanded {
     pub relocation: Option<(Coord, Coord)>,
     pub relocation_extra: Option<(Coord, Coord)>,
     pub drop: Option<Coord>,
-    pub capture: Option<Capture>,
+    pub captures: Vec<Capture>,
+    pub steals: Vec<Steal>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -639,6 +669,10 @@ pub enum TurnError {
     DropPosition,
     DropBlocked,
     DropAggression,
+    StealingPromotionRequiresBughouse,
+    StealTargetMissing,
+    StealTargetInvalid,
+    CannotCheckByStealing,
     NotDuckChess,
     DuckPlacementIsSpecialTurnKind,
     MustMovePieceBeforeDuck,
@@ -692,6 +726,7 @@ pub struct Board {
     player_names: EnumMap<Force, String>,
     status: ChessGameStatus,
     grid: Grid,
+    next_piece_id: PieceId,
     // Tracks castling availability based on which pieces have moved. Castling is
     // allowed when the rook stands in the first row at specified columns. If the
     // king has moved then the list is empty. Not affected by temporary limitations
@@ -713,6 +748,8 @@ impl Board {
         starting_position: &EffectiveStartingPosition,
     ) -> Board {
         let time_control = chess_rules.time_control.clone();
+        let mut next_piece_id = PieceId::new();
+        let grid = generate_starting_grid(starting_position, &mut next_piece_id);
         let castling_rights = initial_castling_rights(starting_position);
         let mut reserves = enum_map! { _ => enum_map!{ _ => 0 } };
         if chess_rules.fairy_pieces == FairyPieces::DuckChess {
@@ -724,7 +761,8 @@ impl Board {
             bughouse_rules,
             player_names: players,
             status: ChessGameStatus::Active,
-            grid: generate_starting_grid(starting_position),
+            grid,
+            next_piece_id,
             castling_rights: enum_map! { _ => castling_rights },
             en_passant_target: None,
             reserves,
@@ -801,7 +839,7 @@ impl Board {
     }
 
     pub fn parse_turn_input(
-        &self, turn_input: &TurnInput, mode: TurnMode,
+        &self, turn_input: &TurnInput, mode: TurnMode, other_board: Option<&Board>,
     ) -> Result<Turn, TurnError> {
         Ok(match turn_input {
             TurnInput::Explicit(turn) => *turn,
@@ -809,7 +847,7 @@ impl Board {
             TurnInput::Algebraic(notation) => {
                 let notation_parsed =
                     AlgebraicTurn::parse(notation).ok_or(TurnError::InvalidNotation)?;
-                self.algebraic_to_turn(&notation_parsed, mode)?
+                self.algebraic_to_turn(&notation_parsed, mode, other_board)?
             }
         })
     }
@@ -889,6 +927,7 @@ impl Board {
         &mut self, turn: Turn, mode: TurnMode, new_grid: Grid, facts: &TurnFacts, now: GameInstant,
     ) {
         assert_eq!(self.is_duck_turn, matches!(turn, Turn::PlaceDuck(_)));
+        self.next_piece_id = facts.next_piece_id;
         let force = self.turn_owner(mode);
         match &turn {
             Turn::Move(mv) => {
@@ -898,14 +937,13 @@ impl Board {
                     self.castling_rights[force].clear();
                 } else if piece.kind == PieceKind::Rook && mv.from.row == first_row {
                     remove_castling_right(&mut self.castling_rights[force], mv.from.col);
-                } else if let Some(capture) = &facts.capture {
-                    let opponent = force.opponent();
-                    assert_eq!(capture.force, opponent.into());
-                    let opponent_first_row =
-                        SubjectiveRow::from_one_based(1).unwrap().to_row(opponent);
-                    if mv.to.row == opponent_first_row && &capture.piece_kinds == &[PieceKind::Rook]
-                    {
-                        remove_castling_right(&mut self.castling_rights[opponent], mv.to.col);
+                }
+                for capture in facts.captures.iter() {
+                    if let Ok(f) = capture.force.try_into() {
+                        let first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(f);
+                        if mv.to.row == first_row && capture.piece_kind == PieceKind::Rook {
+                            remove_castling_right(&mut self.castling_rights[f], mv.to.col);
+                        }
                     }
                 }
             }
@@ -956,9 +994,15 @@ impl Board {
                         }
                     }
                 } else {
-                    if let Some(capture) = &facts.capture {
-                        if capture.piece_kinds.contains(&PieceKind::King) {
-                            self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
+                    // This assumes opposite kings cannot be capture simultaneously.
+                    for capture in facts.captures.iter() {
+                        if capture.piece_kind == PieceKind::King {
+                            // Unwrap ok: King cannot be neutral.
+                            let loser: Force = capture.force.try_into().unwrap();
+                            self.status = ChessGameStatus::Victory(
+                                loser.opponent(),
+                                VictoryReason::Checkmate,
+                            );
                         }
                     }
                 }
@@ -1031,9 +1075,11 @@ impl Board {
         }
         let force = self.turn_owner(mode);
         let mut new_grid = self.grid.clone();
-        let mut capture = None;
         let mut castling_relocations = None;
+        let mut next_piece_id = self.next_piece_id;
         let mut reserve_reduction = None;
+        let mut captures = vec![];
+        let mut steals = vec![];
         match turn {
             Turn::Move(mv) => {
                 let piece = new_grid[mv.from].ok_or(TurnError::PieceMissing)?;
@@ -1073,37 +1119,71 @@ impl Board {
                 new_grid[mv.from] = None;
                 if let Some(capture_pos) = capture_pos_or {
                     let captured_piece = new_grid[capture_pos].unwrap();
-                    capture = Some(Capture {
-                        from: capture_pos,
-                        piece_kinds: match captured_piece.origin {
-                            PieceOrigin::Innate | PieceOrigin::Dropped => vec![captured_piece.kind],
-                            PieceOrigin::Promoted => vec![PieceKind::Pawn],
-                            PieceOrigin::Combined((p1, p2)) => vec![p1, p2],
-                        },
+                    let captured_piece_kinds = match captured_piece.origin {
+                        PieceOrigin::Innate | PieceOrigin::Dropped => vec![captured_piece.kind],
+                        PieceOrigin::Promoted => vec![PieceKind::Pawn],
+                        PieceOrigin::Combined((p1, p2)) => vec![p1, p2],
+                    };
+                    captures.extend(captured_piece_kinds.into_iter().map(|piece_kind| Capture {
+                        from: Some(capture_pos),
+                        piece_kind,
                         force: captured_piece.force,
-                    });
+                    }));
                     new_grid[capture_pos] = None;
                 }
                 if should_promote(force, piece.kind, mv.to) {
-                    if let Some(promote_to) = mv.promote_to {
-                        if promote_to.can_be_promotion_target() {
-                            new_grid[mv.to] = Some(PieceOnBoard::new(
-                                promote_to,
-                                PieceOrigin::Promoted,
-                                force.into(),
-                            ));
-                        } else {
-                            return Err(TurnError::BadPromotion);
-                        }
-                    } else {
+                    let Some(promote_to) = mv.promote_to else {
                         return Err(TurnError::BadPromotion);
+                    };
+                    match promote_to {
+                        PromotionTarget::Upgrade(promo_piece_kind) => {
+                            if !promo_piece_kind.can_be_upgrade_promotion_target() {
+                                return Err(TurnError::BadPromotion);
+                            }
+                            new_grid[mv.to] = Some(PieceOnBoard::new(
+                                next_piece_id.inc(),
+                                promo_piece_kind,
+                                PieceOrigin::Promoted,
+                                piece.force,
+                            ));
+                        }
+                        PromotionTarget::Discard => {
+                            // Give the pawn to the diagonal opponent.
+                            captures.push(Capture {
+                                from: None, // don't highlight anything: it's not really a capture
+                                piece_kind: piece.kind,
+                                force: piece.force,
+                            });
+                        }
+                        PromotionTarget::Steal((promo_piece_kind, promo_piece_id)) => {
+                            if !promo_piece_kind.can_be_steal_promotion_target() {
+                                return Err(TurnError::BadPromotion);
+                            }
+                            // Give the pawn to the diagonal opponent in exchange for the stolen piece.
+                            captures.push(Capture {
+                                from: None, // don't highlight anything: it's not really a capture
+                                piece_kind: piece.kind,
+                                force: piece.force,
+                            });
+                            steals.push(Steal {
+                                piece_id: promo_piece_id,
+                                piece_kind: promo_piece_kind,
+                                force: piece.force,
+                            });
+                            new_grid[mv.to] = Some(PieceOnBoard::new(
+                                next_piece_id.inc(),
+                                promo_piece_kind,
+                                PieceOrigin::Dropped, // not `Promoted`: piece shouldn't convert to pawn on capture
+                                piece.force,
+                            ));
+                        }
                     }
                 } else {
                     if let Some(_) = mv.promote_to {
                         return Err(TurnError::BadPromotion);
                     } else if let Some(dst_piece) = new_grid[mv.to] {
                         if let Some(combined_piece) =
-                            combine_pieces(&self.chess_rules, piece, dst_piece)
+                            combine_pieces(&self.chess_rules, next_piece_id.inc(), piece, dst_piece)
                         {
                             new_grid[mv.to] = Some(combined_piece);
                         } else {
@@ -1135,11 +1215,15 @@ impl Board {
                     return Err(TurnError::DropPieceMissing);
                 }
                 let piece_force = drop.piece_kind.reserve_piece_force(force);
-                let mut new_piece =
-                    PieceOnBoard::new(drop.piece_kind, PieceOrigin::Dropped, piece_force);
+                let mut new_piece = PieceOnBoard::new(
+                    next_piece_id.inc(),
+                    drop.piece_kind,
+                    PieceOrigin::Dropped,
+                    piece_force,
+                );
                 if let Some(dst_piece) = new_grid[drop.to] {
                     if let Some(combined_piece) =
-                        combine_pieces(&self.chess_rules, new_piece, dst_piece)
+                        combine_pieces(&self.chess_rules, next_piece_id.inc(), new_piece, dst_piece)
                     {
                         new_piece = combined_piece;
                     } else {
@@ -1251,7 +1335,12 @@ impl Board {
                         return Err(TurnError::DropPieceMissing);
                     }
                     reserve_reduction = Some(PieceKind::Duck);
-                    PieceOnBoard::new(PieceKind::Duck, PieceOrigin::Dropped, PieceForce::Neutral)
+                    PieceOnBoard::new(
+                        next_piece_id.inc(),
+                        PieceKind::Duck,
+                        PieceOrigin::Dropped,
+                        PieceForce::Neutral,
+                    )
                 };
                 if new_grid[to].is_some() {
                     return Err(TurnError::PathBlocked);
@@ -1261,18 +1350,77 @@ impl Board {
         }
         let facts = TurnFacts {
             castling_relocations,
-            capture,
+            next_piece_id,
             reserve_reduction,
+            captures,
+            steals,
         };
         Ok(TurnOutcome { new_grid, facts })
     }
 
-    pub fn receive_capture(&mut self, capture: &Capture) {
-        for &kind in capture.piece_kinds.iter() {
-            assert!(kind.reservable() != PieceReservable::Never);
+    // Tells whether `turn` can be executed on the other board.
+    pub fn verify_sibling_turn(
+        &self, turn: Turn, mode: TurnMode, turn_owner: Force,
+    ) -> Result<(), TurnError> {
+        if mode == TurnMode::Preturn {
+            return Ok(());
+        }
+        match turn {
+            Turn::Move(mv) => {
+                if let Some(PromotionTarget::Steal((piece_kind, piece_id))) = mv.promote_to {
+                    let Some(pos) = find_piece_by_id(&self.grid, piece_id) else {
+                        return Err(TurnError::StealTargetMissing);
+                    };
+                    let piece = self.grid[pos].unwrap();
+                    if piece.kind != piece_kind {
+                        return Err(TurnError::StealTargetInvalid);
+                    }
+                    // Usually we would be looking for `turn_owner.opponent()`, but this the the
+                    // other board, so the opponent is the same force.
+                    if piece.force != turn_owner.into() {
+                        return Err(TurnError::StealTargetInvalid);
+                    }
+                    if self.chess_rules.enable_check_and_mate() {
+                        let king_pos = find_king(&self.grid, turn_owner).unwrap();
+                        if !is_check_to(&self.chess_rules, &self.grid, king_pos) {
+                            // Technically we don't need the `clone` because of `scoped_set`, but
+                            // removing the `clone` would complicate the API (we'll have to use
+                            // `&mut self`) and steal promtions are rare.
+                            let mut grid = self.grid.clone();
+                            let grid = grid.scoped_set(pos, None);
+                            if is_check_to(&self.chess_rules, &grid, king_pos) {
+                                return Err(TurnError::CannotCheckByStealing);
+                            }
+                        }
+                    }
+                }
+            }
+            Turn::Drop(_) => {}
+            Turn::Castle(_) => {}
+            Turn::PlaceDuck(_) => {}
+        }
+        Ok(())
+    }
+
+    // Applies changes caused by the turn on the other board.
+    pub fn apply_sibling_turn(&mut self, facts: &TurnFacts, mode: TurnMode) {
+        for capture in &facts.captures {
+            assert!(capture.piece_kind.reservable() != PieceReservable::Never);
             // Unwrap ok: duck cannot be captured.
             let force = capture.force.try_into().unwrap();
-            self.reserves[force][kind] += 1;
+            self.reserves[force][capture.piece_kind] += 1;
+        }
+        for steal in &facts.steals {
+            let pos = find_piece_by_id(&self.grid, steal.piece_id);
+            if mode == TurnMode::Normal {
+                // Tested in `verify_sibling_turn`.
+                let pos = pos.unwrap();
+                assert_eq!(self.grid[pos].unwrap().kind, steal.piece_kind);
+                assert_eq!(self.grid[pos].unwrap().force, steal.force);
+            }
+            if let Some(pos) = pos {
+                self.grid[pos] = None;
+            }
         }
     }
 
@@ -1318,7 +1466,7 @@ impl Board {
     }
 
     pub fn algebraic_to_turn(
-        &self, algebraic: &AlgebraicTurn, mode: TurnMode,
+        &self, algebraic: &AlgebraicTurn, mode: TurnMode, other_board: Option<&Board>,
     ) -> Result<Turn, TurnError> {
         let force = self.turn_owner(mode);
         match algebraic {
@@ -1390,11 +1538,27 @@ impl Board {
                                     // it is unclear how to render the preturn on the client.
                                     return Err(TurnError::AmbiguousNotation);
                                 }
-                                turn = Some(Turn::Move(TurnMove {
-                                    from,
-                                    to: mv.to,
-                                    promote_to: mv.promote_to,
-                                }));
+                                let promote_to = match mv.promote_to {
+                                    Some(AlgebraicPromotionTarget::Upgrade(piece_kind)) => {
+                                        Some(PromotionTarget::Upgrade(piece_kind))
+                                    }
+                                    Some(AlgebraicPromotionTarget::Discard) => {
+                                        Some(PromotionTarget::Discard)
+                                    }
+                                    Some(AlgebraicPromotionTarget::Steal((piece_kind, pos))) => {
+                                        let other_board = other_board
+                                            .ok_or(TurnError::StealingPromotionRequiresBughouse)?;
+                                        let Some(piece) = other_board.grid[pos] else {
+                                            return Err(TurnError::StealTargetMissing);
+                                        };
+                                        if piece.kind != piece_kind {
+                                            return Err(TurnError::StealTargetInvalid);
+                                        }
+                                        Some(PromotionTarget::Steal((piece_kind, piece.id)))
+                                    }
+                                    None => None,
+                                };
+                                turn = Some(Turn::Move(TurnMove { from, to: mv.to, promote_to }));
                             }
                         }
                     }
@@ -1424,18 +1588,18 @@ impl Board {
     //   - Unicode: None / Just characters / Characters and pieces;
     //   Allow to specify options when exporting PGN.
     pub fn turn_to_algebraic(
-        &self, turn: Turn, mode: TurnMode, details: AlgebraicDetails,
+        &self, turn: Turn, mode: TurnMode, other_board: Option<&Board>, details: AlgebraicDetails,
     ) -> Option<AlgebraicTurn> {
-        let algebraic = self.turn_to_algebraic_impl(turn, mode, details)?;
+        let algebraic = self.turn_to_algebraic_impl(turn, mode, other_board, details)?;
         // Improvement potential. Remove when sufficiently tested.
-        if let Ok(turn_parsed) = self.algebraic_to_turn(&algebraic, mode) {
+        if let Ok(turn_parsed) = self.algebraic_to_turn(&algebraic, mode, other_board) {
             assert_eq!(turn_parsed, turn, "{:?}", algebraic);
         }
         Some(algebraic)
     }
 
     fn turn_to_algebraic_impl(
-        &self, turn: Turn, mode: TurnMode, details: AlgebraicDetails,
+        &self, turn: Turn, mode: TurnMode, other_board: Option<&Board>, details: AlgebraicDetails,
     ) -> Option<AlgebraicTurn> {
         match turn {
             Turn::Move(mv) => {
@@ -1450,15 +1614,30 @@ impl Board {
                 for (&include_col, &include_row) in include_col_row {
                     let piece = self.grid[mv.from]?;
                     let capture = get_capture(&self.grid, mv.from, mv.to, self.en_passant_target);
+                    let promote_to = match mv.promote_to {
+                        Some(PromotionTarget::Upgrade(piece_kind)) => {
+                            Some(AlgebraicPromotionTarget::Upgrade(piece_kind))
+                        }
+                        Some(PromotionTarget::Discard) => Some(AlgebraicPromotionTarget::Discard),
+                        Some(PromotionTarget::Steal((piece_kind, piece_id))) => {
+                            let other_board = other_board?;
+                            let pos = find_piece_by_id(&other_board.grid, piece_id)?;
+                            if other_board.grid[pos].unwrap().kind != piece_kind {
+                                return None;
+                            }
+                            Some(AlgebraicPromotionTarget::Steal((piece_kind, pos)))
+                        }
+                        None => None,
+                    };
                     let algebraic = AlgebraicTurn::Move(AlgebraicMove {
                         piece_kind: piece.kind,
                         from_col: if include_col { Some(mv.from.col) } else { None },
                         from_row: if include_row { Some(mv.from.row) } else { None },
                         capturing: capture.is_some(),
                         to: mv.to,
-                        promote_to: mv.promote_to,
+                        promote_to,
                     });
-                    if let Ok(turn_parsed) = self.algebraic_to_turn(&algebraic, mode) {
+                    if let Ok(turn_parsed) = self.algebraic_to_turn(&algebraic, mode, other_board) {
                         // It's possible that we've got back a different turn if the original turn
                         // was garbage, e.g. c2e4 -> e4 -> e2e4.
                         if turn_parsed == turn {

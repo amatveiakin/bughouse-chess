@@ -685,6 +685,8 @@ function set_up_drag_and_drop() {
     // to implement drag cancellation with a right-click, because pointer API does not report
     // nested mouse events.
 
+    document.addEventListener('click', click);
+
     document.addEventListener('mousedown', start_drag);
     document.addEventListener('mousemove', drag);
     document.addEventListener('mouseup', end_drag);
@@ -710,6 +712,18 @@ function set_up_drag_and_drop() {
             x: (src.clientX - ctm.e) / ctm.a,
             y: (src.clientY - ctm.f) / ctm.d,
         };
+    }
+
+    function click(event) {
+        with_error_handling(function() {
+            if (is_main_pointer(event)) {
+                const source = event.target.getAttribute('data-bughouse-location');
+                if (source) {
+                    wasm_client().click_piece(source);
+                    update();
+                }
+            }
+        });
     }
 
     function start_drag(event) {
@@ -1340,6 +1354,7 @@ function on_create_match_confirm(event) {
             data.get('chess_variant'),
             data.get('fairy_pieces'),
             data.get('starting_time'),
+            data.get('promotion'),
             data.get('drop_aggression'),
             data.get('pawn_drop_ranks'),
             data.get('rating'),

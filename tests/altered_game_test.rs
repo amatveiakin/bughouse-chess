@@ -114,7 +114,7 @@ fn start_drag_with_a_preturn() {
     alt_game.apply_remote_turn(envoy!(White A), &alg("e3"), T0).unwrap();
     alt_game.apply_remote_turn(envoy!(Black A), &alg("Nc6"), T0).unwrap();
     let drag_result = alt_game.drag_piece_drop(Coord::E5, PieceKind::Queen).unwrap();
-    assert_eq!(drag_result, drag_move!(E4 -> E5));
+    assert_eq!(drag_result, Some(drag_move!(E4 -> E5)));
 }
 
 // Regression test: keep local preturn after getting an opponent's turn.
@@ -194,6 +194,57 @@ fn double_play() {
     let mut alt_game = AlteredGame::new(as_double_player(Team::Red), default_game());
     alt_game.try_local_turn(A, drag_move!(E2 -> E4), T0).unwrap();
     alt_game.try_local_turn(B, drag_move!(D7 -> D5), T0).unwrap();
+}
+
+#[test]
+fn stealing_promotion() {
+    let game = BughouseGame::new(
+        MatchRules::unrated(),
+        ChessRules::classic_blitz(),
+        BughouseRules {
+            promotion: Promotion::Steal,
+            ..BughouseRules::chess_com()
+        },
+        &sample_bughouse_players(),
+    );
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), game);
+
+    // The original promo-stealing code contained several bugs related to looking at the current
+    // board rather than the other (e.g. when construction algebraic notation), so to make sure we
+    // test that it doesn't happen:
+    //   - Move the to-be-stolen piece to a different location on the target board;
+    //   - Sacrifice the corresponding piece altogether on the original board (note that simply
+    //     moving it to a different location is not sufficient: it has the same PieceId, so it may
+    //     still be found).
+    alt_game.apply_remote_turn(envoy!(White B), &drag_move!(B1 -> C3), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(B1 -> A3), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(B8 -> A6), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(A3 -> B5), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A6 -> B8), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(B5 -> C7), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(D8 -> C7), T0).unwrap();
+
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H2 -> H4), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A7 -> A5), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H4 -> H5), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A5 -> A4), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H5 -> H6), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A4 -> A3), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H6 -> G7), T0).unwrap();
+
+    assert!(alt_game.local_game().board(A).grid()[Coord::G7].is(piece!(White Pawn)));
+    assert!(alt_game.local_game().board(A).grid()[Coord::F8].is(piece!(Black Bishop)));
+    assert!(alt_game.local_game().board(B).grid()[Coord::C3].is(piece!(White Knight)));
+
+    alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::G7)).unwrap();
+    assert!(alt_game.drag_piece_drop(Coord::F8, PieceKind::Queen).unwrap().is_none());
+    let (input_board_idx, input) = alt_game.click_piece(B, Coord::C3).unwrap();
+    assert_eq!(input_board_idx, A);
+    alt_game.try_local_turn(input_board_idx, input, T0).unwrap();
+
+    assert!(alt_game.local_game().board(A).grid()[Coord::G7].is_none());
+    assert!(alt_game.local_game().board(A).grid()[Coord::F8].is(piece!(White Knight)));
+    assert!(alt_game.local_game().board(B).grid()[Coord::C3].is_none());
 }
 
 #[test]

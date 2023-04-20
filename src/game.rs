@@ -134,7 +134,7 @@ impl ChessGame {
     pub fn try_turn(
         &mut self, turn_input: &TurnInput, mode: TurnMode, now: GameInstant,
     ) -> Result<Turn, TurnError> {
-        let turn = self.board.parse_turn_input(turn_input, mode)?;
+        let turn = self.board.parse_turn_input(turn_input, mode, None)?;
         self.board.try_turn(turn, mode, now)?;
         Ok(turn)
     }
@@ -499,14 +499,39 @@ impl BughouseGame {
             // may have ended earlier on the other board.
             return Err(TurnError::GameOver);
         }
-        let board = &mut self.boards[board_idx];
+        let board = &self.boards[board_idx];
+        let other_board = &self.boards[board_idx.other()];
         let envoy = BughouseEnvoy { board_idx, force: board.turn_owner(mode) };
-        let turn = board.parse_turn_input(turn_input, mode)?;
+        let turn = board.parse_turn_input(turn_input, mode, Some(&other_board))?;
         let is_duck_turn = board.is_duck_turn();
+        self.boards[board_idx.other()].verify_sibling_turn(turn, mode, envoy.force)?;
+
         // `turn_to_algebraic` must be called before `try_turn`, because algebraic form depend
         // on the current position.
-        let turn_algebraic = board.turn_to_algebraic(turn, mode, AlgebraicDetails::ShortAlgebraic);
-        let turn_facts = board.try_turn(turn, mode, now)?;
+        let turn_algebraic = board.turn_to_algebraic(
+            turn,
+            mode,
+            Some(&other_board),
+            AlgebraicDetails::ShortAlgebraic,
+        );
+
+        let turn_facts = self.boards[board_idx].try_turn(turn, mode, now)?;
+
+        // Changes to the board have been made. The function must not fail from this point on!
+        //
+        // An alternative solution would be clone the game state (like we do in `Board::try_turn`)
+        // and through away the copy if anything went wrong. As a bonus, this would allow to
+        // simplify the abovementioned `Board::try_turn`, because it would be able to freely mutate
+        // `Board` state. The problem with this solution that cloning `Board::position_count` on
+        // every turn would make application N turns take O(N^2) time. By the way, this is already
+        // the case for the client because `AlteredGame::local_game` copied the entire game state,
+        // but:
+        //   - If needed, it can be fixed by stripping away `position_count` entirely. The client is
+        //     not authorized to conclude that the game has ended anyway.
+        //   - If one client becomes slow when the users decided to play for a thosand turns, this
+        //     is not a disaster. If the entire server become irresponsive because of one such
+        //     match, this is much worse.
+
         // If `try_turn` succeeded, then the turn was valid. Thus conversion to algebraic must
         // have succeeded as well, because there exists an algebraic form for any valid turn.
         let turn_algebraic = turn_algebraic.unwrap();
@@ -515,9 +540,7 @@ impl BughouseGame {
             TurnMode::Normal => other_board.start_clock(now),
             TurnMode::Preturn => {}
         }
-        if let Some(ref capture) = turn_facts.capture {
-            other_board.receive_capture(&capture);
-        }
+        other_board.apply_sibling_turn(&turn_facts, mode);
         let prev_number = self
             .turn_log
             .iter()
@@ -640,6 +663,7 @@ fn make_turn_expanded(turn: Turn, algebraic: AlgebraicTurn, facts: TurnFacts) ->
         relocation,
         relocation_extra,
         drop,
-        capture: facts.capture,
+        captures: facts.captures,
+        steals: facts.steals,
     }
 }

@@ -140,6 +140,7 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
         [BlackB "{}"]
         [TimeControl "{}"]
         [Variant "{}"]
+        [Promotion "{}"]
         [DropAggression "{}"]
         [PawnDropRanks "{}"]
         {}[Result "{}"]
@@ -156,6 +157,7 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
         game.board(B).player_name(Black),
         time_control_to_string(&game.chess_rules().time_control),
         variant.join(" "),
+        game.bughouse_rules().promotion_string(),
         game.bughouse_rules().drop_aggression_string(),
         game.bughouse_rules().pawn_drop_ranks_string(),
         setup,

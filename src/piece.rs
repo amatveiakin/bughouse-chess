@@ -74,8 +74,20 @@ pub enum PieceOrigin {
     Dropped,
 }
 
+// Piece ID:
+//   - Must be unique within a board. Older IDs must not be reused.
+//   - Must be computed deterministically. Client/server interaction relies on the fact that all
+//     parties will independently arrive to the same piece IDs.
+//     (Q. What about piece IDs generated during preturns?)
+//   - Should remain the same as long as pieces stay on the board and remains the same. Piece ID
+//     should change if piece kind changes (e.g. because a pawn is promoted).
+//   - Should not be exposed to the user (e.g. when exporting to PGN).
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct PieceId(pub u32);
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, new, Serialize, Deserialize)]
 pub struct PieceOnBoard {
+    pub id: PieceId,
     pub kind: PieceKind,
     pub origin: PieceOrigin,
     pub force: PieceForce,
@@ -165,6 +177,16 @@ macro_rules! make_algebraic_mappings {
     }
 }
 
+impl PieceId {
+    pub fn new() -> Self { PieceId(0) }
+    pub fn tmp() -> Self { PieceId(u32::MAX) }
+    pub fn inc(&mut self) -> Self {
+        let id = *self;
+        self.0 += 1;
+        id
+    }
+}
+
 impl PieceKind {
     pub fn movements(self) -> &'static [PieceMovement] {
         match self {
@@ -228,11 +250,19 @@ impl PieceKind {
         }
     }
 
-    pub fn can_be_promotion_target(self) -> bool {
+    pub fn can_be_upgrade_promotion_target(self) -> bool {
         use PieceKind::*;
         match self {
             Pawn | Cardinal | Empress | Amazon | King | Duck => false,
             Knight | Bishop | Rook | Queen => true,
+        }
+    }
+
+    pub fn can_be_steal_promotion_target(self) -> bool {
+        use PieceKind::*;
+        match self {
+            Pawn | King | Duck => false,
+            Knight | Bishop | Rook | Queen | Cardinal | Empress | Amazon => true,
         }
     }
 
@@ -259,7 +289,9 @@ pub fn accolade_combine_piece_kinds(first: PieceKind, second: PieceKind) -> Opti
     }
 }
 
-pub fn accolade_combine_pieces(first: PieceOnBoard, second: PieceOnBoard) -> Option<PieceOnBoard> {
+pub fn accolade_combine_pieces(
+    id: PieceId, first: PieceOnBoard, second: PieceOnBoard,
+) -> Option<PieceOnBoard> {
     let original_piece = |p: PieceOnBoard| match p.origin {
         PieceOrigin::Innate | PieceOrigin::Dropped => Some(p.kind),
         PieceOrigin::Promoted => Some(PieceKind::Pawn),
@@ -272,7 +304,7 @@ pub fn accolade_combine_pieces(first: PieceOnBoard, second: PieceOnBoard) -> Opt
         return None;
     }
     let force = first.force;
-    return Some(PieceOnBoard { kind, origin, force });
+    return Some(PieceOnBoard { id, kind, origin, force });
 }
 
 pub fn piece_to_pictogram(piece_kind: PieceKind, force: PieceForce) -> char {

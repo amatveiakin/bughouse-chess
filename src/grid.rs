@@ -68,7 +68,7 @@ impl<T: Clone> ops::IndexMut<Coord> for GenericGrid<T> {
 }
 
 fn debug_format_piece(piece: &PieceOnBoard) -> String {
-    let mut s = format!("{:?}-{:?}", piece.force, piece.kind);
+    let mut s = format!("[{}]-{:?}-{:?}", piece.id.0, piece.force, piece.kind);
     if piece.origin != PieceOrigin::Innate {
         s.push_str(&format!("-{:?}", piece.origin));
     }
@@ -96,14 +96,13 @@ impl fmt::Debug for GridForRepetitionDraw {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::piece::{PieceForce, PieceKind, PieceOrigin};
-
-    fn make_piece(kind: PieceKind) -> PieceOnBoard {
-        PieceOnBoard::new(kind, PieceOrigin::Innate, PieceForce::White)
-    }
+    use crate::piece::{PieceForce, PieceId, PieceKind, PieceOrigin};
 
     #[test]
     fn scoped_set() {
+        let mut piece_id = PieceId::new();
+        let mut make_piece =
+            |kind| PieceOnBoard::new(piece_id.inc(), kind, PieceOrigin::Innate, PieceForce::White);
         let mut g = Grid::new();
         g[Coord::A1] = Some(make_piece(PieceKind::Queen));
         g[Coord::B2] = Some(make_piece(PieceKind::King));
@@ -113,11 +112,11 @@ mod tests {
             let mut g = g.scoped_set(Coord::A1, None);
             let g = g.scoped_set(Coord::C3, Some(make_piece(PieceKind::Bishop)));
             assert_eq!(g[Coord::A1], None);
-            assert_eq!(g[Coord::B2], Some(make_piece(PieceKind::King)));
-            assert_eq!(g[Coord::C3], Some(make_piece(PieceKind::Bishop)));
+            assert_eq!(g[Coord::B2].unwrap().kind, PieceKind::King);
+            assert_eq!(g[Coord::C3].unwrap().kind, PieceKind::Bishop);
         }
-        assert_eq!(g[Coord::A1], Some(make_piece(PieceKind::Queen)));
-        assert_eq!(g[Coord::B2], Some(make_piece(PieceKind::King)));
-        assert_eq!(g[Coord::C3], Some(make_piece(PieceKind::Rook)));
+        assert_eq!(g[Coord::A1].unwrap().kind, PieceKind::Queen);
+        assert_eq!(g[Coord::B2].unwrap().kind, PieceKind::King);
+        assert_eq!(g[Coord::C3].unwrap().kind, PieceKind::Rook);
     }
 }

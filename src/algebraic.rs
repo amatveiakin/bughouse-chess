@@ -17,6 +17,13 @@ pub enum AlgebraicDetails {
     LongAlgebraic,  // always include starting rol/col, e.g. "e2e4"
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum AlgebraicPromotionTarget {
+    Upgrade(PieceKind),
+    Discard,
+    Steal((PieceKind, Coord)), // target piece and coord on the other board
+}
+
 #[derive(Clone, Debug)]
 pub struct AlgebraicMove {
     pub piece_kind: PieceKind,
@@ -24,7 +31,7 @@ pub struct AlgebraicMove {
     pub from_row: Option<Row>,
     pub capturing: bool,
     pub to: Coord,
-    pub promote_to: Option<PieceKind>,
+    pub promote_to: Option<AlgebraicPromotionTarget>,
 }
 
 #[derive(Clone, Debug)]
@@ -49,7 +56,7 @@ impl AlgebraicTurn {
         let notation = notation.trim();
         const PIECE_RE: &str = r"[A-Z]";
         let move_re = once_cell_regex!(&format!(
-            r"^({piece})?([a-h])?([1-8])?([x×:])?([a-h][1-8])(?:[=/]?({piece})?)([+†#‡]?)$",
+            r"^({piece})?([a-h])?([1-8])?([x×:])?([a-h][1-8])(?:[=/]?(?:({piece})|(\.)|({piece})([a-h][1-8])))?([+†#‡]?)$",
             piece = PIECE_RE
         ));
         let drop_re = once_cell_regex!(&format!(r"^({piece})@([a-h][1-8])$", piece = PIECE_RE));
@@ -58,8 +65,8 @@ impl AlgebraicTurn {
         let place_duck_re = once_cell_regex!("^@([a-h][1-8])$");
         if let Some(cap) = move_re.captures(notation) {
             let piece_kind = match cap.get(1) {
-                None => PieceKind::Pawn,
                 Some(m) => PieceKind::from_algebraic(m.as_str())?,
+                None => PieceKind::Pawn,
             };
             let from_col = cap
                 .get(2)
@@ -69,11 +76,31 @@ impl AlgebraicTurn {
                 .map(|m| Row::from_algebraic(as_single_char(m.as_str()).unwrap()).unwrap());
             let capturing = cap.get(4).is_some();
             let to = Coord::from_algebraic(cap.get(5).unwrap().as_str()).unwrap();
-            let promote_to = match cap.get(6) {
-                None => None,
+            let upgdate_promotion = match cap.get(6) {
                 Some(m) => Some(PieceKind::from_algebraic(m.as_str())?),
+                None => None,
             };
-            let _mark = cap.get(7).map(|m| m.as_str()); // TODO: Test check/mate
+            let discard_promotion = cap.get(7).map(|_| ());
+            let steal_promotion = match (cap.get(8), cap.get(9)) {
+                (Some(m1), Some(m2)) => Some((
+                    PieceKind::from_algebraic(m1.as_str())?,
+                    Coord::from_algebraic(m2.as_str()).unwrap(),
+                )),
+                _ => None,
+            };
+            let promote_to = match (upgdate_promotion, discard_promotion, steal_promotion) {
+                (Some(piece_kind), None, None) => {
+                    Some(AlgebraicPromotionTarget::Upgrade(piece_kind))
+                }
+                (None, Some(_), None) => Some(AlgebraicPromotionTarget::Discard),
+                (None, None, Some((piece_kind, pos))) => {
+                    Some(AlgebraicPromotionTarget::Steal((piece_kind, pos)))
+                }
+                (None, None, None) => None,
+                _ => panic!("Multiple promotion rules detected."),
+            };
+            let _mark = cap.get(10).map(|m| m.as_str()); // TODO: Test check/mate
+
             Some(AlgebraicTurn::Move(AlgebraicMove {
                 piece_kind,
                 from_row,
@@ -105,6 +132,10 @@ impl AlgebraicTurn {
                     AlgebraicCharset::Ascii => "x",
                     AlgebraicCharset::AuxiliaryUnicode => "×",
                 };
+                let promotion_sep = match charset {
+                    AlgebraicCharset::Ascii => "=",            // pgn convention
+                    AlgebraicCharset::AuxiliaryUnicode => "/", // takes less space in log
+                };
                 let mut from = String::new();
                 if let Some(col) = mv.from_col {
                     from.push(col.to_algebraic())
@@ -113,7 +144,18 @@ impl AlgebraicTurn {
                     from.push(row.to_algebraic())
                 };
                 let promotion = match mv.promote_to {
-                    Some(piece_kind) => format!("={}", piece_kind.to_full_algebraic()),
+                    Some(AlgebraicPromotionTarget::Upgrade(piece_kind)) => {
+                        format!("{}{}", promotion_sep, piece_kind.to_full_algebraic())
+                    }
+                    Some(AlgebraicPromotionTarget::Discard) => format!("{}.", promotion_sep),
+                    Some(AlgebraicPromotionTarget::Steal((piece_kind, pos))) => {
+                        format!(
+                            "{}{}{}",
+                            promotion_sep,
+                            piece_kind.to_full_algebraic(),
+                            pos.to_algebraic()
+                        )
+                    }
                     None => String::new(),
                 };
                 format!(

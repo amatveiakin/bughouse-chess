@@ -94,6 +94,23 @@ pub enum Teaming {
     IndividualMode,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum Promotion {
+    // Classic rules. When captured, promoted pieces go back as pawns.
+    Upgrade,
+
+    // You simply lose the pawn. It goes directly to diagonal opponent's reserve.
+    Discard,
+
+    // Take diagonal opponent's piece. Can only steal a piece from the board, not from reserve. The
+    // pawn goes to their reserve. Cannot check player by stealing their piece.
+    //   Q. Is "no introducing checks" a good limitation? Or should it be "cannot checkmate"?
+    //      Alternatively, should it be "no new checks", e.g. even if the king is checked, cannot
+    //      intoduce a check by another piece?
+    //   Q. What about king-capture chess? Should you be able to expose the king?
+    Steal,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MatchRules {
     pub rated: bool,
@@ -112,6 +129,7 @@ pub struct BughouseRules {
     // Improvement potential. Should `teaming` reside in `BughouseRules` or be moved to
     //   a separate struct (e.g. `MatchRules`)?
     pub teaming: Teaming,
+    pub promotion: Promotion,
     pub min_pawn_drop_rank: SubjectiveRow,
     pub max_pawn_drop_rank: SubjectiveRow,
     pub drop_aggression: DropAggression,
@@ -172,6 +190,7 @@ impl BughouseRules {
     pub fn chess_com() -> Self {
         Self {
             teaming: Teaming::FixedTeams,
+            promotion: Promotion::Upgrade,
             min_pawn_drop_rank: SubjectiveRow::from_one_based(2).unwrap(),
             max_pawn_drop_rank: SubjectiveRow::from_one_based(7).unwrap(),
             drop_aggression: DropAggression::MateAllowed,
@@ -180,6 +199,14 @@ impl BughouseRules {
 }
 
 impl BughouseRules {
+    pub fn promotion_string(&self) -> &'static str {
+        match self.promotion {
+            Promotion::Upgrade => "Upgrade",
+            Promotion::Discard => "Discard",
+            Promotion::Steal => "Steal",
+        }
+    }
+
     pub fn drop_aggression_string(&self) -> &'static str {
         match self.drop_aggression {
             DropAggression::NoCheck => "No check",
@@ -248,6 +275,7 @@ impl Rules {
             FairyPieces::Accolade => "Accolade",
         };
         let time_control = self.chess_rules.time_control.to_string();
+        let promotion = self.bughouse_rules.promotion_string();
         let drop_aggression = self.bughouse_rules.drop_aggression_string();
         let pawn_drop_ranks = self.bughouse_rules.pawn_drop_ranks_string();
         let rating = match self.match_rules.rated {
@@ -261,6 +289,7 @@ impl Rules {
             Variant: {chess_variant}
             Fairy pieces: {fairy_pieces}
             Time control: {time_control}
+            Promotion: {promotion}
             Drop aggression: {drop_aggression}
             Pawn drop ranks: {pawn_drop_ranks}
             Rating: {rating}
