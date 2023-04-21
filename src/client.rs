@@ -16,7 +16,7 @@ use crate::event::{
 };
 use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
-    BughousePlayer, PlayerRelation, TurnRecord,
+    BughousePlayer, PlayerRelation, TurnRecord, TurnRecordExpanded,
 };
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::BughouseExportFormat;
@@ -588,18 +588,16 @@ impl ClientState {
             let game_start = GameInstant::game_start().approximate();
             *time_pair = Some(WallGameTimePair::new(now, game_start));
         }
-        let old_reserve_size = reserve_size(alt_game, envoy);
-        alt_game.apply_remote_turn(envoy, &turn_input, time).map_err(|err| {
+        let turn_record = alt_game.apply_remote_turn(envoy, &turn_input, time).map_err(|err| {
             internal_error!("Got impossible turn from server: {:?}, error: {:?}", turn_input, err)
         })?;
-        let new_reserve_size = reserve_size(alt_game, envoy);
         if generate_notable_events {
             if !is_my_turn {
                 // The `TurnMade` event fires when a turn is seen by the user, not when it's
                 // confirmed by the server.
                 self.notable_event_queue.push_back(NotableEvent::TurnMade(envoy));
             }
-            if is_my_turn && new_reserve_size > old_reserve_size {
+            if participant_reserve_restocked(alt_game.my_id(), &turn_record) {
                 self.notable_event_queue
                     .push_back(NotableEvent::MyReserveRestocked(envoy.board_idx));
             }
@@ -753,11 +751,18 @@ impl ClientState {
     }
 }
 
-fn reserve_size(alt_game: &AlteredGame, envoy: BughouseEnvoy) -> Option<u8> {
-    // For detecting if new reserve pieces have arrived.
-    // Look at `game_confirmed`, not `local_game`. The latter would give a false positive if
-    // a drop premove gets cancelled because the square is now occupied by an opponent's piece.
-    Some(alt_game.game_confirmed().reserve(envoy).values().sum())
+fn participant_reserve_restocked(
+    participant_id: BughouseParticipant, turn_record: &TurnRecordExpanded,
+) -> bool {
+    turn_record.turn_expanded.captures.iter().any(|c| {
+        let Ok(force) = c.force.try_into() else {
+            return false;
+        };
+        participant_id.plays_for(BughouseEnvoy {
+            force,
+            board_idx: turn_record.envoy.board_idx.other(),
+        })
+    })
 }
 
 fn my_time_left(

@@ -152,22 +152,22 @@ impl AlteredGame {
 
     pub fn apply_remote_turn(
         &mut self, envoy: BughouseEnvoy, turn_input: &TurnInput, time: GameInstant,
-    ) -> Result<Turn, TurnError> {
+    ) -> Result<TurnRecordExpanded, TurnError> {
         let mut original_game_confirmed = self.game_confirmed.clone();
-        let turn =
-            self.game_confirmed
-                .try_turn_by_envoy(envoy, turn_input, TurnMode::Normal, time)?;
+        self.game_confirmed
+            .try_turn_by_envoy(envoy, turn_input, TurnMode::Normal, time)?;
+        let remote_turn_record = self.game_confirmed.turn_log().last().unwrap().clone();
 
         if !self.game_confirmed.is_active() {
             self.reset_local_changes();
-            return Ok(turn);
+            return Ok(remote_turn_record);
         }
 
         for (turn_idx, turn_record) in self.local_turns.iter().enumerate() {
             if turn_record.envoy == envoy {
                 let local_turn =
                     original_game_confirmed.apply_turn_record(turn_record, TurnMode::Normal);
-                if local_turn == Ok(turn) {
+                if local_turn == Ok(remote_turn_record.turn_expanded.turn) {
                     // The server confirmed a turn made by this player. Discard the local copy.
                     self.local_turns.remove(turn_idx);
                     break;
@@ -195,7 +195,7 @@ impl AlteredGame {
             // dragged piece depended on a preturn that was cancelled.
             drag.source = PieceDragSource::Defunct;
         }
-        Ok(turn)
+        Ok(remote_turn_record)
     }
 
     pub fn my_id(&self) -> BughouseParticipant { self.my_id }
