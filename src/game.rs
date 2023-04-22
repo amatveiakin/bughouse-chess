@@ -558,7 +558,7 @@ impl BughouseGame {
             turn_expanded,
             time: now,
             // Improvement potential: Show reserve prior to the next turn rather than after this one.
-            board_after: self.boards[board_idx].clone(),
+            board_after: self.boards[board_idx].clone_for_wayback(),
         });
         assert!(self.status.is_active());
         self.set_status(self.game_status_for_board(board_idx), now);

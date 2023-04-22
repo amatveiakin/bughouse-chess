@@ -776,6 +776,22 @@ impl Board {
         board
     }
 
+    pub fn clone_for_wayback(&self) -> Self {
+        Board {
+            // Strip away large structures that are not needed for rendering:
+            position_count: HashMap::new(),
+
+            // Copy everything else as is:
+            match_rules: self.match_rules.clone(),
+            chess_rules: self.chess_rules.clone(),
+            bughouse_rules: self.bughouse_rules.clone(),
+            player_names: self.player_names.clone(),
+            grid: self.grid.clone(),
+            clock: self.clock.clone(),
+            ..*self
+        }
+    }
+
     pub fn match_rules(&self) -> &Rc<MatchRules> { &self.match_rules }
     pub fn chess_rules(&self) -> &Rc<ChessRules> { &self.chess_rules }
     pub fn bughouse_rules(&self) -> &Option<Rc<BughouseRules>> { &self.bughouse_rules }
