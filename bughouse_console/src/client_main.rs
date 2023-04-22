@@ -65,7 +65,7 @@ fn render(
             if game.is_active() {
                 if let BughouseParticipant::Player(my_player_id) = my_id {
                     highlight_input =
-                        my_player_id.envoys().into_iter().any(|e| game.envoy_is_active(e));
+                        my_player_id.envoys().into_iter().any(|e| game.is_envoy_active(e));
                 }
             } else {
                 additional_message =

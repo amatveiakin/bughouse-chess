@@ -434,12 +434,17 @@ impl BughouseGame {
         // Improvement potential: Avoid constructing `players` vector.
         self.players().iter().find(|p| p.name == player_name).map(|p| p.id)
     }
-    pub fn envoy_is_active(&self, envoy: BughouseEnvoy) -> bool {
+    pub fn is_envoy_active(&self, envoy: BughouseEnvoy) -> bool {
         self.status.is_active() && self.boards[envoy.board_idx].active_force() == envoy.force
+    }
+    pub fn is_participant_active_on_board(
+        &self, participant_id: BughouseParticipant, board_idx: BughouseBoard,
+    ) -> bool {
+        participant_id.envoy_for(board_idx).map_or(false, |e| self.is_envoy_active(e))
     }
     pub fn turn_mode_for_envoy(&self, envoy: BughouseEnvoy) -> Result<TurnMode, TurnError> {
         if self.status.is_active() {
-            Ok(if self.envoy_is_active(envoy) {
+            Ok(if self.is_envoy_active(envoy) {
                 TurnMode::Normal
             } else {
                 TurnMode::Preturn
