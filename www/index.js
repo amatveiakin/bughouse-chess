@@ -29,6 +29,7 @@ import fog_1 from '../assets/fog-of-war/fog-1.png';
 import fog_2 from '../assets/fog-of-war/fog-2.png';
 import fog_3 from '../assets/fog-of-war/fog-3.png';
 
+import clack_sound from '../assets/sounds/clack.ogg';
 import turn_sound from '../assets/sounds/turn.ogg';
 import reserve_restocked_sound from '../assets/sounds/reserve-restocked.ogg';
 import piece_stolen_sound from '../assets/sounds/piece-stolen.ogg';
@@ -204,13 +205,14 @@ load_svg_images([
 // Improvement potential. Establish priority on sounds; play more important sounds first
 // in case of a clash.
 const Sound = load_sounds({
-    victory: victory_sound,
-    defeat: defeat_sound,
-    draw: draw_sound,
+    clack: clack_sound,  // similar to `turn` and roughly the same volume
     turn: turn_sound,
     reserve_restocked: reserve_restocked_sound,
     piece_stolen: piece_stolen_sound,
     low_time: low_time_sound,
+    victory: victory_sound,
+    defeat: defeat_sound,
+    draw: draw_sound,
 });
 
 init_menu();
@@ -1394,6 +1396,7 @@ function set_volume(volume) {
 
 function next_volume() {
     set_volume((audio_volume + 1) % (max_volume + 1));
+    play_audio(Sound.clack);
 }
 
 function ensure_audio_context() {
