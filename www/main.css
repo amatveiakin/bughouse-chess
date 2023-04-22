@@ -371,7 +371,7 @@ body.observer .reserve {
 }
 
 .glowing-duck {
-  filter: saturate(1.7) url(#glowing-duck);
+  filter: saturate(2) url(#glowing-duck);
 }
 .glowing-steal {
   /* `sepia` + `hue-rotate` allows to colorize into a given color (in this case, blue);
