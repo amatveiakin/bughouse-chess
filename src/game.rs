@@ -503,7 +503,7 @@ impl BughouseGame {
         let other_board = &self.boards[board_idx.other()];
         let envoy = BughouseEnvoy { board_idx, force: board.turn_owner(mode) };
         let turn = board.parse_turn_input(turn_input, mode, Some(&other_board))?;
-        let is_duck_turn = board.is_duck_turn();
+        let is_duck_turn = board.is_duck_turn(envoy.force);
         self.boards[board_idx.other()].verify_sibling_turn(turn, mode, envoy.force)?;
 
         // `turn_to_algebraic` must be called before `try_turn`, because algebraic form depend

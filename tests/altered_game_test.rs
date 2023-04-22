@@ -330,6 +330,14 @@ fn two_preturns_allowed_in_duck_chess() {
 }
 
 #[test]
+fn intermixing_turns_duck_chess() {
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(Black A)), duck_chess_game());
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(E2 -> E4), T0).unwrap();
+    alt_game.try_local_turn(A, drag_move!(E7 -> E5), T0).unwrap();
+    alt_game.try_local_turn(A, drag_move!(@ A6), T0).unwrap();
+}
+
+#[test]
 fn turn_highlights_in_duck_chess() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), duck_chess_game());
     alt_game.apply_remote_turn(envoy!(White A), &alg("e4"), T0).unwrap();

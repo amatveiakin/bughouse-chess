@@ -214,9 +214,11 @@ impl AlteredGame {
     }
 
     pub fn is_my_duck_turn(&self, board_idx: BughouseBoard) -> bool {
+        let Some(envoy) = self.my_id.envoy_for(board_idx) else {
+            return false;
+        };
         let game = self.game_with_local_turns(true);
-        game.board(board_idx).is_duck_turn()
-            && game.last_turn_record().map_or(false, |r| self.my_id.plays_for(r.envoy))
+        game.board(board_idx).is_duck_turn(envoy.force)
     }
 
     pub fn turn_highlights(&self) -> Vec<TurnHighlight> {

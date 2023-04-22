@@ -760,9 +760,7 @@ impl WebClient {
                     .map_or(false, |e| board.can_potentially_move_piece(e.force, piece_force))
             };
             let is_glowing_duck = |piece: PieceOnBoard| {
-                alt_game.is_my_duck_turn(board_idx)
-                    && piece.kind == PieceKind::Duck
-                    && board.is_duck_turn()
+                alt_game.is_my_duck_turn(board_idx) && piece.kind == PieceKind::Duck
             };
             let is_glowing_steal = |piece: PieceOnBoard| {
                 let Some((input_board_idx, partial_input)) = alt_game.partial_turn_input() else {

@@ -739,7 +739,7 @@ pub struct Board {
     position_count: HashMap<PositionForRepetitionDraw, u32>,
     clock: Clock,
     active_force: Force,
-    is_duck_turn: bool,
+    is_duck_turn: EnumMap<Force, bool>, // track separately per force to allow preturns
 }
 
 impl Board {
@@ -771,7 +771,7 @@ impl Board {
             position_count: HashMap::new(),
             clock: Clock::new(time_control),
             active_force: Force::White,
-            is_duck_turn: false,
+            is_duck_turn: enum_map! { _ => false },
         };
         board.log_position_for_repetition_draw();
         board
@@ -809,7 +809,7 @@ impl Board {
     pub fn clock(&self) -> &Clock { &self.clock }
     pub fn clock_mut(&mut self) -> &mut Clock { &mut self.clock }
     pub fn active_force(&self) -> Force { self.active_force }
-    pub fn is_duck_turn(&self) -> bool { self.is_duck_turn }
+    pub fn is_duck_turn(&self, force: Force) -> bool { self.is_duck_turn[force] }
 
     pub fn is_bughouse(&self) -> bool { self.bughouse_rules.is_some() }
     pub fn turn_owner(&self, mode: TurnMode) -> Force {
@@ -921,6 +921,7 @@ impl Board {
     }
 
     fn update_turn_stage_and_active_force(&mut self, mode: TurnMode) {
+        let force = self.turn_owner(mode);
         let next_active_force = match mode {
             TurnMode::Normal => self.active_force.opponent(),
             TurnMode::Preturn => self.active_force,
@@ -930,11 +931,11 @@ impl Board {
                 self.active_force = next_active_force;
             }
             FairyPieces::DuckChess => {
-                if self.is_duck_turn {
-                    self.is_duck_turn = false;
+                if self.is_duck_turn[force] {
+                    self.is_duck_turn[force] = false;
                     self.active_force = next_active_force;
                 } else {
-                    self.is_duck_turn = true;
+                    self.is_duck_turn[force] = true;
                 }
             }
         }
@@ -943,9 +944,9 @@ impl Board {
     fn apply_turn(
         &mut self, turn: Turn, mode: TurnMode, new_grid: Grid, facts: &TurnFacts, now: GameInstant,
     ) {
-        assert_eq!(self.is_duck_turn, matches!(turn, Turn::PlaceDuck(_)));
         self.next_piece_id = facts.next_piece_id;
         let force = self.turn_owner(mode);
+        assert_eq!(self.is_duck_turn[force], matches!(turn, Turn::PlaceDuck(_)));
         match &turn {
             Turn::Move(mv) => {
                 let first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
@@ -986,7 +987,7 @@ impl Board {
 
         match mode {
             TurnMode::Normal => {
-                if !self.is_duck_turn {
+                if !matches!(turn, Turn::PlaceDuck(_)) {
                     self.en_passant_target = get_en_passant_target(&self.grid, turn);
                 }
                 if self.chess_rules.enable_check_and_mate() {
@@ -1103,7 +1104,7 @@ impl Board {
                 if piece.kind == PieceKind::Duck {
                     return Err(TurnError::DuckPlacementIsSpecialTurnKind);
                 }
-                if self.is_duck_turn {
+                if self.is_duck_turn[force] {
                     return Err(TurnError::MustPlaceDuck);
                 }
                 if piece.force != force.into() {
@@ -1217,7 +1218,7 @@ impl Board {
                 if drop.piece_kind == PieceKind::Duck {
                     return Err(TurnError::DuckPlacementIsSpecialTurnKind);
                 }
-                if self.is_duck_turn {
+                if self.is_duck_turn[force] {
                     return Err(TurnError::MustPlaceDuck);
                 }
                 let to_subjective_row = SubjectiveRow::from_row(drop.to.row, force);
@@ -1272,7 +1273,7 @@ impl Board {
                 //      both when it's possible (the other rook is further away)
                 //      and impossible (the other rook is in the way).
 
-                if self.is_duck_turn {
+                if self.is_duck_turn[force] {
                     return Err(TurnError::MustPlaceDuck);
                 }
                 let row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
@@ -1337,7 +1338,7 @@ impl Board {
                 if self.chess_rules.fairy_pieces != FairyPieces::DuckChess {
                     return Err(TurnError::NotDuckChess);
                 }
-                if !self.is_duck_turn {
+                if !self.is_duck_turn[force] {
                     return Err(TurnError::MustMovePieceBeforeDuck);
                 }
                 let from = find_piece(&new_grid, |p| p.kind == PieceKind::Duck);
@@ -1491,7 +1492,7 @@ impl Board {
                 if mv.promote_to.is_some() != should_promote(force, mv.piece_kind, mv.to) {
                     return Err(TurnError::BadPromotion);
                 }
-                if self.is_duck_turn {
+                if self.is_duck_turn[force] {
                     return Err(TurnError::MustPlaceDuck);
                 }
                 let mut turn = None;
