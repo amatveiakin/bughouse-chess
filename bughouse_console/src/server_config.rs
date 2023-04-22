@@ -1,4 +1,5 @@
 use anyhow::Context;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -10,6 +11,8 @@ pub enum DatabaseOptions {
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum StringSource {
+    Random { len: usize },
+    Literal(String),
     EnvVar(String),
     File(String),
 }
@@ -17,6 +20,12 @@ pub enum StringSource {
 impl StringSource {
     pub fn get(&self) -> anyhow::Result<String> {
         match self {
+            Self::Random { len } => Ok(rand::thread_rng()
+                .sample_iter(rand::distributions::Uniform::new(0, 128))
+                .take(*len)
+                .map(|b: u8| -> char { b.try_into().unwrap() })
+                .collect()),
+            Self::Literal(s) => Ok(s.clone()),
             Self::EnvVar(v) => {
                 std::env::var(v).context(format!("Missing environment variable '{v}'."))
             }
@@ -37,17 +46,18 @@ pub enum AuthOptions {
     },
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub enum SessionOptions {
     NoSessions,
 
-    // Sessions terminate on server termination.
-    WithNewRandomSecret,
-
-    // Allows for sessions that survive server restart.
-    // TODO: Support persistent sessions.
-    #[allow(dead_code)]
-    WithSecret(Vec<u8>),
+    WithSessions {
+        // When the secret is preserved, client-side sessions survive server
+        // restarts. When Random is used, or the secret changes,
+        // the sessions are terminated.
+        secret: StringSource,
+        //#[serde(serialize_with = "serialize_duration", deserialize_with = "deserialize_duration")]
+        expire_in: std::time::Duration,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

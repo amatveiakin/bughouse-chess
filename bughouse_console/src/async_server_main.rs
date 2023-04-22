@@ -15,8 +15,8 @@ use bughouse_chess::BughouseServerEvent;
 use futures_io::{AsyncRead, AsyncWrite};
 use futures_util::StreamExt;
 use log::{error, info, warn};
-use rand::RngCore;
 use tide::StatusCode;
+use time::OffsetDateTime;
 use tungstenite::protocol;
 
 use crate::auth_handlers_tide::*;
@@ -157,24 +157,16 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
         session_store,
     }));
 
-    if app.state().sessions_enabled {
-        let secret = match config.session_options {
-            SessionOptions::NoSessions => unreachable!(),
-            SessionOptions::WithNewRandomSecret => {
-                let mut result = vec![0u8; 32];
-                rand::thread_rng().fill_bytes(result.as_mut_slice());
-                result
-            }
-            SessionOptions::WithSecret(secret) => secret,
-        };
+    if let SessionOptions::WithSessions { secret, expire_in } = config.session_options {
         app.with(
             tide::sessions::SessionMiddleware::new(
                 tide::sessions::CookieStore::new(),
-                secret.as_slice(),
+                secret.get().unwrap().as_bytes(),
             )
             // Set to Lax so that the session persists third-party
             // redirects like Google Auth.
-            .with_same_site_policy(http_types::cookies::SameSite::Lax),
+            .with_same_site_policy(http_types::cookies::SameSite::Lax)
+            .with_session_ttl(Some(expire_in)),
         );
     }
 
@@ -220,9 +212,20 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
                 |x| Ok(x.to_owned()),
             )?;
 
-            let session_id = get_session_id(&req).ok();
 
             let http_server_state = req.state().clone();
+
+            let session_id = get_session_id(&req).ok();
+
+            // This will renew the expiration time on all the sessions.
+            // We only call this when the user accesses "/", not on every single
+            // interaction with the websocket for simplicity and performance.
+            // Sessions where a user has a tab open throughout expiration time
+            // are probably not something we want anyway.
+            session_id
+                .as_ref()
+                .map(|s| http_server_state.session_store.lock().unwrap().touch(s));
+
             // tide::Request -> http_types::Request -> http::Request<Body> -> http::Request<()>.
             let http_types_req: http_types::Request = req.into();
             let http_req_with_body: http::Request<http_types::Body> = http_types_req.into();
@@ -315,8 +318,39 @@ pub fn run(config: ServerConfig) {
     });
 
     let session_store = Arc::new(Mutex::new(SessionStore::new()));
-    let session_store_copy = Arc::clone(&session_store);
 
+    if let SessionOptions::WithSessions { expire_in, .. } = &config.session_options {
+        let expire_in = *expire_in;
+
+        // It's OK to instantiate a separate connection.
+        let secret_database_for_sessions = make_database(&config.secret_database_options).unwrap();
+
+        if let Err(e) =
+            async_std::task::block_on(secret_database_for_sessions.gc_expired_sessions())
+        {
+            error!("Failed to GC expired sessions: {}", e);
+        }
+        if let Err(e) = restore_sessions(
+            secret_database_for_sessions.as_ref(),
+            &mut session_store.lock().unwrap(),
+        ) {
+            error!("Failed to restore sessions: {}", e);
+            // Proceed even if restoring sessions failed.
+        }
+        session_store.lock().unwrap().on_any_change(move |session_id, session| {
+            if let Err(e) =
+                async_std::task::block_on(secret_database_for_sessions.set_logged_in_session(
+                    session_id,
+                    session.user_info().map(|i| i.user_name.clone()),
+                    OffsetDateTime::now_utc() + expire_in,
+                ))
+            {
+                error!("Failed to persist session info: {}", e);
+            }
+        });
+    }
+
+    let session_store_copy = Arc::clone(&session_store);
     thread::spawn(move || {
         let mut server_state = ServerState::new(
             clients_copy,
@@ -369,4 +403,12 @@ fn make_database(options: &DatabaseOptions) -> anyhow::Result<Box<dyn SecretData
             Box::new(database::SqlxDatabase::<sqlx::Postgres>::new(&address)?)
         }
     })
+}
+
+fn restore_sessions(
+    db: &dyn SecretDatabaseRW, session_store: &mut SessionStore,
+) -> anyhow::Result<()> {
+    let sessions = async_std::task::block_on(db.list_sessions())?;
+    sessions.into_iter().for_each(|(id, value)| session_store.set(id, value));
+    Ok(())
 }

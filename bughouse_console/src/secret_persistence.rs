@@ -1,4 +1,5 @@
-use bughouse_chess::session::RegistrationMethod;
+use bughouse_chess::session::{RegistrationMethod, Session};
+use bughouse_chess::session_store::SessionId;
 use tide::utils::async_trait;
 use time::OffsetDateTime;
 
@@ -44,6 +45,7 @@ pub trait SecretDatabaseReader {
     async fn account_by_email(&self, email: &str) -> Result<Option<Account>, anyhow::Error>;
     async fn account_by_user_name(&self, user_name: &str)
         -> Result<Option<Account>, anyhow::Error>;
+    async fn list_sessions(&self) -> Result<Vec<(SessionId, Session)>, anyhow::Error>;
 }
 
 #[async_trait]
@@ -61,6 +63,10 @@ pub trait SecretDatabaseWriter {
         &self, id: AccountId,
         f: Box<dyn FnOnce(LiveAccount) -> anyhow::Result<DeletedAccount> + Send>,
     ) -> anyhow::Result<()>;
+    async fn set_logged_in_session(
+        &self, id: &SessionId, user_name: Option<String>, expiration: OffsetDateTime,
+    ) -> anyhow::Result<()>;
+    async fn gc_expired_sessions(&self) -> anyhow::Result<()>;
 }
 
 #[async_trait]

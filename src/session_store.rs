@@ -10,7 +10,7 @@ use crate::session::*;
 pub type SessionStore = Store<SessionId, Session>;
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
-pub struct SessionId(String);
+pub struct SessionId(pub String);
 
 impl SessionId {
     pub fn new(s: String) -> Self { Self(s) }
@@ -18,6 +18,7 @@ impl SessionId {
 
 pub struct Store<K, V> {
     entries: HashMap<K, Entry<V>>,
+    on_any_change: Box<dyn Fn(&K, &V) + Send>,
 }
 
 #[derive(Default, Hash, Eq, PartialEq, Clone, Copy)]
@@ -29,12 +30,18 @@ where
     K: Eq + PartialEq + Hash + Clone,
     V: Default,
 {
-    pub fn new() -> Self { Self { entries: HashMap::new() } }
+    pub fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            on_any_change: Box::new(|_, _| {}),
+        }
+    }
 
     pub fn get(&self, id: &K) -> Option<&V> { self.entries.get(id).map(|e| &e.value) }
 
     // Sets the new Session data and notifies all subscribers.
     pub fn set(&mut self, id: K, value: V) {
+        (*self.on_any_change)(&id, &value);
         match self.entries.entry(id) {
             hash_map::Entry::Vacant(v) => {
                 v.insert(Entry {
@@ -59,9 +66,25 @@ where
         self.entries.get_mut(id).map(|e| e.unsubscribe(subscription_id));
     }
 
+    // Registers a callback for any change in the store.
+    // The callback is NOT called for the existing values.
+    // Only one callback can be registered at a time.
+    pub fn on_any_change(&mut self, f: impl Fn(&K, &V) + Send + 'static) {
+        self.on_any_change = Box::new(f);
+    }
+
+    // Runs the on_any_change callback if the given key exists in the store.
+    // Does not update subscribers.
+    pub fn touch(&mut self, id: &K) {
+        if let Some(v) = self.get(id) {
+            (self.on_any_change)(id, v);
+        }
+    }
+
     pub fn update_if_exists<F: FnOnce(&mut V)>(&mut self, id: &K, f: F) {
         if let Some(entry) = self.entries.get_mut(id) {
             f(&mut entry.value);
+            (*self.on_any_change)(id, &entry.value);
             entry.update_subscribers();
         }
     }
