@@ -147,7 +147,12 @@ fn server_config_from_args(args: &clap::ArgMatches) -> ServerConfig {
         Some(a) => panic!("Unrecognized auth option {a}"),
     };
     let session_options = if args.get_flag("enable-sessions") {
-        crate::server_config::SessionOptions::WithNewRandomSecret
+        crate::server_config::SessionOptions::WithSessions {
+            // The recommended length is at least 512 bits.
+            // Accounting for only sampling ascii, 512 / 7 is the minimum.
+            secret: StringSource::Random { len: 128 },
+            expire_in: time::Duration::days(30).try_into().unwrap(),
+        }
     } else {
         crate::server_config::SessionOptions::NoSessions
     };

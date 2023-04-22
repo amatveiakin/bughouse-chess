@@ -1,4 +1,6 @@
-use bughouse_chess::session::RegistrationMethod;
+use bughouse_chess::session::{RegistrationMethod, Session, UserInfo};
+use bughouse_chess::session_store::SessionId;
+use log::error;
 use sqlx::prelude::*;
 use tide::utils::async_trait;
 use time::OffsetDateTime;
@@ -68,6 +70,47 @@ where
             )
             .await?;
         row.map(row_to_account).transpose()
+    }
+
+    async fn list_sessions(&self) -> Result<Vec<(SessionId, Session)>, anyhow::Error> {
+        let rows = self
+            .pool
+            .fetch_all(sqlx::query::<DB>(
+                "SELECT
+                        sessions.session_id,
+                        accounts.rowid,
+                        accounts.deleted,
+                        accounts.creation_time,
+                        accounts.deletion_time,
+                        accounts.user_name,
+                        accounts.email,
+                        accounts.password_hash,
+                        accounts.registration_method
+                     FROM sessions INNER JOIN accounts USING(user_name)                   ",
+            ))
+            .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| match (r.try_get("session_id"), row_to_account(r)) {
+                (Ok(session_id), Ok(Account::Live(acc))) => Some((
+                    SessionId(session_id),
+                    Session::LoggedIn(UserInfo {
+                        user_name: acc.user_name,
+                        email: acc.email,
+                        registration_method: acc.registration_method,
+                    }),
+                )),
+                (Err(e), _) => {
+                    error!("Failed to parse session id: {}", e);
+                    None
+                }
+                (_, Err(e)) => {
+                    error!("Failed to parse account {}", e);
+                    None
+                }
+                (Ok(_), Ok(Account::Deleted(_))) => None,
+            })
+            .collect())
     }
 }
 
@@ -144,6 +187,19 @@ where
         )
         .execute(&self.pool)
         .await?;
+        sqlx::query(
+            format!(
+                "CREATE TABLE IF NOT EXISTS sessions (
+                    session_id TEXT NOT NULL PRIMARY KEY,
+                    user_name TEXT,
+                    expires_at TIMESTAMP,
+                    FOREIGN KEY(user_name) REFERENCES accounts(user_name)
+                )",
+            )
+            .as_str(),
+        )
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -167,6 +223,32 @@ where
         .bind(registration_method.to_string())
         .execute(&self.pool)
         .await?;
+        Ok(())
+    }
+
+    async fn set_logged_in_session(
+        &self, id: &SessionId, user_name: Option<String>, expiration: OffsetDateTime,
+    ) -> anyhow::Result<()> {
+        sqlx::query::<DB>(
+            "INSERT INTO sessions(session_id, user_name, expires_at)
+            VALUES($1, $2, $3)
+            ON CONFLICT(session_id)
+            DO UPDATE SET user_name=EXCLUDED.user_name, expires_at=EXCLUDED.expires_at",
+        )
+        .bind(&id.0)
+        .bind(user_name)
+        .bind(expiration)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    // Deletes expired sessions.
+    async fn gc_expired_sessions(&self) -> anyhow::Result<()> {
+        sqlx::query::<DB>("DELETE FROM sessions WHERE expires_at <= $1")
+            .bind(OffsetDateTime::now_utc())
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -289,6 +371,9 @@ impl SecretDatabaseReader for UnimplementedDatabase {
             "account_by_user_name is unimplemented in UnimplementedDatabase",
         ))
     }
+    async fn list_sessions(&self) -> Result<Vec<(SessionId, Session)>, anyhow::Error> {
+        Err(anyhow::Error::msg("list_sessions is unimplemented in UnimplementedDatabase"))
+    }
 }
 
 #[async_trait]
@@ -313,5 +398,17 @@ impl SecretDatabaseWriter for UnimplementedDatabase {
         _f: Box<dyn FnOnce(LiveAccount) -> anyhow::Result<DeletedAccount> + Send>,
     ) -> anyhow::Result<()> {
         Err(anyhow::Error::msg("delete_account is unimplemented in UnimplementedDatabase"))
+    }
+    async fn set_logged_in_session(
+        &self, _id: &SessionId, _user_name: Option<String>, _expiration: OffsetDateTime,
+    ) -> anyhow::Result<()> {
+        Err(anyhow::Error::msg(
+            "set_session_user_name is unimplemented in UnimplementedDatabase",
+        ))
+    }
+    async fn gc_expired_sessions(&self) -> anyhow::Result<()> {
+        Err(anyhow::Error::msg(
+            "gc_expired_sessions is unimplemented in UnimplementedDatabase",
+        ))
     }
 }
