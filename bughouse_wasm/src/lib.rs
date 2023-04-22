@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "strict", deny(warnings))]
+
 extern crate console_error_panic_hook;
 extern crate enum_map;
 extern crate instant;

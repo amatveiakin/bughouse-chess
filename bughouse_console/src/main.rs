@@ -6,6 +6,7 @@
 //       that is not implemented or stabilized yet.
 
 #![forbid(unsafe_code)]
+#![cfg_attr(feature = "strict", deny(warnings))]
 
 extern crate clap;
 extern crate console;

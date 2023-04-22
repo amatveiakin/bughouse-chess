@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![cfg_attr(feature = "strict", deny(warnings))]
 
 // Visibility philosophy:
 //   - Chess concept (rules, pieces, boards...) are exposed directly.

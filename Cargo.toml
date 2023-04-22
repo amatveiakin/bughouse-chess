@@ -11,6 +11,9 @@ version = "0.1.0"
 authors = ["Andrei Matveiakin <a.matveiakin@gmail.com>"]
 edition = "2021"
 
+[features]
+strict = []  # treat warnings as a build error
+
 [dependencies]
 chain-cmp = "0.2.0"
 derive-new = "0.5.9"
