@@ -600,7 +600,7 @@ impl ClientState {
             }
             if participant_reserve_restocked(alt_game.my_id(), &turn_record) {
                 self.notable_event_queue
-                    .push_back(NotableEvent::MyReserveRestocked(envoy.board_idx));
+                    .push_back(NotableEvent::MyReserveRestocked(envoy.board_idx.other()));
             }
             if !turn_record.turn_expanded.steals.is_empty() {
                 self.notable_event_queue.push_back(NotableEvent::PieceStolen);
