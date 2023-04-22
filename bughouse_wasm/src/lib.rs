@@ -754,13 +754,14 @@ impl WebClient {
         let perspective = alt_game.perspective();
         update_scores(&mtch.scores, &mtch.participants, game.status(), teaming, perspective)?;
         for (board_idx, board) in game.boards() {
+            let is_my_turn = my_id.envoy_for(board_idx).map_or(false, |e| game.envoy_is_active(e));
             let is_piece_draggable = |piece_force| {
                 my_id
                     .envoy_for(board_idx)
                     .map_or(false, |e| board.can_potentially_move_piece(e.force, piece_force))
             };
             let is_glowing_duck = |piece: PieceOnBoard| {
-                game.is_active() && piece.kind == PieceKind::Duck && board.is_duck_turn()
+                is_my_turn && piece.kind == PieceKind::Duck && board.is_duck_turn()
             };
             let is_glowing_steal = |piece: PieceOnBoard| {
                 let Some((input_board_idx, partial_input)) = alt_game.partial_turn_input() else {
