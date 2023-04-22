@@ -706,6 +706,11 @@ impl WebClient {
                 pan: self.get_game_audio_pan(board_idx)?,
             }
             .into()),
+            Some(NotableEvent::PieceStolen) => Ok(JsEventPlaySound {
+                audio: "piece_stolen".to_owned(),
+                pan: 0.,
+            }
+            .into()),
             Some(NotableEvent::LowTime(board_idx)) => Ok(JsEventPlaySound {
                 audio: "low_time".to_owned(),
                 pan: self.get_game_audio_pan(board_idx)?,

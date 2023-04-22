@@ -264,6 +264,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                 NotableEvent::GameOver(..) => {}
                 NotableEvent::TurnMade(..) => {}
                 NotableEvent::MyReserveRestocked(..) => {}
+                NotableEvent::PieceStolen => {}
                 NotableEvent::LowTime(..) => {}
                 NotableEvent::GameExportReady(..) => {
                     // Improvement potential: Implement.

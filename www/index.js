@@ -31,6 +31,7 @@ import fog_3 from '../assets/fog-of-war/fog-3.png';
 
 import turn_sound from '../assets/sounds/turn.ogg';
 import reserve_restocked_sound from '../assets/sounds/reserve-restocked.ogg';
+import piece_stolen_sound from '../assets/sounds/piece-stolen.ogg';
 import low_time_sound from '../assets/sounds/low-time.ogg';
 import victory_sound from '../assets/sounds/victory.ogg';
 import defeat_sound from '../assets/sounds/defeat.ogg';
@@ -208,6 +209,7 @@ const Sound = load_sounds({
     draw: draw_sound,
     turn: turn_sound,
     reserve_restocked: reserve_restocked_sound,
+    piece_stolen: piece_stolen_sound,
     low_time: low_time_sound,
 });
 
