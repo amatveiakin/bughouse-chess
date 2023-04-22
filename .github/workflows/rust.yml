@@ -20,7 +20,8 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           # `check` is similar to `build`, but faster because it doesn't do code generation.
-          command: check --workspace --features "strict"
+          command: check
+          args: --workspace --features "strict"
 
   test:
     name: Test
