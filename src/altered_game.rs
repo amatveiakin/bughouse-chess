@@ -568,7 +568,7 @@ impl AlteredGame {
         game
     }
 
-    fn num_preturns_on_board(&self, board_idx: BughouseBoard) -> usize {
+    pub fn num_preturns_on_board(&self, board_idx: BughouseBoard) -> usize {
         let mut game = self.game_confirmed.clone();
         let mut num_preturns = 0;
         for turn_record in self.local_turns.iter() {

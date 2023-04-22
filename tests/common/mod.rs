@@ -56,6 +56,16 @@ macro_rules! drag_move {
             promote_to: None,
         }))
     };
+    ($from:ident -> $to:ident = $steal_piece_kind:ident $steal_piece_id:ident) => {
+        bughouse_chess::TurnInput::DragDrop(bughouse_chess::Turn::Move(bughouse_chess::TurnMove {
+            from: bughouse_chess::Coord::$from,
+            to: bughouse_chess::Coord::$to,
+            promote_to: Some(PromotionTarget::Steal((
+                bughouse_chess::PieceKind::$steal_piece_kind,
+                $steal_piece_id,
+            ))),
+        }))
+    };
     ($piece_kind:ident @ $to:ident) => {
         bughouse_chess::TurnInput::DragDrop(bughouse_chess::Turn::Drop(bughouse_chess::TurnDrop {
             piece_kind: bughouse_chess::PieceKind::$piece_kind,

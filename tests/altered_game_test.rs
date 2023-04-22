@@ -248,6 +248,41 @@ fn stealing_promotion() {
 }
 
 #[test]
+// Stealing promotion is unique in that it can make a local in-order turn invalid.
+fn stealing_promotion_invalidates_local_turn() {
+    let game = BughouseGame::new(
+        MatchRules::unrated(),
+        ChessRules::classic_blitz(),
+        BughouseRules {
+            promotion: Promotion::Steal,
+            ..BughouseRules::chess_com()
+        },
+        &sample_bughouse_players(),
+    );
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(White B)), game);
+    let steal_target_id = alt_game.local_game().board(B).grid()[Coord::B1].unwrap().id;
+    alt_game.try_local_turn(B, drag_move!(B1 -> C3), T0).unwrap();
+
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H2 -> H4), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A7 -> A5), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H4 -> H5), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A5 -> A4), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H5 -> H6), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A4 -> A3), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H6 -> G7), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A3 -> B2), T0).unwrap();
+    alt_game
+        .apply_remote_turn(envoy!(White A), &drag_move!(G7 -> F8 = Knight steal_target_id), T0)
+        .unwrap();
+
+    assert!(alt_game.local_game().board(B).grid()[Coord::B1].is_none());
+    assert!(alt_game.local_game().board(B).grid()[Coord::C3].is_none());
+    // The new local turn should not be considered preturn, because the old local turn was cancelled.
+    alt_game.try_local_turn(B, drag_move!(E2 -> E4), T0).unwrap();
+    assert_eq!(alt_game.num_preturns_on_board(B), 0);
+}
+
+#[test]
 fn cannot_move_duck_instead_of_piece() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), duck_chess_game());
     assert_eq!(
