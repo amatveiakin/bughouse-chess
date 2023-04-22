@@ -383,7 +383,10 @@ body.observer .reserve {
   filter: url(#wayback-filter);
 }
 .board.wayback .square-grid-layer {
-  filter: saturate(0.8);
+  filter: saturate(0.5);
+}
+.board.wayback .piece-layer {
+  filter: contrast(0.9);
 }
 
 #player-name-container-primary-top,
