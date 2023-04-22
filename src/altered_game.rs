@@ -213,6 +213,12 @@ impl AlteredGame {
         self.partial_turn_input
     }
 
+    pub fn is_my_duck_turn(&self, board_idx: BughouseBoard) -> bool {
+        let game = self.game_with_local_turns(true);
+        game.board(board_idx).is_duck_turn()
+            && game.last_turn_record().map_or(false, |r| self.my_id.plays_for(r.envoy))
+    }
+
     pub fn turn_highlights(&self) -> Vec<TurnHighlight> {
         let my_id = self.my_id;
         let game = self.local_game();
@@ -331,7 +337,7 @@ impl AlteredGame {
 
     // Improvement: Less ad-hoc solution for "gluing" board index to TurnInput; use it here, in
     // `drag_piece_drop` and in `BughouseClientEvent::MakeTurn`.
-    pub fn click_piece(
+    pub fn click_square(
         &mut self, board_idx: BughouseBoard, coord: Coord,
     ) -> Option<(BughouseBoard, TurnInput)> {
         if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
@@ -351,6 +357,9 @@ impl AlteredGame {
                     }
                 }
             }
+        } else if self.is_my_duck_turn(board_idx) {
+            // Improvement potential: Also allow to make regular moves in two clicks.
+            return Some((board_idx, TurnInput::DragDrop(Turn::PlaceDuck(coord))));
         }
         None
     }

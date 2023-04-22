@@ -5,6 +5,8 @@
 import './main.css';
 import * as wasm from 'bughouse-chess';
 
+import transparent from '../assets/transparent.png';
+
 import white_pawn from '../assets/pieces/white-pawn.png';
 import white_knight from '../assets/pieces/white-knight.png';
 import white_bishop from '../assets/pieces/white-bishop.png';
@@ -178,6 +180,7 @@ update_cookie_policy();
 
 const FOG_TILE_SIZE = 1.2;
 load_svg_images([
+    { path: transparent, symbol: 'transparent' },
     { path: white_pawn, symbol: 'white-pawn' },
     { path: white_knight, symbol: 'white-knight' },
     { path: white_bishop, symbol: 'white-bishop' },
@@ -723,7 +726,7 @@ function set_up_drag_and_drop() {
             if (is_main_pointer(event)) {
                 const source = event.target.getAttribute('data-bughouse-location');
                 if (source) {
-                    wasm_client().click_piece(source);
+                    wasm_client().click_square(source);
                     update();
                 }
             }

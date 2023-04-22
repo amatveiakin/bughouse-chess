@@ -238,7 +238,7 @@ fn stealing_promotion() {
 
     alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::G7)).unwrap();
     assert!(alt_game.drag_piece_drop(Coord::F8, PieceKind::Queen).unwrap().is_none());
-    let (input_board_idx, input) = alt_game.click_piece(B, Coord::C3).unwrap();
+    let (input_board_idx, input) = alt_game.click_square(B, Coord::C3).unwrap();
     assert_eq!(input_board_idx, A);
     alt_game.try_local_turn(input_board_idx, input, T0).unwrap();
 

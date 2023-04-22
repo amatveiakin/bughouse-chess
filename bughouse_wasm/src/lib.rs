@@ -405,15 +405,15 @@ impl WebClient {
         self.show_turn_result(turn_result)
     }
 
-    pub fn click_piece(&mut self, source: &str) -> JsResult<()> {
+    pub fn click_square(&mut self, source: &str) -> JsResult<()> {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
-        let Some((display_board_idx, coord)) = parse_piece_id(source) else {
+        let Some((display_board_idx, coord)) = parse_square_id(source) else {
             return Ok(());
         };
         let board_idx = get_board_index(display_board_idx, alt_game.perspective());
-        if let Some((input_board_idx, turn_input)) = alt_game.click_piece(board_idx, coord) {
+        if let Some((input_board_idx, turn_input)) = alt_game.click_square(board_idx, coord) {
             let display_input_board_idx =
                 get_display_board_index(input_board_idx, alt_game.perspective());
             let turn_result = self.state.make_turn(display_input_board_idx, turn_input);
@@ -430,7 +430,7 @@ impl WebClient {
             parse_reserve_piece_id(source)
         {
             (display_board_idx, PieceDragStart::Reserve(piece))
-        } else if let Some((display_board_idx, coord)) = parse_piece_id(source) {
+        } else if let Some((display_board_idx, coord)) = parse_square_id(source) {
             let board_orientation =
                 get_board_orientation(display_board_idx, alt_game.perspective());
             set_square_highlight(
@@ -760,7 +760,7 @@ impl WebClient {
                     .map_or(false, |e| board.can_potentially_move_piece(e.force, piece_force))
             };
             let is_glowing_duck = |piece: PieceOnBoard| {
-                game.is_participant_active_on_board(my_id, board_idx)
+                alt_game.is_my_duck_turn(board_idx)
                     && piece.kind == PieceKind::Duck
                     && board.is_duck_turn()
             };
@@ -808,7 +808,6 @@ impl WebClient {
                             FOG_TILE_SIZE,
                         )?;
                         node.set_attribute("href", &format!("#fog-{fog_tile}"))?;
-                        node.remove_attribute("data-bughouse-location")?;
                         node.remove_attribute("class")?;
                         // Improvement potential. To make fog look more varied, add variants:
                         //   let variant = (sq_hash / TOTAL_FOG_TILES) % 4;
@@ -828,18 +827,16 @@ impl WebClient {
                     }
                 }
                 {
-                    let node_id = piece_id(display_board_idx, coord);
+                    let node_id = square_id(display_board_idx, coord);
                     let node = document.get_element_by_id(&node_id);
+                    let node =
+                        ensure_square_node(display_coord, &piece_layer, &node_id, node, 1.0)?;
                     // Rust-upgrade (https://github.com/rust-lang/rust/issues/53667):
-                    //   Combine into a single if-let-chain.
-                    if fog_cover_area.contains(&coord) {
-                        node.map(|n| n.remove());
-                    } else if let Some(piece) = grid[coord] {
-                        let node =
-                            ensure_square_node(display_coord, &piece_layer, &node_id, node, 1.0)?;
+                    //   Replace `is_some` + `unwrap` with `if let`.
+                    if !fog_cover_area.contains(&coord) && grid[coord].is_some() {
+                        let piece = grid[coord].unwrap();
                         let filename = piece_path(piece.kind, piece.force);
                         node.set_attribute("href", &filename)?;
-                        node.set_attribute("data-bughouse-location", &node_id)?;
                         node.remove_attribute("class")?;
                         node.class_list()
                             .toggle_with_force("draggable", is_piece_draggable(piece.force))?;
@@ -848,9 +845,8 @@ impl WebClient {
                         node.class_list()
                             .toggle_with_force("glowing-steal", is_glowing_steal(piece))?;
                     } else {
-                        // Rust-upgrade (https://github.com/rust-lang/rust/issues/91345):
-                        //   `map` -> `inspect`.
-                        node.map(|n| n.remove());
+                        node.set_attribute("href", "#transparent")?;
+                        node.remove_attribute("class")?;
                     }
                 }
             }
@@ -1179,6 +1175,7 @@ fn ensure_square_node(
     let pos = DisplayFCoord::square_pivot(display_coord);
     node.set_attribute("x", &(pos.x - shift).to_string())?;
     node.set_attribute("y", &(pos.y - shift).to_string())?;
+    node.set_attribute("data-bughouse-location", &node_id)?;
     Ok(node)
 }
 
@@ -1841,10 +1838,10 @@ fn player_id(idx: DisplayPlayer) -> &'static str {
     }
 }
 
-fn piece_id(board_idx: DisplayBoard, coord: Coord) -> String {
+fn square_id(board_idx: DisplayBoard, coord: Coord) -> String {
     format!("{}-{}", board_id(board_idx), coord.to_algebraic())
 }
-fn parse_piece_id(id: &str) -> Option<(DisplayBoard, Coord)> {
+fn parse_square_id(id: &str) -> Option<(DisplayBoard, Coord)> {
     let (board_idx, coord) = id.split('-').collect_tuple()?;
     let board_idx = parse_board_id(board_idx).ok()?;
     let coord = Coord::from_algebraic(coord)?;
