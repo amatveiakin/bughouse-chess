@@ -268,6 +268,7 @@ fn is_bughouse_mate_to(
 }
 
 fn is_check_to(rules: &ChessRules, grid: &Grid, king_pos: Coord) -> bool {
+    assert!(rules.enable_check_and_mate());
     let force = king_force(grid, king_pos);
     for from in Coord::all() {
         if let Some(piece) = grid[from] {
