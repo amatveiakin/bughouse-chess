@@ -64,9 +64,9 @@ pub trait SecretDatabaseWriter {
         f: Box<dyn FnOnce(LiveAccount) -> anyhow::Result<DeletedAccount> + Send>,
     ) -> anyhow::Result<()>;
     async fn set_logged_in_session(
-        &self, id: &SessionId, user_name: Option<String>, expiration: OffsetDateTime,
+        &self, id: &SessionId, user_name: Option<String>, last_activity: OffsetDateTime,
     ) -> anyhow::Result<()>;
-    async fn gc_expired_sessions(&self) -> anyhow::Result<()>;
+    async fn gc_expired_sessions(&self, expire_in: std::time::Duration) -> anyhow::Result<()>;
 }
 
 #[async_trait]

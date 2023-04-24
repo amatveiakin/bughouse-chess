@@ -192,7 +192,7 @@ where
                 "CREATE TABLE IF NOT EXISTS sessions (
                     session_id TEXT NOT NULL PRIMARY KEY,
                     user_name TEXT,
-                    expires_at TIMESTAMP,
+                    last_activity_at TIMESTAMP,
                     FOREIGN KEY(user_name) REFERENCES accounts(user_name)
                 )",
             )
@@ -227,26 +227,24 @@ where
     }
 
     async fn set_logged_in_session(
-        &self, id: &SessionId, user_name: Option<String>, expiration: OffsetDateTime,
+        &self, id: &SessionId, user_name: Option<String>, last_activity: OffsetDateTime,
     ) -> anyhow::Result<()> {
         sqlx::query::<DB>(
-            "INSERT INTO sessions(session_id, user_name, expires_at)
-            VALUES($1, $2, $3)
-            ON CONFLICT(session_id)
-            DO UPDATE SET user_name=EXCLUDED.user_name, expires_at=EXCLUDED.expires_at",
+            "INSERT OR REPLACE INTO sessions(session_id, user_name, last_activity_at)
+            VALUES($1, $2, $3)",
         )
         .bind(&id.0)
         .bind(user_name)
-        .bind(expiration)
+        .bind(last_activity)
         .execute(&self.pool)
         .await?;
         Ok(())
     }
 
     // Deletes expired sessions.
-    async fn gc_expired_sessions(&self) -> anyhow::Result<()> {
-        sqlx::query::<DB>("DELETE FROM sessions WHERE expires_at <= $1")
-            .bind(OffsetDateTime::now_utc())
+    async fn gc_expired_sessions(&self, expire_in: std::time::Duration) -> anyhow::Result<()> {
+        sqlx::query::<DB>("DELETE FROM sessions WHERE last_activity_at <= $1")
+            .bind(OffsetDateTime::now_utc() - expire_in)
             .execute(&self.pool)
             .await?;
         Ok(())
@@ -400,13 +398,13 @@ impl SecretDatabaseWriter for UnimplementedDatabase {
         Err(anyhow::Error::msg("delete_account is unimplemented in UnimplementedDatabase"))
     }
     async fn set_logged_in_session(
-        &self, _id: &SessionId, _user_name: Option<String>, _expiration: OffsetDateTime,
+        &self, _id: &SessionId, _user_name: Option<String>, _last_activity: OffsetDateTime,
     ) -> anyhow::Result<()> {
         Err(anyhow::Error::msg(
             "set_session_user_name is unimplemented in UnimplementedDatabase",
         ))
     }
-    async fn gc_expired_sessions(&self) -> anyhow::Result<()> {
+    async fn gc_expired_sessions(&self, _expire_in: std::time::Duration) -> anyhow::Result<()> {
         Err(anyhow::Error::msg(
             "gc_expired_sessions is unimplemented in UnimplementedDatabase",
         ))

@@ -326,7 +326,7 @@ pub fn run(config: ServerConfig) {
         let secret_database_for_sessions = make_database(&config.secret_database_options).unwrap();
 
         if let Err(e) =
-            async_std::task::block_on(secret_database_for_sessions.gc_expired_sessions())
+            async_std::task::block_on(secret_database_for_sessions.gc_expired_sessions(expire_in))
         {
             error!("Failed to GC expired sessions: {}", e);
         }
@@ -342,7 +342,7 @@ pub fn run(config: ServerConfig) {
                 async_std::task::block_on(secret_database_for_sessions.set_logged_in_session(
                     session_id,
                     session.user_info().map(|i| i.user_name.clone()),
-                    OffsetDateTime::now_utc() + expire_in,
+                    OffsetDateTime::now_utc(),
                 ))
             {
                 error!("Failed to persist session info: {}", e);
