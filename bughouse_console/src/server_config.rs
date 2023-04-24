@@ -55,7 +55,6 @@ pub enum SessionOptions {
         // restarts. When Random is used, or the secret changes,
         // the sessions are terminated.
         secret: StringSource,
-        //#[serde(serialize_with = "serialize_duration", deserialize_with = "deserialize_duration")]
         expire_in: std::time::Duration,
     },
 }

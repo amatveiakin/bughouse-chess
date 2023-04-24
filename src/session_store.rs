@@ -18,7 +18,7 @@ impl SessionId {
 
 pub struct Store<K, V> {
     entries: HashMap<K, Entry<V>>,
-    on_any_change: Box<dyn Fn(&K, &V) + Send>,
+    on_any_change: Option<Box<dyn Fn(&K, &V) + Send>>,
 }
 
 #[derive(Default, Hash, Eq, PartialEq, Clone, Copy)]
@@ -33,7 +33,7 @@ where
     pub fn new() -> Self {
         Self {
             entries: HashMap::new(),
-            on_any_change: Box::new(|_, _| {}),
+            on_any_change: None,
         }
     }
 
@@ -41,7 +41,7 @@ where
 
     // Sets the new Session data and notifies all subscribers.
     pub fn set(&mut self, id: K, value: V) {
-        (*self.on_any_change)(&id, &value);
+        self.on_any_change.as_ref().map(|f| f(&id, &value));
         match self.entries.entry(id) {
             hash_map::Entry::Vacant(v) => {
                 v.insert(Entry {
@@ -70,21 +70,24 @@ where
     // The callback is NOT called for the existing values.
     // Only one callback can be registered at a time.
     pub fn on_any_change(&mut self, f: impl Fn(&K, &V) + Send + 'static) {
-        self.on_any_change = Box::new(f);
+        assert!(
+            self.on_any_change.is_none(),
+            "Setting the on_any_change callback twice is not supported."
+        );
+        self.on_any_change = Some(Box::new(f));
     }
 
-    // Runs the on_any_change callback if the given key exists in the store.
+    // Runs the on_any_change callback, possibly creating a default entry.
     // Does not update subscribers.
     pub fn touch(&mut self, id: &K) {
-        if let Some(v) = self.get(id) {
-            (self.on_any_change)(id, v);
-        }
+        let v = self.entries.entry(id.clone()).or_default();
+        self.on_any_change.as_ref().map(|f| f(&id, &v.value));
     }
 
     pub fn update_if_exists<F: FnOnce(&mut V)>(&mut self, id: &K, f: F) {
         if let Some(entry) = self.entries.get_mut(id) {
             f(&mut entry.value);
-            (*self.on_any_change)(id, &entry.value);
+            self.on_any_change.as_ref().map(|f| f(&id, &entry.value));
             entry.update_subscribers();
         }
     }
