@@ -1,6 +1,9 @@
 // We use Row/Col terminology instead of traditional Rank/File because "File" could be misleading
 // in programming context. But all user-visible places (UI, PGN, etc.) should say Rank/File.
 
+// Rust-upgrade(https://github.com/rust-lang/rust/issues/91917):
+//   Use `then_some` in `from_zero_based`.
+
 use std::{fmt, ops};
 
 use itertools::Itertools;

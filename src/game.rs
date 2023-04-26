@@ -246,13 +246,7 @@ impl BughousePlayer {
     }
     pub fn envoy_for(self, board_idx: BughouseBoard) -> Option<BughouseEnvoy> {
         match self {
-            BughousePlayer::SinglePlayer(envoy) => {
-                if envoy.board_idx == board_idx {
-                    Some(envoy)
-                } else {
-                    None
-                }
-            }
+            BughousePlayer::SinglePlayer(envoy) => (envoy.board_idx == board_idx).then_some(envoy),
             BughousePlayer::DoublePlayer(team) => Some(BughouseEnvoy {
                 board_idx,
                 force: get_bughouse_force(team, board_idx),

@@ -1461,11 +1461,7 @@ impl Board {
                             if maybe_is_special_castling {
                                 let castle_direction =
                                     self.castling_rights[force].iter().find_map(|(dir, &col)| {
-                                        if col == Some(mv.to.col) {
-                                            Some(dir)
-                                        } else {
-                                            None
-                                        }
+                                        (col == Some(mv.to.col)).then_some(dir)
                                     });
                                 if let Some(castle_direction) = castle_direction {
                                     assert_eq!(mv.from.row, first_row); // implied by having castling rights

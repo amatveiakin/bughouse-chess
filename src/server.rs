@@ -218,13 +218,9 @@ impl Clients {
     }
 
     fn find_participant(&self, participant_id: ParticipantId) -> Option<ClientId> {
-        self.map.iter().find_map(|(&id, c)| {
-            if c.participant_id == Some(participant_id) {
-                Some(id)
-            } else {
-                None
-            }
-        })
+        self.map
+            .iter()
+            .find_map(|(&id, c)| (c.participant_id == Some(participant_id)).then_some(id))
     }
 }
 
