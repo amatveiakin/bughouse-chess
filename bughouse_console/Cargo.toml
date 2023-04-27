@@ -1,7 +1,10 @@
 [package]
 name = "bughouse_console"
 version = "0.1.0"
-authors = ["Andrei Matveiakin <a.matveiakin@gmail.com>"]
+authors = [
+    "Andrei Matveiakin <a.matveiakin@gmail.com>",
+    "Konstantin Mandelbaum submulticativity@gmail.com",
+]
 edition = "2021"
 
 [features]
