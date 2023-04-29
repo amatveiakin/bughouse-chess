@@ -63,6 +63,7 @@ enum Action {
     },
     AbortDragPiece,
     DragPieceDrop {
+        board_idx: BughouseBoard,
         dest: Coord,
         promote_to: PieceKind,
     },
@@ -284,9 +285,10 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
         }
         AbortDragPiece => Action::AbortDragPiece,
         DragPieceDrop => {
+            let board_idx = random_board(rng);
             let dest = random_coord(rng);
             let promote_to = PieceKind::Queen;
-            Action::DragPieceDrop { dest, promote_to }
+            Action::DragPieceDrop { board_idx, dest, promote_to }
         }
         CancelPreturn => {
             let board_idx = random_board(rng);
@@ -308,7 +310,9 @@ fn apply_action(alt_game: &mut AlteredGame, action: Action) {
         PieceDragState => _ = alt_game.piece_drag_state(),
         StartDragPiece { board_idx, start } => _ = alt_game.start_drag_piece(board_idx, start),
         AbortDragPiece => _ = alt_game.abort_drag_piece(),
-        DragPieceDrop { dest, promote_to } => _ = alt_game.drag_piece_drop(dest, promote_to),
+        DragPieceDrop { board_idx, dest, promote_to } => {
+            _ = alt_game.drag_piece_drop(board_idx, dest, promote_to)
+        }
         CancelPreturn { board_idx } => _ = alt_game.cancel_preturn(board_idx),
     }
 }

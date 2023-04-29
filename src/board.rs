@@ -869,6 +869,16 @@ impl Board {
         })
     }
 
+    pub fn is_legal_move_destination(&self, from: Coord, to: Coord, mode: TurnMode) -> bool {
+        match mode {
+            TurnMode::Normal => {
+                let capture = get_capture(&self.grid, from, to, self.en_passant_target);
+                reachability(&self.chess_rules, &self.grid, from, to, capture.is_some()).ok()
+            }
+            TurnMode::Preturn => is_reachable_for_premove(&self.chess_rules, &self.grid, from, to),
+        }
+    }
+
     // Generates legal moves and castlings (if King) for a piece in a given square.
     // Check and mate are not taken into account.
     pub fn legal_turn_destinations(&self, from: Coord) -> Vec<Coord> {

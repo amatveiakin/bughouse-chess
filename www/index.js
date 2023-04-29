@@ -251,8 +251,9 @@ let audio_last_played = 0;
 let audio_queue = [];
 let audio_volume = 0;
 
-let drag_source_board = null;
+let drag_source_board_idx = null;
 let drag_element = null;
+function drag_source_board() { return document.getElementById(`board-${drag_source_board_idx}`); }
 
 const Meter = make_meters();
 
@@ -600,7 +601,7 @@ function update_drag_state() {
             if (drag_element) {
                 drag_element.remove();
                 drag_element = null;
-                drag_source_board = null;
+                drag_source_board_idx = null;
             }
             wasm_client().reset_drag_highlights();
             break;
@@ -704,6 +705,8 @@ function set_up_drag_and_drop() {
     document.addEventListener('touchend', end_drag);
     document.addEventListener('touchcancel', end_drag);
 
+    // Note the difference: drag is cancelled while dragging, no matter the mouse position. Other
+    // partial turn inputs and preturns are cancelled by right-click on the corresponding board.
     for (const board of ['primary', 'secondary']) {
         const svg = document.getElementById(`board-${board}`);
         svg.addEventListener('contextmenu', (event) => cancel_preturn(event, board));
@@ -713,7 +716,7 @@ function set_up_drag_and_drop() {
     function is_main_pointer(event) { return event.button == 0 || event.changedTouches?.length >= 1; }
 
     function mouse_position_relative_to_board(event) {
-        const ctm = drag_source_board.getScreenCTM();
+        const ctm = drag_source_board().getScreenCTM();
         const src = event.changedTouches ? event.changedTouches[0] : event;
         return {
             x: (src.clientX - ctm.e) / ctm.a,
@@ -742,18 +745,17 @@ function set_up_drag_and_drop() {
             //   screens however this is not always the case.
             if (!drag_element && event.target.classList.contains('draggable') && is_main_pointer(event)) {
                 const source = event.target.getAttribute('data-bughouse-location');
-                const drag_source_board_idx = wasm_client().start_drag_piece(source);
+                const board_idx = wasm_client().start_drag_piece(source);
 
-                if (drag_source_board_idx == 'abort') {
+                if (board_idx == 'abort') {
                     return;
                 }
 
+                drag_source_board_idx = board_idx;
                 drag_element = event.target;
                 drag_element.classList.add('dragged');
                 // Dissociate image from the board/reserve:
                 drag_element.id = null;
-
-                drag_source_board = document.getElementById(`board-${drag_source_board_idx}`);
 
                 // Reparent: bring on top; (if reserve) remove shadow by extracting from reserve group.
                 //
@@ -762,7 +764,7 @@ function set_up_drag_and_drop() {
                 // this should've helped:
                 //   drag_element.addEventListener('touchmove', drag);
                 // but it didn't work for me.
-                drag_source_board.appendChild(drag_element);
+                drag_source_board().appendChild(drag_element);
 
                 update();
 
@@ -776,9 +778,9 @@ function set_up_drag_and_drop() {
         with_error_handling(function() {
             if (drag_element) {
                 const coord = mouse_position_relative_to_board(event);
+                wasm_client().drag_piece(drag_source_board_idx, coord.x, coord.y);
                 drag_element.setAttribute('x', coord.x - 0.5);
                 drag_element.setAttribute('y', coord.y - 0.5);
-                wasm_client().drag_piece(coord.x, coord.y);
             }
         });
     }
@@ -787,10 +789,10 @@ function set_up_drag_and_drop() {
         with_error_handling(function() {
             if (drag_element && is_main_pointer(event)) {
                 const coord = mouse_position_relative_to_board(event);
+                wasm_client().drag_piece_drop(drag_source_board_idx, coord.x, coord.y, event.shiftKey);
                 drag_element.remove();
                 drag_element = null;
-                drag_source_board = null;
-                wasm_client().drag_piece_drop(coord.x, coord.y, event.shiftKey);
+                drag_source_board_idx = null;
                 update();
             }
         });

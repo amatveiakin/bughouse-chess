@@ -196,8 +196,10 @@ impl DisplayFCoord {
         let x = self.x as i32;
         let y = self.y as i32;
         if 0 <= x && x < NUM_COLS as i32 && 0 <= y && y < NUM_ROWS as i32 {
-            // Improvement potential: clamp instead of asserting the values are in range.
+            // Improvement potential: clamp values that are slightly out of range.
             // Who knows if all browsers guarantee click coords cannot be 0.00001px away?
+            // Note: if doing this, make sure that dragging too far away doesn't highlight
+            // a random edge square.
             Some(DisplayCoord {
                 x: x.try_into().unwrap(),
                 y: y.try_into().unwrap(),

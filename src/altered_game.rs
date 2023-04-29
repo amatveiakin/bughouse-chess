@@ -38,7 +38,15 @@ use crate::rules::{BughouseRules, ChessRules, ChessVariant, Promotion};
 
 #[derive(Clone, Copy, Debug)]
 pub enum PartialTurnInput {
-    StealPromotion { from: Coord, to: Coord },
+    Drag {
+        piece_kind: PieceKind,
+        piece_force: PieceForce,
+        source: PieceDragSource,
+    },
+    StealPromotion {
+        from: Coord,
+        to: Coord,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -50,7 +58,7 @@ pub enum PieceDragStart {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PieceDragError {
     DragForbidden,
-    DragAlreadyStarted,
+    DragIllegal,
     NoDragInProgress,
     DragNoLongerPossible,
     PieceNotFound,
@@ -64,12 +72,11 @@ pub enum PieceDragSource {
     Reserve,
 }
 
-#[derive(Clone, Debug)]
-pub struct PieceDrag {
-    pub board_idx: BughouseBoard,
-    pub piece_kind: PieceKind,
-    pub piece_force: PieceForce,
-    pub source: PieceDragSource,
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PieceDragState {
+    NoDrag,
+    Dragging,
+    Defunct,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -102,6 +109,13 @@ pub struct TurnHighlight {
     pub item: TurnHighlightItem,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LocalTurns {
+    OnlyNormal,   // normal
+    NormalAndPre, // normal + pre
+    All,          // normal + pre + partial
+}
+
 #[derive(Clone, Debug)]
 pub struct AlteredGame {
     // All local actions are assumed to be made on behalf of this player.
@@ -118,8 +132,6 @@ pub struct AlteredGame {
     local_turns: Vec<TurnRecord>,
     // Historical position that the user is currently viewing.
     wayback_turn_index: EnumMap<BughouseBoard, Option<String>>,
-    // Drag&drop state if making turn by mouse or touch.
-    piece_drag: Option<PieceDrag>,
 }
 
 impl AlteredGame {
@@ -130,7 +142,6 @@ impl AlteredGame {
             partial_turn_input: None,
             local_turns: Vec::new(),
             wayback_turn_index: enum_map! { _ => None },
-            piece_drag: None,
         }
     }
 
@@ -184,17 +195,8 @@ impl AlteredGame {
                 }
             }
         }
-        self.discard_invalid_local_turns();
 
-        let mut game = self.game_with_local_turns(true);
-        if self.apply_drag(&mut game).is_err() {
-            let Some(ref mut drag) = self.piece_drag else {
-                panic!("Got a drag failure with no drag in progress");
-            };
-            // Drag invalidated. Possible reasons: dragged piece was captured by opponent;
-            // dragged piece depended on a preturn that was cancelled.
-            drag.source = PieceDragSource::Defunct;
-        }
+        self.discard_invalid_local_turns();
         Ok(remote_turn_record)
     }
 
@@ -203,9 +205,8 @@ impl AlteredGame {
     pub fn game_confirmed(&self) -> &BughouseGame { &self.game_confirmed }
 
     pub fn local_game(&self) -> BughouseGame {
-        let mut game = self.game_with_local_turns(true);
+        let mut game = self.game_with_local_turns(LocalTurns::All);
         self.apply_wayback(&mut game);
-        self.apply_drag(&mut game).unwrap();
         game
     }
 
@@ -217,7 +218,7 @@ impl AlteredGame {
         let Some(envoy) = self.my_id.envoy_for(board_idx) else {
             return false;
         };
-        let game = self.game_with_local_turns(true);
+        let game = self.game_with_local_turns(LocalTurns::All);
         game.board(board_idx).is_duck_turn(envoy.force)
     }
 
@@ -289,13 +290,13 @@ impl AlteredGame {
             ChessVariant::FogOfWar => {
                 if let BughouseParticipant::Player(my_player_id) = self.my_id {
                     // Don't use `local_game`: preturns and drags should not reveal new areas.
-                    let mut game = self.game_with_local_turns(false);
+                    let mut game = self.game_with_local_turns(LocalTurns::OnlyNormal);
                     let wayback_active = self.apply_wayback_for_board(&mut game, board_idx);
                     let force = get_bughouse_force(my_player_id.team(), board_idx);
                     let mut visible = game.board(board_idx).fog_free_area(force);
                     // ... but do show preturn pieces themselves:
                     if !wayback_active {
-                        let game_with_preturns = self.game_with_local_turns(true);
+                        let game_with_preturns = self.game_with_local_turns(LocalTurns::All);
                         for coord in Coord::all() {
                             if let Some(piece) = game_with_preturns.board(board_idx).grid()[coord] {
                                 if piece.force.is_owned_by_or_neutral(force) {
@@ -315,9 +316,24 @@ impl AlteredGame {
     pub fn try_local_turn(
         &mut self, board_idx: BughouseBoard, turn_input: TurnInput, time: GameInstant,
     ) -> Result<TurnMode, TurnError> {
+        let Some(envoy) = self.my_id.envoy_for(board_idx) else {
+            return Err(TurnError::NotPlayer);
+        };
+        if self.wayback_turn_index[board_idx].is_some() {
+            return Err(TurnError::WaybackIsActive);
+        }
+        if self.num_preturns_on_board(board_idx) >= self.chess_rules().max_preturns_per_board() {
+            return Err(TurnError::PreturnLimitReached);
+        }
         self.partial_turn_input = None;
-        self.piece_drag = None;
-        let mode = self.try_local_turn_ignore_drag(board_idx, turn_input, time)?;
+        let mut game = self.game_with_local_turns(LocalTurns::All);
+        let mode = game.turn_mode_for_envoy(envoy)?;
+        game.try_turn_by_envoy(envoy, &turn_input, mode, time)?;
+        // Note: cannot use `game.turn_log().last()` here! It will change the input method, and this
+        // can cause subtle differences in preturn execution. For example, when making algebraic
+        // turns you can require the turn be capturing by using "x". This information will be lost
+        // if using TurnInput::Explicit.
+        self.local_turns.push(TurnRecord { envoy, turn_input, time });
         Ok(mode)
     }
 
@@ -325,7 +341,7 @@ impl AlteredGame {
         self.wayback_turn_index[board_idx].as_deref()
     }
     pub fn wayback_to_turn(&mut self, board_idx: BughouseBoard, turn_idx: Option<String>) {
-        self.abort_drag_piece_on_board(board_idx);
+        self.cancel_partial_turn_on_board(board_idx);
         let last_turn_idx = self
             .local_game()
             .turn_log()
@@ -344,9 +360,12 @@ impl AlteredGame {
     ) -> Option<(BughouseBoard, TurnInput)> {
         if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
             match partial_input {
+                PartialTurnInput::Drag { .. } => {
+                    self.partial_turn_input = None;
+                }
                 PartialTurnInput::StealPromotion { from, to } => {
                     if board_idx == input_board_idx.other() {
-                        let game = self.game_with_local_turns(true);
+                        let game = self.game_with_local_turns(LocalTurns::All);
                         if let Some(piece) = game.board(board_idx).grid()[coord] {
                             let full_input = TurnInput::DragDrop(Turn::Move(TurnMove {
                                 from,
@@ -366,7 +385,15 @@ impl AlteredGame {
         None
     }
 
-    pub fn piece_drag_state(&self) -> &Option<PieceDrag> { &self.piece_drag }
+    pub fn piece_drag_state(&self) -> PieceDragState {
+        match self.partial_turn_input {
+            Some((_, PartialTurnInput::Drag { source, .. })) => match source {
+                PieceDragSource::Defunct => PieceDragState::Defunct,
+                _ => PieceDragState::Dragging,
+            },
+            _ => PieceDragState::NoDrag,
+        }
+    }
 
     pub fn start_drag_piece(
         &mut self, board_idx: BughouseBoard, start: PieceDragStart,
@@ -377,18 +404,16 @@ impl AlteredGame {
         let Some(my_envoy) = my_player_id.envoy_for(board_idx) else {
             return Err(PieceDragError::DragForbidden);
         };
+        if self.wayback_turn_index[board_idx].is_some() {
+            return Err(PieceDragError::DragForbidden);
+        }
         if let Some((input_board_idx, _)) = self.partial_turn_input {
             if input_board_idx == board_idx {
                 return Err(PieceDragError::DragForbidden);
             }
         }
-        if self.wayback_turn_index[board_idx].is_some() {
-            return Err(PieceDragError::DragForbidden);
-        }
-        if self.piece_drag.is_some() {
-            return Err(PieceDragError::DragAlreadyStarted);
-        }
-        let game = self.game_with_local_turns(true);
+        self.partial_turn_input = None;
+        let game = self.game_with_local_turns(LocalTurns::All);
         let board = game.board(board_idx);
         let (piece_kind, piece_force, source) = match start {
             PieceDragStart::Board(coord) => {
@@ -406,36 +431,33 @@ impl AlteredGame {
                 (piece_kind, piece_force, PieceDragSource::Reserve)
             }
         };
-        self.piece_drag = Some(PieceDrag {
-            board_idx,
+        self.try_partial_turn(board_idx, PartialTurnInput::Drag {
             piece_kind,
             piece_force,
             source,
-        });
+        })
+        .map_err(|()| PieceDragError::DragIllegal)?;
         Ok(())
     }
 
-    pub fn abort_drag_piece(&mut self) { self.piece_drag = None; }
-
-    pub fn abort_drag_piece_on_board(&mut self, board_idx: BughouseBoard) {
-        if let Some(ref mut drag) = self.piece_drag {
-            if drag.board_idx == board_idx {
-                self.piece_drag = None;
-            }
+    pub fn abort_drag_piece(&mut self) {
+        if matches!(self.partial_turn_input, Some((_, PartialTurnInput::Drag { .. }))) {
+            self.partial_turn_input = None;
         }
     }
 
     // Stop drag and returns turn on success. The client should then manually apply this
     // turn via `make_turn`.
     pub fn drag_piece_drop(
-        &mut self, dest: Coord, promote_to: PieceKind,
+        &mut self, board_idx: BughouseBoard, dest: Coord, promote_to: PieceKind,
     ) -> Result<Option<TurnInput>, PieceDragError> {
-        let PieceDrag {
-            board_idx,
-            piece_kind,
-            piece_force,
-            source,
-        } = self.piece_drag.take().ok_or(PieceDragError::NoDragInProgress)?;
+        let Some((input_board_idx, PartialTurnInput::Drag { piece_kind, piece_force, source })) = self.partial_turn_input else {
+            return Err(PieceDragError::NoDragInProgress);
+        };
+        self.partial_turn_input = None;
+        if input_board_idx != board_idx {
+            return Err(PieceDragError::DragForbidden);
+        }
 
         match source {
             PieceDragSource::Defunct => Err(PieceDragError::DragNoLongerPossible),
@@ -481,11 +503,14 @@ impl AlteredGame {
                                 }))))
                             }
                             Promotion::Steal => {
-                                self.partial_turn_input =
-                                    Some((board_idx, PartialTurnInput::StealPromotion {
+                                self.try_partial_turn(
+                                    board_idx,
+                                    PartialTurnInput::StealPromotion {
                                         from: source_coord,
                                         to: dest,
-                                    }));
+                                    },
+                                )
+                                .map_err(|()| PieceDragError::DragIllegal)?;
                                 Ok(None)
                             }
                         }
@@ -507,12 +532,9 @@ impl AlteredGame {
         }
     }
 
+    // Pops one action from local action queue: a partial turn input, or a preturn.
+    // Returns whether a preturn was cancelled.
     pub fn cancel_preturn(&mut self, board_idx: BughouseBoard) -> bool {
-        // Note: Abort drag just to be safe. In practice existing GUI doesn't allow to
-        // cancel preturn while dragging. If this is desired, a proper check needs to be
-        // done (like in `apply_remote_turn`).
-        self.piece_drag = None;
-
         if let Some((input_board_idx, _)) = self.partial_turn_input {
             if input_board_idx == board_idx {
                 self.partial_turn_input = None;
@@ -534,7 +556,15 @@ impl AlteredGame {
 
     fn reset_local_changes(&mut self) {
         self.local_turns.clear();
-        self.piece_drag = None;
+        self.partial_turn_input = None;
+    }
+
+    fn cancel_partial_turn_on_board(&mut self, board_idx: BughouseBoard) {
+        if let Some((input_board_idx, _)) = self.partial_turn_input {
+            if input_board_idx == board_idx {
+                self.partial_turn_input = None;
+            }
+        }
     }
 
     fn discard_invalid_local_turns(&mut self) {
@@ -553,29 +583,33 @@ impl AlteredGame {
             }
             is_board_ok[turn_record.envoy.board_idx]
         });
+        if self.apply_partial_turn(&mut game).is_err() {
+            // Partial turn invalidated. Possible reasons: dragged piece was captured by opponent;
+            // dragged piece depended on a (pre)turn that was cancelled.
+            self.invalidate_partial_turn();
+        }
     }
 
-    fn game_with_local_turns(&self, include_pre_and_partial_turns: bool) -> BughouseGame {
+    fn game_with_local_turns(&self, local_turns_to_include: LocalTurns) -> BughouseGame {
+        let (include_pre, include_partial) = match local_turns_to_include {
+            LocalTurns::OnlyNormal => (false, false),
+            LocalTurns::NormalAndPre => (true, false),
+            LocalTurns::All => (true, true),
+        };
         let mut game = self.game_confirmed.clone();
         for turn_record in self.local_turns.iter() {
             // Note. Not calling `test_flag`, because only server records flag defeat.
             // Unwrap ok: turn correctness (according to the `mode`) has already been verified.
             let mode = game.turn_mode_for_envoy(turn_record.envoy).unwrap();
-            if mode == TurnMode::Preturn && !include_pre_and_partial_turns {
+            if mode == TurnMode::Preturn && !include_pre {
                 // Do not break because we can still get in-order turns on the other board.
                 continue;
             }
             game.apply_turn_record(&turn_record, mode).unwrap();
         }
-        if include_pre_and_partial_turns {
-            if let Some((board_idx, partial_input)) = self.partial_turn_input {
-                match partial_input {
-                    PartialTurnInput::StealPromotion { from, to } => {
-                        let grid = game.board_mut(board_idx).grid_mut();
-                        grid[to] = grid[from].take();
-                    }
-                }
-            }
+        if include_partial {
+            // Unwrap ok: partial turn correctness has already been verified.
+            self.apply_partial_turn(&mut game).unwrap();
         }
         game
     }
@@ -617,55 +651,77 @@ impl AlteredGame {
         }
     }
 
-    fn apply_drag(&self, game: &mut BughouseGame) -> Result<(), ()> {
-        let Some(ref drag) = self.piece_drag else {
+    fn try_partial_turn(
+        &mut self, board_idx: BughouseBoard, input: PartialTurnInput,
+    ) -> Result<(), ()> {
+        self.partial_turn_input = Some((board_idx, input));
+        let mut game = self.game_with_local_turns(LocalTurns::NormalAndPre);
+        match self.apply_partial_turn(&mut game) {
+            Ok(()) => Ok(()),
+            Err(()) => {
+                self.partial_turn_input = None;
+                Err(())
+            }
+        }
+    }
+
+    fn apply_partial_turn(&self, game: &mut BughouseGame) -> Result<(), ()> {
+        let Some((board_idx, input)) = self.partial_turn_input else {
             return Ok(());
         };
-        let envoy = self.my_id.envoy_for(drag.board_idx).ok_or(())?;
-        let board = game.board_mut(drag.board_idx);
-        match drag.source {
-            PieceDragSource::Defunct => {}
-            PieceDragSource::Board(coord) => {
-                // Note: `take` modifies the board
-                let piece = board.grid_mut()[coord].take().ok_or(())?;
-                let expected = (drag.piece_force, drag.piece_kind);
-                let actual = (piece.force, piece.kind);
-                if expected != actual {
-                    return Err(());
+        let Some(envoy) = self.my_id.envoy_for(board_idx) else {
+            return Err(());
+        };
+        match input {
+            PartialTurnInput::Drag { piece_kind, piece_force, source } => {
+                let board = game.board_mut(board_idx);
+                match source {
+                    PieceDragSource::Defunct => {}
+                    PieceDragSource::Board(coord) => {
+                        // Note: `take` modifies the board
+                        let piece = board.grid_mut()[coord].take().ok_or(())?;
+                        let expected = (piece_force, piece_kind);
+                        let actual = (piece.force, piece.kind);
+                        if expected != actual {
+                            return Err(());
+                        }
+                    }
+                    PieceDragSource::Reserve => {
+                        let reserve = board.reserve_mut(envoy.force);
+                        if reserve[piece_kind] <= 0 {
+                            return Err(());
+                        }
+                        reserve[piece_kind] -= 1;
+                    }
                 }
             }
-            PieceDragSource::Reserve => {
-                let reserve = board.reserve_mut(envoy.force);
-                if reserve[drag.piece_kind] <= 0 {
+            PartialTurnInput::StealPromotion { from, to } => {
+                let Ok(mode) = game.turn_mode_for_envoy(envoy) else {
+                    return Err(());
+                };
+                let board = game.board_mut(board_idx);
+                if !board.is_legal_move_destination(from, to, mode) {
                     return Err(());
                 }
-                reserve[drag.piece_kind] -= 1;
+                let grid = board.grid_mut();
+                grid[to] = grid[from].take();
             }
         }
         Ok(())
     }
 
-    fn try_local_turn_ignore_drag(
-        &mut self, board_idx: BughouseBoard, turn_input: TurnInput, time: GameInstant,
-    ) -> Result<TurnMode, TurnError> {
-        let Some(envoy) = self.my_id.envoy_for(board_idx) else {
-            return Err(TurnError::NotPlayer);
+    fn invalidate_partial_turn(&mut self) {
+        let Some((_, ref mut input)) = self.partial_turn_input else {
+            return;
         };
-        if self.wayback_turn_index[board_idx].is_some() {
-            return Err(TurnError::WaybackIsActive);
+        match input {
+            PartialTurnInput::Drag { source, .. } => {
+                *source = PieceDragSource::Defunct;
+            }
+            PartialTurnInput::StealPromotion { .. } => {
+                self.partial_turn_input = None;
+            }
         }
-        if self.num_preturns_on_board(board_idx) >= self.chess_rules().max_preturns_per_board() {
-            return Err(TurnError::PreturnLimitReached);
-        }
-        let mut game = self.game_with_local_turns(true);
-        let mode = game.turn_mode_for_envoy(envoy)?;
-        game.try_turn_by_envoy(envoy, &turn_input, mode, time)?;
-        // Note: cannot use `game.turn_log().last()` here! It will change the input method, and this
-        // can cause subtle differences in preturn execution. For example, when making algebraic
-        // turns you can require the turn be capturing by using "x". This information will be lost
-        // if using TurnInput::Explicit.
-        self.local_turns.push(TurnRecord { envoy, turn_input, time });
-        Ok(mode)
     }
 }
 
@@ -778,6 +834,10 @@ fn get_partial_turn_highlight_basis(
     partial_input: &PartialTurnInput,
 ) -> Vec<(TurnHighlightItem, Coord)> {
     match partial_input {
+        PartialTurnInput::Drag { .. } => {
+            // Highlighted separately. (Q. Should it?)
+            vec![]
+        }
         PartialTurnInput::StealPromotion { from, to } => vec![
             (TurnHighlightItem::MoveFrom, *from),
             (TurnHighlightItem::MoveTo, *to),

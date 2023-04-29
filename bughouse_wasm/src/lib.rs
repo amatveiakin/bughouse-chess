@@ -473,14 +473,8 @@ impl WebClient {
         }
     }
 
-    pub fn drag_piece(&mut self, x: f64, y: f64) -> JsResult<()> {
-        let Some(alt_game) = self.state.alt_game_mut() else {
-            return Ok(());
-        };
-        let Some(board_idx) = alt_game.piece_drag_state().as_ref().map(|s| s.board_idx) else {
-            return Ok(());
-        };
-        let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
+    pub fn drag_piece(&mut self, board_id: &str, x: f64, y: f64) -> JsResult<()> {
+        let display_board_idx = parse_board_id(board_id)?;
         let pos = DisplayFCoord { x, y };
         set_square_highlight(
             Some("drag-over-highlight"),
@@ -491,28 +485,32 @@ impl WebClient {
         )
     }
 
-    pub fn drag_piece_drop(&mut self, x: f64, y: f64, alternative_promotion: bool) -> JsResult<()> {
+    pub fn drag_piece_drop(
+        &mut self, board_id: &str, x: f64, y: f64, alternative_promotion: bool,
+    ) -> JsResult<()> {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
-        let Some(board_idx) = alt_game.piece_drag_state().as_ref().map(|s| s.board_idx) else {
-            return Ok(());
-        };
+        let display_board_idx = parse_board_id(board_id)?;
         let pos = DisplayFCoord { x, y };
         if let Some(dest_display) = pos.to_square() {
             use PieceKind::*;
-            let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
+            let board_idx = get_board_index(display_board_idx, alt_game.perspective());
             let board_orientation =
                 get_board_orientation(display_board_idx, alt_game.perspective());
             let dest_coord = from_display_coord(dest_display, board_orientation).unwrap();
             let promote_to = if alternative_promotion { Knight } else { Queen };
-            match alt_game.drag_piece_drop(dest_coord, promote_to) {
+            match alt_game.drag_piece_drop(board_idx, dest_coord, promote_to) {
                 Ok(None) => {
                     // Probably a partial turn input. Awaiting completion.
                 }
                 Ok(Some(turn_input)) => {
                     let turn_result = self.state.make_turn(display_board_idx, turn_input);
                     self.show_turn_result(turn_result)?;
+                }
+                Err(PieceDragError::DragIllegal) => {
+                    // Ignore: tried to make an illegal move (this is usually checked later, but
+                    // sometimes now).
                 }
                 Err(PieceDragError::DragNoLongerPossible) => {
                     // Ignore: this happen when dragged piece was captured by opponent.
@@ -532,7 +530,9 @@ impl WebClient {
 
     pub fn abort_drag_piece(&mut self) -> JsResult<()> {
         if let Some(alt_game) = self.state.alt_game_mut() {
-            alt_game.abort_drag_piece();
+            if alt_game.piece_drag_state() != PieceDragState::NoDrag {
+                alt_game.abort_drag_piece();
+            }
         }
         Ok(())
     }
@@ -546,13 +546,10 @@ impl WebClient {
 
     pub fn drag_state(&self) -> String {
         (if let Some(GameState { ref alt_game, .. }) = self.state.game_state() {
-            if let Some(drag) = alt_game.piece_drag_state() {
-                match drag.source {
-                    PieceDragSource::Board(_) | PieceDragSource::Reserve => "yes",
-                    PieceDragSource::Defunct => "defunct",
-                }
-            } else {
-                "no"
+            match alt_game.piece_drag_state() {
+                PieceDragState::NoDrag => "no",
+                PieceDragState::Dragging { .. } => "yes",
+                PieceDragState::Defunct => "defunct",
             }
         } else {
             "no"
@@ -766,16 +763,15 @@ impl WebClient {
                 let Some((input_board_idx, partial_input)) = alt_game.partial_turn_input() else {
                     return false;
                 };
-                match partial_input {
-                    PartialTurnInput::StealPromotion { .. } => {
-                        let Some(envoy) = my_id.envoy_for(input_board_idx) else {
-                            return false;
-                        };
-                        board_idx == input_board_idx.other()
-                            && piece.force == envoy.force.into()
-                            && piece.kind.can_be_steal_promotion_target()
-                    }
+                let Some(envoy) = my_id.envoy_for(input_board_idx) else {
+                    return false;
+                };
+                if !matches!(partial_input, PartialTurnInput::StealPromotion { .. }) {
+                    return false;
                 }
+                board_idx == input_board_idx.other()
+                    && piece.force == envoy.force.into()
+                    && piece.kind.can_be_steal_promotion_target()
             };
             let see_though_fog = alt_game.see_though_fog();
             let empty_area = HashSet::new();
