@@ -767,7 +767,7 @@ impl WebClient {
                     return false;
                 };
                 match partial_input {
-                    PartialTurnInput::StealPromotionMove(_) => {
+                    PartialTurnInput::StealPromotion { .. } => {
                         let Some(envoy) = my_id.envoy_for(input_board_idx) else {
                             return false;
                         };

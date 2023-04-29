@@ -38,7 +38,7 @@ use crate::rules::{BughouseRules, ChessRules, ChessVariant, Promotion};
 
 #[derive(Clone, Copy, Debug)]
 pub enum PartialTurnInput {
-    StealPromotionMove((Coord, Coord)),
+    StealPromotion { from: Coord, to: Coord },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -344,7 +344,7 @@ impl AlteredGame {
     ) -> Option<(BughouseBoard, TurnInput)> {
         if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
             match partial_input {
-                PartialTurnInput::StealPromotionMove((from, to)) => {
+                PartialTurnInput::StealPromotion { from, to } => {
                     if board_idx == input_board_idx.other() {
                         let game = self.game_with_local_turns(true);
                         if let Some(piece) = game.board(board_idx).grid()[coord] {
@@ -481,10 +481,11 @@ impl AlteredGame {
                                 }))))
                             }
                             Promotion::Steal => {
-                                self.partial_turn_input = Some((
-                                    board_idx,
-                                    PartialTurnInput::StealPromotionMove((source_coord, dest)),
-                                ));
+                                self.partial_turn_input =
+                                    Some((board_idx, PartialTurnInput::StealPromotion {
+                                        from: source_coord,
+                                        to: dest,
+                                    }));
                                 Ok(None)
                             }
                         }
@@ -569,7 +570,7 @@ impl AlteredGame {
         if include_pre_and_partial_turns {
             if let Some((board_idx, partial_input)) = self.partial_turn_input {
                 match partial_input {
-                    PartialTurnInput::StealPromotionMove((from, to)) => {
+                    PartialTurnInput::StealPromotion { from, to } => {
                         let grid = game.board_mut(board_idx).grid_mut();
                         grid[to] = grid[from].take();
                     }
@@ -777,7 +778,7 @@ fn get_partial_turn_highlight_basis(
     partial_input: &PartialTurnInput,
 ) -> Vec<(TurnHighlightItem, Coord)> {
     match partial_input {
-        PartialTurnInput::StealPromotionMove((from, to)) => vec![
+        PartialTurnInput::StealPromotion { from, to } => vec![
             (TurnHighlightItem::MoveFrom, *from),
             (TurnHighlightItem::MoveTo, *to),
         ],
