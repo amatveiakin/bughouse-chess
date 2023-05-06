@@ -191,7 +191,12 @@ Serve static content:
 bh_deploy_web
 ```
 
-Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` environment variables.
+Copy `prod-config-template.yaml` to the path specified in `bh_run_server` and
+fill in the blanks.
+
+Put Google client secret (from https://console.cloud.google.com/apis/credentials)
+to the path pointed by `client_secret_source`. Generate a random session secret
+using `util/gen_session_secret.py`.
 
 Run game server (e.g. in `screen`):
 

@@ -1,5 +1,5 @@
 database_options: !Sqlite bughouse.db
-secret_database_options: !Sqlite bughouse-private.db
+secret_database_options: !Sqlite bughouse-secret.db
 auth_options: !Google
   callback_is_https: false
   client_id_source: !EnvVar GOOGLE_CLIENT_ID
