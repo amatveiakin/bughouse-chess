@@ -9,3 +9,5 @@ session_options: !WithSessions
   expire_in:
     secs: 2592000  # 30 days
     nanos: 0
+static_content_url_prefix: ""
+allowed_origin: !ThisSite https://bughouse.pro
