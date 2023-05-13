@@ -1495,7 +1495,7 @@ fn update_scores(
                 )
             });
             let scores = scores
-                .sorted_by_key(|(name, _)| name.clone()) // TODO: Can we do without `clone()`?
+                .sorted_by_key(|(name, _)| *name)
                 .map(|(_, display_string)| display_string)
                 .join("\n");
             team_node.set_text_content(None);
