@@ -1207,7 +1207,7 @@ impl Board {
                         }
                     }
                 } else {
-                    if let Some(_) = mv.promote_to {
+                    if mv.promote_to.is_some() {
                         return Err(TurnError::BadPromotion);
                     } else if let Some(dst_piece) = new_grid[mv.to] {
                         if let Some(combined_piece) =

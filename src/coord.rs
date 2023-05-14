@@ -31,7 +31,7 @@ impl SubjectiveRow {
         }
     }
     pub fn from_one_based(idx: u8) -> Option<Self> {
-        (idx).checked_sub(1).and_then(|v| Self::from_zero_based(v))
+        (idx).checked_sub(1).and_then(Self::from_zero_based)
     }
     pub const fn to_one_based(&self) -> u8 { self.idx + 1 }
     pub fn to_row(self, force: Force) -> Row {
@@ -63,7 +63,7 @@ impl Row {
         }
     }
     pub fn from_algebraic(idx: char) -> Option<Self> {
-        (idx as u8).checked_sub(b'1').and_then(|v| Self::from_zero_based(v))
+        (idx as u8).checked_sub(b'1').and_then(Self::from_zero_based)
     }
     pub const fn to_zero_based(self) -> u8 { self.idx }
     pub const fn to_algebraic(self) -> char { (self.idx + b'1') as char }
@@ -101,7 +101,7 @@ impl Col {
         }
     }
     pub fn from_algebraic(idx: char) -> Option<Self> {
-        (idx as u8).checked_sub(b'a').and_then(|v| Self::from_zero_based(v))
+        (idx as u8).checked_sub(b'a').and_then(Self::from_zero_based)
     }
     pub const fn to_zero_based(self) -> u8 { self.idx }
     pub const fn to_algebraic(self) -> char { (self.idx + b'a') as char }

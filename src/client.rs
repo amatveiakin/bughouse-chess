@@ -204,9 +204,9 @@ impl ClientState {
     pub fn my_name(&self) -> Option<&str> {
         match &self.match_state {
             MatchState::NotConnected => None,
-            MatchState::Creating { my_name } => Some(&my_name),
-            MatchState::Joining { my_name, .. } => Some(&my_name),
-            MatchState::Connected(Match { my_name, .. }) => Some(&my_name),
+            MatchState::Creating { my_name } => Some(my_name),
+            MatchState::Joining { my_name, .. } => Some(my_name),
+            MatchState::Connected(Match { my_name, .. }) => Some(my_name),
         }
     }
     pub fn relation_to(&self, name: &str) -> PlayerRelation {
@@ -697,7 +697,7 @@ impl ClientState {
             .chalkboard
             .drawings_by(&mtch.my_name)
             .cloned()
-            .unwrap_or_else(|| ChalkDrawing::new());
+            .unwrap_or_else(ChalkDrawing::new);
         self.connection.send(BughouseClientEvent::UpdateChalkDrawing { drawing })
     }
 

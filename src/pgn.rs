@@ -98,8 +98,8 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
         StartingPosition::Classic => {}
         StartingPosition::FischerRandom => {
             variant.push("Chess960");
-            let a = fen::starting_position_to_shredder_fen(&game_at_start.board(BughouseBoard::A));
-            let b = fen::starting_position_to_shredder_fen(&game_at_start.board(BughouseBoard::B));
+            let a = fen::starting_position_to_shredder_fen(game_at_start.board(BughouseBoard::A));
+            let b = fen::starting_position_to_shredder_fen(game_at_start.board(BughouseBoard::B));
             setup = format!("[SetUp \"1\"]\n[FEN \"{a} | {b}\"]\n");
         }
     }

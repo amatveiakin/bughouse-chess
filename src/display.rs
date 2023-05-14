@@ -179,17 +179,17 @@ impl FCoord {
 impl DisplayFCoord {
     // Position of the top-left corner of a square.
     pub fn square_pivot(coord: DisplayCoord) -> Self {
-        return DisplayFCoord {
+        DisplayFCoord {
             x: f64::from(coord.x),
             y: f64::from(coord.y),
-        };
+        }
     }
 
     pub fn square_center(coord: DisplayCoord) -> Self {
-        return DisplayFCoord {
+        DisplayFCoord {
             x: f64::from(coord.x) + 0.5,
             y: f64::from(coord.y) + 0.5,
-        };
+        }
     }
 
     pub fn to_square(&self) -> Option<DisplayCoord> {

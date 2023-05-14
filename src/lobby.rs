@@ -80,7 +80,7 @@ pub fn verify_participants<'a>(
         return ParticipantsStatus::from_error(ParticipantsError::RatedDoublePlay);
     }
 
-    let players_ready = participants.clone().filter(|p| p.faction.is_player()).all(|p| p.is_ready);
+    let players_ready = participants.filter(|p| p.faction.is_player()).all(|p| p.is_ready);
     let error = if players_ready {
         None
     } else {

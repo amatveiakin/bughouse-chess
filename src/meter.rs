@@ -38,7 +38,7 @@ impl MeterBox {
     pub fn new() -> Self { MeterBox { meters: HashMap::new() } }
 
     pub fn meter(&mut self, name: String) -> Meter {
-        self.meters.entry(name).or_insert_with(|| Meter::new()).clone()
+        self.meters.entry(name).or_insert_with(Meter::new).clone()
     }
 
     pub fn read_stats(&self) -> HashMap<String, MeterStats> {

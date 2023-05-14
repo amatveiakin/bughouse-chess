@@ -496,7 +496,7 @@ impl BughouseGame {
         let board = &self.boards[board_idx];
         let other_board = &self.boards[board_idx.other()];
         let envoy = BughouseEnvoy { board_idx, force: board.turn_owner(mode) };
-        let turn = board.parse_turn_input(turn_input, mode, Some(&other_board))?;
+        let turn = board.parse_turn_input(turn_input, mode, Some(other_board))?;
         let is_duck_turn = board.is_duck_turn(envoy.force);
         self.boards[board_idx.other()].verify_sibling_turn(turn, mode, envoy.force)?;
 
@@ -505,7 +505,7 @@ impl BughouseGame {
         let turn_algebraic = board.turn_to_algebraic(
             turn,
             mode,
-            Some(&other_board),
+            Some(other_board),
             AlgebraicDetails::ShortAlgebraic,
         );
 

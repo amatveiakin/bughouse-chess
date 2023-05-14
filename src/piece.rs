@@ -304,7 +304,7 @@ pub fn accolade_combine_pieces(
         return None;
     }
     let force = first.force;
-    return Some(PieceOnBoard { id, kind, origin, force });
+    Some(PieceOnBoard { id, kind, origin, force })
 }
 
 pub fn piece_to_pictogram(piece_kind: PieceKind, force: PieceForce) -> char {

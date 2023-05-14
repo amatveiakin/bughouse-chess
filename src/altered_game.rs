@@ -575,7 +575,7 @@ impl AlteredGame {
         self.local_turns.retain(|turn_record| {
             let is_ok = game
                 .turn_mode_for_envoy(turn_record.envoy)
-                .and_then(|mode| game.apply_turn_record(&turn_record, mode))
+                .and_then(|mode| game.apply_turn_record(turn_record, mode))
                 .is_ok();
             if !is_ok {
                 // Whenever we find an invalid turn, discard all subsequent turns on that board.
@@ -605,7 +605,7 @@ impl AlteredGame {
                 // Do not break because we can still get in-order turns on the other board.
                 continue;
             }
-            game.apply_turn_record(&turn_record, mode).unwrap();
+            game.apply_turn_record(turn_record, mode).unwrap();
         }
         if include_partial {
             // Unwrap ok: partial turn correctness has already been verified.
@@ -623,7 +623,7 @@ impl AlteredGame {
             if turn_record.envoy.board_idx == board_idx && mode == TurnMode::Preturn {
                 num_preturns += 1;
             }
-            game.apply_turn_record(&turn_record, mode).unwrap();
+            game.apply_turn_record(turn_record, mode).unwrap();
         }
         num_preturns
     }
@@ -871,6 +871,6 @@ fn get_partial_turn_highlights(
         get_partial_turn_highlight_basis(partial_input),
         TurnHighlightFamily::PartialTurn,
         board_idx,
-        &fog_of_war_area,
+        fog_of_war_area,
     )
 }

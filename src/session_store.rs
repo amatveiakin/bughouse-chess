@@ -81,13 +81,13 @@ where
     // Does not update subscribers.
     pub fn touch(&mut self, id: &K) {
         let v = self.entries.entry(id.clone()).or_default();
-        self.on_any_change.as_ref().map(|f| f(&id, &v.value));
+        self.on_any_change.as_ref().map(|f| f(id, &v.value));
     }
 
     pub fn update_if_exists<F: FnOnce(&mut V)>(&mut self, id: &K, f: F) {
         if let Some(entry) = self.entries.get_mut(id) {
             f(&mut entry.value);
-            self.on_any_change.as_ref().map(|f| f(&id, &entry.value));
+            self.on_any_change.as_ref().map(|f| f(id, &entry.value));
             entry.update_subscribers();
         }
     }

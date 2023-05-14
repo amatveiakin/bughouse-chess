@@ -722,7 +722,7 @@ impl Match {
         let registered_user_name = ctx.clients[client_id]
             .session_id
             .as_ref()
-            .and_then(|id| ctx.session_store.get(&id))
+            .and_then(|id| ctx.session_store.get(id))
             .and_then(Session::user_info)
             .map(|u| &u.user_name);
         let is_registered_user = registered_user_name.is_some();
@@ -1313,13 +1313,13 @@ impl Match {
         }
         players_per_team
             .into_iter()
-            .map(|(team, mut team_players)| {
+            .flat_map(|(team, mut team_players)| {
                 team_players.shuffle(&mut rng);
                 match team_players.len() {
                     0 => panic!("Empty team: {}", team_players.len()),
                     1 => {
                         vec![PlayerInGame {
-                            name: team_players.pop().unwrap().name.clone(),
+                            name: team_players.pop().unwrap().name,
                             id: BughousePlayer::DoublePlayer(team),
                         }]
                     }
@@ -1329,7 +1329,7 @@ impl Match {
                                 .into_iter(),
                         )
                         .map(move |(board_idx, participant)| PlayerInGame {
-                            name: participant.name.clone(),
+                            name: participant.name,
                             id: BughousePlayer::SinglePlayer(BughouseEnvoy {
                                 board_idx,
                                 force: get_bughouse_force(team, board_idx),
@@ -1338,7 +1338,6 @@ impl Match {
                         .collect_vec(),
                 }
             })
-            .flatten()
             .collect_vec()
     }
 }
