@@ -224,6 +224,9 @@ impl Clients {
     }
 }
 
+impl Default for Clients {
+    fn default() -> Self { Self::new() }
+}
 impl ops::Index<ClientId> for Clients {
     type Output = Client;
     fn index(&self, id: ClientId) -> &Self::Output { &self.map[&id] }

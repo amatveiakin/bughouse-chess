@@ -127,3 +127,7 @@ impl ActiveConnectionMonitor {
         Some(t)
     }
 }
+
+impl Default for ActiveConnectionMonitor {
+    fn default() -> Self { Self::new() }
+}

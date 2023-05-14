@@ -30,6 +30,7 @@ impl fmt::Display for MeterStats {
 }
 
 
+#[derive(Clone, Debug, Default)]
 pub struct MeterBox {
     meters: HashMap<String, Meter>,
 }
@@ -52,7 +53,7 @@ impl MeterBox {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Meter {
     histogram: Rc<RefCell<Histogram<u64>>>,
 }

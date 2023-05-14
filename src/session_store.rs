@@ -25,6 +25,7 @@ pub struct Store<K, V> {
 pub struct SubscriptionId(usize);
 
 // Generic update-broadcasting map type.
+#[allow(clippy::new_without_default)]
 impl<K, V> Store<K, V>
 where
     K: Eq + PartialEq + Hash + Clone,

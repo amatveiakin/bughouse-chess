@@ -6,7 +6,7 @@ use crate::player::Team;
 
 
 // Victory is scored as 2:0, draw is 1:1.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Scores {
     // Not EnumMap, because it does not support serde.
     // Improvement potential: Implement Serde support for EnumMap instead.
@@ -15,10 +15,5 @@ pub struct Scores {
 }
 
 impl Scores {
-    pub fn new() -> Self {
-        Scores {
-            per_team: HashMap::new(),
-            per_player: HashMap::new(),
-        }
-    }
+    pub fn new() -> Self { Scores::default() }
 }

@@ -54,6 +54,10 @@ impl<T: Clone> GenericGrid<T> {
     }
 }
 
+impl<T: Clone> Default for GenericGrid<T> {
+    fn default() -> Self { Self::new() }
+}
+
 impl<T: Clone> ops::Index<Coord> for GenericGrid<T> {
     type Output = Option<T>;
     fn index(&self, pos: Coord) -> &Self::Output {

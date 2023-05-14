@@ -187,6 +187,10 @@ impl PieceId {
     }
 }
 
+impl Default for PieceId {
+    fn default() -> Self { Self::new() }
+}
+
 impl PieceKind {
     pub fn movements(self) -> &'static [PieceMovement] {
         match self {

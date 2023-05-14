@@ -20,7 +20,7 @@ pub enum ChalkMark {
 }
 
 // Represents all chalk marks by a given player.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ChalkDrawing {
     // Cannot use `EnumMap`, because it doesn't support serde.
     pub board_a: Vec<ChalkMark>,
@@ -28,7 +28,7 @@ pub struct ChalkDrawing {
 }
 
 impl ChalkDrawing {
-    pub fn new() -> Self { ChalkDrawing { board_a: vec![], board_b: vec![] } }
+    pub fn new() -> Self { ChalkDrawing::default() }
     pub fn board(&self, board_idx: BughouseBoard) -> &Vec<ChalkMark> {
         match board_idx {
             BughouseBoard::A => &self.board_a,
@@ -43,13 +43,13 @@ impl ChalkDrawing {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Chalkboard {
     player_drawings: HashMap<String, ChalkDrawing>,
 }
 
 impl Chalkboard {
-    pub fn new() -> Self { Chalkboard { player_drawings: HashMap::new() } }
+    pub fn new() -> Self { Chalkboard::default() }
 
     pub fn all_drawings(&self) -> &HashMap<String, ChalkDrawing> { &self.player_drawings }
     pub fn drawings_by(&self, player_name: &str) -> Option<&ChalkDrawing> {
