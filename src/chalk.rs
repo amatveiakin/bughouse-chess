@@ -57,11 +57,7 @@ impl Chalkboard {
     }
 
     pub fn add_mark(&mut self, player: String, board_idx: BughouseBoard, mark: ChalkMark) {
-        let marks = self
-            .player_drawings
-            .entry(player)
-            .or_insert_with(ChalkDrawing::new)
-            .board_mut(board_idx);
+        let marks = self.player_drawings.entry(player).or_default().board_mut(board_idx);
         if let Some(existing) = marks.iter().position(|m| *m == mark) {
             marks.remove(existing);
         } else {
@@ -69,18 +65,10 @@ impl Chalkboard {
         }
     }
     pub fn remove_last_mark(&mut self, player: String, board_idx: BughouseBoard) {
-        self.player_drawings
-            .entry(player)
-            .or_insert_with(ChalkDrawing::new)
-            .board_mut(board_idx)
-            .pop();
+        self.player_drawings.entry(player).or_default().board_mut(board_idx).pop();
     }
     pub fn clear_drawing(&mut self, player: String, board_idx: BughouseBoard) -> bool {
-        let board = &mut self
-            .player_drawings
-            .entry(player)
-            .or_insert_with(ChalkDrawing::new)
-            .board_mut(board_idx);
+        let board = &mut self.player_drawings.entry(player).or_default().board_mut(board_idx);
         let had_content = !board.is_empty();
         board.clear();
         had_content

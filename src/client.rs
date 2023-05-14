@@ -8,7 +8,7 @@ use strum::IntoEnumIterator;
 
 use crate::altered_game::AlteredGame;
 use crate::board::{TurnError, TurnInput, TurnMode};
-use crate::chalk::{ChalkCanvas, ChalkDrawing, ChalkMark, Chalkboard};
+use crate::chalk::{ChalkCanvas, ChalkMark, Chalkboard};
 use crate::clock::{GameInstant, WallGameTimePair};
 use crate::display::{get_board_index, DisplayBoard};
 use crate::event::{
@@ -693,11 +693,7 @@ impl ClientState {
         // Caller must ensure that match and game exist.
         let mtch = self.mtch().unwrap();
         let game_state = mtch.game_state.as_ref().unwrap();
-        let drawing = game_state
-            .chalkboard
-            .drawings_by(&mtch.my_name)
-            .cloned()
-            .unwrap_or_else(ChalkDrawing::new);
+        let drawing = game_state.chalkboard.drawings_by(&mtch.my_name).cloned().unwrap_or_default();
         self.connection.send(BughouseClientEvent::UpdateChalkDrawing { drawing })
     }
 
