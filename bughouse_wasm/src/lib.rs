@@ -405,13 +405,19 @@ impl WebClient {
         self.show_turn_result(turn_result)
     }
 
-    pub fn click_square(&mut self, source: &str) -> JsResult<()> {
+    pub fn click_board(&mut self, board_id: &str, x: f64, y: f64) -> JsResult<()> {
+        // Note: cannot use "data-bughouse-location" attribute: squares are not the click targets
+        // when obscured by the fog tiles.
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
-        let Some((display_board_idx, coord)) = parse_square_id(source) else {
+        let pos = DisplayFCoord { x, y };
+        let Some(display_coord) = pos.to_square() else {
             return Ok(());
         };
+        let display_board_idx = parse_board_id(board_id)?;
+        let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
+        let coord = from_display_coord(display_coord, board_orientation).unwrap();
         let board_idx = get_board_index(display_board_idx, alt_game.perspective());
         if let Some((input_board_idx, turn_input)) = alt_game.click_square(board_idx, coord) {
             let display_input_board_idx =

@@ -136,6 +136,8 @@ const volume_button = document.getElementById('volume-button');
 
 const svg_defs = document.getElementById('svg-defs');
 
+function board_svg(board_id) { return document.getElementById(`board-${board_id}`); }
+
 const menu_page_stack = [];
 
 const loading_tracker = new class {
@@ -251,9 +253,9 @@ let audio_last_played = 0;
 let audio_queue = [];
 let audio_volume = 0;
 
-let drag_source_board_idx = null;
+let drag_source_board_id = null;
 let drag_element = null;
-function drag_source_board() { return document.getElementById(`board-${drag_source_board_idx}`); }
+function drag_source_board() { return board_svg(drag_source_board_id); }
 
 const Meter = make_meters();
 
@@ -601,7 +603,7 @@ function update_drag_state() {
             if (drag_element) {
                 drag_element.remove();
                 drag_element = null;
-                drag_source_board_idx = null;
+                drag_source_board_id = null;
             }
             wasm_client().reset_drag_highlights();
             break;
@@ -693,8 +695,6 @@ function set_up_drag_and_drop() {
     // to implement drag cancellation with a right-click, because pointer API does not report
     // nested mouse events.
 
-    document.addEventListener('click', click);
-
     document.addEventListener('mousedown', start_drag);
     document.addEventListener('mousemove', drag);
     document.addEventListener('mouseup', end_drag);
@@ -705,18 +705,19 @@ function set_up_drag_and_drop() {
     document.addEventListener('touchend', end_drag);
     document.addEventListener('touchcancel', end_drag);
 
-    // Note the difference: drag is cancelled while dragging, no matter the mouse position. Other
-    // partial turn inputs and preturns are cancelled by right-click on the corresponding board.
-    for (const board of ['primary', 'secondary']) {
-        const svg = document.getElementById(`board-${board}`);
-        svg.addEventListener('contextmenu', (event) => cancel_preturn(event, board));
+    for (const board_id of ['primary', 'secondary']) {
+        const svg = board_svg(board_id);
+        svg.addEventListener('click', (event) => click(event, board_id));
+        // Note the difference: drag is cancelled while dragging, no matter the mouse position. Other
+        // partial turn inputs and preturns are cancelled by right-click on the corresponding board.
+        svg.addEventListener('contextmenu', (event) => cancel_preturn(event, board_id));
     }
     document.addEventListener('contextmenu', cancel_drag);
 
     function is_main_pointer(event) { return event.button == 0 || event.changedTouches?.length >= 1; }
 
-    function mouse_position_relative_to_board(event) {
-        const ctm = drag_source_board().getScreenCTM();
+    function mouse_position_relative_to_board(event, board_svg) {
+        const ctm = board_svg.getScreenCTM();
         const src = event.changedTouches ? event.changedTouches[0] : event;
         return {
             x: (src.clientX - ctm.e) / ctm.a,
@@ -724,14 +725,12 @@ function set_up_drag_and_drop() {
         };
     }
 
-    function click(event) {
+    function click(event, board_id) {
         with_error_handling(function() {
             if (is_main_pointer(event)) {
-                const source = event.target.getAttribute('data-bughouse-location');
-                if (source) {
-                    wasm_client().click_square(source);
-                    update();
-                }
+                const coord = mouse_position_relative_to_board(event, board_svg(board_id));
+                wasm_client().click_board(board_id, coord.x, coord.y);
+                update();
             }
         });
     }
@@ -751,7 +750,7 @@ function set_up_drag_and_drop() {
                     return;
                 }
 
-                drag_source_board_idx = board_idx;
+                drag_source_board_id = board_idx;
                 drag_element = event.target;
                 drag_element.classList.add('dragged');
                 // Dissociate image from the board/reserve:
@@ -777,8 +776,8 @@ function set_up_drag_and_drop() {
     function drag(event) {
         with_error_handling(function() {
             if (drag_element) {
-                const coord = mouse_position_relative_to_board(event);
-                wasm_client().drag_piece(drag_source_board_idx, coord.x, coord.y);
+                const coord = mouse_position_relative_to_board(event, drag_source_board());
+                wasm_client().drag_piece(drag_source_board_id, coord.x, coord.y);
                 drag_element.setAttribute('x', coord.x - 0.5);
                 drag_element.setAttribute('y', coord.y - 0.5);
             }
@@ -788,21 +787,21 @@ function set_up_drag_and_drop() {
     function end_drag(event) {
         with_error_handling(function() {
             if (drag_element && is_main_pointer(event)) {
-                const coord = mouse_position_relative_to_board(event);
-                wasm_client().drag_piece_drop(drag_source_board_idx, coord.x, coord.y, event.shiftKey);
+                const coord = mouse_position_relative_to_board(event, drag_source_board());
+                wasm_client().drag_piece_drop(drag_source_board_id, coord.x, coord.y, event.shiftKey);
                 drag_element.remove();
                 drag_element = null;
-                drag_source_board_idx = null;
+                drag_source_board_id = null;
                 update();
             }
         });
     }
 
-    function cancel_preturn(event, board) {
+    function cancel_preturn(event, board_id) {
         with_error_handling(function() {
             event.preventDefault();
             if (!drag_element) {
-                wasm_client().cancel_preturn(board);
+                wasm_client().cancel_preturn(board_id);
                 update();
             }
         });
@@ -884,9 +883,9 @@ function set_up_chalk_drawing() {
         });
     }
 
-    for (const board of ['primary', 'secondary']) {
+    for (const board_id of ['primary', 'secondary']) {
         // Improvement potential. Support chalk on touch screens.
-        const svg = document.getElementById(`board-${board}`);
+        const svg = board_svg(board_id);
         svg.addEventListener('mousedown', mouse_down);
         svg.addEventListener('mousemove', mouse_move);
         svg.addEventListener('mouseup', mouse_up);
@@ -952,14 +951,14 @@ function set_up_menu_pointers() {
 }
 
 function set_up_log_navigation() {
-    for (const board of ['primary', 'secondary']) {
-        const area_node = document.getElementById(`turn-log-scroll-area-${board}`);
+    for (const board_id of ['primary', 'secondary']) {
+        const area_node = document.getElementById(`turn-log-scroll-area-${board_id}`);
         area_node.addEventListener('click', (event) => {
             with_error_handling(function() {
                 // TODO: Convenient ways to navigate (including keyboard) and to reset.
                 const turn_node = event.target.closest('[data-turn-index]');
                 const turn_index = turn_node?.getAttribute('data-turn-index');
-                wasm_client().wayback_to_turn(board, turn_index);
+                wasm_client().wayback_to_turn(board_id, turn_index);
                 update();
             });
         });
