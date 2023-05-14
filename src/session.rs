@@ -8,6 +8,8 @@ pub enum RegistrationMethod {
 }
 
 impl RegistrationMethod {
+    // Don't use `Display` because this is for stable serialization, not for human consumption.
+    #[allow(clippy::inherent_to_string)]
     pub fn to_string(self) -> String {
         match self {
             Self::Password => "Password",

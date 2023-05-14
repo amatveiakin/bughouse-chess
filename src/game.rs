@@ -157,12 +157,7 @@ pub enum BughouseGameStatus {
 }
 
 impl BughouseGameStatus {
-    pub fn is_active(&self) -> bool {
-        match self {
-            BughouseGameStatus::Active => true,
-            _ => false,
-        }
-    }
+    pub fn is_active(&self) -> bool { *self == BughouseGameStatus::Active }
 }
 
 impl BughouseBoard {

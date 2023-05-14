@@ -424,7 +424,7 @@ impl AlteredGame {
                 (piece.kind, piece.force, PieceDragSource::Board(coord))
             }
             PieceDragStart::Reserve(piece_kind) => {
-                if board.reserve(my_envoy.force)[piece_kind] <= 0 {
+                if board.reserve(my_envoy.force)[piece_kind] == 0 {
                     return Err(PieceDragError::PieceNotFound);
                 }
                 let piece_force = piece_kind.reserve_piece_force(my_envoy.force);
@@ -688,7 +688,7 @@ impl AlteredGame {
                     }
                     PieceDragSource::Reserve => {
                         let reserve = board.reserve_mut(envoy.force);
-                        if reserve[piece_kind] <= 0 {
+                        if reserve[piece_kind] == 0 {
                             return Err(());
                         }
                         reserve[piece_kind] -= 1;

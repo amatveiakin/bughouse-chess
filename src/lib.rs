@@ -1,5 +1,15 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(feature = "strict", deny(warnings))]
+// Clippy phylosophy. The goal is to have zero warnings from `cargo clippy` on the main branch.
+// Thus silencing all warning that I don't want to fix now. These decisions could be revised.
+#![allow(
+    clippy::collapsible_else_if,
+    clippy::new_without_default,
+    clippy::large_enum_variant,
+    clippy::option_map_unit_fn,
+    clippy::too_many_arguments,
+    clippy::type_complexity
+)]
 
 // Visibility philosophy:
 //   - Chess concept (rules, pieces, boards...) are exposed directly.

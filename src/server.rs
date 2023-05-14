@@ -623,41 +623,43 @@ impl Match {
     }
 
     fn test_flags(&mut self, ctx: &mut Context, now: Instant) {
-        if let Some(GameState {
+        let Some(GameState {
             game_start,
             game_start_offset_time,
             ref mut game_end,
             ref mut game,
             ref mut turn_requests,
             ..
-        }) = self.game_state
-        {
-            if let Some(game_start) = game_start {
-                if game.is_active() {
-                    let game_now = GameInstant::from_now_game_active(game_start, now);
-                    game.test_flag(game_now);
-                    if !game.is_active() {
-                        let round = self.match_history.len() + 1;
-                        update_on_game_over(
-                            ctx,
-                            round,
-                            game,
-                            turn_requests,
-                            &mut self.participants,
-                            &mut self.scores,
-                            game_start_offset_time,
-                            game_end,
-                            now,
-                        );
-                        let ev = BughouseServerEvent::GameOver {
-                            time: game_now,
-                            game_status: game.status(),
-                            scores: self.scores.clone(),
-                        };
-                        self.broadcast(ctx, &ev);
-                    }
-                }
-            }
+        }) = self.game_state else {
+            return;
+        };
+        let Some(game_start) = game_start else {
+            return;
+        };
+        if !game.is_active() {
+            return;
+        }
+        let game_now = GameInstant::from_now_game_active(game_start, now);
+        game.test_flag(game_now);
+        if !game.is_active() {
+            let round = self.match_history.len() + 1;
+            update_on_game_over(
+                ctx,
+                round,
+                game,
+                turn_requests,
+                &mut self.participants,
+                &mut self.scores,
+                game_start_offset_time,
+                game_end,
+                now,
+            );
+            let ev = BughouseServerEvent::GameOver {
+                time: game_now,
+                game_status: game.status(),
+                scores: self.scores.clone(),
+            };
+            self.broadcast(ctx, &ev);
         }
     }
 
@@ -1372,17 +1374,17 @@ fn resolve_one_turn(
     while let Some(r) = iter.next() {
         match game.turn_mode_for_envoy(r.envoy) {
             Ok(TurnMode::Normal) => {
-                match game.try_turn_by_envoy(r.envoy, &r.turn_input, TurnMode::Normal, game_now) {
-                    Ok(_) => {
-                        // Discard this turn, but keep the rest.
-                        turn_requests.extend(iter);
-                        return Some(game.last_turn_record().unwrap().trim_for_sending());
-                    }
-                    Err(_) => {
-                        // Discard. Ignore error: It is completely fine for a preturn to fail. Even
-                        // an valid in-order turn can fail, e.g. if the game ended on the board
-                        // board in the meantime.
-                    }
+                if game
+                    .try_turn_by_envoy(r.envoy, &r.turn_input, TurnMode::Normal, game_now)
+                    .is_ok()
+                {
+                    // Discard this turn, but keep the rest.
+                    turn_requests.extend(iter);
+                    return Some(game.last_turn_record().unwrap().trim_for_sending());
+                } else {
+                    // Discard. Ignore error: It is completely fine for a preturn to fail. Even
+                    // an valid in-order turn can fail, e.g. if the game ended on the board
+                    // board in the meantime.
                 }
             }
             Ok(TurnMode::Preturn) => {
@@ -1441,7 +1443,7 @@ fn update_on_game_over(
 }
 
 fn player_turn_requests(
-    turn_requests: &Vec<TurnRequest>, player: BughousePlayer,
+    turn_requests: &[TurnRequest], player: BughousePlayer,
 ) -> Vec<(BughouseBoard, TurnInput)> {
     turn_requests
         .iter()
