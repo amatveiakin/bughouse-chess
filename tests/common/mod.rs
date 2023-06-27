@@ -1,5 +1,8 @@
 // Rust-upgrade (https://github.com/rust-lang/rust/issues/46379):
 //   remove `#[allow(dead_code)]` before public functions.
+//
+// Improvement potential. Combine integration tests together:
+//   https://matklad.github.io/2021/02/27/delete-cargo-integration-tests.html
 
 use bughouse_chess::*;
 
