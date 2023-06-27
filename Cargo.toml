@@ -24,6 +24,7 @@ indoc = "2.0.0"
 instant = { version = "0.1.12", features = ["wasm-bindgen"] }
 itertools = "0.10.5"
 log = "0.4.17"
+ndarray = { version = "0.15.6", features = ["serde"] }
 once_cell = "1.16.0"
 rand = "0.8.5"
 # TODO: Further reduce WASM size by stripping away all regex-related code,

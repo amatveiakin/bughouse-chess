@@ -1,5 +1,6 @@
 use std::{fmt, ops};
 
+use ndarray::{Array, Array2};
 use serde::{Deserialize, Serialize};
 
 use crate::coord::{Coord, NUM_COLS, NUM_ROWS};
@@ -10,20 +11,20 @@ use crate::piece::{PieceForRepetitionDraw, PieceOnBoard, PieceOrigin};
 pub type Grid = GenericGrid<PieceOnBoard>;
 pub type GridForRepetitionDraw = GenericGrid<PieceForRepetitionDraw>;
 
-// Improvement potential: Benchmark if it's better to change grid data type to a `Box`
-//   (inline storage makes the object expensive to move which Rust does a lot).
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct GenericGrid<T: Clone> {
-    data: [[Option<T>; NUM_COLS as usize]; NUM_ROWS as usize],
+    data: Array2<Option<T>>,
 }
 
 impl<T: Clone> GenericGrid<T> {
-    pub fn new() -> Self { GenericGrid { data: Default::default() } }
-
-    pub fn map<U: Clone>(&self, f: impl Fn(T) -> U + Copy) -> GenericGrid<U> {
+    pub fn new() -> Self {
         GenericGrid {
-            data: self.data.clone().map(|inner| inner.map(|v| v.map(f))),
+            data: Array::from_elem((NUM_ROWS as usize, NUM_COLS as usize), None),
         }
+    }
+
+    pub fn map<U: Clone>(&self, f: impl FnMut(T) -> U + Copy) -> GenericGrid<U> {
+        GenericGrid { data: self.data.mapv(|v| v.map(f)) }
     }
 
     // Idea. A separate class GridView that allows to make only temporary changes.
@@ -61,13 +62,19 @@ impl<T: Clone> Default for GenericGrid<T> {
 impl<T: Clone> ops::Index<Coord> for GenericGrid<T> {
     type Output = Option<T>;
     fn index(&self, pos: Coord) -> &Self::Output {
-        &self.data[pos.row.to_zero_based() as usize][pos.col.to_zero_based() as usize]
+        &self.data[[
+            pos.row.to_zero_based() as usize,
+            pos.col.to_zero_based() as usize,
+        ]]
     }
 }
 
 impl<T: Clone> ops::IndexMut<Coord> for GenericGrid<T> {
     fn index_mut(&mut self, pos: Coord) -> &mut Self::Output {
-        &mut self.data[pos.row.to_zero_based() as usize][pos.col.to_zero_based() as usize]
+        &mut self.data[[
+            pos.row.to_zero_based() as usize,
+            pos.col.to_zero_based() as usize,
+        ]]
     }
 }
 
