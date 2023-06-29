@@ -505,12 +505,13 @@ impl ClientState {
                     None => BughouseParticipant::Observer,
                 };
                 let alt_game = AlteredGame::new(my_id, game);
+                let board_shape = alt_game.board_shape();
                 let perspective = alt_game.perspective();
                 mtch.game_state = Some(GameState {
                     alt_game,
                     time_pair,
                     chalkboard: Chalkboard::new(),
-                    chalk_canvas: ChalkCanvas::new(perspective),
+                    chalk_canvas: ChalkCanvas::new(board_shape, perspective),
                     next_low_time_warning_idx: enum_map! { _ => 0 },
                 });
                 for turn in turn_log {

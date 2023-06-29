@@ -24,8 +24,8 @@ fn default_bughouse_rules() -> BughouseRules {
     BughouseRules {
         teaming: Teaming::FixedTeams,
         promotion: Promotion::Upgrade,
-        min_pawn_drop_rank: SubjectiveRow::from_one_based(2).unwrap(),
-        max_pawn_drop_rank: SubjectiveRow::from_one_based(6).unwrap(),
+        min_pawn_drop_rank: SubjectiveRow::from_one_based(2),
+        max_pawn_drop_rank: SubjectiveRow::from_one_based(6),
         drop_aggression: DropAggression::NoChessMate,
     }
 }

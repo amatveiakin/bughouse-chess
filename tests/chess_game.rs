@@ -17,12 +17,10 @@ fn chess960_from_short_fen(pieces: &str) -> ChessGame {
         starting_position: StartingPosition::FischerRandom,
         ..ChessRules::classic_blitz()
     };
-    let pieces: [PieceKind; 8] = pieces
+    let pieces = pieces
         .chars()
         .map(|ch| PieceKind::from_algebraic_char(ch).unwrap())
-        .collect_vec()
-        .try_into()
-        .unwrap();
+        .collect_vec();
     let starting_position = EffectiveStartingPosition::FischerRandom(pieces);
     ChessGame::new_with_starting_position(
         MatchRules::unrated(),

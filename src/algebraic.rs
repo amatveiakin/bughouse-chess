@@ -1,4 +1,4 @@
-use crate::coord::{Col, Coord, Row};
+use crate::coord::{BoardShape, Col, Coord, Row};
 use crate::once_cell_regex;
 use crate::piece::{CastleDirection, PieceKind};
 use crate::util::as_single_char;
@@ -125,7 +125,7 @@ impl AlgebraicTurn {
         }
     }
 
-    pub fn format(&self, charset: AlgebraicCharset) -> String {
+    pub fn format(&self, board_shape: BoardShape, charset: AlgebraicCharset) -> String {
         match self {
             AlgebraicTurn::Move(mv) => {
                 let capture_notation = match charset {
@@ -138,10 +138,10 @@ impl AlgebraicTurn {
                 };
                 let mut from = String::new();
                 if let Some(col) = mv.from_col {
-                    from.push(col.to_algebraic())
+                    from.push(col.to_algebraic(board_shape))
                 };
                 if let Some(row) = mv.from_row {
-                    from.push(row.to_algebraic())
+                    from.push(row.to_algebraic(board_shape))
                 };
                 let promotion = match mv.promote_to {
                     Some(AlgebraicPromotionTarget::Upgrade(piece_kind)) => {
@@ -153,7 +153,7 @@ impl AlgebraicTurn {
                             "{}{}{}",
                             promotion_sep,
                             piece_kind.to_full_algebraic(),
-                            pos.to_algebraic()
+                            pos.to_algebraic(board_shape)
                         )
                     }
                     None => String::new(),
@@ -163,26 +163,32 @@ impl AlgebraicTurn {
                     mv.piece_kind.to_algebraic_for_move(),
                     from,
                     if mv.capturing { capture_notation } else { "" },
-                    mv.to.to_algebraic(),
+                    mv.to.to_algebraic(board_shape),
                     promotion,
                 )
             }
             AlgebraicTurn::Drop(drop) => {
-                format!("{}@{}", drop.piece_kind.to_full_algebraic(), drop.to.to_algebraic())
+                format!(
+                    "{}@{}",
+                    drop.piece_kind.to_full_algebraic(),
+                    drop.to.to_algebraic(board_shape)
+                )
             }
             AlgebraicTurn::Castle(dir) => match dir {
                 CastleDirection::ASide => "O-O-O".to_owned(),
                 CastleDirection::HSide => "O-O".to_owned(),
             },
-            AlgebraicTurn::PlaceDuck(to) => format!("@{}", to.to_algebraic()),
+            AlgebraicTurn::PlaceDuck(to) => format!("@{}", to.to_algebraic(board_shape)),
         }
     }
 
-    pub fn format_in_the_fog(&self) -> String {
+    pub fn format_in_the_fog(&self, board_shape: BoardShape) -> String {
         match self {
             AlgebraicTurn::Move(..) | AlgebraicTurn::Castle(..) => "🌫".to_owned(),
             AlgebraicTurn::Drop(drop) => format!("{}@🌫", drop.piece_kind.to_full_algebraic()),
-            AlgebraicTurn::PlaceDuck(..) => self.format(AlgebraicCharset::AuxiliaryUnicode),
+            AlgebraicTurn::PlaceDuck(..) => {
+                self.format(board_shape, AlgebraicCharset::AuxiliaryUnicode)
+            }
         }
     }
 }

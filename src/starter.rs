@@ -2,16 +2,16 @@ use itertools::Itertools;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::coord::{Col, Coord, Row, NUM_ROWS};
+use crate::coord::{BoardShape, Col, Coord, Row};
 use crate::grid::Grid;
 use crate::piece::{PieceForce, PieceId, PieceKind, PieceOnBoard, PieceOrigin};
-use crate::rules::StartingPosition;
+use crate::rules::{ChessRules, StartingPosition};
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum EffectiveStartingPosition {
     Classic,
-    FischerRandom([PieceKind; 8]),
+    FischerRandom(Vec<PieceKind>),
 }
 
 fn new_white(kind: PieceKind) -> PieceOnBoard {
@@ -19,17 +19,18 @@ fn new_white(kind: PieceKind) -> PieceOnBoard {
 }
 
 fn setup_white_pawns_on_2nd_row(grid: &mut Grid) {
-    for col in Col::all() {
+    for col in grid.shape().cols() {
         grid[Coord::new(Row::_2, col)] = Some(new_white(PieceKind::Pawn));
     }
 }
 
 fn setup_black_pieces_mirrorlike(grid: &mut Grid) {
-    for coord in Coord::all() {
+    for coord in grid.shape().coords() {
         if let Some(piece) = grid[coord] {
             if piece.force == PieceForce::White {
-                let mirror_row =
-                    Row::from_zero_based(NUM_ROWS - coord.row.to_zero_based() - 1).unwrap();
+                let mirror_row = Row::from_zero_based(
+                    grid.shape().num_rows as i8 - coord.row.to_zero_based() - 1,
+                );
                 let mirror_coord = Coord::new(mirror_row, coord.col);
                 assert!(grid[mirror_coord].is_none(), "{:?}", grid);
                 grid[mirror_coord] = Some(PieceOnBoard { force: PieceForce::Black, ..piece });
@@ -39,18 +40,17 @@ fn setup_black_pieces_mirrorlike(grid: &mut Grid) {
 }
 
 fn assign_piece_ids(grid: &mut Grid, piece_id: &mut PieceId) {
-    for coord in Coord::all() {
+    for coord in grid.shape().coords() {
         if let Some(piece) = grid[coord] {
             grid[coord] = Some(PieceOnBoard { id: piece_id.inc(), ..piece });
         }
     }
 }
 
-pub fn generate_starting_position(
-    starting_position: StartingPosition,
-) -> EffectiveStartingPosition {
+pub fn generate_starting_position(rules: &ChessRules) -> EffectiveStartingPosition {
     use PieceKind::*;
-    match starting_position {
+    assert_eq!(rules.board_shape().num_cols, 8);
+    match rules.starting_position {
         StartingPosition::Classic => EffectiveStartingPosition::Classic,
         StartingPosition::FischerRandom => {
             let mut rng = rand::thread_rng();
@@ -74,27 +74,27 @@ pub fn generate_starting_position(
             row[queen_col] = Some(Queen);
             row[knight_col_1] = Some(Knight);
             row[knight_col_2] = Some(Knight);
-            EffectiveStartingPosition::FischerRandom(row.map(|col| col.unwrap()))
+            EffectiveStartingPosition::FischerRandom(row.map(|col| col.unwrap()).into())
         }
     }
 }
 
-pub fn starting_piece_row(starting_position: &EffectiveStartingPosition) -> &[PieceKind; 8] {
+pub fn starting_piece_row(starting_position: &EffectiveStartingPosition) -> &[PieceKind] {
     use PieceKind::*;
     match starting_position {
         EffectiveStartingPosition::Classic => {
             &[Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]
         }
-        EffectiveStartingPosition::FischerRandom(row) => row,
+        EffectiveStartingPosition::FischerRandom(row) => &row,
     }
 }
 
 pub fn generate_starting_grid(
-    starting_position: &EffectiveStartingPosition, piece_id: &mut PieceId,
+    board_shape: BoardShape, starting_position: &EffectiveStartingPosition, piece_id: &mut PieceId,
 ) -> Grid {
-    let mut grid = Grid::new();
+    let mut grid = Grid::new(board_shape);
     for (col, piece_kind) in starting_piece_row(starting_position).iter().enumerate() {
-        let coord = Coord::new(Row::_1, Col::from_zero_based(col.try_into().unwrap()).unwrap());
+        let coord = Coord::new(Row::_1, Col::from_zero_based(col.try_into().unwrap()));
         grid[coord] = Some(new_white(*piece_kind));
     }
     setup_white_pawns_on_2nd_row(&mut grid);

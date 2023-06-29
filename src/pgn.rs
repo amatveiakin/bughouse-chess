@@ -196,7 +196,7 @@ pub fn export_to_bpgn(_format: BughouseExportFormat, game: &BughouseGame, round:
             "{}{}. {}",
             number,
             envoy_notation(*envoy),
-            turn_expanded.algebraic.format(AlgebraicCharset::Ascii),
+            turn_expanded.algebraic.format(game.board_shape(), AlgebraicCharset::Ascii),
         );
         doc.push_word(&turn_notation);
     }

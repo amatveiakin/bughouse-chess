@@ -112,8 +112,8 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
                 },
                 // Improvement potential: Test other promotion strategies.
                 promotion: Promotion::Upgrade,
-                min_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)).unwrap(),
-                max_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)).unwrap(),
+                min_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)),
+                max_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)),
                 drop_aggression: match rng.gen_range(0..4) {
                     0 => DropAggression::NoCheck,
                     1 => DropAggression::NoChessMate,
@@ -139,9 +139,10 @@ fn bughouse_game(rules: Rules) -> BughouseGame {
 }
 
 fn random_coord(rng: &mut rand::rngs::ThreadRng) -> Coord {
+    // Improvement potential: Take board shape into account.
     Coord::new(
-        Row::from_zero_based(rng.gen_range(0..NUM_ROWS)).unwrap(),
-        Col::from_zero_based(rng.gen_range(0..NUM_COLS)).unwrap(),
+        Row::from_zero_based(rng.gen_range(0..MAX_ROWS as i8)),
+        Col::from_zero_based(rng.gen_range(0..MAX_COLS as i8)),
     )
 }
 
@@ -259,7 +260,7 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
                         .unwrap()
                         .turn_expanded
                         .algebraic
-                        .format(AlgebraicCharset::Ascii);
+                        .format(game.board_shape(), AlgebraicCharset::Ascii);
                     let turn_input = TurnInput::Algebraic(turn_algebraic);
                     let time = GameInstant::game_start();
                     return Some(Action::ApplyRemoteTurn { envoy, turn_input, time });
@@ -418,3 +419,12 @@ pub fn run(config: StressTestConfig) -> io::Result<()> {
         _ => panic!("Invalid stress test target: {}", config.target),
     }
 }
+
+
+// Comment the code above and uncomment this to compile without the stress test:
+//
+// use std::io;
+// pub struct StressTestConfig {
+//     pub target: String,
+// }
+// pub fn run(_: StressTestConfig) -> io::Result<()> { todo!() }

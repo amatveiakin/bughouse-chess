@@ -6,7 +6,7 @@ use std::ops;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::coord::{Col, Coord, Row, NUM_COLS, NUM_ROWS};
+use crate::coord::{BoardShape, Col, Coord, Row};
 use crate::force::Force;
 use crate::game::{get_bughouse_board, BughouseBoard, BughouseParticipant, BughousePlayer};
 
@@ -42,8 +42,8 @@ pub enum BoardOrientation {
 // row '1' or row '8' on the board.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct DisplayCoord {
-    pub x: u8,
-    pub y: u8,
+    pub x: i8,
+    pub y: i8,
 }
 
 // Floating-point coords associated with `Coord` coordinate system.
@@ -118,60 +118,86 @@ pub fn get_display_player(force: Force, orientation: BoardOrientation) -> Displa
     }
 }
 
-pub fn to_display_coord(coord: Coord, orientation: BoardOrientation) -> DisplayCoord {
+pub fn to_display_coord(
+    coord: Coord, board_shape: BoardShape, orientation: BoardOrientation,
+) -> DisplayCoord {
     match orientation {
         BoardOrientation::Normal => DisplayCoord {
             x: coord.col.to_zero_based(),
-            y: NUM_ROWS - coord.row.to_zero_based() - 1,
+            y: board_shape.num_rows as i8 - coord.row.to_zero_based() - 1,
         },
         BoardOrientation::Rotated => DisplayCoord {
-            x: NUM_COLS - coord.col.to_zero_based() - 1,
+            x: board_shape.num_cols as i8 - coord.col.to_zero_based() - 1,
             y: coord.row.to_zero_based(),
         },
     }
 }
 
-pub fn to_display_fcoord(p: FCoord, orientation: BoardOrientation) -> DisplayFCoord {
+pub fn to_display_fcoord(
+    p: FCoord, board_shape: BoardShape, orientation: BoardOrientation,
+) -> DisplayFCoord {
     match orientation {
-        BoardOrientation::Normal => DisplayFCoord { x: p.x, y: (NUM_ROWS as f64) - p.y },
-        BoardOrientation::Rotated => DisplayFCoord { x: (NUM_COLS as f64) - p.x, y: p.y },
+        BoardOrientation::Normal => DisplayFCoord {
+            x: p.x,
+            y: (board_shape.num_rows as f64) - p.y,
+        },
+        BoardOrientation::Rotated => DisplayFCoord {
+            x: (board_shape.num_cols as f64) - p.x,
+            y: p.y,
+        },
     }
 }
 
-pub fn from_display_row(y: u8, orientation: BoardOrientation) -> Option<Row> {
-    match orientation {
-        BoardOrientation::Normal => Row::from_zero_based(NUM_ROWS - y - 1),
+pub fn from_display_row(
+    y: i8, board_shape: BoardShape, orientation: BoardOrientation,
+) -> Option<Row> {
+    let row = match orientation {
+        BoardOrientation::Normal => Row::from_zero_based(board_shape.num_rows as i8 - y - 1),
         BoardOrientation::Rotated => Row::from_zero_based(y),
-    }
+    };
+    board_shape.contains_row(row).then_some(row)
 }
 
-pub fn from_display_col(x: u8, orientation: BoardOrientation) -> Option<Col> {
-    match orientation {
+pub fn from_display_col(
+    x: i8, board_shape: BoardShape, orientation: BoardOrientation,
+) -> Option<Col> {
+    let col = match orientation {
         BoardOrientation::Normal => Col::from_zero_based(x),
-        BoardOrientation::Rotated => Col::from_zero_based(NUM_COLS - x - 1),
-    }
+        BoardOrientation::Rotated => Col::from_zero_based(board_shape.num_cols as i8 - x - 1),
+    };
+    board_shape.contains_col(col).then_some(col)
 }
 
-pub fn from_display_coord(q: DisplayCoord, orientation: BoardOrientation) -> Option<Coord> {
+pub fn from_display_coord(
+    q: DisplayCoord, board_shape: BoardShape, orientation: BoardOrientation,
+) -> Option<Coord> {
     Some(Coord {
-        row: from_display_row(q.y, orientation)?,
-        col: from_display_col(q.x, orientation)?,
+        row: from_display_row(q.y, board_shape, orientation)?,
+        col: from_display_col(q.x, board_shape, orientation)?,
     })
 }
 
-pub fn display_to_fcoord(q: DisplayFCoord, orientation: BoardOrientation) -> FCoord {
+pub fn display_to_fcoord(
+    q: DisplayFCoord, board_shape: BoardShape, orientation: BoardOrientation,
+) -> FCoord {
     match orientation {
-        BoardOrientation::Normal => FCoord { x: q.x, y: (NUM_ROWS as f64) - q.y },
-        BoardOrientation::Rotated => FCoord { x: (NUM_COLS as f64) - q.x, y: q.y },
+        BoardOrientation::Normal => FCoord {
+            x: q.x,
+            y: (board_shape.num_rows as f64) - q.y,
+        },
+        BoardOrientation::Rotated => FCoord {
+            x: (board_shape.num_cols as f64) - q.x,
+            y: q.y,
+        },
     }
 }
 
 impl FCoord {
     // Returns the closes valid board square.
-    pub fn to_coord_snapped(&self) -> Coord {
+    pub fn to_coord_snapped(&self, board_shape: BoardShape) -> Coord {
         Coord::new(
-            Row::from_zero_based((self.y.clamp(0., (NUM_ROWS - 1) as f64)) as u8).unwrap(),
-            Col::from_zero_based((self.x.clamp(0., (NUM_COLS - 1) as f64)) as u8).unwrap(),
+            Row::from_zero_based((self.y.clamp(0., (board_shape.num_rows - 1) as f64)) as i8),
+            Col::from_zero_based((self.x.clamp(0., (board_shape.num_cols - 1) as f64)) as i8),
         )
     }
 }
@@ -192,10 +218,10 @@ impl DisplayFCoord {
         }
     }
 
-    pub fn to_square(&self) -> Option<DisplayCoord> {
+    pub fn to_square(&self, board_shape: BoardShape) -> Option<DisplayCoord> {
         let x = self.x as i32;
         let y = self.y as i32;
-        if 0 <= x && x < NUM_COLS as i32 && 0 <= y && y < NUM_ROWS as i32 {
+        if 0 <= x && x < board_shape.num_cols as i32 && 0 <= y && y < board_shape.num_rows as i32 {
             // Improvement potential: clamp values that are slightly out of range.
             // Who knows if all browsers guarantee click coords cannot be 0.00001px away?
             // Note: if doing this, make sure that dragging too far away doesn't highlight

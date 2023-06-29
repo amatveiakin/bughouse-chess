@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::clock::TimeControl;
 use crate::coord::SubjectiveRow;
 use crate::player::{Faction, Team};
+use crate::BoardShape;
 
 
 // Time spent in the lobby before starting the first game after all players signal readiness.
@@ -131,7 +132,7 @@ pub struct BughouseRules {
     pub teaming: Teaming,
     pub promotion: Promotion,
     pub min_pawn_drop_rank: SubjectiveRow,
-    pub max_pawn_drop_rank: SubjectiveRow,
+    pub max_pawn_drop_rank: SubjectiveRow, // TODO: Update it when board shape changes
     pub drop_aggression: DropAggression,
 }
 
@@ -165,6 +166,8 @@ impl ChessRules {
         }
     }
 
+    pub fn board_shape(&self) -> BoardShape { BoardShape { num_rows: 8, num_cols: 8 } }
+
     // If true, use normal chess rules: players are not allowed to leave the king undefended,
     // the king cannot pass through a square attacked by an enemy piece when castling, the game
     // end with a mate.
@@ -191,8 +194,8 @@ impl BughouseRules {
         Self {
             teaming: Teaming::FixedTeams,
             promotion: Promotion::Upgrade,
-            min_pawn_drop_rank: SubjectiveRow::from_one_based(2).unwrap(),
-            max_pawn_drop_rank: SubjectiveRow::from_one_based(7).unwrap(),
+            min_pawn_drop_rank: SubjectiveRow::from_one_based(2),
+            max_pawn_drop_rank: SubjectiveRow::from_one_based(7),
             drop_aggression: DropAggression::MateAllowed,
         }
     }

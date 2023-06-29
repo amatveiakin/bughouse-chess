@@ -6,8 +6,6 @@ use console::Style;
 use itertools::Itertools;
 
 
-const BOARD_WIDTH: usize = (NUM_COLS as usize + 2) * 3;
-
 fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, usize) {
     // Improvement potential: Support longer time controls (with hours).
     let ClockShowing {
@@ -40,17 +38,18 @@ fn render_player(player_name: &str) -> (String, usize) {
 
 fn render_header(
     clock: &Clock, player_name: &str, force: Force, now: GameInstant, view_board: DisplayBoard,
+    board_width: usize,
 ) -> String {
     let (clock_str, clock_str_len) = render_clock(clock, force, now);
     let (player_str, player_str_len) = render_player(player_name);
-    let space = String::from(' ').repeat(BOARD_WIDTH - clock_str_len - player_str_len);
+    let space = String::from(' ').repeat(board_width - clock_str_len - player_str_len);
     match view_board {
         DisplayBoard::Primary => format!("{}{}{}\n", clock_str, space, player_str),
         DisplayBoard::Secondary => format!("{}{}{}\n", player_str, space, clock_str),
     }
 }
 
-fn render_reserve(reserve: &Reserve, force: Force) -> String {
+fn render_reserve(reserve: &Reserve, force: Force, board_width: usize) -> String {
     let mut stacks = Vec::new();
     for (piece_kind, &amount) in reserve.iter() {
         if amount > 0 {
@@ -61,7 +60,7 @@ fn render_reserve(reserve: &Reserve, force: Force) -> String {
     }
     format!(
         "{1:^0$}\n",
-        BOARD_WIDTH,
+        board_width,
         Style::new().color256(233).on_color256(194).apply_to(stacks.iter().join(" "))
     )
 }
@@ -71,13 +70,14 @@ fn render_bughouse_board(
 ) -> String {
     use self::Force::*;
     let orientation = get_board_orientation(view_board, perspective);
+    let board_width = (board.shape().num_cols as usize + 2) * 3;
     format!(
         "{}\n{}{}{}\n{}",
-        render_header(board.clock(), board.player_name(Black), Black, now, view_board),
-        render_reserve(board.reserve(Black), Black),
+        render_header(board.clock(), board.player_name(Black), Black, now, view_board, board_width),
+        render_reserve(board.reserve(Black), Black, board_width),
         render_grid(board.grid(), orientation),
-        render_reserve(board.reserve(White), White),
-        render_header(board.clock(), board.player_name(White), White, now, view_board),
+        render_reserve(board.reserve(White), White, board_width),
+        render_header(board.clock(), board.player_name(White), White, now, view_board, board_width),
     )
 }
 
@@ -103,18 +103,23 @@ fn render_grid(grid: &Grid, orientation: BoardOrientation) -> String {
         Style::new().color256(233).on_color256(222),
         Style::new().color256(233).on_color256(230),
     ];
+    let board_shape = grid.shape();
     let mut ret = String::new();
-    for y in (-1)..=(NUM_COLS as i32) {
-        for x in (-1)..=(NUM_ROWS as i32) {
-            let row_header = x < 0 || x >= NUM_COLS.into();
-            let col_header = y < 0 || y >= NUM_ROWS.into();
+    for y in (-1)..=(board_shape.num_cols as i32) {
+        for x in (-1)..=(board_shape.num_rows as i32) {
+            let row_header = x < 0 || x >= board_shape.num_cols.into();
+            let col_header = y < 0 || y >= board_shape.num_rows.into();
             let square = match (row_header, col_header) {
                 (true, true) => format_square(' '),
                 (true, false) => format_square(
-                    from_display_row(y.try_into().unwrap(), orientation).unwrap().to_algebraic(),
+                    from_display_row(y.try_into().unwrap(), board_shape, orientation)
+                        .unwrap()
+                        .to_algebraic(board_shape),
                 ),
                 (false, true) => format_square(
-                    from_display_col(x.try_into().unwrap(), orientation).unwrap().to_algebraic(),
+                    from_display_col(x.try_into().unwrap(), board_shape, orientation)
+                        .unwrap()
+                        .to_algebraic(board_shape),
                 ),
                 (false, false) => {
                     let coord = from_display_coord(
@@ -122,11 +127,12 @@ fn render_grid(grid: &Grid, orientation: BoardOrientation) -> String {
                             x: x.try_into().unwrap(),
                             y: y.try_into().unwrap(),
                         },
+                        board_shape,
                         orientation,
                     )
                     .unwrap();
                     let color_idx = (coord.row.to_zero_based() + coord.col.to_zero_based()) % 2;
-                    colors[usize::from(color_idx)]
+                    colors[usize::try_from(color_idx).unwrap()]
                         .apply_to(format_square(match grid[coord] {
                             Some(piece) => piece_to_pictogram(piece.kind, piece.force),
                             None => ' ',

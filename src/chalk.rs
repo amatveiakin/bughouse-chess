@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
-use crate::coord::Coord;
+use crate::coord::{BoardShape, Coord};
 use crate::display::{
     display_to_fcoord, get_board_orientation, DisplayBoard, DisplayFCoord, FCoord, Perspective,
 };
@@ -87,12 +87,15 @@ impl Chalkboard {
 
 #[derive(Debug)]
 pub struct ChalkCanvas {
+    board_shape: BoardShape,
     perspective: Perspective,
     painting: Option<(DisplayBoard, ChalkMark)>,
 }
 
 impl ChalkCanvas {
-    pub fn new(perspective: Perspective) -> Self { ChalkCanvas { perspective, painting: None } }
+    pub fn new(board_shape: BoardShape, perspective: Perspective) -> Self {
+        ChalkCanvas { board_shape, perspective, painting: None }
+    }
 
     pub fn is_painting(&self) -> bool { self.painting.is_some() }
     pub fn current_painting(&self) -> Option<&(DisplayBoard, ChalkMark)> {
@@ -102,11 +105,11 @@ impl ChalkCanvas {
     pub fn chalk_down(
         &mut self, board_idx: DisplayBoard, pos: DisplayFCoord, alternative_mode: bool,
     ) {
-        let fcoord = to_fcoord(self.perspective, board_idx, pos);
+        let fcoord = to_fcoord(self.board_shape, self.perspective, board_idx, pos);
         if alternative_mode {
             self.painting = Some((board_idx, ChalkMark::FreehandLine { points: vec![fcoord] }));
         } else {
-            let coord = fcoord.to_coord_snapped();
+            let coord = fcoord.to_coord_snapped(self.board_shape);
             self.painting = Some((board_idx, ChalkMark::Arrow { from: coord, to: coord }));
         }
     }
@@ -115,10 +118,10 @@ impl ChalkCanvas {
         let Some((board_idx, ref mut mark)) = self.painting else {
             return;
         };
-        let fcoord = to_fcoord(self.perspective, board_idx, pos);
+        let fcoord = to_fcoord(self.board_shape, self.perspective, board_idx, pos);
         match mark {
             ChalkMark::Arrow { ref mut to, .. } => {
-                *to = fcoord.to_coord_snapped();
+                *to = fcoord.to_coord_snapped(self.board_shape);
             }
             ChalkMark::FreehandLine { ref mut points } => {
                 // Possible optimization: also filter out consequent points that are very close.
@@ -145,9 +148,11 @@ impl ChalkCanvas {
     pub fn chalk_abort(&mut self) { self.painting = None; }
 }
 
-fn to_fcoord(perspective: Perspective, board_idx: DisplayBoard, pos: DisplayFCoord) -> FCoord {
+fn to_fcoord(
+    board_shape: BoardShape, perspective: Perspective, board_idx: DisplayBoard, pos: DisplayFCoord,
+) -> FCoord {
     let orientation = get_board_orientation(board_idx, perspective);
-    display_to_fcoord(pos, orientation)
+    display_to_fcoord(pos, board_shape, orientation)
 }
 
 fn is_valid_painting((_, mark): &(DisplayBoard, ChalkMark)) -> bool {

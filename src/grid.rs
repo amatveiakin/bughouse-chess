@@ -3,7 +3,7 @@ use std::{fmt, ops};
 use ndarray::{Array, Array2};
 use serde::{Deserialize, Serialize};
 
-use crate::coord::{Coord, NUM_COLS, NUM_ROWS};
+use crate::coord::{BoardShape, Col, Coord, Row};
 use crate::janitor::Janitor;
 use crate::piece::{PieceForRepetitionDraw, PieceOnBoard, PieceOrigin};
 
@@ -11,15 +11,56 @@ use crate::piece::{PieceForRepetitionDraw, PieceOnBoard, PieceOrigin};
 pub type Grid = GenericGrid<PieceOnBoard>;
 pub type GridForRepetitionDraw = GenericGrid<PieceForRepetitionDraw>;
 
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum GridItem<T> {
+    Piece(T),
+    Empty,
+    OutOfBounds,
+}
+
+impl<T> GridItem<T> {
+    pub fn is_free(&self) -> bool {
+        match self {
+            GridItem::Empty => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct GenericGrid<T: Clone> {
     data: Array2<Option<T>>,
 }
 
 impl<T: Clone> GenericGrid<T> {
-    pub fn new() -> Self {
+    pub fn new(board_shape: BoardShape) -> Self {
         GenericGrid {
-            data: Array::from_elem((NUM_ROWS as usize, NUM_COLS as usize), None),
+            data: Array::from_elem(
+                (board_shape.num_rows as usize, board_shape.num_cols as usize),
+                None,
+            ),
+        }
+    }
+
+    pub fn shape(&self) -> BoardShape {
+        BoardShape {
+            num_rows: self.data.shape()[0] as u8,
+            num_cols: self.data.shape()[1] as u8,
+        }
+    }
+
+    pub fn contains_row(&self, row: Row) -> bool { self.shape().contains_row(row) }
+    pub fn contains_col(&self, col: Col) -> bool { self.shape().contains_col(col) }
+    pub fn contains_coord(&self, coord: Coord) -> bool { self.shape().contains_coord(coord) }
+
+    pub fn get(&self, pos: Coord) -> GridItem<&T> {
+        match self
+            .data
+            .get((pos.row.to_zero_based() as usize, pos.col.to_zero_based() as usize))
+        {
+            None => GridItem::OutOfBounds,
+            Some(None) => GridItem::Empty,
+            Some(Some(v)) => GridItem::Piece(v),
         }
     }
 
@@ -55,10 +96,6 @@ impl<T: Clone> GenericGrid<T> {
     }
 }
 
-impl<T: Clone> Default for GenericGrid<T> {
-    fn default() -> Self { Self::new() }
-}
-
 impl<T: Clone> ops::Index<Coord> for GenericGrid<T> {
     type Output = Option<T>;
     fn index(&self, pos: Coord) -> &Self::Output {
@@ -90,8 +127,9 @@ impl fmt::Debug for Grid {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Grid ")?;
         f.debug_map()
-            .entries(Coord::all().filter_map(|coord| {
-                self[coord].map(|piece| (coord.to_algebraic(), debug_format_piece(&piece)))
+            .entries(self.shape().coords().filter_map(|coord| {
+                self[coord]
+                    .map(|piece| (coord.to_algebraic(self.shape()), debug_format_piece(&piece)))
             }))
             .finish()
     }
@@ -114,7 +152,7 @@ mod tests {
         let mut piece_id = PieceId::new();
         let mut make_piece =
             |kind| PieceOnBoard::new(piece_id.inc(), kind, PieceOrigin::Innate, PieceForce::White);
-        let mut g = Grid::new();
+        let mut g = Grid::new(BoardShape { num_rows: 8, num_cols: 8 });
         g[Coord::A1] = Some(make_piece(PieceKind::Queen));
         g[Coord::B2] = Some(make_piece(PieceKind::King));
         g[Coord::C3] = Some(make_piece(PieceKind::Rook));

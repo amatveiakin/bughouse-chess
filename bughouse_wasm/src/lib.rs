@@ -349,7 +349,7 @@ impl WebClient {
 
         let Some((Some(min_pawn_drop_rank), Some(max_pawn_drop_rank))) = pawn_drop_ranks
             .split('-')
-            .map(|v| v.parse::<u8>().ok().and_then(|r| SubjectiveRow::from_one_based(r)))
+            .map(|v| v.parse::<i8>().ok().map(SubjectiveRow::from_one_based))
             .collect_tuple()
         else {
             return Err(format!("Invalid pawn drop ranks: {pawn_drop_ranks}").into());
@@ -411,13 +411,14 @@ impl WebClient {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
+        let board_shape = alt_game.board_shape();
         let pos = DisplayFCoord { x, y };
-        let Some(display_coord) = pos.to_square() else {
+        let Some(display_coord) = pos.to_square(board_shape) else {
             return Ok(());
         };
         let display_board_idx = parse_board_id(board_id)?;
         let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
-        let coord = from_display_coord(display_coord, board_orientation).unwrap();
+        let coord = from_display_coord(display_coord, board_shape, board_orientation).unwrap();
         let board_idx = get_board_index(display_board_idx, alt_game.perspective());
         if let Some((input_board_idx, turn_input)) = alt_game.click_square(board_idx, coord) {
             let display_input_board_idx =
@@ -432,6 +433,7 @@ impl WebClient {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Err(rust_error!("Cannot drag: no game in progress"));
         };
+        let board_shape = alt_game.board_shape();
         let (display_board_idx, source) = if let Some((display_board_idx, piece)) =
             parse_reserve_piece_id(source)
         {
@@ -444,7 +446,7 @@ impl WebClient {
                 "drag-start-highlight",
                 SquareHighlightLayer::Drag,
                 display_board_idx,
-                Some(to_display_coord(coord, board_orientation)),
+                Some(to_display_coord(coord, board_shape, board_orientation)),
             )?;
             let board_idx = get_board_index(display_board_idx, alt_game.perspective());
             // Improvement potential. More conistent legal moves highlighting. Perhaps, add
@@ -461,7 +463,7 @@ impl WebClient {
                         "legal-move-highlight",
                         SquareHighlightLayer::Drag,
                         display_board_idx,
-                        Some(to_display_coord(dest, board_orientation)),
+                        Some(to_display_coord(dest, board_shape, board_orientation)),
                     )?;
                 }
             }
@@ -480,6 +482,10 @@ impl WebClient {
     }
 
     pub fn drag_piece(&mut self, board_id: &str, x: f64, y: f64) -> JsResult<()> {
+        let Some(GameState{ alt_game, .. }) = self.state.game_state() else {
+            return Err(rust_error!("Cannot drag: no game in progress"));
+        };
+        let board_shape = alt_game.board_shape();
         let display_board_idx = parse_board_id(board_id)?;
         let pos = DisplayFCoord { x, y };
         set_square_highlight(
@@ -487,7 +493,7 @@ impl WebClient {
             "drag-over-highlight",
             SquareHighlightLayer::Drag,
             display_board_idx,
-            pos.to_square(),
+            pos.to_square(board_shape),
         )
     }
 
@@ -497,14 +503,16 @@ impl WebClient {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
+        let board_shape = alt_game.board_shape();
         let display_board_idx = parse_board_id(board_id)?;
         let pos = DisplayFCoord { x, y };
-        if let Some(dest_display) = pos.to_square() {
+        if let Some(dest_display) = pos.to_square(board_shape) {
             use PieceKind::*;
             let board_idx = get_board_index(display_board_idx, alt_game.perspective());
             let board_orientation =
                 get_board_orientation(display_board_idx, alt_game.perspective());
-            let dest_coord = from_display_coord(dest_display, board_orientation).unwrap();
+            let dest_coord =
+                from_display_coord(dest_display, board_shape, board_orientation).unwrap();
             let promote_to = if alternative_promotion { Knight } else { Queen };
             match alt_game.drag_piece_drop(board_idx, dest_coord, promote_to) {
                 Ok(None) => {
@@ -674,7 +682,7 @@ impl WebClient {
                 let game_message = web_document().get_existing_element_by_id("game-message")?;
                 game_message.set_text_content(None);
                 let my_id = alt_game.my_id();
-                render_boards(alt_game.perspective())?;
+                render_boards(alt_game.board_shape(), alt_game.perspective())?;
                 setup_participation_mode(my_id)?;
                 for display_board_idx in DisplayBoard::iter() {
                     scroll_log_to_bottom(display_board_idx)?;
@@ -753,6 +761,7 @@ impl WebClient {
         // Improvement potential: Better readiness status display.
         let teaming = mtch.rules.bughouse_rules.teaming;
         let game = alt_game.local_game();
+        let board_shape = alt_game.board_shape();
         let my_id = alt_game.my_id();
         let perspective = alt_game.perspective();
         update_scores(&mtch.scores, &mtch.participants, game.status(), teaming, perspective)?;
@@ -792,8 +801,8 @@ impl WebClient {
             let fog_of_war_layer =
                 document.get_existing_element_by_id(&fog_of_war_layer_id(display_board_idx))?;
             let grid = board.grid();
-            for coord in Coord::all() {
-                let display_coord = to_display_coord(coord, board_orientation);
+            for coord in board_shape.coords() {
+                let display_coord = to_display_coord(coord, board_shape, board_orientation);
                 {
                     let node_id = fog_of_war_id(display_board_idx, coord);
                     let node = document.get_element_by_id(&node_id);
@@ -873,6 +882,7 @@ impl WebClient {
                     display_board_idx,
                     player_idx,
                     is_draggable,
+                    board_shape,
                 )?;
             }
             let wayback_turn_idx = alt_game.wayback_turn_index(board_idx);
@@ -970,13 +980,16 @@ impl WebClient {
             return Ok(());
         };
         let document = web_document();
+        let board_shape = alt_game.board_shape();
         let orientation = get_board_orientation(board_idx, alt_game.perspective());
         match mark {
             ChalkMark::Arrow { from, to } => {
                 let layer =
                     document.get_existing_element_by_id(&chalk_drawing_layer_id(board_idx))?;
-                let from = DisplayFCoord::square_center(to_display_coord(*from, orientation));
-                let to = DisplayFCoord::square_center(to_display_coord(*to, orientation));
+                let from =
+                    DisplayFCoord::square_center(to_display_coord(*from, board_shape, orientation));
+                let to =
+                    DisplayFCoord::square_center(to_display_coord(*to, board_shape, orientation));
                 let node = document.create_svg_element("line")?;
                 let d = normalize_vec(to - from);
                 let from = from + mult_vec(d, 0.3);
@@ -998,7 +1011,7 @@ impl WebClient {
                 let points = points
                     .iter()
                     .map(|&q| {
-                        let p = to_display_fcoord(q, orientation);
+                        let p = to_display_fcoord(q, board_shape, orientation);
                         format!("{},{}", p.x, p.y)
                     })
                     .join(" ");
@@ -1013,7 +1026,8 @@ impl WebClient {
                 let layer =
                     document.get_existing_element_by_id(&chalk_highlight_layer_id(board_idx))?;
                 let node = document.create_svg_element("polygon")?;
-                let p = DisplayFCoord::square_pivot(to_display_coord(*coord, orientation));
+                let p =
+                    DisplayFCoord::square_pivot(to_display_coord(*coord, board_shape, orientation));
                 // Note. The corners are chosen so that they corresponds to the seating, as seen
                 // by the current player. Another approach would be to have one highlight element,
                 // <use> it here and rotate in CSS based on class.
@@ -1048,13 +1062,14 @@ impl WebClient {
         let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
             return Ok(());
         };
+        let board_shape = alt_game.board_shape();
         for h in alt_game.turn_highlights() {
             let class = format!("turn-highlight {}", turn_highlight_class_id(&h));
             let display_board_idx = get_display_board_index(h.board_idx, alt_game.perspective());
             let board_orientation =
                 get_board_orientation(display_board_idx, alt_game.perspective());
             let layer = turn_highlight_layer(h.layer);
-            let display_coord = to_display_coord(h.coord, board_orientation);
+            let display_coord = to_display_coord(h.coord, board_shape, board_orientation);
             set_square_highlight(None, &class, layer, display_board_idx, Some(display_coord))?;
         }
         Ok(())
@@ -1136,7 +1151,6 @@ fn scroll_log_to_bottom(board_idx: DisplayBoard) -> JsResult<()> {
 #[wasm_bindgen]
 pub fn init_page() -> JsResult<()> {
     generate_svg_markers()?;
-    render_boards(Perspective::for_participant(BughouseParticipant::Observer))?;
     render_starting()?;
     Ok(())
 }
@@ -1332,7 +1346,8 @@ fn add_lobby_participant_node(
 // reserve update.
 fn render_reserve(
     force: Force, board_idx: DisplayBoard, player_idx: DisplayPlayer, draggable: bool,
-    piece_kind_sep: f64, reserve_iter: impl Iterator<Item = (PieceKind, u8)> + Clone,
+    board_shape: BoardShape, piece_kind_sep: f64,
+    reserve_iter: impl Iterator<Item = (PieceKind, u8)> + Clone,
 ) -> JsResult<()> {
     let document = web_document();
     let reserve_node =
@@ -1348,7 +1363,7 @@ fn render_reserve(
     let num_piece = num_piece as f64;
     let num_kind = reserve_iter.clone().count() as f64;
     let num_nonempty_kind = reserve_iter.clone().filter(|&(_, amount)| amount > 0).count() as f64;
-    let max_width = NUM_COLS as f64;
+    let max_width = board_shape.num_cols as f64;
     let total_kind_sep_width = piece_kind_sep * (num_kind - 1.0);
     let piece_sep =
         f64::min(0.5, (max_width - total_kind_sep_width) / (num_piece - num_nonempty_kind));
@@ -1380,7 +1395,7 @@ fn render_reserve(
 
 fn update_reserve(
     reserve: &Reserve, force: Force, board_idx: DisplayBoard, player_idx: DisplayPlayer,
-    is_draggable: bool,
+    is_draggable: bool, board_shape: BoardShape,
 ) -> JsResult<()> {
     let piece_kind_sep = 1.0;
     let reserve_iter = reserve
@@ -1399,14 +1414,22 @@ fn update_reserve(
             }
         })
         .map(|(kind, &amount)| (kind, amount));
-    render_reserve(force, board_idx, player_idx, is_draggable, piece_kind_sep, reserve_iter)
+    render_reserve(
+        force,
+        board_idx,
+        player_idx,
+        is_draggable,
+        board_shape,
+        piece_kind_sep,
+        reserve_iter,
+    )
 }
 
 fn render_starting() -> JsResult<()> {
-    use DisplayBoard::*;
-    use DisplayPlayer::*;
-    use Force::*;
     use PieceKind::*;
+    let board_shape = BoardShape { num_rows: 8, num_cols: 8 };
+    let perspective = Perspective::for_participant(BughouseParticipant::Observer);
+    render_boards(board_shape, perspective)?;
     let reserve = [
         (Pawn, 8),
         (Knight, 2),
@@ -1418,10 +1441,21 @@ fn render_starting() -> JsResult<()> {
     let draggable = false;
     let piece_kind_sep = 0.75;
     let reserve_iter = reserve.iter().copied();
-    render_reserve(White, Primary, Bottom, draggable, piece_kind_sep, reserve_iter.clone())?;
-    render_reserve(Black, Primary, Top, draggable, piece_kind_sep, reserve_iter.clone())?;
-    render_reserve(Black, Secondary, Bottom, draggable, piece_kind_sep, reserve_iter.clone())?;
-    render_reserve(White, Secondary, Top, draggable, piece_kind_sep, reserve_iter.clone())?;
+    for force in Force::iter() {
+        for board_idx in DisplayBoard::iter() {
+            let board_orientation = get_board_orientation(board_idx, perspective);
+            let player_idx = get_display_player(force, board_orientation);
+            render_reserve(
+                force,
+                board_idx,
+                player_idx,
+                draggable,
+                board_shape,
+                piece_kind_sep,
+                reserve_iter.clone(),
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -1522,9 +1556,9 @@ fn update_observers(participants: &[Participant]) -> JsResult<()> {
     Ok(())
 }
 
-fn render_boards(perspective: Perspective) -> JsResult<()> {
+fn render_boards(board_shape: BoardShape, perspective: Perspective) -> JsResult<()> {
     for board_idx in DisplayBoard::iter() {
-        render_board(board_idx, perspective)?;
+        render_board(board_idx, board_shape, perspective)?;
     }
     Ok(())
 }
@@ -1533,6 +1567,7 @@ fn update_turn_log(
     game: &BughouseGame, my_id: BughouseParticipant, board_idx: BughouseBoard,
     display_board_idx: DisplayBoard, wayback_turn_idx: Option<&str>,
 ) -> JsResult<()> {
+    let board_shape = game.board_shape();
     let document = web_document();
     let log_scroll_area_node =
         document.get_existing_element_by_id(&turn_log_scroll_area_node_id(display_board_idx))?;
@@ -1555,9 +1590,12 @@ fn update_turn_log(
                 && game.is_active()
                 && my_id.as_player().map_or(false, |p| p.team() != record.envoy.team());
             let algebraic = if is_in_fog {
-                record.turn_expanded.algebraic.format_in_the_fog()
+                record.turn_expanded.algebraic.format_in_the_fog(board_shape)
             } else {
-                record.turn_expanded.algebraic.format(AlgebraicCharset::AuxiliaryUnicode)
+                record
+                    .turn_expanded
+                    .algebraic
+                    .format(board_shape, AlgebraicCharset::AuxiliaryUnicode)
             };
             let (algebraic, captures) = match record.mode {
                 TurnMode::Normal => (algebraic, record.turn_expanded.captures.clone()),
@@ -1667,16 +1705,19 @@ fn setup_participation_mode(participant_id: BughouseParticipant) -> JsResult<()>
     Ok(())
 }
 
-fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()> {
+fn render_grid(
+    board_idx: DisplayBoard, board_shape: BoardShape, perspective: Perspective,
+) -> JsResult<()> {
     let text_h_padding = 0.07;
     let text_v_padding = 0.09;
     let board_orientation = get_board_orientation(board_idx, perspective);
     let document = web_document();
     let layer = document.get_existing_element_by_id(&square_grid_layer_id(board_idx))?;
-    for row in Row::all() {
-        for col in Col::all() {
+    for row in board_shape.rows() {
+        for col in board_shape.cols() {
             let sq = document.create_svg_element("rect")?;
-            let display_coord = to_display_coord(Coord::new(row, col), board_orientation);
+            let display_coord =
+                to_display_coord(Coord::new(row, col), board_shape, board_orientation);
             let DisplayFCoord { x, y } = DisplayFCoord::square_pivot(display_coord);
             sq.set_attribute("x", &x.to_string())?;
             sq.set_attribute("y", &y.to_string())?;
@@ -1686,16 +1727,16 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
             layer.append_child(&sq)?;
             if display_coord.x == 0 {
                 let caption = document.create_svg_element("text")?;
-                caption.set_text_content(Some(&String::from(row.to_algebraic())));
+                caption.set_text_content(Some(&String::from(row.to_algebraic(board_shape))));
                 caption.set_attribute("x", &(x + text_h_padding).to_string())?;
                 caption.set_attribute("y", &(y + text_v_padding).to_string())?;
                 caption.set_attribute("dominant-baseline", "hanging")?;
                 caption.set_attribute("class", &square_text_color_class(row, col))?;
                 layer.append_child(&caption)?;
             }
-            if display_coord.y == NUM_ROWS - 1 {
+            if display_coord.y == board_shape.num_rows as i8 - 1 {
                 let caption = document.create_svg_element("text")?;
-                caption.set_text_content(Some(&String::from(col.to_algebraic())));
+                caption.set_text_content(Some(&String::from(col.to_algebraic(board_shape))));
                 caption.set_attribute("x", &(x + 1.0 - text_h_padding).to_string())?;
                 caption.set_attribute("y", &(y + 1.0 - text_v_padding).to_string())?;
                 caption.set_attribute("text-anchor", "end")?;
@@ -1707,20 +1748,23 @@ fn render_grid(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()
     Ok(())
 }
 
-fn render_board(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<()> {
+fn render_board(
+    board_idx: DisplayBoard, board_shape: BoardShape, perspective: Perspective,
+) -> JsResult<()> {
+    let BoardShape { num_rows, num_cols } = board_shape;
     let make_board_rect = |document: &WebDocument| -> JsResult<web_sys::Element> {
         let rect = document.create_svg_element("rect")?;
         let pos = DisplayFCoord::square_pivot(DisplayCoord { x: 0, y: 0 });
         rect.set_attribute("x", &pos.x.to_string())?;
         rect.set_attribute("y", &pos.y.to_string())?;
-        rect.set_attribute("width", &NUM_COLS.to_string())?;
-        rect.set_attribute("height", &NUM_ROWS.to_string())?;
+        rect.set_attribute("width", &num_cols.to_string())?;
+        rect.set_attribute("height", &num_rows.to_string())?;
         Ok(rect)
     };
 
     let document = web_document();
     let svg = document.get_existing_element_by_id(&board_node_id(board_idx))?;
-    svg.set_attribute("viewBox", &format!("0 0 {NUM_COLS} {NUM_ROWS}"))?;
+    svg.set_attribute("viewBox", &format!("0 0 {num_cols} {num_rows}"))?;
     remove_all_children(&svg)?;
 
     let add_layer = |id: String| -> JsResult<()> {
@@ -1739,7 +1783,7 @@ fn render_board(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<(
     svg.append_child(&shadow)?;
 
     add_layer(square_grid_layer_id(board_idx))?;
-    render_grid(board_idx, perspective)?;
+    render_grid(board_idx, board_shape, perspective)?;
 
     let border = make_board_rect(&document)?;
     border.set_attribute("class", "board-border")?;
@@ -1763,7 +1807,7 @@ fn render_board(board_idx: DisplayBoard, perspective: Perspective) -> JsResult<(
         let reserve_container =
             document.get_existing_element_by_id(&reserve_container_id(board_idx, player_idx))?;
         // Note that reserve height is also encoded in CSS.
-        reserve_container.set_attribute("viewBox", &format!("0 0 {NUM_COLS} {RESERVE_HEIGHT}"))?;
+        reserve_container.set_attribute("viewBox", &format!("0 0 {num_cols} {RESERVE_HEIGHT}"))?;
         reserve_container.append_child(&reserve)?;
     }
     Ok(())
@@ -1839,12 +1883,12 @@ fn player_id(idx: DisplayPlayer) -> &'static str {
 }
 
 fn square_id(board_idx: DisplayBoard, coord: Coord) -> String {
-    format!("{}-{}", board_id(board_idx), coord.to_algebraic())
+    format!("{}-{}", board_id(board_idx), coord.to_id())
 }
 fn parse_square_id(id: &str) -> Option<(DisplayBoard, Coord)> {
     let (board_idx, coord) = id.split('-').collect_tuple()?;
     let board_idx = parse_board_id(board_idx).ok()?;
-    let coord = Coord::from_algebraic(coord)?;
+    let coord = Coord::from_id(coord)?;
     Some((board_idx, coord))
 }
 
@@ -1862,7 +1906,7 @@ fn parse_reserve_piece_id(id: &str) -> Option<(DisplayBoard, PieceKind)> {
 }
 
 fn fog_of_war_id(board_idx: DisplayBoard, coord: Coord) -> String {
-    format!("fog-{}-{}", board_id(board_idx), coord.to_algebraic())
+    format!("fog-{}-{}", board_id(board_idx), coord.to_id())
 }
 
 fn player_name_node_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String {

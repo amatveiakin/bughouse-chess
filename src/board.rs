@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::algebraic::{AlgebraicDetails, AlgebraicDrop, AlgebraicMove, AlgebraicTurn};
 use crate::clock::{Clock, GameInstant};
-use crate::coord::{Col, Coord, Row, SubjectiveRow};
+use crate::coord::{BoardShape, Col, Coord, Row, SubjectiveRow};
 use crate::force::Force;
 use crate::grid::{Grid, GridForRepetitionDraw};
 use crate::piece::{
@@ -58,7 +58,7 @@ fn direction_forward(force: Force) -> i8 {
 
 fn col_range_inclusive((col_min, col_max): (Col, Col)) -> impl Iterator<Item = Col> {
     assert!(col_min <= col_max);
-    (col_min.to_zero_based()..=col_max.to_zero_based()).map(|v| Col::from_zero_based(v).unwrap())
+    (col_min.to_zero_based()..=col_max.to_zero_based()).map(Col::from_zero_based)
 }
 
 fn combine_pieces(
@@ -71,7 +71,7 @@ fn combine_pieces(
 }
 
 fn find_piece(grid: &Grid, predicate: impl Fn(PieceOnBoard) -> bool) -> Option<Coord> {
-    for pos in Coord::all() {
+    for pos in grid.shape().coords() {
         if let Some(piece) = grid[pos] {
             if predicate(piece) {
                 return Some(pos);
@@ -87,8 +87,8 @@ fn find_king(grid: &Grid, force: Force) -> Option<Coord> {
     find_piece(grid, |p| p.kind == PieceKind::King && p.force == force.into())
 }
 
-fn should_promote(force: Force, piece_kind: PieceKind, to: Coord) -> bool {
-    let last_row = SubjectiveRow::from_one_based(8).unwrap().to_row(force);
+fn should_promote(board_shape: BoardShape, force: Force, piece_kind: PieceKind, to: Coord) -> bool {
+    let last_row = SubjectiveRow::last(board_shape).to_row(board_shape, force);
     piece_kind == PieceKind::Pawn && to.row == last_row
 }
 
@@ -108,7 +108,7 @@ fn get_capture(
     } else if let Some(en_passant_target) = en_passant_target {
         if piece.kind == PieceKind::Pawn && to == en_passant_target {
             if let Ok(force) = Force::try_from(piece.force) {
-                let row = (en_passant_target.row + direction_forward(force.opponent())).unwrap();
+                let row = en_passant_target.row + direction_forward(force.opponent());
                 return Some(Coord::new(row, en_passant_target.col));
             }
         }
@@ -124,7 +124,7 @@ fn get_en_passant_target(grid: &Grid, turn: Turn) -> Option<Coord> {
             && (mv.to.row - mv.from.row).abs() == 2
         {
             let row_idx = (mv.to.row.to_zero_based() + mv.from.row.to_zero_based()) / 2;
-            let row = Row::from_zero_based(row_idx).unwrap();
+            let row = Row::from_zero_based(row_idx);
             return Some(Coord::new(row, mv.to.col));
         }
     }
@@ -145,7 +145,8 @@ fn visibility_from(
     rules: &ChessRules, grid: &Grid, from: Coord, en_passant_target: Option<Coord>,
 ) -> Vec<Coord> {
     // Improvement potential: Don't iterate over all squares.
-    Coord::all()
+    grid.shape()
+        .coords()
         .filter(|&to| {
             let capture = get_capture(grid, from, to, en_passant_target);
             let capturing = if capture.is_some() {
@@ -162,7 +163,8 @@ fn legal_move_destinations(
     rules: &ChessRules, grid: &Grid, from: Coord, en_passant_target: Option<Coord>,
 ) -> Vec<Coord> {
     // Improvement potential: Don't iterate over all squares.
-    Coord::all()
+    grid.shape()
+        .coords()
         .filter(|&to| {
             let capture = get_capture(grid, from, to, en_passant_target);
             reachability(rules, grid, from, to, capture.is_some()).ok()
@@ -196,7 +198,8 @@ fn legal_castling_destinations(
                 CastleDirection::ASide => -2,
                 CastleDirection::HSide => 2,
             };
-            if let Some(jump_col) = from.col + d {
+            let jump_col = from.col + d;
+            if grid.contains_col(jump_col) {
                 dst_cols.push(jump_col);
             }
         }
@@ -220,7 +223,7 @@ fn is_chess_mate_to(
         return false;
     }
     let force = king_force(grid, king_pos);
-    for from in Coord::all() {
+    for from in grid.shape().coords() {
         if let Some(piece) = grid[from] {
             if piece.force == force.into() {
                 for to in legal_move_destinations(rules, grid, from, en_passant_target) {
@@ -248,7 +251,7 @@ fn is_bughouse_mate_to(
     if !is_chess_mate_to(rules, grid, king_pos, en_passant_target) {
         return false;
     }
-    for pos in Coord::all() {
+    for pos in grid.shape().coords() {
         if grid[pos].is_none() {
             let grid = grid.scoped_set(
                 pos,
@@ -270,7 +273,7 @@ fn is_bughouse_mate_to(
 fn is_check_to(rules: &ChessRules, grid: &Grid, king_pos: Coord) -> bool {
     assert!(rules.enable_check_and_mate());
     let force = king_force(grid, king_pos);
-    for from in Coord::all() {
+    for from in grid.shape().coords() {
         if let Some(piece) = grid[from] {
             if piece.force == force.opponent().into()
                 && reachability(rules, grid, from, king_pos, true).ok()
@@ -376,10 +379,10 @@ fn reachability_by_movement_modulo_destination_square(
             let Some(shift_directed) = apply_sign(shift_sorted.0, d.0).zip(apply_sign(shift_sorted.1, d.1)) else {
                 return Impossible;
             };
-            let mut pos_or = from + shift_directed;
+            let mut p = from + shift_directed;
             let mut blocked = false;
             let mut leaps: u8 = 1;
-            while let Some(p) = pos_or {
+            while grid.contains_coord(p) {
                 if p == to {
                     return if blocked { Blocked } else { Reachable };
                 }
@@ -392,7 +395,7 @@ fn reachability_by_movement_modulo_destination_square(
                         return Impossible;
                     }
                 }
-                pos_or = p + shift_directed;
+                p = p + shift_directed;
             }
             Impossible
         }
@@ -400,14 +403,14 @@ fn reachability_by_movement_modulo_destination_square(
             let force = force.try_into().unwrap(); // unwrap ok: pawns cannot be neutral
             let (d_row, d_col) = to - from;
             let dir_forward = direction_forward(force);
-            let src_row_subjective = SubjectiveRow::from_row(from.row, force);
+            let src_row_subjective = SubjectiveRow::from_row(grid.shape(), from.row, force);
             let valid_capturing_move = d_col.abs() == 1 && d_row == dir_forward;
             let valid_non_capturing_move = d_col == 0
                 && (d_row == dir_forward
                     || (src_row_subjective.to_one_based() <= 2 && d_row == dir_forward * 2));
             let is_path_free = || match d_row.abs() {
                 1 => true,
-                2 => grid[(from + (dir_forward, 0)).unwrap()].is_none(),
+                2 => grid.get(from + (dir_forward, 0)).is_free(),
                 _ => panic!("Unexpected pawn move distance: {d_row}"),
             };
             let capturing_reachability = match (valid_capturing_move, capturing) {
@@ -450,10 +453,10 @@ fn combine_reachability(a: Reachability, b: Reachability) -> Reachability {
 fn initial_castling_rights(starting_position: &EffectiveStartingPosition) -> CastlingRights {
     let row = starting_piece_row(starting_position);
     let king_pos = row.iter().position(|&p| p == PieceKind::King).unwrap();
-    let king_col = Col::from_zero_based(king_pos.try_into().unwrap()).unwrap();
+    let king_col = Col::from_zero_based(king_pos.try_into().unwrap());
     let mut rights = enum_map! { _ => None };
-    for col in Col::all() {
-        let piece = row[usize::from(col.to_zero_based())];
+    for (col, &piece) in row.iter().enumerate() {
+        let col = Col::from_zero_based(col.try_into().unwrap());
         if piece == PieceKind::Rook {
             use CastleDirection::*;
             let dir = if col < king_col { ASide } else { HSide };
@@ -748,9 +751,10 @@ impl Board {
         bughouse_rules: Option<Rc<BughouseRules>>, players: EnumMap<Force, String>,
         starting_position: &EffectiveStartingPosition,
     ) -> Board {
+        let board_shape = chess_rules.board_shape();
         let time_control = chess_rules.time_control.clone();
         let mut next_piece_id = PieceId::new();
-        let grid = generate_starting_grid(starting_position, &mut next_piece_id);
+        let grid = generate_starting_grid(board_shape, starting_position, &mut next_piece_id);
         let castling_rights = initial_castling_rights(starting_position);
         let mut reserves = enum_map! { _ => enum_map!{ _ => 0 } };
         if chess_rules.fairy_pieces == FairyPieces::DuckChess {
@@ -799,6 +803,7 @@ impl Board {
     pub fn player_name(&self, force: Force) -> &str { &self.player_names[force] }
     pub fn player_names(&self) -> &EnumMap<Force, String> { &self.player_names }
     pub fn status(&self) -> ChessGameStatus { self.status }
+    pub fn shape(&self) -> BoardShape { self.grid.shape() }
     pub fn grid(&self) -> &Grid { &self.grid }
     pub fn grid_mut(&mut self) -> &mut Grid { &mut self.grid }
     pub fn castling_rights(&self) -> &EnumMap<Force, CastlingRights> { &self.castling_rights }
@@ -895,7 +900,7 @@ impl Board {
     // For fog-of-war variant.
     pub fn fog_free_area(&self, force: Force) -> HashSet<Coord> {
         let mut ret = HashSet::new();
-        for from in Coord::all() {
+        for from in self.shape().coords() {
             if let Some(piece) = self.grid[from] {
                 if piece.force == force.into() {
                     ret.insert(from);
@@ -959,7 +964,7 @@ impl Board {
         assert_eq!(self.is_duck_turn[force], matches!(turn, Turn::PlaceDuck(_)));
         match &turn {
             Turn::Move(mv) => {
-                let first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
+                let first_row = SubjectiveRow::first().to_row(self.shape(), force);
                 let piece = &mut self.grid[mv.from].unwrap();
                 if piece.kind == PieceKind::King {
                     self.castling_rights[force].clear();
@@ -968,7 +973,7 @@ impl Board {
                 }
                 for capture in facts.captures.iter() {
                     if let Ok(f) = capture.force.try_into() {
-                        let first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(f);
+                        let first_row = SubjectiveRow::first().to_row(self.shape(), f);
                         if mv.to.row == first_row && capture.piece_kind == PieceKind::Rook {
                             remove_castling_right(&mut self.castling_rights[f], mv.to.col);
                         }
@@ -1159,7 +1164,7 @@ impl Board {
                     }));
                     new_grid[capture_pos] = None;
                 }
-                if should_promote(force, piece.kind, mv.to) {
+                if should_promote(self.shape(), force, piece.kind, mv.to) {
                     let Some(promote_to) = mv.promote_to else {
                         return Err(TurnError::BadPromotion);
                     };
@@ -1231,7 +1236,7 @@ impl Board {
                 if self.is_duck_turn[force] {
                     return Err(TurnError::MustPlaceDuck);
                 }
-                let to_subjective_row = SubjectiveRow::from_row(drop.to.row, force);
+                let to_subjective_row = SubjectiveRow::from_row(self.shape(), drop.to.row, force);
                 if drop.piece_kind == PieceKind::Pawn
                     && (to_subjective_row < bughouse_rules.min_pawn_drop_rank
                         || to_subjective_row > bughouse_rules.max_pawn_drop_rank)
@@ -1286,7 +1291,7 @@ impl Board {
                 if self.is_duck_turn[force] {
                     return Err(TurnError::MustPlaceDuck);
                 }
-                let row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
+                let row = SubjectiveRow::first().to_row(self.shape(), force);
                 // King can be missing in case of pre-turns.
                 let king_from =
                     find_king(&new_grid, force).ok_or(TurnError::CastlingPieceHasMoved)?;
@@ -1464,7 +1469,7 @@ impl Board {
                     }
                     if piece.kind == PieceKind::King {
                         if let Some(dst_piece) = self.grid[mv.to] {
-                            let first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
+                            let first_row = SubjectiveRow::first().to_row(self.shape(), force);
                             let maybe_is_special_castling = dst_piece.force == force.into()
                                 && dst_piece.kind == PieceKind::Rook
                                 && mv.to.row == first_row;
@@ -1495,7 +1500,9 @@ impl Board {
         let force = self.turn_owner(mode);
         match algebraic {
             AlgebraicTurn::Move(mv) => {
-                if mv.promote_to.is_some() != should_promote(force, mv.piece_kind, mv.to) {
+                if mv.promote_to.is_some()
+                    != should_promote(self.shape(), force, mv.piece_kind, mv.to)
+                {
                     return Err(TurnError::BadPromotion);
                 }
                 if self.is_duck_turn[force] {
@@ -1503,7 +1510,7 @@ impl Board {
                 }
                 let mut turn = None;
                 let mut potentially_reachable = false;
-                for from in Coord::all() {
+                for from in self.shape().coords() {
                     if let Some(piece) = self.grid[from] {
                         if (piece.force == force.into()
                             && piece.kind == mv.piece_kind

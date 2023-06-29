@@ -1,8 +1,14 @@
-// We use Row/Col terminology instead of traditional Rank/File because "File" could be misleading
-// in programming context. But all user-visible places (UI, PGN, etc.) should say Rank/File.
-
-// Rust-upgrade(https://github.com/rust-lang/rust/issues/91917):
-//   Use `then_some` in `from_zero_based`.
+// We use Row/Col terminology instead of traditional Rank/File because "File" could be misleading in
+// programming context. But all user-visible places (UI, PGN, etc.) should say Rank/File.
+//
+// Row, col and coord can take negative or very large values in order to facilitate intermediate
+// computations. Valid row and col values start from 0 and are limited by:
+//   - board size;
+//   - algebraic notation (see `MAX_ROWS` / `MAX_COLS`).
+//
+// Since `to_algebraic` result is not defined for all values and depends on board size, internal
+// serialization can instead use `to_id`, which defines a one-to-one mapping between coords and
+// C-identifier strings.
 
 use std::{fmt, ops};
 
@@ -10,40 +16,66 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::force::Force;
+use crate::once_cell_regex;
 
 
-pub const NUM_ROWS: u8 = 8;
-pub const NUM_COLS: u8 = 8;
+// Limited by algebraic notation.
+pub const MAX_ROWS: u8 = 20;
+pub const MAX_COLS: u8 = 26;
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+pub struct BoardShape {
+    pub num_rows: u8,
+    pub num_cols: u8,
+}
+
+impl BoardShape {
+    pub fn contains_row(&self, row: Row) -> bool {
+        let row = row.to_zero_based();
+        (0..self.num_rows as i8).contains(&row)
+    }
+    pub fn contains_col(&self, col: Col) -> bool {
+        let col = col.to_zero_based();
+        (0..self.num_cols as i8).contains(&col)
+    }
+    pub fn contains_coord(&self, coord: Coord) -> bool {
+        self.contains_row(coord.row) && self.contains_col(coord.col)
+    }
+
+    pub fn rows(&self) -> impl DoubleEndedIterator<Item = Row> + Clone {
+        (0..self.num_rows as i8).map(Row::from_zero_based)
+    }
+    pub fn cols(&self) -> impl DoubleEndedIterator<Item = Col> + Clone {
+        (0..self.num_cols as i8).map(Col::from_zero_based)
+    }
+    pub fn coords(&self) -> impl Iterator<Item = Coord> + Clone {
+        self.rows().cartesian_product(self.cols()).map(|(row, col)| Coord { row, col })
+    }
+}
 
 
 // Row form a force's point of view
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct SubjectiveRow {
-    idx: u8, // 0-based
+    idx: i8, // 0-based
 }
 
 impl SubjectiveRow {
-    pub const fn from_zero_based(idx: u8) -> Option<Self> {
-        if idx < NUM_ROWS {
-            Some(Self { idx })
-        } else {
-            None
+    pub const fn from_zero_based(idx: i8) -> Self { Self { idx } }
+    pub fn from_one_based(idx: i8) -> Self { Self::from_zero_based(idx - 1) }
+    pub fn first() -> Self { Self { idx: 0 } }
+    pub fn last(board_shape: BoardShape) -> Self { Self { idx: board_shape.num_rows as i8 - 1 } }
+    pub const fn to_one_based(&self) -> i8 { self.idx + 1 }
+    pub fn to_row(self, board_shape: BoardShape, force: Force) -> Row {
+        match force {
+            Force::White => Row::from_zero_based(self.idx),
+            Force::Black => Row::from_zero_based(board_shape.num_rows as i8 - self.idx - 1),
         }
     }
-    pub fn from_one_based(idx: u8) -> Option<Self> {
-        (idx).checked_sub(1).and_then(Self::from_zero_based)
-    }
-    pub const fn to_one_based(&self) -> u8 { self.idx + 1 }
-    pub fn to_row(self, force: Force) -> Row {
+    pub fn from_row(board_shape: BoardShape, row: Row, force: Force) -> Self {
         match force {
-            Force::White => Row::from_zero_based(self.idx).unwrap(),
-            Force::Black => Row::from_zero_based(NUM_ROWS - self.idx - 1).unwrap(),
-        }
-    }
-    pub fn from_row(row: Row, force: Force) -> Self {
-        match force {
-            Force::White => Self::from_zero_based(row.idx).unwrap(),
-            Force::Black => Self::from_zero_based(NUM_ROWS - row.idx - 1).unwrap(),
+            Force::White => Self::from_zero_based(row.idx),
+            Force::Black => Self::from_zero_based(board_shape.num_rows as i8 - row.idx - 1),
         }
     }
 }
@@ -51,31 +83,39 @@ impl SubjectiveRow {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct Row {
-    idx: u8, // 0-based
+    idx: i8, // 0-based
 }
 
 impl Row {
-    pub const fn from_zero_based(idx: u8) -> Option<Self> {
-        if idx < NUM_ROWS {
-            Some(Self { idx })
-        } else {
-            None
-        }
-    }
+    pub const fn from_zero_based(idx: i8) -> Self { Self { idx } }
     pub fn from_algebraic(idx: char) -> Option<Self> {
-        (idx as u8).checked_sub(b'1').and_then(Self::from_zero_based)
+        if ('1'..='9').contains(&idx) {
+            return Some(Self::from_zero_based(((idx as u32) - ('1' as u32)) as i8));
+        }
+        if ('①'..='⑳').contains(&idx) {
+            return Some(Self::from_zero_based(((idx as u32) - ('①' as u32)) as i8));
+        }
+        None
     }
-    pub const fn to_zero_based(self) -> u8 { self.idx }
-    pub const fn to_algebraic(self) -> char { (self.idx + b'1') as char }
-    pub fn all() -> impl DoubleEndedIterator<Item = Self> + Clone {
-        (0..NUM_ROWS).map(|v| Self::from_zero_based(v).unwrap())
+    pub const fn to_zero_based(self) -> i8 { self.idx }
+    pub fn to_algebraic(self, board_shape: BoardShape) -> char {
+        let idx = self.idx;
+        assert!(
+            0 <= idx && idx < MAX_ROWS as i8 && idx < board_shape.num_rows as i8,
+            "{idx} ({board_shape:?})",
+        );
+        if board_shape.num_rows <= 9 {
+            char::from_u32(idx as u32 + '1' as u32).unwrap()
+        } else {
+            char::from_u32(idx as u32 + '①' as u32).unwrap()
+        }
     }
 }
 
 impl ops::Add<i8> for Row {
-    type Output = Option<Self>;
+    type Output = Self;
     fn add(self, other: i8) -> Self::Output {
-        Self::from_zero_based((self.to_zero_based() as i8 + other) as u8)
+        Self::from_zero_based((self.to_zero_based() as i8 + other) as i8)
     }
 }
 
@@ -89,31 +129,32 @@ impl ops::Sub for Row {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct Col {
-    idx: u8, // 0-based
+    idx: i8, // 0-based
 }
 
 impl Col {
-    pub const fn from_zero_based(idx: u8) -> Option<Self> {
-        if idx < NUM_COLS {
-            Some(Self { idx })
-        } else {
-            None
-        }
-    }
+    pub const fn from_zero_based(idx: i8) -> Self { Self { idx } }
     pub fn from_algebraic(idx: char) -> Option<Self> {
-        (idx as u8).checked_sub(b'a').and_then(Self::from_zero_based)
+        if ('a'..='z').contains(&idx) {
+            return Some(Self::from_zero_based(((idx as u32) - ('a' as u32)) as i8));
+        }
+        None
     }
-    pub const fn to_zero_based(self) -> u8 { self.idx }
-    pub const fn to_algebraic(self) -> char { (self.idx + b'a') as char }
-    pub fn all() -> impl DoubleEndedIterator<Item = Self> + Clone {
-        (0..NUM_COLS).map(|v| Self::from_zero_based(v).unwrap())
+    pub const fn to_zero_based(self) -> i8 { self.idx }
+    pub fn to_algebraic(self, board_shape: BoardShape) -> char {
+        let idx = self.idx;
+        assert!(
+            0 <= idx && idx < MAX_COLS as i8 && idx < board_shape.num_cols as i8,
+            "{idx} ({board_shape:?})",
+        );
+        char::from_u32(idx as u32 + 'a' as u32).unwrap()
     }
 }
 
 impl ops::Add<i8> for Col {
-    type Output = Option<Self>;
+    type Output = Self;
     fn add(self, other: i8) -> Self::Output {
-        Self::from_zero_based((self.to_zero_based() as i8 + other) as u8)
+        Self::from_zero_based((self.to_zero_based() as i8 + other) as i8)
     }
 }
 
@@ -141,22 +182,50 @@ impl Coord {
             col: Col::from_algebraic(col)?,
         })
     }
-    pub fn to_algebraic(&self) -> String {
-        format!("{}{}", self.col.to_algebraic(), self.row.to_algebraic())
+    pub fn from_id(s: &str) -> Option<Self> {
+        let re = once_cell_regex!("([pn])([0-9]+)([pn])([0-9]+)");
+        let cap = re.captures(s)?;
+        let row = Self::from_sign_val(cap.get(1).unwrap().as_str(), cap.get(2).unwrap().as_str())?;
+        let col = Self::from_sign_val(cap.get(3).unwrap().as_str(), cap.get(4).unwrap().as_str())?;
+        Some(Coord {
+            row: Row::from_zero_based(row),
+            col: Col::from_zero_based(col),
+        })
+    }
+    pub fn to_algebraic(&self, board_shape: BoardShape) -> String {
+        format!("{}{}", self.col.to_algebraic(board_shape), self.row.to_algebraic(board_shape))
+    }
+    pub fn to_id(self) -> String {
+        let (row_sign, row_val) = Self::to_sign_val(self.row.to_zero_based());
+        let (col_sign, col_val) = Self::to_sign_val(self.col.to_zero_based());
+        format!("{}{}{}{}", row_sign, row_val, col_sign, col_val)
     }
     pub fn row_col(&self) -> (Row, Col) { (self.row, self.col) }
-    pub fn all() -> impl Iterator<Item = Coord> {
-        Row::all().cartesian_product(Col::all()).map(|(row, col)| Coord { row, col })
+
+    fn from_sign_val(sign: &str, val: &str) -> Option<i8> {
+        let val = val.parse::<i8>().ok()?;
+        match sign {
+            "n" => Some(-val),
+            "p" => Some(val),
+            _ => None,
+        }
+    }
+    fn to_sign_val(v: i8) -> (char, i8) {
+        if v < 0 {
+            ('n', -v)
+        } else {
+            ('p', v)
+        }
     }
 }
 
 impl ops::Add<(i8, i8)> for Coord {
-    type Output = Option<Self>;
+    type Output = Self;
     fn add(self, other: (i8, i8)) -> Self::Output {
-        Some(Self {
-            row: (self.row + other.0)?,
-            col: (self.col + other.1)?,
-        })
+        Self {
+            row: (self.row + other.0),
+            col: (self.col + other.1),
+        }
     }
 }
 
@@ -167,11 +236,12 @@ impl ops::Sub for Coord {
 
 impl fmt::Debug for Coord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Coord({})", self.to_algebraic())
+        write!(f, "Coord({})", self.to_id())
     }
 }
 
 
+// The constants are predefined for the standard 8x8 board.
 impl Row {
     #![allow(dead_code)]
     pub const _1: Row = Row { idx: 0 };

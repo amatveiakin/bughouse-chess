@@ -38,6 +38,7 @@ use crate::board::{
     TurnInput, TurnMode, VictoryReason,
 };
 use crate::clock::GameInstant;
+use crate::coord::BoardShape;
 use crate::force::Force;
 use crate::player::Team;
 use crate::rules::{BughouseRules, ChessRules, MatchRules};
@@ -105,7 +106,7 @@ impl ChessGame {
     pub fn new(
         match_rules: MatchRules, rules: ChessRules, player_names: EnumMap<Force, String>,
     ) -> Self {
-        let starting_position = generate_starting_position(rules.starting_position);
+        let starting_position = generate_starting_position(&rules);
         Self::new_with_starting_position(match_rules, rules, starting_position, player_names)
     }
 
@@ -329,7 +330,7 @@ impl BughouseGame {
         match_rules: MatchRules, chess_rules: ChessRules, bughouse_rules: BughouseRules,
         players: &[PlayerInGame],
     ) -> Self {
-        let starting_position = generate_starting_position(chess_rules.starting_position);
+        let starting_position = generate_starting_position(&chess_rules);
         Self::new_with_starting_position(
             match_rules,
             chess_rules,
@@ -380,6 +381,7 @@ impl BughouseGame {
     pub fn bughouse_rules(&self) -> &Rc<BughouseRules> {
         self.boards[BughouseBoard::A].bughouse_rules().as_ref().unwrap()
     }
+    pub fn board_shape(&self) -> BoardShape { self.chess_rules().board_shape() }
     pub fn board_mut(&mut self, idx: BughouseBoard) -> &mut Board { &mut self.boards[idx] }
     pub fn board(&self, idx: BughouseBoard) -> &Board { &self.boards[idx] }
     pub fn boards(&self) -> &EnumMap<BughouseBoard, Board> { &self.boards }

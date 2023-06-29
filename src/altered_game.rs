@@ -26,7 +26,7 @@ use crate::board::{
     PromotionTarget, Turn, TurnDrop, TurnError, TurnExpanded, TurnInput, TurnMode, TurnMove,
 };
 use crate::clock::GameInstant;
-use crate::coord::{Coord, SubjectiveRow};
+use crate::coord::{BoardShape, Coord, SubjectiveRow};
 use crate::display::Perspective;
 use crate::game::{
     get_bughouse_force, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
@@ -147,6 +147,7 @@ impl AlteredGame {
 
     pub fn chess_rules(&self) -> &Rc<ChessRules> { self.game_confirmed().chess_rules() }
     pub fn bughouse_rules(&self) -> &Rc<BughouseRules> { self.game_confirmed().bughouse_rules() }
+    pub fn board_shape(&self) -> BoardShape { self.game_confirmed().board_shape() }
 
     // Status returned by this function may differ from `local_game()` status.
     // This function should be used as the source of truth when showing game status to the
@@ -291,13 +292,14 @@ impl AlteredGame {
                 if let BughouseParticipant::Player(my_player_id) = self.my_id {
                     // Don't use `local_game`: preturns and drags should not reveal new areas.
                     let mut game = self.game_with_local_turns(LocalTurns::OnlyNormal);
+                    let board_shape = self.board_shape();
                     let wayback_active = self.apply_wayback_for_board(&mut game, board_idx);
                     let force = get_bughouse_force(my_player_id.team(), board_idx);
                     let mut visible = game.board(board_idx).fog_free_area(force);
                     // ... but do show preturn pieces themselves:
                     if !wayback_active {
                         let game_with_preturns = self.game_with_local_turns(LocalTurns::All);
-                        for coord in Coord::all() {
+                        for coord in board_shape.coords() {
                             if let Some(piece) = game_with_preturns.board(board_idx).grid()[coord] {
                                 if piece.force.is_owned_by_or_neutral(force) {
                                     visible.insert(coord);
@@ -305,7 +307,7 @@ impl AlteredGame {
                             }
                         }
                     }
-                    Coord::all().filter(|c| !visible.contains(c)).collect()
+                    board_shape.coords().filter(|c| !visible.contains(c)).collect()
                 } else {
                     HashSet::new()
                 }
@@ -469,12 +471,13 @@ impl AlteredGame {
                 if piece_kind == PieceKind::Duck {
                     return Ok(Some(TurnInput::DragDrop(Turn::PlaceDuck(dest))));
                 }
+                let board_shape = self.board_shape();
                 let d_col = dest.col - source_coord.col;
                 let mut is_castling = false;
                 let mut is_promotion = false;
                 if let Ok(force) = piece_force.try_into() {
-                    let first_row = SubjectiveRow::from_one_based(1).unwrap().to_row(force);
-                    let last_row = SubjectiveRow::from_one_based(8).unwrap().to_row(force);
+                    let first_row = SubjectiveRow::first().to_row(board_shape, force);
+                    let last_row = SubjectiveRow::last(board_shape).to_row(board_shape, force);
                     is_castling = piece_kind == King
                         && (d_col.abs() >= 2)
                         && (source_coord.row == first_row && dest.row == first_row);
