@@ -5,6 +5,7 @@
 #![allow(
     clippy::collapsible_else_if,
     clippy::large_enum_variant,
+    clippy::manual_is_ascii_check,
     clippy::option_map_unit_fn,
     clippy::too_many_arguments,
     clippy::type_complexity

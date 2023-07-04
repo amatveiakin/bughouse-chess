@@ -19,12 +19,7 @@ pub enum GridItem<T> {
 }
 
 impl<T> GridItem<T> {
-    pub fn is_free(&self) -> bool {
-        match self {
-            GridItem::Empty => true,
-            _ => false,
-        }
-    }
+    pub fn is_free(&self) -> bool { matches!(self, GridItem::Empty) }
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

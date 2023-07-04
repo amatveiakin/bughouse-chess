@@ -85,7 +85,7 @@ pub fn starting_piece_row(starting_position: &EffectiveStartingPosition) -> &[Pi
         EffectiveStartingPosition::Classic => {
             &[Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]
         }
-        EffectiveStartingPosition::FischerRandom(row) => &row,
+        EffectiveStartingPosition::FischerRandom(row) => row,
     }
 }
 

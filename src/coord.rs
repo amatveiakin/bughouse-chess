@@ -114,16 +114,12 @@ impl Row {
 
 impl ops::Add<i8> for Row {
     type Output = Self;
-    fn add(self, other: i8) -> Self::Output {
-        Self::from_zero_based((self.to_zero_based() as i8 + other) as i8)
-    }
+    fn add(self, other: i8) -> Self::Output { Self::from_zero_based(self.to_zero_based() + other) }
 }
 
 impl ops::Sub for Row {
     type Output = i8;
-    fn sub(self, other: Self) -> Self::Output {
-        (self.to_zero_based() as i8) - (other.to_zero_based() as i8)
-    }
+    fn sub(self, other: Self) -> Self::Output { self.to_zero_based() - other.to_zero_based() }
 }
 
 
@@ -153,16 +149,12 @@ impl Col {
 
 impl ops::Add<i8> for Col {
     type Output = Self;
-    fn add(self, other: i8) -> Self::Output {
-        Self::from_zero_based((self.to_zero_based() as i8 + other) as i8)
-    }
+    fn add(self, other: i8) -> Self::Output { Self::from_zero_based(self.to_zero_based() + other) }
 }
 
 impl ops::Sub for Col {
     type Output = i8;
-    fn sub(self, other: Self) -> Self::Output {
-        (self.to_zero_based() as i8) - (other.to_zero_based() as i8)
-    }
+    fn sub(self, other: Self) -> Self::Output { self.to_zero_based() - other.to_zero_based() }
 }
 
 
