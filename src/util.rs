@@ -17,7 +17,7 @@ macro_rules! my_git_version {
 #[macro_export]
 macro_rules! once_cell_regex {
     ($re:expr $(,)?) => {{
-        static RE: once_cell::sync::OnceCell<regex::Regex> = once_cell::sync::OnceCell::new();
+        static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
         RE.get_or_init(|| regex::Regex::new($re).unwrap())
     }};
 }
