@@ -78,9 +78,7 @@ pub fn check_origin<T>(req: &tide::Request<T>, allowed_origin: &AllowedOrigin) -
 pub fn check_google_csrf<T>(req: &tide::Request<T>) -> tide::Result<AuthorizationCode> {
     let (auth_code, request_csrf_state) = req.query::<auth::NewSessionQuery>()?.parse();
     let Some(oauth_csrf_state_cookie) = req.cookie(OAUTH_CSRF_COOKIE_NAME) else {
-        return Err(tide::Error::from_str(
-            StatusCode::Forbidden, "Missing CSRF token cookie.",
-        ));
+        return Err(tide::Error::from_str(StatusCode::Forbidden, "Missing CSRF token cookie."));
     };
     if oauth_csrf_state_cookie.value() != request_csrf_state.secret() {
         return Err(tide::Error::from_str(StatusCode::Forbidden, "Non-matching CSRF token."));

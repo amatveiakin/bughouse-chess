@@ -474,9 +474,8 @@ impl CoreServerState {
 
         let Some(match_id) = match_id else {
             // We've already processed all events that do not depend on a match.
-            ctx.clients[client_id].send_rejection(
-                unknown_error!("Cannot process event: no match in progress")
-            );
+            ctx.clients[client_id]
+                .send_rejection(unknown_error!("Cannot process event: no match in progress"));
             return;
         };
 
@@ -484,10 +483,9 @@ impl CoreServerState {
             // The only way to have a match_id with no match is when a client is trying
             // to join with a bad match_id. In other cases we are getting match_id from
             // trusted internal sources, so the match must exist as well.
-            assert!(matches!(event, BughouseClientEvent::Join{ .. }));
-            ctx.clients[client_id].send_rejection(BughouseServerRejection::NoSuchMatch {
-                match_id: match_id.0
-            });
+            assert!(matches!(event, BughouseClientEvent::Join { .. }));
+            ctx.clients[client_id]
+                .send_rejection(BughouseServerRejection::NoSuchMatch { match_id: match_id.0 });
             return;
         };
 
@@ -633,7 +631,8 @@ impl Match {
             ref mut game,
             ref mut turn_requests,
             ..
-        }) = self.game_state else {
+        }) = self.game_state
+        else {
             return;
         };
         let Some(game_start) = game_start else {
@@ -877,20 +876,22 @@ impl Match {
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, board_idx: BughouseBoard,
         turn_input: TurnInput,
     ) -> EventResult {
-        let Some(GameState{
+        let Some(GameState {
             ref mut game_start,
             ref mut game_start_offset_time,
             ref mut game_end,
             ref mut game,
             ref mut turn_requests,
             ..
-        }) = self.game_state else {
+        }) = self.game_state
+        else {
             return Err(unknown_error!("Cannot make turn: no game in progress"));
         };
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
             return Err(unknown_error!("Cannot make turn: not joined"));
         };
-        let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name) else {
+        let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name)
+        else {
             return Err(unknown_error!("Cannot make turn: player does not participate"));
         };
         let Some(envoy) = player_bughouse_id.envoy_for(board_idx) else {
@@ -946,17 +947,20 @@ impl Match {
     fn process_cancel_preturn(
         &mut self, ctx: &mut Context, client_id: ClientId, board_idx: BughouseBoard,
     ) -> EventResult {
-        let Some(GameState{ ref game, ref mut turn_requests, .. }) = self.game_state else {
+        let Some(GameState { ref game, ref mut turn_requests, .. }) = self.game_state else {
             return Err(unknown_error!("Cannot cancel pre-turn: no game in progress"));
         };
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
             return Err(unknown_error!("Cannot cancel pre-turn: not joined"));
         };
-        let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name) else {
+        let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name)
+        else {
             return Err(unknown_error!("Cannot cancel pre-turn: player does not participate"));
         };
         let Some(envoy) = player_bughouse_id.envoy_for(board_idx) else {
-            return Err(unknown_error!("Cannot cancel pre-turn: player does not play on this board"));
+            return Err(unknown_error!(
+                "Cannot cancel pre-turn: player does not play on this board"
+            ));
         };
         for (idx, r) in turn_requests.iter().enumerate().rev() {
             if r.envoy == envoy {
@@ -970,14 +974,15 @@ impl Match {
     fn process_resign(
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
     ) -> EventResult {
-        let Some(GameState{
+        let Some(GameState {
             ref mut game,
             ref mut turn_requests,
             game_start,
             game_start_offset_time,
             ref mut game_end,
             ..
-        }) = self.game_state else {
+        }) = self.game_state
+        else {
             return Err(unknown_error!("Cannot resign: no game in progress"));
         };
         if !game.is_active() {
@@ -986,7 +991,8 @@ impl Match {
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
             return Err(unknown_error!("Cannot resign: not joined"));
         };
-        let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name) else {
+        let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name)
+        else {
             return Err(unknown_error!("Cannot resign: player does not participate"));
         };
         let status = BughouseGameStatus::Victory(
@@ -1048,7 +1054,7 @@ impl Match {
     fn process_update_chalk_drawing(
         &mut self, ctx: &mut Context, client_id: ClientId, drawing: ChalkDrawing,
     ) -> EventResult {
-        let Some(GameState{ ref mut chalkboard, ref game, .. }) = self.game_state else {
+        let Some(GameState { ref mut chalkboard, ref game, .. }) = self.game_state else {
             return Err(unknown_error!("Cannot update chalk drawing: no game in progress"));
         };
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
@@ -1068,7 +1074,7 @@ impl Match {
     fn process_request_export(
         &self, ctx: &mut Context, client_id: ClientId, format: BughouseExportFormat,
     ) -> EventResult {
-        let Some(GameState{ ref game, .. }) = self.game_state else {
+        let Some(GameState { ref game, .. }) = self.game_state else {
             return Err(unknown_error!("Cannot export: no game in progress"));
         };
         let all_games = self.match_history.iter().chain(iter::once(game));

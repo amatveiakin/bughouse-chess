@@ -213,7 +213,7 @@ impl ClientState {
         if self.my_name() == Some(name) {
             return PlayerRelation::Myself;
         }
-        let Some(GameState{ alt_game, .. }) = self.game_state() else {
+        let Some(GameState { alt_game, .. }) = self.game_state() else {
             return PlayerRelation::Other;
         };
         let BughouseParticipant::Player(my_player_id) = alt_game.my_id() else {

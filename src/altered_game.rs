@@ -453,7 +453,9 @@ impl AlteredGame {
     pub fn drag_piece_drop(
         &mut self, board_idx: BughouseBoard, dest: Coord, promote_to: PieceKind,
     ) -> Result<Option<TurnInput>, PieceDragError> {
-        let Some((input_board_idx, PartialTurnInput::Drag { piece_kind, piece_force, source })) = self.partial_turn_input else {
+        let Some((input_board_idx, PartialTurnInput::Drag { piece_kind, piece_force, source })) =
+            self.partial_turn_input
+        else {
             return Err(PieceDragError::NoDragInProgress);
         };
         self.partial_turn_input = None;

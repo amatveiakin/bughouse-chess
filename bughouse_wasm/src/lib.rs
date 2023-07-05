@@ -338,10 +338,8 @@ impl WebClient {
             _ => return Err(format!("Invalid rating: {rating}").into()),
         };
 
-        let Some((Ok(starting_minutes), Ok(starting_seconds))) = starting_time
-            .split(':')
-            .map(|v| v.parse::<u64>())
-            .collect_tuple()
+        let Some((Ok(starting_minutes), Ok(starting_seconds))) =
+            starting_time.split(':').map(|v| v.parse::<u64>()).collect_tuple()
         else {
             return Err(format!("Invalid starting time: {starting_time}").into());
         };
@@ -482,7 +480,7 @@ impl WebClient {
     }
 
     pub fn drag_piece(&mut self, board_id: &str, x: f64, y: f64) -> JsResult<()> {
-        let Some(GameState{ alt_game, .. }) = self.state.game_state() else {
+        let Some(GameState { alt_game, .. }) = self.state.game_state() else {
             return Err(rust_error!("Cannot drag: no game in progress"));
         };
         let board_shape = alt_game.board_shape();
@@ -582,31 +580,43 @@ impl WebClient {
     pub fn chalk_down(
         &mut self, board_node: &str, x: f64, y: f64, alternative_mode: bool,
     ) -> JsResult<()> {
-        let Some(GameState{ alt_game, .. }) = self.state.game_state() else { return Ok(()); };
+        let Some(GameState { alt_game, .. }) = self.state.game_state() else {
+            return Ok(());
+        };
         if alt_game.is_active() {
             return Ok(());
         }
-        let Some(canvas) = self.state.chalk_canvas_mut() else { return Ok(()); };
+        let Some(canvas) = self.state.chalk_canvas_mut() else {
+            return Ok(());
+        };
         let board_idx = parse_board_node_id(board_node)?;
         canvas.chalk_down(board_idx, DisplayFCoord { x, y }, alternative_mode);
         self.repaint_chalk()?;
         Ok(())
     }
     pub fn chalk_move(&mut self, x: f64, y: f64) -> JsResult<()> {
-        let Some(canvas) = self.state.chalk_canvas_mut() else { return Ok(()); };
+        let Some(canvas) = self.state.chalk_canvas_mut() else {
+            return Ok(());
+        };
         canvas.chalk_move(DisplayFCoord { x, y });
         self.repaint_chalk()?;
         Ok(())
     }
     pub fn chalk_up(&mut self, x: f64, y: f64) -> JsResult<()> {
-        let Some(canvas) = self.state.chalk_canvas_mut() else { return Ok(()); };
-        let Some((board_idx, mark)) = canvas.chalk_up(DisplayFCoord{ x, y }) else { return Ok(()); };
+        let Some(canvas) = self.state.chalk_canvas_mut() else {
+            return Ok(());
+        };
+        let Some((board_idx, mark)) = canvas.chalk_up(DisplayFCoord { x, y }) else {
+            return Ok(());
+        };
         self.state.add_chalk_mark(board_idx, mark);
         self.repaint_chalk()?;
         Ok(())
     }
     pub fn chalk_abort(&mut self) -> JsResult<()> {
-        let Some(canvas) = self.state.chalk_canvas_mut() else { return Ok(()); };
+        let Some(canvas) = self.state.chalk_canvas_mut() else {
+            return Ok(());
+        };
         canvas.chalk_abort();
         self.repaint_chalk()?;
         Ok(())
@@ -627,7 +637,7 @@ impl WebClient {
     pub fn repaint_chalk(&self) -> JsResult<()> {
         // Improvement potential: Meter.
         // Improvement potential: Repaint only the current mark while drawing.
-        let Some(GameState{ alt_game, chalkboard, .. }) = self.state.game_state() else {
+        let Some(GameState { alt_game, chalkboard, .. }) = self.state.game_state() else {
             return Ok(());
         };
         let document = web_document();
@@ -676,7 +686,7 @@ impl WebClient {
                 Ok(JsEventMatchStarted { match_id }.into())
             }
             Some(NotableEvent::GameStarted) => {
-                let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
+                let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
                     return Err(rust_error!("No game in progress"));
                 };
                 let game_message = web_document().get_existing_element_by_id("game-message")?;
@@ -699,7 +709,7 @@ impl WebClient {
                 Ok(JsEventGameOver { result }.into())
             }
             Some(NotableEvent::TurnMade(envoy)) => {
-                let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
+                let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
                     return Err(rust_error!("No game in progress"));
                 };
                 let display_board_idx =
@@ -754,7 +764,7 @@ impl WebClient {
             return Ok(());
         };
         update_observers(&mtch.participants)?;
-        let Some(GameState{ ref alt_game, .. }) = mtch.game_state else {
+        let Some(GameState { ref alt_game, .. }) = mtch.game_state else {
             update_lobby(&mtch)?;
             return Ok(());
         };
@@ -907,7 +917,7 @@ impl WebClient {
 
     pub fn update_clock(&self) -> JsResult<()> {
         let document = web_document();
-        let Some(GameState{ ref alt_game, time_pair, .. }) = self.state.game_state() else {
+        let Some(GameState { ref alt_game, time_pair, .. }) = self.state.game_state() else {
             return Ok(());
         };
         let now = Instant::now();
@@ -976,7 +986,7 @@ impl WebClient {
         &self, board_idx: DisplayBoard, owner: PlayerRelation, mark: &ChalkMark,
     ) -> JsResult<()> {
         use PlayerRelation::*;
-        let Some(GameState{ alt_game, .. }) = self.state.game_state() else {
+        let Some(GameState { alt_game, .. }) = self.state.game_state() else {
             return Ok(());
         };
         let document = web_document();
@@ -1059,7 +1069,7 @@ impl WebClient {
         // Optimization potential: do not reset highlights that stay in place.
         clear_square_highlight_layer(SquareHighlightLayer::Turn)?;
         clear_square_highlight_layer(SquareHighlightLayer::TurnAbove)?;
-        let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
+        let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
             return Ok(());
         };
         let board_shape = alt_game.board_shape();
@@ -1076,7 +1086,7 @@ impl WebClient {
     }
 
     fn get_game_audio_pan(&self, board_idx: BughouseBoard) -> JsResult<f64> {
-        let Some(GameState{ ref alt_game, .. }) = self.state.game_state() else {
+        let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
             return Err(rust_error!("No game in progress"));
         };
         let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
@@ -1219,7 +1229,9 @@ fn set_square_highlight(
         node.set_attribute("y", &pos.y.to_string())?;
     } else {
         let Some(id) = id else {
-            return Err(rust_error!(r#"Cannot reset square highlight without ID; class is "{class}""#));
+            return Err(rust_error!(
+                r#"Cannot reset square highlight without ID; class is "{class}""#
+            ));
         };
         if let Some(node) = document.get_element_by_id(id) {
             node.remove();

@@ -32,7 +32,7 @@ impl<DB: DatabaseWriter> ServerHooks for DatabaseServerHooks<DB> {
         &mut self, game: &BughouseGame, game_start_offset_time: Option<time::OffsetDateTime>,
         round: usize,
     ) {
-        let Some(row) = self.game_result(game,game_start_offset_time, round) else {
+        let Some(row) = self.game_result(game, game_start_offset_time, round) else {
             error!("Error extracting game result from:\n{:#?}", game);
             return;
         };

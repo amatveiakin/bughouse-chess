@@ -376,7 +376,9 @@ fn reachability_by_movement_modulo_destination_square(
             if d_abs.0 > d_abs.1 {
                 mem::swap(&mut shift_sorted.0, &mut shift_sorted.1);
             }
-            let Some(shift_directed) = apply_sign(shift_sorted.0, d.0).zip(apply_sign(shift_sorted.1, d.1)) else {
+            let Some(shift_directed) =
+                apply_sign(shift_sorted.0, d.0).zip(apply_sign(shift_sorted.1, d.1))
+            else {
                 return Impossible;
             };
             let mut p = from + shift_directed;
