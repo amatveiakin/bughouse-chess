@@ -1172,6 +1172,7 @@ impl Match {
     fn start_game(&mut self, ctx: &mut Context, now: Instant) {
         self.reset_readiness();
         self.randomize_fixed_teams(); // non-trivial only in the beginning of a match
+        self.init_scores(); // non-trivial only in the beginning of a match
         let players = self.assign_boards();
         let game = BughouseGame::new(
             self.rules.match_rules.clone(),
@@ -1179,7 +1180,6 @@ impl Match {
             self.rules.bughouse_rules.clone(),
             &players,
         );
-        self.init_scores();
         self.game_state = Some(GameState {
             game,
             game_creation: now,
@@ -1194,15 +1194,23 @@ impl Match {
     }
 
     fn init_scores(&mut self) {
+        if !matches!(self.scores, Scores::Zeros) {
+            return;
+        }
         match self.rules.bughouse_rules.teaming {
-            Teaming::FixedTeams => {}
-            Teaming::IndividualMode => {
-                assert!(self.scores.per_team.is_empty());
-                for p in self.participants.iter() {
-                    if p.faction.is_player() {
-                        self.scores.per_player.entry(p.name.clone()).or_insert(0);
-                    }
+            Teaming::FixedTeams => {
+                let mut scores = HashMap::new();
+                for team in Team::iter() {
+                    scores.insert(team, 0);
                 }
+                self.scores = Scores::PerTeam(scores);
+            }
+            Teaming::IndividualMode => {
+                let mut scores = HashMap::new();
+                for p in self.participants.iter() {
+                    scores.insert(p.name.clone(), 0);
+                }
+                self.scores = Scores::PerPlayer(scores);
             }
         }
     }
@@ -1430,15 +1438,19 @@ fn update_on_game_over(
     };
     match game.bughouse_rules().teaming {
         Teaming::FixedTeams => {
-            assert!(scores.per_player.is_empty());
+            let Scores::PerTeam(ref mut score_map) = scores else {
+                panic!("Expected Scores::PerTeam");
+            };
             for (team, score) in team_scores {
-                *scores.per_team.entry(team).or_insert(0) += score;
+                *score_map.entry(team).or_insert(0) += score;
             }
         }
         Teaming::IndividualMode => {
-            assert!(scores.per_team.is_empty());
+            let Scores::PerPlayer(ref mut score_map) = scores else {
+                panic!("Expected Scores::PerPlayer");
+            };
             for p in game.players() {
-                *scores.per_player.entry(p.name.clone()).or_insert(0) += team_scores[p.id.team()];
+                *score_map.entry(p.name.clone()).or_insert(0) += team_scores[p.id.team()];
             }
         }
     }

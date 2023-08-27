@@ -774,7 +774,7 @@ impl WebClient {
         let board_shape = alt_game.board_shape();
         let my_id = alt_game.my_id();
         let perspective = alt_game.perspective();
-        update_scores(&mtch.scores, &mtch.participants, game.status(), teaming, perspective)?;
+        update_scores(&mtch.scores, &mtch.participants, game.status(), perspective)?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |piece_force| {
                 my_id
@@ -1515,27 +1515,28 @@ fn render_clock(
 
 fn update_scores(
     scores: &Scores, participants: &[Participant], game_status: BughouseGameStatus,
-    teaming: Teaming, perspective: Perspective,
+    perspective: Perspective,
 ) -> JsResult<()> {
     let normalize = |score: u32| (score as f64) / 2.0;
     let team_node = web_document().get_existing_element_by_id("score-team")?;
     let individual_node = web_document().get_existing_element_by_id("score-individual")?;
-    match teaming {
-        Teaming::FixedTeams => {
-            // TODO: Display "0:0" score before the first game.
-            assert!(scores.per_player.is_empty());
+    match scores {
+        Scores::Zeros => {
+            team_node.set_text_content(None);
+            individual_node.set_text_content(None);
+        }
+        Scores::PerTeam(score_map) => {
             let my_team = get_bughouse_team(perspective.board_idx, perspective.force);
             team_node.set_text_content(Some(&format!(
                 "{}\n⎯\n{}",
-                normalize(*scores.per_team.get(&my_team.opponent()).unwrap_or(&0)),
-                normalize(*scores.per_team.get(&my_team).unwrap_or(&0)),
+                normalize(*score_map.get(&my_team.opponent()).unwrap_or(&0)),
+                normalize(*score_map.get(&my_team).unwrap_or(&0)),
             )));
             individual_node.set_text_content(None);
         }
-        Teaming::IndividualMode => {
-            assert!(scores.per_team.is_empty());
+        Scores::PerPlayer(score_map) => {
             let show_readiness = !game_status.is_active();
-            let scores = scores.per_player.iter().map(|(name, score)| {
+            let scores = score_map.iter().map(|(name, score)| {
                 let participant = participants.iter().find(|p| p.name == *name).unwrap();
                 (
                     name,
