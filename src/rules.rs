@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::clock::TimeControl;
 use crate::coord::SubjectiveRow;
-use crate::player::{Faction, Team};
 use crate::BoardShape;
 
 
@@ -25,14 +24,6 @@ use crate::BoardShape;
 // approach would be misleading. It would make lobby UX inconsistent with in-game UX where
 // we don't wait for observer readiness (and the latter is definitely not changing).
 pub const FIRST_GAME_COUNTDOWN_DURATION: Duration = Duration::from_secs(3);
-
-const FIXED_TEAMS_FACTIONS: [Faction; 4] = [
-    Faction::Random,
-    Faction::Fixed(Team::Red),
-    Faction::Fixed(Team::Blue),
-    Faction::Observer,
-];
-const INDIVIDUAL_MODE_FACTIONS: [Faction; 2] = [Faction::Random, Faction::Observer];
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -90,12 +81,6 @@ pub enum DropAggression {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub enum Teaming {
-    FixedTeams,
-    IndividualMode,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Promotion {
     // Classic rules. When captured, promoted pieces go back as pawns.
     Upgrade,
@@ -127,9 +112,6 @@ pub struct ChessRules {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BughouseRules {
-    // Improvement potential. Should `teaming` reside in `BughouseRules` or be moved to
-    //   a separate struct (e.g. `MatchRules`)?
-    pub teaming: Teaming,
     pub promotion: Promotion,
     pub min_pawn_drop_rank: SubjectiveRow,
     pub max_pawn_drop_rank: SubjectiveRow, // TODO: Update it when board shape changes
@@ -141,15 +123,6 @@ pub struct Rules {
     pub match_rules: MatchRules,
     pub chess_rules: ChessRules,
     pub bughouse_rules: BughouseRules,
-}
-
-impl Teaming {
-    pub fn allowed_factions(self) -> &'static [Faction] {
-        match self {
-            Teaming::FixedTeams => &FIXED_TEAMS_FACTIONS,
-            Teaming::IndividualMode => &INDIVIDUAL_MODE_FACTIONS,
-        }
-    }
 }
 
 impl MatchRules {
@@ -192,7 +165,6 @@ impl ChessRules {
 impl BughouseRules {
     pub fn chess_com() -> Self {
         Self {
-            teaming: Teaming::FixedTeams,
             promotion: Promotion::Upgrade,
             min_pawn_drop_rank: SubjectiveRow::from_one_based(2),
             max_pawn_drop_rank: SubjectiveRow::from_one_based(7),
@@ -260,10 +232,6 @@ impl Rules {
 
     // Try to keep in sync with "New match" dialog.
     pub fn to_human_readable(&self) -> String {
-        let teaming = match self.bughouse_rules.teaming {
-            Teaming::FixedTeams => "Fixed Teams",
-            Teaming::IndividualMode => "Individual mode",
-        };
         let starting_position = match self.chess_rules.starting_position {
             StartingPosition::Classic => "Classic",
             StartingPosition::FischerRandom => "Fischer random",
@@ -287,7 +255,6 @@ impl Rules {
         };
         formatdoc!(
             "
-            Teaming: {teaming}
             Starting position: {starting_position}
             Variant: {chess_variant}
             Fairy pieces: {fairy_pieces}

@@ -73,34 +73,14 @@ fn render(
             }
         } else {
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-            match mtch.rules.bughouse_rules.teaming {
-                Teaming::FixedTeams => {
-                    // TODO: Fix team mode in console client.
-                    unimplemented!("Fixed team mode in console client is temporary not supported.");
-                    /*
-                    let mut teams: EnumMap<Team, Vec<String>> = enum_map!{ _ => vec![] };
-                    for p in players {
-                        teams[p.fixed_team.unwrap()].push(p.name.clone());
-                    }
-                    for (team, team_players) in teams {
-                        writeln_raw(stdout, &format!("Team {:?}:", team))?;
-                        let color = match team {
-                            Team::Red => style::Color::Red,
-                            Team::Blue => style::Color::Blue,
-                        };
-                        for p in team_players {
-                            writeln_raw(stdout, format!("  {} {}", "•".with(color), p))?;
-                        }
-                        writeln_raw(stdout, "")?;
-                    }
-                    */
-                }
-                Teaming::IndividualMode => {
-                    for p in &mtch.participants {
-                        // TODO: Distinguish between players and observers.
-                        writeln_raw(stdout, format!("  {} {}", "•", p.name))?;
-                    }
-                }
+            for p in &mtch.participants {
+                let (color, symbol) = match p.faction {
+                    Faction::Fixed(Team::Red) => (style::Color::Red, '●'),
+                    Faction::Fixed(Team::Blue) => (style::Color::Blue, '◆'),
+                    Faction::Random => (style::Color::Reset, '?'),
+                    Faction::Observer => (style::Color::Reset, '👁'),
+                };
+                writeln_raw(stdout, format!("  {} {}", symbol.with(color), p.name))?;
             }
         }
     } else {

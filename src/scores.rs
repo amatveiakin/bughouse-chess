@@ -9,7 +9,7 @@ use crate::player::Team;
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub enum Scores {
     #[default]
-    Zeros,
+    Zeros, // or make it optional? !!!
     // Not EnumMap, because it does not support serde.
     // Improvement potential: Implement Serde support for EnumMap instead.
     PerTeam(HashMap<Team, u32>), // when teaming == Teaming::FixedTeams

@@ -105,11 +105,6 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
                 time_control: TimeControl { starting_time: Duration::from_secs(300) },
             },
             bughouse_rules: BughouseRules {
-                teaming: if rng.gen::<bool>() {
-                    Teaming::FixedTeams
-                } else {
-                    Teaming::IndividualMode
-                },
                 // Improvement potential: Test other promotion strategies.
                 promotion: Promotion::Upgrade,
                 min_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)),

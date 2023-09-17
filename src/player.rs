@@ -35,6 +35,13 @@ pub struct Participant {
     pub is_ready: bool,
 }
 
+pub const ALL_FACTIONS: &[Faction] = &[
+    Faction::Random,
+    Faction::Fixed(Team::Red),
+    Faction::Fixed(Team::Blue),
+    Faction::Observer,
+];
+
 
 impl Team {
     pub fn opponent(self) -> Self {

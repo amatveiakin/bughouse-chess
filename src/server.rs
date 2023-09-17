@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::time::Duration;
-use std::{cmp, iter, mem, ops};
+use std::{iter, mem, ops};
 
 use enum_map::enum_map;
 use indoc::printdoc;
@@ -25,11 +25,11 @@ use crate::game::{
     get_bughouse_force, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
     BughousePlayer, PlayerInGame, TurnRecord, TOTAL_ENVOYS, TOTAL_ENVOYS_PER_TEAM,
 };
-use crate::lobby::{num_fixed_players_per_team, verify_participants};
+use crate::lobby::{fix_teams_if_needed, verify_participants, Teaming};
 use crate::pgn::{self, BughouseExportFormat};
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Faction, Participant, Team};
-use crate::rules::{Rules, Teaming, FIRST_GAME_COUNTDOWN_DURATION};
+use crate::rules::{Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
 use crate::server_helpers::ServerHelpers;
 use crate::server_hooks::{NoopServerHooks, ServerHooks};
@@ -859,14 +859,6 @@ impl Match {
         if self.game_state.is_some() {
             return Err(unknown_error!("Cannot set faction: match already started"));
         }
-        match (faction, self.rules.bughouse_rules.teaming) {
-            (Faction::Fixed(_), Teaming::FixedTeams) => {}
-            (Faction::Fixed(_), Teaming::IndividualMode) => {
-                return Err(unknown_error!("Cannot set fixed team in individual mode"));
-            }
-            (Faction::Random, _) => {}
-            (Faction::Observer, _) => {}
-        }
         self.participants[participant_id].faction = faction;
         self.send_lobby_updated(ctx);
         Ok(())
@@ -1155,6 +1147,10 @@ impl Match {
                 self.match_history.push(game.clone());
                 self.start_game(ctx, now);
             } else if self.first_game_countdown_since.is_none() {
+                // Show final teams when countdown begins.
+                fix_teams_if_needed(&mut self.participants.map);
+                self.send_lobby_updated(ctx);
+
                 if ctx.disable_countdown {
                     self.start_game(ctx, now);
                 } else {
@@ -1171,8 +1167,12 @@ impl Match {
 
     fn start_game(&mut self, ctx: &mut Context, now: Instant) {
         self.reset_readiness();
-        self.randomize_fixed_teams(); // non-trivial only in the beginning of a match
-        self.init_scores(); // non-trivial only in the beginning of a match
+
+        // Non-trivial only in the beginning of a match (we've already called `fix_teams_if_needed`
+        // when the countdown began, but calling it again to be sure).
+        let teaming = fix_teams_if_needed(&mut self.participants.map);
+        self.init_scores(teaming);
+
         let players = self.assign_boards();
         let game = BughouseGame::new(
             self.rules.match_rules.clone(),
@@ -1193,11 +1193,11 @@ impl Match {
         self.send_lobby_updated(ctx); // update readiness flags
     }
 
-    fn init_scores(&mut self) {
+    fn init_scores(&mut self, teaming: Teaming) {
         if !matches!(self.scores, Scores::Zeros) {
             return;
         }
-        match self.rules.bughouse_rules.teaming {
+        match teaming {
             Teaming::FixedTeams => {
                 let mut scores = HashMap::new();
                 for team in Team::iter() {
@@ -1205,7 +1205,7 @@ impl Match {
                 }
                 self.scores = Scores::PerTeam(scores);
             }
-            Teaming::IndividualMode => {
+            Teaming::DynamicTeams => {
                 let mut scores = HashMap::new();
                 for p in self.participants.iter() {
                     scores.insert(p.name.clone(), 0);
@@ -1254,39 +1254,18 @@ impl Match {
 
     fn reset_readiness(&mut self) { self.participants.iter_mut().for_each(|p| p.is_ready = false); }
 
-    // Randomize fixed teams in the beginning of a match.
+    // Assigns boards to players. Also assigns teams to players without a fixed team.
     //
-    // Algorithm: shuffle players, then iterate the resulting shuffled array and assign
-    // teams. Note that it would be incorrect to go in the player order and assign a random
-    // team with a 50/50 probability, or the remaining free team if there's just one.
-    // If we were to do this, then the first two players to join would get into the same
-    // team with probability 1/2 (instead of 1/3).
-    fn randomize_fixed_teams(&mut self) {
-        match self.rules.bughouse_rules.teaming {
-            Teaming::FixedTeams => {}
-            Teaming::IndividualMode => {
-                return;
-            }
-        };
-        let mut rng = rand::thread_rng();
-        let mut num_fixed = num_fixed_players_per_team(self.participants.iter());
-        let mut to_randomize = self
-            .participants
-            .iter_mut()
-            .filter(|p| p.faction == Faction::Random)
-            .collect_vec();
-        to_randomize.shuffle(&mut rng);
-        for p in to_randomize {
-            let team = Team::iter().min_by_key(|&t| num_fixed[t]).unwrap();
-            assert!(num_fixed[team] < TOTAL_ENVOYS_PER_TEAM);
-            p.faction = Faction::Fixed(team);
-            num_fixed[team] += 1;
-        }
-    }
-
+    // Priorities (from highest to lowest):
+    //   1. Don't make people double play if they don't have to.
+    //   2. Balance the number of games played by each person.
+    //   3. [TBD] Balance the number of times people double play (if they have to).
+    //   4. Uniformly randomize teams, opponents and seating out order.
+    //
     // Improvement potential: In a game with three players also balance the number of times
     //   each person double-plays.
     // TODO: Add unit tests for `assign_boards` since it's not covered by `bughouse_online.rs`.
+    // TODO: Move together with `verify_participants` and `fix_teams_if_needed`.
     fn assign_boards(&self) -> Vec<PlayerInGame> {
         if let Some(assignment) = &self.board_assignment_override {
             for player_assignment in assignment {
@@ -1301,61 +1280,79 @@ impl Match {
             return assignment.clone();
         }
 
-        let mut rng = rand::thread_rng();
+        let rng = &mut rand::thread_rng();
+
+        let priority_buckets = self
+            .participants
+            .iter()
+            .sorted_by_key(|p| p.games_played)
+            .group_by(|p| p.games_played);
+        // Note. Even though we randomize the team for players with `Faction::Random`, randomizing
+        // the order within each bucket is still necessary for multiple reasons:
+        //   - To randomize opponents;
+        //   - To randomize seating out;
+        //   - To make team randomization uniform: if we iterated the array [p1, p2, p3, p4] in the
+        //     same order and assigned each player to a random non-full team with equal probability,
+        //     then p1 and p2 would be on the same team with probability 1/2 rather than 1/3.
+        let player_queue = priority_buckets.into_iter().flat_map(|(_, bucket)| {
+            let mut bucket = bucket.collect_vec();
+            bucket.shuffle(rng);
+            bucket
+        });
+
         let mut players_per_team = enum_map! { _ => vec![] };
-        match self.rules.bughouse_rules.teaming {
-            Teaming::FixedTeams => {
-                for p in self.participants.iter() {
-                    match p.faction {
-                        Faction::Fixed(team) => players_per_team[team].push(p.clone()),
-                        Faction::Random => {
-                            panic!("Player {} doesn't have a team in team mode", p.name)
-                        }
-                        Faction::Observer => {}
+        let mut random_players = vec![];
+        for p in player_queue {
+            match p.faction {
+                Faction::Fixed(team) => {
+                    if players_per_team[team].len() < TOTAL_ENVOYS_PER_TEAM {
+                        players_per_team[team].push(p);
                     }
                 }
+                Faction::Random => {
+                    random_players.push(p);
+                }
+                Faction::Observer => {}
             }
-            Teaming::IndividualMode => {
-                let participants = self.participants.iter().filter(|p| match p.faction {
-                    Faction::Fixed(_) => {
-                        panic!("Player {} has a fixed team in individual mode", p.name)
-                    }
-                    Faction::Random => true,
-                    Faction::Observer => false,
-                });
-                for p in get_next_players(participants, TOTAL_ENVOYS) {
-                    let team = Team::iter().min_by_key(|&t| players_per_team[t].len()).unwrap();
-                    assert!(players_per_team[team].len() < TOTAL_ENVOYS_PER_TEAM);
-                    players_per_team[team].push(p);
-                }
+            let total_players =
+                players_per_team.values().map(|v| v.len()).sum::<usize>() + random_players.len();
+            if total_players == TOTAL_ENVOYS {
+                break;
             }
         }
+        for p in random_players {
+            // Note. Although the players are already shuffled, we still need to randomize the team.
+            // If we always started with, say, Red team, then in case of (Blue, Random, Random) the
+            // first player would always play on two boards.
+            let mut team = if rng.gen() { Team::Red } else { Team::Blue };
+            if players_per_team[team].len() >= TOTAL_ENVOYS_PER_TEAM {
+                team = team.opponent();
+            }
+            players_per_team[team].push(p);
+        }
+
         players_per_team
             .into_iter()
-            .flat_map(|(team, mut team_players)| {
-                team_players.shuffle(&mut rng);
-                match team_players.len() {
-                    0 => panic!("Empty team: {}", team_players.len()),
-                    1 => {
-                        vec![PlayerInGame {
-                            name: team_players.pop().unwrap().name,
-                            id: BughousePlayer::DoublePlayer(team),
-                        }]
-                    }
-                    _ => BughouseBoard::iter()
-                        .zip(
-                            get_next_players(team_players.iter(), TOTAL_ENVOYS_PER_TEAM)
-                                .into_iter(),
-                        )
-                        .map(move |(board_idx, participant)| PlayerInGame {
-                            name: participant.name,
-                            id: BughousePlayer::SinglePlayer(BughouseEnvoy {
-                                board_idx,
-                                force: get_bughouse_force(team, board_idx),
-                            }),
-                        })
-                        .collect_vec(),
+            .flat_map(|(team, team_players)| match team_players.len() {
+                0 => panic!("Empty team: {}", team_players.len()),
+                1 => {
+                    // TODO: `assert!(!need_to_double_play);`
+                    vec![PlayerInGame {
+                        name: team_players.into_iter().exactly_one().unwrap().name.clone(),
+                        id: BughousePlayer::DoublePlayer(team),
+                    }]
                 }
+                2 => BughouseBoard::iter()
+                    .zip_eq(team_players)
+                    .map(move |(board_idx, participant)| PlayerInGame {
+                        name: participant.name.clone(),
+                        id: BughousePlayer::SinglePlayer(BughouseEnvoy {
+                            board_idx,
+                            force: get_bughouse_force(team, board_idx),
+                        }),
+                    })
+                    .collect_vec(),
+                _ => panic!("Too many players: {:?}", team_players),
             })
             .collect_vec()
     }
@@ -1436,19 +1433,16 @@ fn update_on_game_over(
         }
         BughouseGameStatus::Draw(_) => enum_map! { _ => 1 },
     };
-    match game.bughouse_rules().teaming {
-        Teaming::FixedTeams => {
-            let Scores::PerTeam(ref mut score_map) = scores else {
-                panic!("Expected Scores::PerTeam");
-            };
+    match scores {
+        Scores::Zeros => {
+            panic!("Unexpected uninitialized scores");
+        }
+        Scores::PerTeam(ref mut score_map) => {
             for (team, score) in team_scores {
                 *score_map.entry(team).or_insert(0) += score;
             }
         }
-        Teaming::IndividualMode => {
-            let Scores::PerPlayer(ref mut score_map) = scores else {
-                panic!("Expected Scores::PerPlayer");
-            };
+        Scores::PerPlayer(ref mut score_map) => {
             for p in game.players() {
                 *score_map.entry(p.name.clone()).or_insert(0) += team_scores[p.id.team()];
             }
@@ -1471,23 +1465,6 @@ fn player_turn_requests(
         .filter(|r| player.plays_for(r.envoy))
         .map(|r| (r.envoy.board_idx, r.turn_input.clone()))
         .collect()
-}
-
-fn get_next_players<'a>(
-    participants: impl Iterator<Item = &'a Participant>, max_players: usize,
-) -> Vec<Participant> {
-    let mut rng = rand::thread_rng();
-    let players_buckets =
-        participants.sorted_by_key(|p| p.games_played).group_by(|p| p.games_played);
-    let mut ret = Vec::<Participant>::new();
-    for (_, bucket) in players_buckets.into_iter() {
-        let bucket = bucket.collect_vec();
-        let seats_left = max_players - ret.len();
-        let n = cmp::min(bucket.len(), seats_left);
-        ret.extend(bucket.choose_multiple(&mut rng, n).cloned().cloned());
-    }
-    ret.shuffle(&mut rng);
-    ret
 }
 
 fn process_report_error(ctx: &Context, client_id: ClientId, report: &BughouseClientErrorReport) {

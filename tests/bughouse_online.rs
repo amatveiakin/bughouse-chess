@@ -22,7 +22,6 @@ fn default_chess_rules() -> ChessRules { ChessRules::classic_blitz() }
 
 fn default_bughouse_rules() -> BughouseRules {
     BughouseRules {
-        teaming: Teaming::FixedTeams,
         promotion: Promotion::Upgrade,
         min_pawn_drop_rank: SubjectiveRow::from_one_based(2),
         max_pawn_drop_rank: SubjectiveRow::from_one_based(6),
@@ -792,10 +791,7 @@ fn three_players() {
     let mut world = World::new();
     let [cl1, cl2, cl3] = world.new_clients();
 
-    let mtch = world.new_match_with_rules(cl1, "p1", default_chess_rules(), BughouseRules {
-        teaming: Teaming::IndividualMode,
-        ..default_bughouse_rules()
-    });
+    let mtch = world.new_match(cl1, "p1");
 
     world.server.state.TEST_override_board_assignment(mtch.clone(), vec![
         single_player("p1", envoy!(White A)),
@@ -834,10 +830,7 @@ fn five_players() {
     let mut world = World::new();
     let [cl1, cl2, cl3, cl4, cl5] = world.new_clients();
 
-    let mtch = world.new_match_with_rules(cl1, "p1", default_chess_rules(), BughouseRules {
-        teaming: Teaming::IndividualMode,
-        ..default_bughouse_rules()
-    });
+    let mtch = world.new_match(cl1, "p1");
 
     world.server.state.TEST_override_board_assignment(mtch.clone(), vec![
         single_player("p1", envoy!(White A)),
@@ -915,10 +908,7 @@ fn seating_assignment_is_fair() {
     let mut world = World::new();
     let [cl1, cl2, cl3, cl4, cl5, cl6] = world.new_clients();
 
-    let mtch = world.new_match_with_rules(cl1, "p1", default_chess_rules(), BughouseRules {
-        teaming: Teaming::IndividualMode,
-        ..default_bughouse_rules()
-    });
+    let mtch = world.new_match(cl1, "p1");
     world[cl2].join(&mtch, "p2");
     world[cl3].join(&mtch, "p3");
     world[cl4].join(&mtch, "p4");

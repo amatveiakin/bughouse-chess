@@ -294,15 +294,10 @@ impl WebClient {
             .ok_or(rust_error!("Player name is required if not a registered user"))
     }
     pub fn new_match(
-        &mut self, player_name: Option<String>, teaming: &str, starting_position: &str,
-        chess_variant: &str, fairy_pieces: &str, starting_time: &str, promotion: &str,
-        drop_aggression: &str, pawn_drop_ranks: &str, rating: &str,
+        &mut self, player_name: Option<String>, starting_position: &str, chess_variant: &str,
+        fairy_pieces: &str, starting_time: &str, promotion: &str, drop_aggression: &str,
+        pawn_drop_ranks: &str, rating: &str,
     ) -> JsResult<()> {
-        let teaming = match teaming {
-            "fixed-teams" => Teaming::FixedTeams,
-            "individual-mode" => Teaming::IndividualMode,
-            _ => return Err(format!("Invalid teaming: {teaming}").into()),
-        };
         let starting_position = match starting_position {
             "classic" => StartingPosition::Classic,
             "fischer-random" => StartingPosition::FischerRandom,
@@ -361,7 +356,6 @@ impl WebClient {
             time_control: TimeControl { starting_time },
         };
         let bughouse_rules = BughouseRules {
-            teaming,
             promotion,
             min_pawn_drop_rank,
             max_pawn_drop_rank,
@@ -768,8 +762,6 @@ impl WebClient {
             update_lobby(&mtch)?;
             return Ok(());
         };
-        // Improvement potential: Better readiness status display.
-        let teaming = mtch.rules.bughouse_rules.teaming;
         let game = alt_game.local_game();
         let board_shape = alt_game.board_shape();
         let my_id = alt_game.my_id();
@@ -881,8 +873,7 @@ impl WebClient {
                 let player_name = board.player_name(force);
                 let player = mtch.participants.iter().find(|p| p.name == *player_name).unwrap();
                 // TODO: Show teams for the upcoming game in individual mode.
-                // TODO: Display temporary observer readiness in case of teams with 3+ members.
-                let show_readiness = !game.is_active() && teaming == Teaming::FixedTeams;
+                let show_readiness = false;
                 let player_string = participant_string(&player, show_readiness);
                 name_node.set_text_content(Some(&player_string));
                 let is_draggable = is_piece_draggable(force.into());
@@ -974,12 +965,11 @@ impl WebClient {
         let Some(mtch) = self.state.mtch() else {
             return;
         };
-        let allowed_factions = mtch.rules.bughouse_rules.teaming.allowed_factions();
-        let current = allowed_factions.iter().position(|&f| f == mtch.my_faction).unwrap();
+        let current = ALL_FACTIONS.iter().position(|&f| f == mtch.my_faction).unwrap();
         let new = faction_modifier(current.try_into().unwrap());
-        let new = new.rem_euclid(allowed_factions.len().try_into().unwrap());
+        let new = new.rem_euclid(ALL_FACTIONS.len().try_into().unwrap());
         let new: usize = new.try_into().unwrap();
-        self.state.set_faction(allowed_factions[new]);
+        self.state.set_faction(ALL_FACTIONS[new]);
     }
 
     fn render_chalk_mark(
