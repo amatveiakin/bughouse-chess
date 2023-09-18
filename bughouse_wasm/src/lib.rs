@@ -1504,18 +1504,18 @@ fn render_clock(
 }
 
 fn update_scores(
-    scores: &Scores, participants: &[Participant], game_status: BughouseGameStatus,
+    scores: &Option<Scores>, participants: &[Participant], game_status: BughouseGameStatus,
     perspective: Perspective,
 ) -> JsResult<()> {
     let normalize = |score: u32| (score as f64) / 2.0;
     let team_node = web_document().get_existing_element_by_id("score-team")?;
     let individual_node = web_document().get_existing_element_by_id("score-individual")?;
     match scores {
-        Scores::Zeros => {
+        None => {
             team_node.set_text_content(None);
             individual_node.set_text_content(None);
         }
-        Scores::PerTeam(score_map) => {
+        Some(Scores::PerTeam(score_map)) => {
             let my_team = get_bughouse_team(perspective.board_idx, perspective.force);
             team_node.set_text_content(Some(&format!(
                 "{}\n⎯\n{}",
@@ -1524,7 +1524,7 @@ fn update_scores(
             )));
             individual_node.set_text_content(None);
         }
-        Scores::PerPlayer(score_map) => {
+        Some(Scores::PerPlayer(score_map)) => {
             let show_readiness = !game_status.is_active();
             let scores = score_map.iter().map(|(name, score)| {
                 let participant = participants.iter().find(|p| p.name == *name).unwrap();

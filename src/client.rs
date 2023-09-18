@@ -87,7 +87,7 @@ pub struct Match {
     // All players including those not participating in the current game.
     pub participants: Vec<Participant>,
     // Scores from the past matches.
-    pub scores: Scores,
+    pub scores: Option<Scores>,
     // Whether this client is ready to start a new game.
     pub is_ready: bool,
     // If `Some`, the first game is going to start after the countdown.
@@ -453,7 +453,7 @@ impl ClientState {
                     my_faction,
                     rules,
                     participants: Vec::new(),
-                    scores: Scores::new(),
+                    scores: None,
                     is_ready: false,
                     first_game_countdown_since: None,
                     game_state: None,
@@ -547,7 +547,7 @@ impl ClientState {
                 let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
                 assert!(game_state.alt_game.is_active());
                 game_state.alt_game.set_status(game_status, time);
-                mtch.scores = new_scores;
+                mtch.scores = Some(new_scores);
                 self.game_over_postprocess()?;
             }
             ChalkboardUpdated { chalkboard } => {
@@ -668,7 +668,7 @@ impl ClientState {
 
     fn update_scores(&mut self, new_scores: Scores) -> Result<(), EventError> {
         let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
-        mtch.scores = new_scores;
+        mtch.scores = Some(new_scores);
         Ok(())
     }
 

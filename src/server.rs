@@ -248,7 +248,7 @@ struct Match {
     match_creation: Instant,
     rules: Rules,
     participants: Participants,
-    scores: Scores,
+    scores: Option<Scores>,
     match_history: Vec<BughouseGame>, // final game states
     first_game_countdown_since: Option<Instant>,
     game_state: Option<GameState>, // active game or latest game
@@ -382,7 +382,7 @@ impl CoreServerState {
             match_creation: now,
             rules,
             participants: Participants::new(),
-            scores: Scores::new(),
+            scores: None,
             match_history: Vec::new(),
             first_game_countdown_since: None,
             game_state: None,
@@ -651,7 +651,7 @@ impl Match {
                 game,
                 turn_requests,
                 &mut self.participants,
-                &mut self.scores,
+                self.scores.as_mut().unwrap(),
                 game_start_offset_time,
                 game_end,
                 now,
@@ -659,7 +659,7 @@ impl Match {
             let ev = BughouseServerEvent::GameOver {
                 time: game_now,
                 game_status: game.status(),
-                scores: self.scores.clone(),
+                scores: self.scores.clone().unwrap(),
             };
             self.broadcast(ctx, &ev);
         }
@@ -889,7 +889,7 @@ impl Match {
         let Some(envoy) = player_bughouse_id.envoy_for(board_idx) else {
             return Err(unknown_error!("Cannot make turn: player does not play on this board"));
         };
-        let scores = &mut self.scores;
+        let scores = self.scores.as_mut().unwrap();
         let participants = &mut self.participants;
 
         if turn_requests.iter().filter(|r| r.envoy == envoy).count()
@@ -991,7 +991,7 @@ impl Match {
             player_bughouse_id.team().opponent(),
             VictoryReason::Resignation,
         );
-        let scores = &mut self.scores;
+        let scores = self.scores.as_mut().unwrap();
         let participants = &mut self.participants;
         let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
         game.set_status(status, game_now);
@@ -1194,7 +1194,7 @@ impl Match {
     }
 
     fn init_scores(&mut self, teaming: Teaming) {
-        if !matches!(self.scores, Scores::Zeros) {
+        if self.scores.is_some() {
             return;
         }
         match teaming {
@@ -1203,14 +1203,14 @@ impl Match {
                 for team in Team::iter() {
                     scores.insert(team, 0);
                 }
-                self.scores = Scores::PerTeam(scores);
+                self.scores = Some(Scores::PerTeam(scores));
             }
             Teaming::DynamicTeams => {
                 let mut scores = HashMap::new();
                 for p in self.participants.iter() {
                     scores.insert(p.name.clone(), 0);
                 }
-                self.scores = Scores::PerPlayer(scores);
+                self.scores = Some(Scores::PerPlayer(scores));
             }
         }
     }
@@ -1243,7 +1243,7 @@ impl Match {
             turn_log: game_state.game.turn_log().iter().map(|t| t.trim_for_sending()).collect(),
             preturns,
             game_status: game_state.game.status(),
-            scores: self.scores.clone(),
+            scores: self.scores.clone().unwrap(),
         }
     }
 
@@ -1434,9 +1434,6 @@ fn update_on_game_over(
         BughouseGameStatus::Draw(_) => enum_map! { _ => 1 },
     };
     match scores {
-        Scores::Zeros => {
-            panic!("Unexpected uninitialized scores");
-        }
         Scores::PerTeam(ref mut score_map) => {
             for (team, score) in team_scores {
                 *score_map.entry(team).or_insert(0) += score;
