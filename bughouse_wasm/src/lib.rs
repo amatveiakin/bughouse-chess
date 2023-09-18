@@ -21,6 +21,7 @@ use bughouse_chess::lobby::*;
 use bughouse_chess::meter::*;
 use bughouse_chess::session::*;
 use bughouse_chess::*;
+use enum_map::enum_map;
 use instant::Instant;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
@@ -766,7 +767,7 @@ impl WebClient {
         let board_shape = alt_game.board_shape();
         let my_id = alt_game.my_id();
         let perspective = alt_game.perspective();
-        update_scores(&mtch.scores, &mtch.participants, game.status(), perspective)?;
+        update_scores(&mtch.scores, &mtch.participants, game.status())?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |piece_force| {
                 my_id
@@ -1505,46 +1506,66 @@ fn render_clock(
 
 fn update_scores(
     scores: &Option<Scores>, participants: &[Participant], game_status: BughouseGameStatus,
-    perspective: Perspective,
 ) -> JsResult<()> {
+    let show_readiness = !game_status.is_active();
     let normalize = |score: u32| (score as f64) / 2.0;
-    let team_node = web_document().get_existing_element_by_id("score-team")?;
-    let individual_node = web_document().get_existing_element_by_id("score-individual")?;
+    let mut rows = vec![];
     match scores {
-        None => {
-            team_node.set_text_content(None);
-            individual_node.set_text_content(None);
-        }
+        None => {}
         Some(Scores::PerTeam(score_map)) => {
-            let my_team = get_bughouse_team(perspective.board_idx, perspective.force);
-            team_node.set_text_content(Some(&format!(
-                "{}\n⎯\n{}",
-                normalize(*score_map.get(&my_team.opponent()).unwrap_or(&0)),
-                normalize(*score_map.get(&my_team).unwrap_or(&0)),
-            )));
-            individual_node.set_text_content(None);
+            let mut team_players = enum_map! { _ => vec![] };
+            for p in participants {
+                match p.faction {
+                    Faction::Fixed(team) => team_players[team].push(p),
+                    Faction::Random => panic!("Unexpected Faction::Random with Scores::PerTeam"),
+                    Faction::Observer => {}
+                }
+            }
+            for (team, players) in team_players {
+                let team_size = players.len();
+                let mut first = true;
+                for p in players.iter().sorted_by_key(|p| &p.name) {
+                    let p_string = participant_string(p, show_readiness);
+                    let row;
+                    if first {
+                        first = false;
+                        let score = normalize(*score_map.get(&team).unwrap_or(&0));
+                        row = vec![
+                            format!(
+                                r#"<td class="score-player-name score-first-player-name">{p_string}</td>"#,
+                            ),
+                            format!(
+                                r#"<td rowspan="{team_size}" class="team-score-value">{score}</td>"#
+                            ),
+                        ];
+                    } else {
+                        row = vec![format!(r#"<td class="score-player-name">{p_string}</td>"#)];
+                    }
+                    rows.push(row);
+                }
+            }
         }
         Some(Scores::PerPlayer(score_map)) => {
-            let show_readiness = !game_status.is_active();
-            let scores = score_map.iter().map(|(name, score)| {
-                let participant = participants.iter().find(|p| p.name == *name).unwrap();
-                (
-                    name,
-                    format!(
-                        "{}: {}",
-                        participant_string(participant, show_readiness),
-                        normalize(*score)
-                    ),
-                )
-            });
-            let scores = scores
+            rows = score_map
+                .iter()
                 .sorted_by_key(|(name, _)| *name)
-                .map(|(_, display_string)| display_string)
-                .join("\n");
-            team_node.set_text_content(None);
-            individual_node.set_text_content(Some(&scores));
+                .map(|(name, score)| {
+                    let p = participants.iter().find(|p| p.name == *name).unwrap();
+                    let p_string = participant_string(p, show_readiness);
+                    vec![
+                        format!(r#"<td class="score-player-name">{p_string}</td>"#),
+                        format!(r#"<td class="individual-score-value">{score}</td>"#),
+                    ]
+                })
+                .collect_vec();
         }
     }
+    let table = format!(
+        r#"<table>{}</table>"#,
+        rows.iter().map(|row| format!(r#"<tr>{}</tr>"#, row.iter().join(""))).join("")
+    );
+    let score_node = web_document().get_existing_element_by_id("score-body")?;
+    score_node.set_inner_html(&table);
     Ok(())
 }
 
