@@ -45,9 +45,10 @@ use crate::rules::{BughouseRules, ChessRules, MatchRules};
 use crate::starter::{generate_starting_position, EffectiveStartingPosition};
 
 
-pub const MIN_PLAYERS: usize = 2;
-pub const TOTAL_ENVOYS: usize = 4;
+pub const MIN_PLAYERS: usize = TOTAL_TEAMS;
+pub const TOTAL_TEAMS: usize = 2;
 pub const TOTAL_ENVOYS_PER_TEAM: usize = 2;
+pub const TOTAL_ENVOYS: usize = TOTAL_TEAMS * TOTAL_ENVOYS_PER_TEAM;
 
 // All information required in order to replay a turn.
 #[derive(Clone, Debug, Serialize, Deserialize)]

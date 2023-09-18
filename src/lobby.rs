@@ -1,11 +1,11 @@
+use std::cmp;
 use std::collections::BTreeMap;
 
 use enum_map::{enum_map, EnumMap};
 
-use crate::game::{MIN_PLAYERS, TOTAL_ENVOYS};
+use crate::game::{MIN_PLAYERS, TOTAL_ENVOYS, TOTAL_ENVOYS_PER_TEAM, TOTAL_TEAMS};
 use crate::player::{Faction, Participant, Team};
 use crate::rules::Rules;
-use crate::TOTAL_ENVOYS_PER_TEAM;
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -108,6 +108,7 @@ pub fn verify_participants<'a>(
 // instead of concrete container type. The problem is: Rust iterators are not rewindable and mutable
 // iterators are not clonable.
 pub fn fix_teams_if_needed<T>(participants: &mut BTreeMap<T, Participant>) -> Teaming {
+    let total_players = participants.len();
     let random_players = participants.values().filter(|p| p.faction == Faction::Random).count();
     if random_players == 0 {
         return Teaming::FixedTeams;
@@ -118,7 +119,9 @@ pub fn fix_teams_if_needed<T>(participants: &mut BTreeMap<T, Participant>) -> Te
     let mut random_players_team = None;
 
     for (team, &team_players) in players_per_team.iter() {
-        if team_players < TOTAL_ENVOYS_PER_TEAM {
+        let max_expected_players =
+            cmp::min(total_players.div_ceil(TOTAL_TEAMS), TOTAL_ENVOYS_PER_TEAM);
+        if team_players < max_expected_players {
             if let Some(random_players_team) = random_players_team {
                 if random_players_team != team {
                     return Teaming::DynamicTeams;
@@ -208,6 +211,37 @@ mod tests {
             }
         );
         assert_eq!(fix_teams_if_needed(&mut participants), Teaming::FixedTeams);
+    }
+
+    #[test]
+    fn two_players_fixable() {
+        let mut participants = BTreeMap::new();
+        add_participant(&mut participants, "p1", Faction::Fixed(Team::Red), true);
+        add_participant(&mut participants, "p2", Faction::Random, true);
+        assert_eq!(fix_teams_if_needed(&mut participants), Teaming::FixedTeams);
+        assert_eq!(participants["p1"].faction, Faction::Fixed(Team::Red));
+        assert_eq!(participants["p2"].faction, Faction::Fixed(Team::Blue));
+    }
+
+    #[test]
+    fn three_players_fixable() {
+        let mut participants = BTreeMap::new();
+        add_participant(&mut participants, "p1", Faction::Fixed(Team::Red), true);
+        add_participant(&mut participants, "p2", Faction::Fixed(Team::Red), true);
+        add_participant(&mut participants, "p3", Faction::Random, true);
+        assert_eq!(fix_teams_if_needed(&mut participants), Teaming::FixedTeams);
+        assert_eq!(participants["p1"].faction, Faction::Fixed(Team::Red));
+        assert_eq!(participants["p2"].faction, Faction::Fixed(Team::Red));
+        assert_eq!(participants["p3"].faction, Faction::Fixed(Team::Blue));
+    }
+
+    #[test]
+    fn three_players_unfixable() {
+        let mut participants = BTreeMap::new();
+        add_participant(&mut participants, "p1", Faction::Fixed(Team::Red), true);
+        add_participant(&mut participants, "p2", Faction::Random, true);
+        add_participant(&mut participants, "p3", Faction::Random, true);
+        assert_eq!(fix_teams_if_needed(&mut participants), Teaming::DynamicTeams);
     }
 
     #[test]
