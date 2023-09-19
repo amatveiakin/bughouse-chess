@@ -1224,13 +1224,7 @@ function update_session() {
     registered_user_bar.style.display = is_registered_user ? null : 'None';
     guest_user_bar.style.display = !is_registered_user ? null : 'None';
     guest_user_tooltip.style.display = is_guest ? null : 'None';
-    if (is_registered_user) {
-        create_rated_match_button.disabled = false;
-        create_rated_match_button.title = null;
-    } else {
-        create_rated_match_button.disabled = true;
-        create_rated_match_button.title = 'Please sign in to play rated games.';
-    }
+    create_rated_match_button.disabled = !is_registered_user;
     for (const node of document.querySelectorAll('.logged-in-as-account')) {
         node.classList.toggle('account-user', is_registered_user);
         node.classList.toggle('account-guest', is_guest);

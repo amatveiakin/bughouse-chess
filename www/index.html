@@ -303,7 +303,7 @@
               <span class="logged-in-as-prefix">Playing as</span><br>
               <span class="logged-in-as-account">Guest</span>
             </div>
-            <div id="guest-user-tooltip" class="tooltip">
+            <div id="guest-user-tooltip" class="tooltip-standalone">
               <div class="tooltip-text">
                 <p>
                   Bughouse.pro is free and available to everybody. As a guest, you can create or
@@ -319,7 +319,14 @@
       </div>
       <div style="height: 0.4em"></div>
       <div class="align-center">
-        <button id="create-rated-match-button" class="big-button">New rated match</button>
+        <button id="create-rated-match-button" class="big-button tooltip-if-disabled">
+          New rated match
+          <div class="tooltip-text">
+            <p>
+              Please sign in to play rated games.
+            </p>
+          </div>
+        </button>
       </div>
       <div class="align-center">
         <button id="create-unrated-match-button" class="big-button">New unrated match</button>
@@ -394,7 +401,7 @@
           placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
           maxlength="16" pattern="[\p{L}\p{N}_-]+"
           title="User name may contain letters, numbers, underscores ('_') and dashes ('-')" />
-        <div class="tooltip">
+        <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
               Account name (required). Your unique public identifier at bughouse.pro.
@@ -410,7 +417,7 @@
         <label for="signup-email">Email</label>
         <input type="email" id="signup-email" name="email"
           placeholder="&nbsp;" autocomplete="email" />
-        <div class="tooltip">
+        <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
               Your email (optional). We do not send spam.
@@ -422,7 +429,7 @@
         <label for="signup-password">Password *</label>
         <input type="password" id="signup-password" name="password"
           placeholder="&nbsp;" minlength="8" autocomplete="new-password" required />
-        <div class="tooltip">
+        <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>Password (required). Must be at least 8 characters long. Case-sensitive.</p>
           </div>
@@ -448,7 +455,7 @@
           placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
           maxlength="16" pattern="[\p{L}\p{N}_-]+"
           title="User name may contain letters, numbers, underscores ('_') and dashes ('-')" />
-        <div class="tooltip">
+        <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
               Account name (required). Your unique public identifier at bughouse.pro.
@@ -510,7 +517,7 @@
         <label for="change-account-email">Email</label>
         <input type="email" id="change-account-email" name="email"
           placeholder="no email" autocomplete="email" />
-        <div class="tooltip">
+        <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
               Your email (optional; clear the field to remove). We do not send spam.
@@ -522,7 +529,7 @@
         <label for="change-account-new-password">New password</label>
         <input type="password" id="change-account-new-password" name="new_password"
           placeholder="keep current password" minlength="8" autocomplete="new-password" />
-        <div class="tooltip">
+        <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
               New password (leave empty to keep the current password).
@@ -583,7 +590,7 @@
           placeholder="&nbsp;" spellcheck="false" required
           maxlength="16" pattern="[\p{L}\p{N}_-]+"
           title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
-        <div class="tooltip guest-player-name">
+        <div class="guest-player-name">
           <div class="tooltip-text">
             <p>Player name. May contain letters, numbers, underscores and dashes. Case-sensitive.</p>
           </div>
@@ -594,7 +601,7 @@
           <option value="classic">Classic</option>
           <option value="fischer-random" selected>Fischer random</option>
         </select>
-        <div class="tooltip">
+        <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
               <i>Classic.</i>
@@ -616,7 +623,7 @@
           <option value="standard" selected>Standard</option>
           <option value="fog-of-war">Fog of war</option>
         </select>
-        <div class="tooltip">
+        <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
               <i>Standard.</i>
@@ -636,7 +643,7 @@
           <option value="accolade">Accolade</option>
           <option value="duck-chess">Duck chess</option>
         </select>
-        <div class="tooltip">
+        <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
               <i>No fairy.</i>
@@ -662,7 +669,7 @@
           placeholder="m:ss" spellcheck="false" autocomplete="off" required
           value="5:00" pattern="[0-9]+:[0-5][0-9]"
           title="Starting time in “m:ss” format." />
-        <div class="tooltip">
+        <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>Starting time in “m:ss” format. Increments and delays are not allowed.</p>
           </div>
@@ -674,7 +681,7 @@
           <option value="discard">Discard</option>
           <option value="steal">Steal</option>
         </select>
-        <div class="tooltip">
+        <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
               <i>Upgrade.</i>
@@ -702,7 +709,7 @@
           <option value="no-bughouse-mate">No bughouse mate</option>
           <option value="mate-allowed">Mate allowed</option>
         </select>
-        <div class="tooltip">
+        <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
               <i>No check.</i>
@@ -730,7 +737,7 @@
           placeholder="min-max" spellcheck="false" autocomplete="off" required
           value="2-6" pattern="1-[1-7]|2-[2-7]|3-[3-7]|4-[4-7]|5-[5-7]|6-[6-7]|7-[7-7]"
           title="Allowed pawn drop ranks in “min-max” format. Limitations: 1 ≤ min ≤ max ≤ 7" />
-        <div class="tooltip">
+        <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
               Allowed pawn drop ranks in “min-max” format. Ranks are counted starting from the player,

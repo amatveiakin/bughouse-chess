@@ -718,8 +718,11 @@ button:active:enabled {
               inset 2px 2px 3px rgba(0, 0, 0, .6);
 }
 
-.tooltip {
+.tooltip-standalone,
+.tooltip-if-disabled {
   position: relative;
+}
+.tooltip-standalone {
   display: inline-flex;
   justify-content: center;
   align-items: center;
@@ -728,10 +731,10 @@ button:active:enabled {
   width: 1.5em;
 }
 
-.tooltip .tooltip-text {
+.tooltip-text {
   visibility: hidden;
   text-align: initial;
-  font-size: 90%;
+  font-size: 0.9rem;
   width: 18em;
   background-color: var(--color-dialog-tooltip);
   padding: 0 1em;
@@ -747,7 +750,7 @@ button:active:enabled {
   transform: translate(0, -50%) translate(0, 2em);
 }
 /* Tooltip arrow */
-.tooltip .tooltip-text::after {
+.tooltip-text::after {
   content: "";
   position: absolute;
   top: 50%;
@@ -758,18 +761,19 @@ button:active:enabled {
   border-color: transparent var(--color-dialog-tooltip) transparent transparent;
 }
 
-.tooltip::after {
+.tooltip-standalone::after {
   font-size: 120%;
   content: "ⓘ";
 }
-.tooltip:hover::after {
+.tooltip-standalone:hover::after {
   content: "📖";
 }
-.tooltip:hover {
+.tooltip-standalone:hover,
+.tooltip-if-disabled:hover:disabled {
   cursor: help;
 }
-.tooltip:hover .tooltip-text {
-  font-weight: normal;
+.tooltip-standalone:hover .tooltip-text,
+.tooltip-if-disabled:hover:disabled .tooltip-text {
   visibility: visible;
   opacity: 1;
 }
