@@ -713,7 +713,7 @@ button {
   box-shadow: inset 2px 2px 3px rgba(255, 255, 255, .6),
               inset -2px -2px 3px rgba(0, 0, 0, .6);
 }
-button:active {
+button:active:enabled {
   box-shadow: inset -2px -2px 3px rgba(255, 255, 255, .6),
               inset 2px 2px 3px rgba(0, 0, 0, .6);
 }
@@ -843,7 +843,7 @@ dialog hr:after {
 dialog button {
   background-color: #eed5ae;
 }
-dialog button:hover {
+dialog button:hover:enabled {
   background-color: #f3debd;
 }
 
@@ -853,8 +853,13 @@ dialog button:hover {
   text-shadow: 0.05em 0.05em 0.05em #eaac73;
   background-color: #e59f5f;
 }
-.big-button:hover {
+.big-button:hover:enabled {
   background-color: #eaac73;
+}
+.big-button:disabled {
+  color: #606060;
+  text-shadow: none;
+  background-color: #d0d0d0;
 }
 
 .big-button.danger-button {

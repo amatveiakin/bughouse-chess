@@ -319,7 +319,10 @@
       </div>
       <div style="height: 0.4em"></div>
       <div class="align-center">
-        <button id="create-match-button" class="big-button">Create match</button>
+        <button id="create-rated-match-button" class="big-button">New rated match</button>
+      </div>
+      <div class="align-center">
+        <button id="create-unrated-match-button" class="big-button">New unrated match</button>
       </div>
       <div class="align-center">
         <button id="join-match-button" class="big-button">Join match</button>
@@ -738,25 +741,10 @@
             </p>
           </div>
         </div>
-
-        <label for="cc-rating">Rating</label>
-        <select id="cc-rating" name="rating">
-          <option value="rated" selected>Rated</option>
-          <option value="unrated">Unrated</option>
-        </select>
-        <div class="tooltip">
-          <div class="tooltip-text">
-            <p>Whether the game is rated.</p>
-            <p>Unrated games are still recorded, but they do not affect either personal or team rating.</p>
-            <p>
-              In a rated game either each player must play on one board (classic bughouse),
-              or each player must play on two boards. Playing one versus two is only allowed in unrated.
-            </p>
-          </div>
-        </div>
       </div>
+      <input type="hidden" id="cc-rating" name="rating" />
       <div class="align-center">
-        <button id="cc-confirm-button" class="big-button">Create match!</button>
+        <button id="cc-confirm-button" class="big-button"></button>
       </div>
     </form>
 
@@ -792,7 +780,7 @@
 
     <div id="menu-lobby-page" class="menu-page">
       <div class="flex-row">
-        <div id="lobby-match">Match <span id="lobby-match-id"></span></div>
+        <div id="lobby-match"><span id="lobby-match-caption"></span> <span id="lobby-match-id"></span></div>
         <!-- TODO: Allow to leave match (don't forget to send the message to the server) -->
         <!-- <button type="button" class="back-button" title="Go back">Leave</button> -->
       </div>

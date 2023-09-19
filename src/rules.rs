@@ -230,7 +230,9 @@ impl Rules {
         Ok(())
     }
 
-    // Try to keep in sync with "New match" dialog.
+    // Try to keep in sync with "New match" dialog. Not including "rated" because it is shown
+    // separately in web UI.
+    // TODO: Just list the variations. "Chess variant: Standard" is not useful.
     pub fn to_human_readable(&self) -> String {
         let starting_position = match self.chess_rules.starting_position {
             StartingPosition::Classic => "Classic",
@@ -249,10 +251,6 @@ impl Rules {
         let promotion = self.bughouse_rules.promotion_string();
         let drop_aggression = self.bughouse_rules.drop_aggression_string();
         let pawn_drop_ranks = self.bughouse_rules.pawn_drop_ranks_string();
-        let rating = match self.match_rules.rated {
-            true => "Rated",
-            false => "Unrated",
-        };
         formatdoc!(
             "
             Starting position: {starting_position}
@@ -262,7 +260,6 @@ impl Rules {
             Promotion: {promotion}
             Drop aggression: {drop_aggression}
             Pawn drop ranks: {pawn_drop_ranks}
-            Rating: {rating}
         "
         )
     }

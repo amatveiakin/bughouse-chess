@@ -675,9 +675,16 @@ impl WebClient {
         match self.state.next_notable_event() {
             Some(NotableEvent::SessionUpdated) => Ok(JsEventSessionUpdated {}.into()),
             Some(NotableEvent::MatchStarted(match_id)) => {
+                let rules = &self.state.mtch().unwrap().rules;
+                let lobby_match_caption =
+                    web_document().get_existing_element_by_id("lobby-match-caption")?;
+                lobby_match_caption.set_text_content(Some(if rules.match_rules.rated {
+                    "Rated match"
+                } else {
+                    "Unrated match"
+                }));
                 let rules_node = web_document().get_existing_element_by_id("lobby-rules")?;
-                rules_node
-                    .set_text_content(Some(&self.state.mtch().unwrap().rules.to_human_readable()));
+                rules_node.set_text_content(Some(&rules.to_human_readable()));
                 Ok(JsEventMatchStarted { match_id }.into())
             }
             Some(NotableEvent::GameStarted) => {

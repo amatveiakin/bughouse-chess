@@ -125,7 +125,8 @@ const view_account_change_button = document.getElementById('view-account-change-
 const view_account_delete_button = document.getElementById('view-account-delete-button');
 const change_account_email = document.getElementById('change-account-email');
 
-const create_match_button = document.getElementById('create-match-button');
+const create_rated_match_button = document.getElementById('create-rated-match-button');
+const create_unrated_match_button = document.getElementById('create-unrated-match-button');
 const join_match_button = document.getElementById('join-match-button');
 const jc_match_id = document.getElementById('jc-match-id');
 
@@ -287,7 +288,8 @@ menu_signup_page.addEventListener('submit', sign_up);
 menu_signup_with_google_page.addEventListener('submit', sign_up_with_google);
 menu_change_account_page.addEventListener('submit', change_account);
 menu_delete_account_page.addEventListener('submit', delete_account);
-create_match_button.addEventListener('click', on_create_match_submenu);
+create_rated_match_button.addEventListener('click', (event) => on_create_match_submenu(event, true));
+create_unrated_match_button.addEventListener('click', (event) => on_create_match_submenu(event, false));
 join_match_button.addEventListener('click', on_join_match_submenu);
 menu_create_match_page.addEventListener('submit', on_create_match_confirm);
 menu_join_match_page.addEventListener('submit', on_join_match_confirm);
@@ -1222,6 +1224,13 @@ function update_session() {
     registered_user_bar.style.display = is_registered_user ? null : 'None';
     guest_user_bar.style.display = !is_registered_user ? null : 'None';
     guest_user_tooltip.style.display = is_guest ? null : 'None';
+    if (is_registered_user) {
+        create_rated_match_button.disabled = false;
+        create_rated_match_button.title = null;
+    } else {
+        create_rated_match_button.disabled = true;
+        create_rated_match_button.title = 'Please sign in to play rated games.';
+    }
     for (const node of document.querySelectorAll('.logged-in-as-account')) {
         node.classList.toggle('account-user', is_registered_user);
         node.classList.toggle('account-guest', is_guest);
@@ -1344,7 +1353,11 @@ async function delete_account(event) {
     }), 'Account deleted.');
 }
 
-function on_create_match_submenu(event) {
+function on_create_match_submenu(event, rated) {
+    const cc_rating = document.getElementById('cc-rating');
+    const cc_confirm_button = document.getElementById('cc-confirm-button');
+    cc_rating.value = rated ? 'rated' : 'unrated';
+    cc_confirm_button.innerText = rated ? 'Create rated match!' : 'Create unrated match!';
     push_menu_page(menu_create_match_page);
 }
 
