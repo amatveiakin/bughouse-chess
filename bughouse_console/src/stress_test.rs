@@ -14,7 +14,8 @@ use rand::prelude::*;
 use rand::seq::SliceRandom;
 
 
-const GAMES_PER_BATCH: usize = 100;
+const PURE_GAMES_PER_BATCH: usize = 100;
+const ALTERED_GAMES_PER_BATCH: usize = 10;
 const TURNS_PER_GAME: usize = 100_000;
 const ACTIONS_PER_GAME: usize = 10_000;
 const MAX_ATTEMPTS_GENERATING_SERVER_TURN: usize = 10_000;
@@ -130,11 +131,10 @@ fn bughouse_game(rules: Rules) -> BughouseGame {
     )
 }
 
-fn random_coord(rng: &mut rand::rngs::ThreadRng) -> Coord {
-    // Improvement potential: Take board shape into account.
+fn random_coord(rng: &mut rand::rngs::ThreadRng, board_shape: BoardShape) -> Coord {
     Coord::new(
-        Row::from_zero_based(rng.gen_range(0..MAX_ROWS as i8)),
-        Col::from_zero_based(rng.gen_range(0..MAX_COLS as i8)),
+        Row::from_zero_based(rng.gen_range(0..board_shape.num_rows as i8)),
+        Col::from_zero_based(rng.gen_range(0..board_shape.num_cols as i8)),
     )
 }
 
@@ -160,11 +160,11 @@ fn random_board(rng: &mut rand::rngs::ThreadRng) -> BughouseBoard {
     }
 }
 
-fn random_turn(rng: &mut rand::rngs::ThreadRng) -> Turn {
+fn random_turn(rng: &mut rand::rngs::ThreadRng, board_shape: BoardShape) -> Turn {
     // Note: Castling is also covered thanks to `TurnInput::DragDrop`.
     if rng.gen_bool(DROP_RATIO) {
         Turn::Drop(TurnDrop {
-            to: random_coord(rng),
+            to: random_coord(rng, board_shape),
             piece_kind: random_piece(rng),
         })
     } else {
@@ -172,8 +172,8 @@ fn random_turn(rng: &mut rand::rngs::ThreadRng) -> Turn {
         // On the other hand, too many invalid turns would mean that very little happens.
         // Decision: randomly try to promote all pieces (pawns and non-pawns), but only
         // if they are potentially on the last row.
-        let from = random_coord(rng);
-        let to = random_coord(rng);
+        let from = random_coord(rng, board_shape);
+        let to = random_coord(rng, board_shape);
 
         let promote_to = if to.row == Row::_1 || to.row == Row::_8 && rng.gen_bool(PROMOTION_RATIO)
         {
@@ -206,6 +206,7 @@ fn random_action_kind(rng: &mut rand::rngs::ThreadRng) -> ActionKind {
 
 fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Option<Action> {
     use ActionKind::*;
+    let board_shape = alt_game.chess_rules().board_shape();
     Some(match random_action_kind(rng) {
         SetStatus => {
             let status = BughouseGameStatus::Victory(Team::Red, VictoryReason::Resignation);
@@ -237,7 +238,7 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
                 while alt_game.my_id().plays_for(envoy) {
                     envoy = random_envoy();
                 }
-                let turn = random_turn(rng);
+                let turn = random_turn(rng, board_shape);
                 let turn_is_valid = game
                     .try_turn(
                         envoy.board_idx,
@@ -262,7 +263,7 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
         }
         LocalTurn => {
             let board_idx = random_board(rng);
-            let turn_input = TurnInput::DragDrop(random_turn(rng));
+            let turn_input = TurnInput::DragDrop(random_turn(rng, board_shape));
             let time = GameInstant::game_start();
             Action::LocalTurn { board_idx, turn_input, time }
         }
@@ -272,14 +273,14 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
             let start = if rng.gen_bool(DRAG_RESERVE_RATIO) {
                 PieceDragStart::Reserve(random_piece(rng))
             } else {
-                PieceDragStart::Board(random_coord(rng))
+                PieceDragStart::Board(random_coord(rng, board_shape))
             };
             Action::StartDragPiece { board_idx, start }
         }
         AbortDragPiece => Action::AbortDragPiece,
         DragPieceDrop => {
             let board_idx = random_board(rng);
-            let dest = random_coord(rng);
+            let dest = random_coord(rng, board_shape);
             let promote_to = PieceKind::Queen;
             Action::DragPieceDrop { board_idx, dest, promote_to }
         }
@@ -318,12 +319,12 @@ pub fn bughouse_game_test() -> io::Result<()> {
         let mut finished_games = 0;
         let mut total_turns = 0;
         let mut successful_turns = 0;
-        for _ in 0..GAMES_PER_BATCH {
+        for _ in 0..PURE_GAMES_PER_BATCH {
             let mut game = bughouse_game(random_rules(rng));
             for _ in 0..TURNS_PER_GAME {
                 let ret = game.try_turn(
                     random_board(rng),
-                    &TurnInput::DragDrop(random_turn(rng)),
+                    &TurnInput::DragDrop(random_turn(rng, game.chess_rules().board_shape())),
                     TurnMode::Normal,
                     GameInstant::game_start(),
                 );
@@ -342,7 +343,7 @@ pub fn bughouse_game_test() -> io::Result<()> {
         let elpased = t0.elapsed();
         println!(
             "Ran: {} games ({} finished), {} turns ({} successful) in {:.2}s",
-            GAMES_PER_BATCH,
+            PURE_GAMES_PER_BATCH,
             finished_games,
             total_turns,
             successful_turns,
@@ -368,7 +369,7 @@ pub fn altered_game_test() -> io::Result<()> {
     loop {
         let t0 = Instant::now();
         let mut finished_games = 0;
-        for _ in 0..GAMES_PER_BATCH {
+        for _ in 0..ALTERED_GAMES_PER_BATCH {
             let participant =
                 BughouseParticipant::Player(BughousePlayer::SinglePlayer(BughouseEnvoy {
                     board_idx: random_board(rng),
@@ -377,7 +378,7 @@ pub fn altered_game_test() -> io::Result<()> {
             let mut alt_game = AlteredGame::new(participant, bughouse_game(random_rules(rng)));
             for _ in 0..ACTIONS_PER_GAME {
                 let Some(action) = random_action(&alt_game, rng) else {
-                    break;
+                    continue;
                 };
                 TEST_STATE.with(|cell| {
                     let state = &mut cell.borrow_mut();
@@ -397,7 +398,7 @@ pub fn altered_game_test() -> io::Result<()> {
         let elpased = t0.elapsed();
         println!(
             "Ran: {} games ({} finished) in {:.2}s",
-            GAMES_PER_BATCH,
+            ALTERED_GAMES_PER_BATCH,
             finished_games,
             elpased.as_secs_f64(),
         );

@@ -49,10 +49,7 @@ impl<T: Clone> GenericGrid<T> {
     pub fn contains_coord(&self, coord: Coord) -> bool { self.shape().contains_coord(coord) }
 
     pub fn get(&self, pos: Coord) -> GridItem<&T> {
-        match self
-            .data
-            .get((pos.row.to_zero_based() as usize, pos.col.to_zero_based() as usize))
-        {
+        match self.data.get(coord_to_index(pos)) {
             None => GridItem::OutOfBounds,
             Some(None) => GridItem::Empty,
             Some(Some(v)) => GridItem::Piece(v),
@@ -93,21 +90,40 @@ impl<T: Clone> GenericGrid<T> {
 
 impl<T: Clone> ops::Index<Coord> for GenericGrid<T> {
     type Output = Option<T>;
+    #[track_caller]
     fn index(&self, pos: Coord) -> &Self::Output {
-        &self.data[[
-            pos.row.to_zero_based() as usize,
-            pos.col.to_zero_based() as usize,
-        ]]
+        let shape = self.shape();
+        self.data
+            .get(coord_to_index(pos))
+            .unwrap_or_else(|| panic!("{}", out_of_bound_message(pos, shape)))
     }
 }
 
 impl<T: Clone> ops::IndexMut<Coord> for GenericGrid<T> {
+    #[track_caller]
     fn index_mut(&mut self, pos: Coord) -> &mut Self::Output {
-        &mut self.data[[
-            pos.row.to_zero_based() as usize,
-            pos.col.to_zero_based() as usize,
-        ]]
+        let shape = self.shape();
+        self.data
+            .get_mut(coord_to_index(pos))
+            .unwrap_or_else(|| panic!("{}", out_of_bound_message(pos, shape)))
     }
+}
+
+fn coord_to_index(pos: Coord) -> [usize; 2] {
+    [
+        pos.row.to_zero_based() as usize,
+        pos.col.to_zero_based() as usize,
+    ]
+}
+
+fn out_of_bound_message(pos: Coord, board_shape: BoardShape) -> String {
+    format!(
+        "Coord ({}, {}) is out of bound for {}x{} board",
+        pos.row.to_zero_based(),
+        pos.col.to_zero_based(),
+        board_shape.num_rows,
+        board_shape.num_cols
+    )
 }
 
 fn debug_format_piece(piece: &PieceOnBoard) -> String {
