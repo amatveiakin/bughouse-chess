@@ -682,16 +682,7 @@ impl WebClient {
         match self.state.next_notable_event() {
             Some(NotableEvent::SessionUpdated) => Ok(JsEventSessionUpdated {}.into()),
             Some(NotableEvent::MatchStarted(match_id)) => {
-                let rules = &self.state.mtch().unwrap().rules;
-                let lobby_match_caption =
-                    web_document().get_existing_element_by_id("lobby-match-caption")?;
-                lobby_match_caption.set_text_content(Some(if rules.match_rules.rated {
-                    "Rated match"
-                } else {
-                    "Unrated match"
-                }));
-                let rules_node = web_document().get_existing_element_by_id("lobby-rules")?;
-                rules_node.set_text_content(Some(&rules.to_human_readable()));
+                init_lobby(&self.state.mtch().unwrap().rules)?;
                 Ok(JsEventMatchStarted { match_id }.into())
             }
             Some(NotableEvent::GameStarted) => {
@@ -1172,6 +1163,68 @@ pub fn init_page() -> JsResult<()> {
 
 #[wasm_bindgen]
 pub fn git_version() -> String { my_git_version!().to_owned() }
+
+// Try to keep ordering in sync with "New match" dialog.
+// Improvement potential: Add tooltips (similarly to match creation dialog).
+fn init_lobby(rules: &Rules) -> JsResult<()> {
+    let lobby_match_caption = web_document().get_existing_element_by_id("lobby-match-caption")?;
+    lobby_match_caption.set_text_content(Some(if rules.match_rules.rated {
+        "Rated match"
+    } else {
+        "Unrated match"
+    }));
+
+    // Note: Use a table rather than two independent blocks with valign=top in order to align the
+    // caption with the baseline of the first variant.
+    let mut variants = rules.chess_rules.variants_human_readable();
+    if variants.is_empty() {
+        variants.push("—");
+    }
+    let mut variant_rows = vec![];
+    for variant in variants {
+        let caption = if variant_rows.is_empty() {
+            "<td class='lobby-rule-caption'>Variants:</td>"
+        } else {
+            "<td></td>"
+        };
+        let value = format!("<td class='lobby-rule-variant'>{variant}</td>");
+        variant_rows.push(format!("{caption}{value}"));
+    }
+    let variants_string = format!(
+        "<table>{}</table>",
+        variant_rows
+            .iter()
+            .map(|s| format!("<tr class='valign-baseline'>{s}</tr>"))
+            .join("")
+    );
+
+    let rule_rows = [
+        ("Time control", rules.chess_rules.time_control.to_string()),
+        ("Promotion", rules.bughouse_rules.promotion_string().to_owned()),
+        ("Drop aggression", rules.bughouse_rules.drop_aggression_string().to_owned()),
+        ("Pawn drop ranks", rules.bughouse_rules.pawn_drop_ranks_string()),
+    ]
+    .map(|(caption, value)| {
+        format!(
+            "<td class='lobby-rule-caption'>{caption}:</td>
+            <td class='lobby-rule-detail'>{value}</td>"
+        )
+    });
+    let rules_string = format!(
+        "<table>{}</table>",
+        rule_rows
+            .iter()
+            .map(|s| format!("<tr class='valign-baseline'>{s}</tr>"))
+            .join("")
+    );
+
+    let variants_node = web_document().get_existing_element_by_id("lobby-variants")?;
+    let rules_node = web_document().get_existing_element_by_id("lobby-rules")?;
+    variants_node.set_inner_html(&variants_string);
+    rules_node.set_inner_html(&rules_string);
+
+    Ok(())
+}
 
 fn update_lobby(mtch: &Match) -> JsResult<()> {
     let document = web_document();

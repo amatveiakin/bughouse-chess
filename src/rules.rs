@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use chain_cmp::chmp;
-use indoc::formatdoc;
 use serde::{Deserialize, Serialize};
 
 use crate::clock::TimeControl;
@@ -154,7 +153,7 @@ impl ChessRules {
         }
     }
 
-    pub fn variants(&self) -> Vec<&'static str> {
+    pub fn variants_pgn(&self) -> Vec<&'static str> {
         let mut v = vec![];
         match self.starting_position {
             StartingPosition::Classic => {}
@@ -175,6 +174,29 @@ impl ChessRules {
         }
         if self.duck_chess {
             v.push("DuckChess");
+        }
+        v
+    }
+
+    pub fn variants_human_readable(&self) -> Vec<&'static str> {
+        let mut v = vec![];
+        match self.starting_position {
+            StartingPosition::Classic => {}
+            StartingPosition::FischerRandom => {
+                v.push("Fischer random");
+            }
+        }
+        match self.fairy_pieces {
+            FairyPieces::NoFairy => {}
+            FairyPieces::Accolade => {
+                v.push("Accolade");
+            }
+        }
+        if self.fog_of_war {
+            v.push("For of war");
+        }
+        if self.duck_chess {
+            v.push("Duck chess");
         }
         v
     }
@@ -246,25 +268,5 @@ impl Rules {
                 || self.bughouse_rules.drop_aggression == DropAggression::MateAllowed
         );
         Ok(())
-    }
-
-    // Try to keep in sync with "New match" dialog. Not including "rated" because it is shown
-    // separately in web UI.
-    // TODO: Just list the variations. "Chess variant: Standard" is not useful.
-    pub fn to_human_readable(&self) -> String {
-        let variants = self.chess_rules.variants().join(", ");
-        let time_control = self.chess_rules.time_control.to_string();
-        let promotion = self.bughouse_rules.promotion_string();
-        let drop_aggression = self.bughouse_rules.drop_aggression_string();
-        let pawn_drop_ranks = self.bughouse_rules.pawn_drop_ranks_string();
-        formatdoc!(
-            "
-            Variants: {variants}
-            Time control: {time_control}
-            Promotion: {promotion}
-            Drop aggression: {drop_aggression}
-            Pawn drop ranks: {pawn_drop_ranks}
-        "
-        )
     }
 }
