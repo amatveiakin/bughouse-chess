@@ -1325,7 +1325,9 @@ impl Match {
             // If we always started with, say, Red team, then in case of (Blue, Random, Random) the
             // first player would always play on two boards.
             let mut team = if rng.gen() { Team::Red } else { Team::Blue };
-            if players_per_team[team].len() >= TOTAL_ENVOYS_PER_TEAM {
+            if players_per_team[team].len() >= TOTAL_ENVOYS_PER_TEAM
+                || players_per_team[team.opponent()].is_empty()
+            {
                 team = team.opponent();
             }
             players_per_team[team].push(p);
