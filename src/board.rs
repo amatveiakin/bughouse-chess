@@ -65,7 +65,7 @@ fn combine_pieces(
     rules: &ChessRules, id: PieceId, first: PieceOnBoard, second: PieceOnBoard,
 ) -> Option<PieceOnBoard> {
     match rules.fairy_pieces {
-        FairyPieces::NoFairy | FairyPieces::DuckChess => None,
+        FairyPieces::NoFairy => None,
         FairyPieces::Accolade => accolade_combine_pieces(id, first, second),
     }
 }
@@ -759,7 +759,7 @@ impl Board {
         let grid = generate_starting_grid(board_shape, starting_position, &mut next_piece_id);
         let castling_rights = initial_castling_rights(starting_position);
         let mut reserves = enum_map! { _ => enum_map!{ _ => 0 } };
-        if chess_rules.fairy_pieces == FairyPieces::DuckChess {
+        if chess_rules.duck_chess {
             reserves[Force::White][PieceKind::Duck] += 1;
         }
         let mut board = Board {
@@ -943,18 +943,15 @@ impl Board {
             TurnMode::Normal => self.active_force.opponent(),
             TurnMode::Preturn => self.active_force,
         };
-        match self.chess_rules.fairy_pieces {
-            FairyPieces::NoFairy | FairyPieces::Accolade => {
+        if self.chess_rules.duck_chess {
+            if self.is_duck_turn[force] {
+                self.is_duck_turn[force] = false;
                 self.active_force = next_active_force;
+            } else {
+                self.is_duck_turn[force] = true;
             }
-            FairyPieces::DuckChess => {
-                if self.is_duck_turn[force] {
-                    self.is_duck_turn[force] = false;
-                    self.active_force = next_active_force;
-                } else {
-                    self.is_duck_turn[force] = true;
-                }
-            }
+        } else {
+            self.active_force = next_active_force;
         }
     }
 
@@ -1352,7 +1349,7 @@ impl Board {
                 });
             }
             Turn::PlaceDuck(to) => {
-                if self.chess_rules.fairy_pieces != FairyPieces::DuckChess {
+                if !self.chess_rules.duck_chess {
                     return Err(TurnError::NotDuckChess);
                 }
                 if !self.is_duck_turn[force] {

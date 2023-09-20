@@ -1,17 +1,20 @@
+use std::iter;
+
 use indoc::formatdoc;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use time::macros::format_description;
 
 use crate::algebraic::AlgebraicCharset;
 use crate::board::{DrawReason, VictoryReason};
 use crate::clock::TimeControl;
+use crate::fen;
 use crate::force::Force;
 use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, TurnRecordExpanded,
 };
 use crate::player::Team;
 use crate::rules::StartingPosition;
-use crate::{fen, ChessVariant, FairyPieces};
 
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -56,6 +59,27 @@ fn time_control_to_string(control: &TimeControl) -> String {
     control.starting_time.as_secs().to_string()
 }
 
+fn make_event(game: &BughouseGame) -> &'static str {
+    if game.match_rules().rated {
+        "Rated Bughouse Match"
+    } else {
+        "Unrated Bughouse Match"
+    }
+}
+
+// Improvement potential: Convert `EffectiveStartingPosition`to FEN directly.
+fn make_setup_tag(game: &BughouseGame) -> String {
+    let game_at_start = game.clone_from_start();
+    match game.chess_rules().starting_position {
+        StartingPosition::Classic => String::new(),
+        StartingPosition::FischerRandom => {
+            let a = fen::starting_position_to_shredder_fen(game_at_start.board(BughouseBoard::A));
+            let b = fen::starting_position_to_shredder_fen(game_at_start.board(BughouseBoard::B));
+            format!("[SetUp \"1\"]\n[FEN \"{a} | {b}\"]\n")
+        }
+    }
+}
+
 fn make_result_string(game: &BughouseGame) -> &'static str {
     use BughouseGameStatus::*;
     match game.status() {
@@ -85,48 +109,17 @@ fn make_termination_string(game: &BughouseGame) -> &'static str {
     }
 }
 
+// TODO(duck): Improve duck notation. Here's the suggested notation:
+//   https://duckchess.com/#:~:text=Finally%2C%20the%20standard%20notation%20for,duck%20being%20placed%20at%20g5.
+// Note that it interacts questionably with bughouse, because it reuses the '@' symbol.
+// On the other hand, it's still unambiguous, so maybe it's ok.
 fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
     use BughouseBoard::*;
     use Force::*;
-    // TODO: Save game start time instead.
-    let now = time::OffsetDateTime::now_utc();
-    // Improvement potential: Convert `EffectiveStartingPosition`to FEN directly.
-    let game_at_start = game.clone_from_start();
-    let mut variant = vec!["Bughouse"];
-    let mut setup = String::new();
-    match game.chess_rules().starting_position {
-        StartingPosition::Classic => {}
-        StartingPosition::FischerRandom => {
-            variant.push("Chess960");
-            let a = fen::starting_position_to_shredder_fen(game_at_start.board(BughouseBoard::A));
-            let b = fen::starting_position_to_shredder_fen(game_at_start.board(BughouseBoard::B));
-            setup = format!("[SetUp \"1\"]\n[FEN \"{a} | {b}\"]\n");
-        }
-    }
-    match game.chess_rules().chess_variant {
-        ChessVariant::Standard => {}
-        ChessVariant::FogOfWar => {
-            variant.push("DarkChess");
-        }
-    }
-    match game.chess_rules().fairy_pieces {
-        FairyPieces::NoFairy => {}
-        FairyPieces::DuckChess => {
-            // TODO(duck): Improve duck notation. Here's the suggested notation:
-            //   https://duckchess.com/#:~:text=Finally%2C%20the%20standard%20notation%20for,duck%20being%20placed%20at%20g5.
-            // Note that it interacts questionably with bughouse, because it reuses the '@' symbol.
-            // On the other hand, it's still unambiguous, so maybe it's ok.
-            variant.push("DuckChess");
-        }
-        FairyPieces::Accolade => {
-            variant.push("Accolade");
-        }
-    }
-    let event = if game.match_rules().rated {
-        "Rated Bughouse Match"
-    } else {
-        "Unrated Bughouse Match"
-    };
+    let now = time::OffsetDateTime::now_utc(); // TODO: Save game start time instead.
+    let event = make_event(game);
+    let variants = iter::once("Bughouse").chain(game.chess_rules().variants()).collect_vec();
+    let setup_tag = make_setup_tag(game);
     formatdoc!(
         r#"
         [Event "{}"]
@@ -156,11 +149,11 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
         game.board(B).player_name(White),
         game.board(B).player_name(Black),
         time_control_to_string(&game.chess_rules().time_control),
-        variant.join(" "),
+        variants.join(" "),
         game.bughouse_rules().promotion_string(),
         game.bughouse_rules().drop_aggression_string(),
         game.bughouse_rules().pawn_drop_ranks_string(),
-        setup,
+        setup_tag,
         make_result_string(game),
         make_termination_string(game),
         game.outcome(),

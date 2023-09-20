@@ -87,21 +87,18 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
         let rules = Rules {
             match_rules: MatchRules::unrated(),
             chess_rules: ChessRules {
-                starting_position: if rng.gen::<bool>() {
-                    StartingPosition::Classic
-                } else {
-                    StartingPosition::FischerRandom
-                },
-                chess_variant: if rng.gen::<bool>() {
-                    ChessVariant::Standard
-                } else {
-                    ChessVariant::FogOfWar
-                },
                 fairy_pieces: if rng.gen::<bool>() {
                     FairyPieces::NoFairy
                 } else {
                     FairyPieces::Accolade
                 },
+                starting_position: if rng.gen::<bool>() {
+                    StartingPosition::Classic
+                } else {
+                    StartingPosition::FischerRandom
+                },
+                duck_chess: rng.gen::<bool>(),
+                fog_of_war: rng.gen::<bool>(),
                 time_control: TimeControl { starting_time: Duration::from_secs(300) },
             },
             bughouse_rules: BughouseRules {

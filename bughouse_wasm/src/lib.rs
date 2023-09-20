@@ -295,25 +295,29 @@ impl WebClient {
             .ok_or(rust_error!("Player name is required if not a registered user"))
     }
     pub fn new_match(
-        &mut self, player_name: Option<String>, starting_position: &str, chess_variant: &str,
-        fairy_pieces: &str, starting_time: &str, promotion: &str, drop_aggression: &str,
-        pawn_drop_ranks: &str, rating: &str,
+        &mut self, player_name: Option<String>, fairy_pieces: &str, starting_position: &str,
+        duck_chess: &str, fog_of_war: &str, starting_time: &str, promotion: &str,
+        drop_aggression: &str, pawn_drop_ranks: &str, rating: &str,
     ) -> JsResult<()> {
-        let starting_position = match starting_position {
-            "classic" => StartingPosition::Classic,
-            "fischer-random" => StartingPosition::FischerRandom,
-            _ => return Err(format!("Invalid starting position: {starting_position}").into()),
-        };
-        let chess_variant = match chess_variant {
-            "standard" => ChessVariant::Standard,
-            "fog-of-war" => ChessVariant::FogOfWar,
-            _ => return Err(format!("Invalid chess variant: {chess_variant}").into()),
-        };
         let fairy_pieces = match fairy_pieces {
-            "no-fairy" => FairyPieces::NoFairy,
+            "off" => FairyPieces::NoFairy,
             "accolade" => FairyPieces::Accolade,
-            "duck-chess" => FairyPieces::DuckChess,
-            _ => return Err(format!("Invalid fairy pieces: {fairy_pieces}").into()),
+            s => return Err(format!("Invalid fairy pieces: {s}").into()),
+        };
+        let starting_position = match starting_position {
+            "off" => StartingPosition::Classic,
+            "fischer-random" => StartingPosition::FischerRandom,
+            s => return Err(format!("Invalid starting position: {s}").into()),
+        };
+        let duck_chess = match duck_chess {
+            "off" => false,
+            "on" => true,
+            s => return Err(format!("Invalid duck chess option: {s}").into()),
+        };
+        let fog_of_war = match fog_of_war {
+            "off" => false,
+            "on" => true,
+            s => return Err(format!("Invalid fog of war option: {s}").into()),
         };
         let drop_aggression = match drop_aggression {
             "no-check" => DropAggression::NoCheck,
@@ -351,9 +355,10 @@ impl WebClient {
 
         let match_rules = MatchRules { rated };
         let chess_rules = ChessRules {
-            starting_position,
-            chess_variant,
             fairy_pieces,
+            starting_position,
+            duck_chess,
+            fog_of_war,
             time_control: TimeControl { starting_time },
         };
         let bughouse_rules = BughouseRules {
@@ -442,14 +447,16 @@ impl WebClient {
                 Some(to_display_coord(coord, board_shape, board_orientation)),
             )?;
             let board_idx = get_board_index(display_board_idx, alt_game.perspective());
-            // Improvement potential. More conistent legal moves highlighting. Perhaps, add
-            //   a config with "Yes" / "No" / "If fairy chess" values.
+            // Note. The name "nontrivial" part of `nontrivial_fairy_pieces` comes from the fact
+            // that duck is, in some sense, a fairy piece, but not a one that requires move hints.
+            // Improvement potential. More conistent legal moves highlighting. Perhaps, add a config
+            //   with "Yes" / "No" / "If fairy chess" values.
             let rules = alt_game.chess_rules();
             let nontrivial_fairy_pieces = match rules.fairy_pieces {
-                FairyPieces::NoFairy | FairyPieces::DuckChess => false,
+                FairyPieces::NoFairy => false,
                 FairyPieces::Accolade => true,
             };
-            if nontrivial_fairy_pieces && rules.chess_variant != ChessVariant::FogOfWar {
+            if nontrivial_fairy_pieces && !rules.fog_of_war {
                 for dest in alt_game.local_game().board(board_idx).legal_turn_destinations(coord) {
                     set_square_highlight(
                         None,
@@ -1617,7 +1624,7 @@ fn update_turn_log(
                 turn_number_str = format!("{}.", record.number);
                 prev_number = record.number;
             }
-            let is_in_fog = game.chess_rules().chess_variant == ChessVariant::FogOfWar
+            let is_in_fog = game.chess_rules().fog_of_war
                 && game.is_active()
                 && my_id.as_player().map_or(false, |p| p.team() != record.envoy.team());
             let algebraic = if is_in_fog {

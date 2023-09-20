@@ -1364,9 +1364,10 @@ function on_create_match_confirm(event) {
         const data = new FormData(event.target);
         wasm_client().new_match(
             data.get('player_name'),
-            data.get('starting_position'),
-            data.get('chess_variant'),
             data.get('fairy_pieces'),
+            data.get('starting_position'),
+            data.get('duck_chess'),
+            data.get('fog_of_war'),
             data.get('starting_time'),
             data.get('promotion'),
             data.get('drop_aggression'),

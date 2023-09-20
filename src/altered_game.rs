@@ -33,7 +33,7 @@ use crate::game::{
     BughouseParticipant, TurnRecord, TurnRecordExpanded,
 };
 use crate::piece::{CastleDirection, PieceForce, PieceKind};
-use crate::rules::{BughouseRules, ChessRules, ChessVariant, Promotion};
+use crate::rules::{BughouseRules, ChessRules, Promotion};
 
 
 #[derive(Clone, Copy, Debug)]
@@ -286,33 +286,30 @@ impl AlteredGame {
     pub fn see_though_fog(&self) -> bool { !self.is_active() }
 
     pub fn fog_of_war_area(&self, board_idx: BughouseBoard) -> HashSet<Coord> {
-        match self.chess_rules().chess_variant {
-            ChessVariant::Standard => HashSet::new(),
-            ChessVariant::FogOfWar => {
-                if let BughouseParticipant::Player(my_player_id) = self.my_id {
-                    // Don't use `local_game`: preturns and drags should not reveal new areas.
-                    let mut game = self.game_with_local_turns(LocalTurns::OnlyNormal);
-                    let board_shape = self.board_shape();
-                    let wayback_active = self.apply_wayback_for_board(&mut game, board_idx);
-                    let force = get_bughouse_force(my_player_id.team(), board_idx);
-                    let mut visible = game.board(board_idx).fog_free_area(force);
-                    // ... but do show preturn pieces themselves:
-                    if !wayback_active {
-                        let game_with_preturns = self.game_with_local_turns(LocalTurns::All);
-                        for coord in board_shape.coords() {
-                            if let Some(piece) = game_with_preturns.board(board_idx).grid()[coord] {
-                                if piece.force.is_owned_by_or_neutral(force) {
-                                    visible.insert(coord);
-                                }
-                            }
-                        }
+        if !self.chess_rules().fog_of_war {
+            return HashSet::new();
+        }
+        let BughouseParticipant::Player(my_player_id) = self.my_id else {
+            return HashSet::new();
+        };
+        // Don't use `local_game`: preturns and drags should not reveal new areas.
+        let mut game = self.game_with_local_turns(LocalTurns::OnlyNormal);
+        let board_shape = self.board_shape();
+        let wayback_active = self.apply_wayback_for_board(&mut game, board_idx);
+        let force = get_bughouse_force(my_player_id.team(), board_idx);
+        let mut visible = game.board(board_idx).fog_free_area(force);
+        // ... but do show preturn pieces themselves:
+        if !wayback_active {
+            let game_with_preturns = self.game_with_local_turns(LocalTurns::All);
+            for coord in board_shape.coords() {
+                if let Some(piece) = game_with_preturns.board(board_idx).grid()[coord] {
+                    if piece.force.is_owned_by_or_neutral(force) {
+                        visible.insert(coord);
                     }
-                    board_shape.coords().filter(|c| !visible.contains(c)).collect()
-                } else {
-                    HashSet::new()
                 }
             }
         }
+        board_shape.coords().filter(|c| !visible.contains(c)).collect()
     }
 
     pub fn try_local_turn(

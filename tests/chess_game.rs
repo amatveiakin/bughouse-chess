@@ -110,7 +110,7 @@ fn chess960_drag_king_onto_rook_castle() {
 #[test]
 fn king_capture() {
     let rules = ChessRules {
-        chess_variant: ChessVariant::FogOfWar,
+        fog_of_war: true,
         ..ChessRules::classic_blitz()
     };
     let mut game = chess_with_rules(rules);
@@ -121,7 +121,7 @@ fn king_capture() {
 #[test]
 fn fog_of_war_en_passant() {
     let rules = ChessRules {
-        chess_variant: ChessVariant::FogOfWar,
+        fog_of_war: true,
         ..ChessRules::classic_blitz()
     };
     let mut game = chess_with_rules(rules);
@@ -131,7 +131,7 @@ fn fog_of_war_en_passant() {
 #[test]
 fn duck_chess_en_passant() {
     let rules = ChessRules {
-        fairy_pieces: FairyPieces::DuckChess,
+        duck_chess: true,
         ..ChessRules::classic_blitz()
     };
     let mut game = chess_with_rules(rules);
@@ -141,7 +141,7 @@ fn duck_chess_en_passant() {
 #[test]
 fn duck_cannot_stay_in_place() {
     let rules = ChessRules {
-        fairy_pieces: FairyPieces::DuckChess,
+        duck_chess: true,
         ..ChessRules::classic_blitz()
     };
     let mut game = chess_with_rules(rules);

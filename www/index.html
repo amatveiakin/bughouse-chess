@@ -596,17 +596,29 @@
           </div>
         </div>
 
-        <label for="cc-starting-position">Starting position</label>
-        <select id="cc-starting-position" name="starting_position">
-          <option value="classic">Classic</option>
-          <option value="fischer-random" selected>Fischer random</option>
+        <label for="cc-fairy-pieces">Fairy pieces</label>
+        <select id="cc-fairy-pieces" name="fairy_pieces">
+          <option value="off" selected>—</option>
+          <option value="accolade">Accolade</option>
         </select>
         <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
-              <i>Classic.</i>
-              Standard starting positon.
+              <i>Accolade.</i>
+              Confer knighthood to any piece! Combine a Knight with a Bishop, a Rook or a Queen to get
+              a Cardinal, an Empress or an Amazon respectively. Combine by moving one piece onto another
+              or by dropping one piece onto another. If captured, the piece falls back apart.
             </p>
+          </div>
+        </div>
+
+        <label for="cc-starting-position">Starting position</label>
+        <select id="cc-starting-position" name="starting_position">
+          <option value="off">—</option>
+          <option value="fischer-random" selected>Fischer random</option>
+        </select>
+        <div class="tooltip-standalone">
+          <div class="tooltip-text">
             <p>
               <i>Fischer random</i> (a.k.a. Chess960).
               Pawns start as usual. Pieces start on the home ranks, but their
@@ -618,48 +630,33 @@
           </div>
         </div>
 
-        <label for="cc-chess-variant">Variant</label>
-        <select id="cc-chess-variant" name="chess_variant">
-          <option value="standard" selected>Standard</option>
-          <option value="fog-of-war">Fog of war</option>
+        <label for="cc-duck-chess">Duck chess</label>
+        <select id="cc-duck-chess" name="duck_chess">
+          <option value="off" selected>—</option>
+          <option value="on">Duck chess!</option>
         </select>
         <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
-              <i>Standard.</i>
-              Classic chess rules.
-            </p>
-            <p>
-              <i>Fog of war.</i>
-              You only see squares that are a legal move destination for one of your pieces.
-              You can drop pieces into the fog of war at your own risk.
+              <i>Duck chess.</i>
+              A duck occupies one square on the board and cannot be captured.
+              Each turn consists of two parts. First, a regular bughouse turn. Second, moving the
+              duck to any free square on the board. Quack!
             </p>
           </div>
         </div>
 
-        <label for="cc-fairy-pieces">Fairy pieces</label>
-        <select id="cc-fairy-pieces" name="fairy_pieces">
-          <option value="no-fairy" selected>No fairy</option>
-          <option value="accolade">Accolade</option>
-          <option value="duck-chess">Duck chess</option>
+        <label for="cc-fog-of-war">Fog of war</label>
+        <select id="cc-fog-of-war" name="fog_of_war">
+          <option value="off" selected>—</option>
+          <option value="on">Fog of war!</option>
         </select>
         <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
-              <i>No fairy.</i>
-              Play with standard chess pieces.
-            </p>
-            <p>
-              <i>Accolade.</i>
-              Confer knighthood to any piece! Combine a Knight with a Bishop, a Rook or a Queen to get
-              a Cardinal, an Empress or an Amazon respectively. Combine by moving one piece onto another
-              or by dropping one piece onto another. If captured, the piece falls back apart.
-            </p>
-            <p>
-              <i>Duck chess.</i>
-              Here comes the duck. A duck occupies one square on the board and cannot be captured.
-              Each turn consists of two parts. First, a regular bughouse turn. Second, moving the
-              duck to any free square on the board. Quack!
+              <i>Fog of war.</i>
+              You only see squares that are a legal move destination for one of your pieces.
+              You can drop pieces into the fog of war at your own risk.
             </p>
           </div>
         </div>

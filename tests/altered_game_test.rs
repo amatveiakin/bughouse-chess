@@ -41,7 +41,7 @@ fn duck_chess_game() -> BughouseGame {
     BughouseGame::new(
         MatchRules::unrated(),
         ChessRules {
-            fairy_pieces: FairyPieces::DuckChess,
+            duck_chess: true,
             ..ChessRules::classic_blitz()
         },
         BughouseRules::chess_com(),
@@ -53,7 +53,7 @@ fn fog_of_war_bughouse_game() -> BughouseGame {
     BughouseGame::new(
         MatchRules::unrated(),
         ChessRules {
-            chess_variant: ChessVariant::FogOfWar,
+            fog_of_war: true,
             ..ChessRules::classic_blitz()
         },
         BughouseRules::chess_com(),
@@ -401,8 +401,8 @@ fn duck_visible_in_the_fog() {
     let game = BughouseGame::new(
         MatchRules::unrated(),
         ChessRules {
-            chess_variant: ChessVariant::FogOfWar,
-            fairy_pieces: FairyPieces::DuckChess,
+            duck_chess: true,
+            fog_of_war: true,
             ..ChessRules::classic_blitz()
         },
         BughouseRules::chess_com(),
