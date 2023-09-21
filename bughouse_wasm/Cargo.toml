@@ -35,7 +35,9 @@ features = [
   'DomTokenList',
   'Element',
   'FormData',
+  'HtmlCollection',
   'HtmlElement',
+  'HtmlFormElement',
   'Node',
   'Window',
 ]

@@ -1350,7 +1350,13 @@ async function delete_account(event) {
 }
 
 function show_create_match_page() {
-    wasm.init_new_match_rules_body();
+    with_error_handling(function() {
+        wasm.init_new_match_rules_body();
+    });
+    let rules_body = document.getElementById('cc-rules-body');
+    for (const node of rules_body.querySelectorAll('input,select')) {
+        node.addEventListener('change', on_create_match_change);
+    }
     push_menu_page(menu_create_match_page);
 }
 
@@ -1377,9 +1383,15 @@ function on_join_match_submenu(event) {
     push_menu_page(menu_join_match_page);
 }
 
+function on_create_match_change(event) {
+    with_error_handling(function() {
+        wasm.update_new_match_rules_body();
+    });
+}
+
 function on_create_match_confirm(event) {
     with_error_handling(function() {
-        wasm_client().new_match(new FormData(event.target));
+        wasm_client().new_match();
         update();
     });
 }

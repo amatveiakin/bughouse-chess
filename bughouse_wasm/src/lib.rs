@@ -9,6 +9,7 @@ extern crate wasm_bindgen;
 
 extern crate bughouse_chess;
 
+mod html_collection_iterator;
 mod rules_ui;
 mod table;
 
@@ -25,6 +26,7 @@ use bughouse_chess::meter::*;
 use bughouse_chess::session::*;
 use bughouse_chess::*;
 use enum_map::enum_map;
+use html_collection_iterator::HtmlCollectionIterator;
 use instant::Instant;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
@@ -298,8 +300,11 @@ impl WebClient {
             .or_else(|| self.state.session().user_info().map(|u| u.user_name.clone()))
             .ok_or(rust_error!("Player name is required if not a registered user"))
     }
-    pub fn new_match(&mut self, data: &web_sys::FormData) -> JsResult<()> {
+    pub fn new_match(&mut self) -> JsResult<()> {
         use rules_ui::*;
+        let data = new_match_rules_form_data()?;
+
+        // Chess variants
         let fairy_pieces = match data.get(FAIRY_PIECES).as_string().unwrap().as_str() {
             "off" => FairyPieces::NoFairy,
             "accolade" => FairyPieces::Accolade,
@@ -320,23 +325,25 @@ impl WebClient {
             "on" => true,
             s => return Err(format!("Invalid fog of war option: {s}").into()),
         };
-        let drop_aggression = match data.get(DROP_AGGRESSION).as_string().unwrap().as_str() {
-            "no-check" => DropAggression::NoCheck,
-            "no-chess-mate" => DropAggression::NoChessMate,
-            "no-bughouse-mate" => DropAggression::NoBughouseMate,
-            "mate-allowed" => DropAggression::MateAllowed,
-            s => return Err(format!("Invalid drop aggression: {s}").into()),
-        };
+        let regicide = duck_chess || fog_of_war;
+
+        // Other chess rules
         let promotion = match data.get(PROMOTION).as_string().unwrap().as_str() {
             "upgrade" => Promotion::Upgrade,
             "discard" => Promotion::Discard,
             "steal" => Promotion::Steal,
             s => return Err(format!("Invalid promotion: {s}").into()),
         };
-        let rated = match data.get(RATING).as_string().unwrap().as_str() {
-            "rated" => true,
-            "unrated" => false,
-            s => return Err(format!("Invalid rating: {s}").into()),
+        let drop_aggression = if regicide {
+            DropAggression::MateAllowed
+        } else {
+            match data.get(DROP_AGGRESSION).as_string().unwrap().as_str() {
+                "no-check" => DropAggression::NoCheck,
+                "no-chess-mate" => DropAggression::NoChessMate,
+                "no-bughouse-mate" => DropAggression::NoBughouseMate,
+                "mate-allowed" => DropAggression::MateAllowed,
+                s => return Err(format!("Invalid drop aggression: {s}").into()),
+            }
         };
 
         let starting_time = data.get(STARTING_TIME).as_string().unwrap();
@@ -356,6 +363,14 @@ impl WebClient {
             return Err(format!("Invalid pawn drop ranks: {pawn_drop_ranks}").into());
         };
 
+        // Non-chess rules
+        let rated = match data.get(RATING).as_string().unwrap().as_str() {
+            "rated" => true,
+            "unrated" => false,
+            s => return Err(format!("Invalid rating: {s}").into()),
+        };
+
+        // Combine everything together
         let match_rules = MatchRules { rated };
         let chess_rules = ChessRules {
             fairy_pieces,
@@ -1127,6 +1142,10 @@ impl WebDocument {
         Ok(element)
     }
 
+    fn get_elements_by_class_name(&self, class_name: &str) -> HtmlCollectionIterator {
+        self.0.get_elements_by_class_name(class_name).into()
+    }
+
     pub fn create_element(&self, local_name: &str) -> JsResult<web_sys::Element> {
         self.0.create_element(local_name)
     }
@@ -1166,9 +1185,34 @@ pub fn init_page() -> JsResult<()> {
 
 #[wasm_bindgen]
 pub fn init_new_match_rules_body() -> JsResult<()> {
-    let node = web_document().get_existing_element_by_id("cc-rules-body")?;
-    node.set_inner_html(&rules_ui::make_new_match_rules_body());
+    let rule_body = web_document().get_existing_element_by_id("cc-rules-body")?;
+    rule_body.set_inner_html(&rules_ui::make_new_match_rules_body());
+    update_new_match_rules_body()?;
     Ok(())
+}
+
+// Should mirror `ChessRules::enable_check_and_mate`. Could've constructed `ChessRules` and call it
+// directly, but we are not doing this so that we don't fail e.g. due to errors in "starting time"
+// format.
+#[wasm_bindgen]
+pub fn update_new_match_rules_body() -> JsResult<()> {
+    use rules_ui::*;
+    let data = new_match_rules_form_data()?;
+    let duck_chess = data.get(DUCK_CHESS).as_string().unwrap() == "on";
+    let fog_of_war = data.get(FOG_OF_WAR).as_string().unwrap() == "on";
+    let regicide = duck_chess || fog_of_war;
+    for node in web_document().get_elements_by_class_name(REGICIDE_CLASS) {
+        node.class_list().toggle_with_force("display-none", !regicide)?;
+    }
+    for node in web_document().get_elements_by_class_name(&rule_setting_class(DROP_AGGRESSION)) {
+        node.class_list().toggle_with_force("display-none", regicide)?;
+    }
+    Ok(())
+}
+
+fn new_match_rules_form_data() -> JsResult<web_sys::FormData> {
+    let node = web_document().get_existing_element_by_id("menu-create-match-page")?;
+    web_sys::FormData::new_with_form(&node.dyn_into()?)
 }
 
 #[wasm_bindgen]
@@ -1201,12 +1245,18 @@ fn init_lobby(rules: &Rules) -> JsResult<()> {
         variant_table.add_row([caption, value]);
     }
 
-    let rule_rows = [
+    let regicide = !rules.chess_rules.enable_check_and_mate();
+    let mut rule_rows = vec![
         ("Time control", rules.chess_rules.time_control.to_string()),
         ("Promotion", rules.bughouse_rules.promotion_string().to_owned()),
-        ("Drop aggression", rules.bughouse_rules.drop_aggression_string().to_owned()),
         ("Pawn drop ranks", rules.bughouse_rules.pawn_drop_ranks_string()),
     ];
+    if regicide {
+        rule_rows.push(("", "Regicide: no checks and mates".to_owned()))
+    } else {
+        rule_rows
+            .push(("Drop aggression", rules.bughouse_rules.drop_aggression_string().to_owned()));
+    }
     let mut rule_table = HtmlTable::new();
     for (caption, value) in rule_rows {
         rule_table.add_row([

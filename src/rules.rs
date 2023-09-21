@@ -141,6 +141,7 @@ impl ChessRules {
     // the king cannot pass through a square attacked by an enemy piece when castling, the game
     // end with a mate.
     // If false, there are no checks and mates. The game ends when the king is captured.
+    // TODO: Rename to `regicide` for consistency.
     pub fn enable_check_and_mate(&self) -> bool { !self.duck_chess && !self.fog_of_war }
 
     // Conceptually we always allow a single preturn, but this may technically require several
