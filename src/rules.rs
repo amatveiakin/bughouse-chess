@@ -132,6 +132,7 @@ impl MatchRules {
     pub fn unrated() -> Self { Self { rated: false } }
 }
 
+// Improvement potential. Precompute `variants` and `regicide_reason`.
 impl ChessRules {
     pub fn classic_blitz() -> Self {
         Self {
@@ -145,12 +146,23 @@ impl ChessRules {
 
     pub fn board_shape(&self) -> BoardShape { BoardShape { num_rows: 8, num_cols: 8 } }
 
+    // TODO: Use to improve UI tooltips.
+    pub fn regicide_reason(&self) -> Vec<ChessVariant> {
+        let mut v = vec![];
+        if self.duck_chess {
+            v.push(ChessVariant::DuckChess);
+        }
+        if self.fog_of_war {
+            v.push(ChessVariant::FogOfWar);
+        }
+        v
+    }
+
     // If true, use normal chess rules: players are not allowed to leave the king undefended,
     // the king cannot pass through a square attacked by an enemy piece when castling, the game
     // end with a mate.
     // If false, there are no checks and mates. The game ends when the king is captured.
-    // TODO: Rename to `regicide` for consistency.
-    pub fn enable_check_and_mate(&self) -> bool { !self.duck_chess && !self.fog_of_war }
+    pub fn regicide(&self) -> bool { !self.regicide_reason().is_empty() }
 
     // Conceptually we always allow a single preturn, but this may technically require several
     // preturns in game modes where each turn has multiple stages.
@@ -233,24 +245,13 @@ impl Rules {
                 "Invalid pawn drop ranks: {min_pawn_drop_rank}-{max_pawn_drop_rank}"
             ));
         }
-        if self.chess_rules.fog_of_war
+        if self.chess_rules.regicide()
             && self.bughouse_rules.drop_aggression != DropAggression::MateAllowed
         {
-            return Err("Fog-of-war chess is played until a king is captured. \
+            return Err("The game is played until a king is captured. \
                 Drop aggression must be set to \"mate allowed\""
                 .to_owned());
         }
-        if self.chess_rules.duck_chess
-            && self.bughouse_rules.drop_aggression != DropAggression::MateAllowed
-        {
-            return Err("Duck chess is played until a king is captured. \
-                Drop aggression must be set to \"mate allowed\""
-                .to_owned());
-        }
-        assert!(
-            self.chess_rules.enable_check_and_mate()
-                || self.bughouse_rules.drop_aggression == DropAggression::MateAllowed
-        );
         Ok(())
     }
 }

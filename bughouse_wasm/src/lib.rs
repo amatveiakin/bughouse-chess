@@ -1191,9 +1191,8 @@ pub fn init_new_match_rules_body() -> JsResult<()> {
     Ok(())
 }
 
-// Should mirror `ChessRules::enable_check_and_mate`. Could've constructed `ChessRules` and call it
-// directly, but we are not doing this so that we don't fail e.g. due to errors in "starting time"
-// format.
+// Should mirror `ChessRules::regicide`. Could've constructed `ChessRules` and called it directly,
+// but doing so could fail due to unrelated problems, e.g. errors in "starting time" format.
 #[wasm_bindgen]
 pub fn update_new_match_rules_body() -> JsResult<()> {
     use rules_ui::*;
@@ -1250,13 +1249,12 @@ fn init_lobby(rules: &Rules) -> JsResult<()> {
         variant_table.add_row([caption, value]);
     }
 
-    let regicide = !rules.chess_rules.enable_check_and_mate();
     let mut rule_rows = vec![
         ("Time control", rules.chess_rules.time_control.to_string()),
         ("Promotion", rules.bughouse_rules.promotion_string().to_owned()),
         ("Pawn drop ranks", rules.bughouse_rules.pawn_drop_ranks_string()),
     ];
-    if regicide {
+    if rules.chess_rules.regicide() {
         rule_rows.push(("", "Regicide: no checks and mates".to_owned()))
     } else {
         rule_rows

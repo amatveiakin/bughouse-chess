@@ -271,7 +271,7 @@ fn is_bughouse_mate_to(
 }
 
 fn is_check_to(rules: &ChessRules, grid: &Grid, king_pos: Coord) -> bool {
-    assert!(rules.enable_check_and_mate());
+    assert!(!rules.regicide());
     let force = king_force(grid, king_pos);
     for from in grid.shape().coords() {
         if let Some(piece) = grid[from] {
@@ -1004,7 +1004,7 @@ impl Board {
                 if !matches!(turn, Turn::PlaceDuck(_)) {
                     self.en_passant_target = get_en_passant_target(&self.grid, turn);
                 }
-                if self.chess_rules.enable_check_and_mate() {
+                if !self.chess_rules.regicide() {
                     let opponent_king_pos = find_king(&self.grid, force.opponent()).unwrap();
                     if self.is_bughouse() {
                         if is_bughouse_mate_to(
@@ -1062,7 +1062,7 @@ impl Board {
     fn verify_check_and_drop_aggression(
         &self, turn: Turn, mode: TurnMode, outcome: &mut TurnOutcome,
     ) -> Result<(), TurnError> {
-        if !self.chess_rules.enable_check_and_mate() {
+        if self.chess_rules.regicide() {
             return Ok(());
         }
         let new_grid = &mut outcome.new_grid;
@@ -1331,7 +1331,7 @@ impl Board {
                         for col in col_range_inclusive(iter_minmax(cols.into_iter()).unwrap()) {
                             let pos = Coord::new(row, col);
                             let new_grid = new_grid.scoped_set(pos, king);
-                            if self.chess_rules.enable_check_and_mate()
+                            if !self.chess_rules.regicide()
                                 && is_check_to(&self.chess_rules, &new_grid, pos)
                             {
                                 return Err(TurnError::UnprotectedKing);
@@ -1412,7 +1412,7 @@ impl Board {
                     if piece.force != turn_owner.into() {
                         return Err(TurnError::StealTargetInvalid);
                     }
-                    if self.chess_rules.enable_check_and_mate() {
+                    if !self.chess_rules.regicide() {
                         let king_pos = find_king(&self.grid, turn_owner).unwrap();
                         if !is_check_to(&self.chess_rules, &self.grid, king_pos) {
                             // Technically we don't need the `clone` because of `scoped_set`, but
