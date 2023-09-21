@@ -1349,11 +1349,16 @@ async function delete_account(event) {
     }), 'Account deleted.');
 }
 
+function show_create_match_page() {
+    wasm.init_new_match_rules_body();
+    push_menu_page(menu_create_match_page);
+}
+
 function create_match_as_guest(event) {
     const ccn_player_name = document.getElementById('ccn-player-name');
     const cc_player_name = document.getElementById('cc-player-name');
     cc_player_name.value = ccn_player_name.value;
-    push_menu_page(menu_create_match_page);
+    show_create_match_page();
 }
 
 function on_create_match_request(event, rated) {
@@ -1362,7 +1367,7 @@ function on_create_match_request(event, rated) {
     cc_rating.value = rated ? 'rated' : 'unrated';
     cc_confirm_button.innerText = rated ? 'Create rated match!' : 'Create unrated match!';
     if (is_registered_user) {
-        push_menu_page(menu_create_match_page);
+        show_create_match_page();
     } else {
         push_menu_page(menu_create_match_name_page);
     }
@@ -1374,19 +1379,7 @@ function on_join_match_submenu(event) {
 
 function on_create_match_confirm(event) {
     with_error_handling(function() {
-        const data = new FormData(event.target);
-        wasm_client().new_match(
-            data.get('player_name'),
-            data.get('fairy_pieces'),
-            data.get('starting_position'),
-            data.get('duck_chess'),
-            data.get('fog_of_war'),
-            data.get('starting_time'),
-            data.get('promotion'),
-            data.get('drop_aggression'),
-            data.get('pawn_drop_ranks'),
-            data.get('rating'),
-        );
+        wasm_client().new_match(new FormData(event.target));
         update();
     });
 }

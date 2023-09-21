@@ -9,6 +9,7 @@ extern crate wasm_bindgen;
 
 extern crate bughouse_chess;
 
+mod rules_ui;
 mod table;
 
 use std::cell::RefCell;
@@ -297,50 +298,48 @@ impl WebClient {
             .or_else(|| self.state.session().user_info().map(|u| u.user_name.clone()))
             .ok_or(rust_error!("Player name is required if not a registered user"))
     }
-    pub fn new_match(
-        &mut self, player_name: Option<String>, fairy_pieces: &str, starting_position: &str,
-        duck_chess: &str, fog_of_war: &str, starting_time: &str, promotion: &str,
-        drop_aggression: &str, pawn_drop_ranks: &str, rating: &str,
-    ) -> JsResult<()> {
-        let fairy_pieces = match fairy_pieces {
+    pub fn new_match(&mut self, data: &web_sys::FormData) -> JsResult<()> {
+        use rules_ui::*;
+        let fairy_pieces = match data.get(FAIRY_PIECES).as_string().unwrap().as_str() {
             "off" => FairyPieces::NoFairy,
             "accolade" => FairyPieces::Accolade,
             s => return Err(format!("Invalid fairy pieces: {s}").into()),
         };
-        let starting_position = match starting_position {
+        let starting_position = match data.get(STARTING_POSITION).as_string().unwrap().as_str() {
             "off" => StartingPosition::Classic,
             "fischer-random" => StartingPosition::FischerRandom,
             s => return Err(format!("Invalid starting position: {s}").into()),
         };
-        let duck_chess = match duck_chess {
+        let duck_chess = match data.get(DUCK_CHESS).as_string().unwrap().as_str() {
             "off" => false,
             "on" => true,
             s => return Err(format!("Invalid duck chess option: {s}").into()),
         };
-        let fog_of_war = match fog_of_war {
+        let fog_of_war = match data.get(FOG_OF_WAR).as_string().unwrap().as_str() {
             "off" => false,
             "on" => true,
             s => return Err(format!("Invalid fog of war option: {s}").into()),
         };
-        let drop_aggression = match drop_aggression {
+        let drop_aggression = match data.get(DROP_AGGRESSION).as_string().unwrap().as_str() {
             "no-check" => DropAggression::NoCheck,
             "no-chess-mate" => DropAggression::NoChessMate,
             "no-bughouse-mate" => DropAggression::NoBughouseMate,
             "mate-allowed" => DropAggression::MateAllowed,
-            _ => return Err(format!("Invalid drop aggression: {drop_aggression}").into()),
+            s => return Err(format!("Invalid drop aggression: {s}").into()),
         };
-        let promotion = match promotion {
+        let promotion = match data.get(PROMOTION).as_string().unwrap().as_str() {
             "upgrade" => Promotion::Upgrade,
             "discard" => Promotion::Discard,
             "steal" => Promotion::Steal,
-            _ => return Err(format!("Invalid promotion: {promotion}").into()),
+            s => return Err(format!("Invalid promotion: {s}").into()),
         };
-        let rated = match rating {
+        let rated = match data.get(RATING).as_string().unwrap().as_str() {
             "rated" => true,
             "unrated" => false,
-            _ => return Err(format!("Invalid rating: {rating}").into()),
+            s => return Err(format!("Invalid rating: {s}").into()),
         };
 
+        let starting_time = data.get(STARTING_TIME).as_string().unwrap();
         let Some((Ok(starting_minutes), Ok(starting_seconds))) =
             starting_time.split(':').map(|v| v.parse::<u64>()).collect_tuple()
         else {
@@ -348,6 +347,7 @@ impl WebClient {
         };
         let starting_time = Duration::from_secs(starting_minutes * 60 + starting_seconds);
 
+        let pawn_drop_ranks = data.get(PAWN_DROP_RANKS).as_string().unwrap();
         let Some((Some(min_pawn_drop_rank), Some(max_pawn_drop_rank))) = pawn_drop_ranks
             .split('-')
             .map(|v| v.parse::<i8>().ok().map(SubjectiveRow::from_one_based))
@@ -374,7 +374,7 @@ impl WebClient {
         if let Err(message) = rules.verify() {
             return Err(IgnorableError { message }.into());
         }
-        let player_name = self.finalize_player_name(player_name)?;
+        let player_name = self.finalize_player_name(data.get(PLAYER_NAME).as_string())?;
         self.state.new_match(rules, player_name);
         Ok(())
     }
@@ -1161,6 +1161,13 @@ fn scroll_log_to_bottom(board_idx: DisplayBoard) -> JsResult<()> {
 pub fn init_page() -> JsResult<()> {
     generate_svg_markers()?;
     render_starting()?;
+    Ok(())
+}
+
+#[wasm_bindgen]
+pub fn init_new_match_rules_body() -> JsResult<()> {
+    let node = web_document().get_existing_element_by_id("cc-rules-body")?;
+    node.set_inner_html(&rules_ui::make_new_match_rules_body());
     Ok(())
 }
 

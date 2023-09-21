@@ -37,10 +37,10 @@ impl TD {
     pub fn to_html(self) -> String {
         let mut attributes = vec![];
         if let Some(row_span) = self.row_span {
-            attributes.push(format!("rowspan=\"{}\"", row_span));
+            attributes.push(format!("rowspan='{}'", row_span));
         }
         if !self.classes.is_empty() {
-            attributes.push(format!("class=\"{}\"", self.classes.join(" ")));
+            attributes.push(format!("class='{}'", self.classes.join(" ")));
         }
         format!("<td {}>{}</td>", attributes.join(" "), html_escape::encode_text(&self.text))
     }
