@@ -15,7 +15,7 @@ mod table;
 
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -302,25 +302,26 @@ impl WebClient {
     }
     pub fn new_match(&mut self) -> JsResult<()> {
         use rules_ui::*;
-        let data = new_match_rules_form_data()?;
+        let variants = new_match_rules_variants()?;
+        let details = new_match_rules_form_data()?;
 
         // Chess variants
-        let fairy_pieces = match data.get(FAIRY_PIECES).as_string().unwrap().as_str() {
+        let fairy_pieces = match variants.get(FAIRY_PIECES).unwrap().as_str() {
             "off" => FairyPieces::NoFairy,
             "accolade" => FairyPieces::Accolade,
             s => return Err(format!("Invalid fairy pieces: {s}").into()),
         };
-        let starting_position = match data.get(STARTING_POSITION).as_string().unwrap().as_str() {
+        let starting_position = match variants.get(STARTING_POSITION).unwrap().as_str() {
             "off" => StartingPosition::Classic,
             "fischer-random" => StartingPosition::FischerRandom,
             s => return Err(format!("Invalid starting position: {s}").into()),
         };
-        let duck_chess = match data.get(DUCK_CHESS).as_string().unwrap().as_str() {
+        let duck_chess = match variants.get(DUCK_CHESS).unwrap().as_str() {
             "off" => false,
             "on" => true,
             s => return Err(format!("Invalid duck chess option: {s}").into()),
         };
-        let fog_of_war = match data.get(FOG_OF_WAR).as_string().unwrap().as_str() {
+        let fog_of_war = match variants.get(FOG_OF_WAR).unwrap().as_str() {
             "off" => false,
             "on" => true,
             s => return Err(format!("Invalid fog of war option: {s}").into()),
@@ -328,7 +329,7 @@ impl WebClient {
         let regicide = duck_chess || fog_of_war;
 
         // Other chess rules
-        let promotion = match data.get(PROMOTION).as_string().unwrap().as_str() {
+        let promotion = match details.get(PROMOTION).as_string().unwrap().as_str() {
             "upgrade" => Promotion::Upgrade,
             "discard" => Promotion::Discard,
             "steal" => Promotion::Steal,
@@ -337,7 +338,7 @@ impl WebClient {
         let drop_aggression = if regicide {
             DropAggression::MateAllowed
         } else {
-            match data.get(DROP_AGGRESSION).as_string().unwrap().as_str() {
+            match details.get(DROP_AGGRESSION).as_string().unwrap().as_str() {
                 "no-check" => DropAggression::NoCheck,
                 "no-chess-mate" => DropAggression::NoChessMate,
                 "no-bughouse-mate" => DropAggression::NoBughouseMate,
@@ -346,7 +347,7 @@ impl WebClient {
             }
         };
 
-        let starting_time = data.get(STARTING_TIME).as_string().unwrap();
+        let starting_time = details.get(STARTING_TIME).as_string().unwrap();
         let Some((Ok(starting_minutes), Ok(starting_seconds))) =
             starting_time.split(':').map(|v| v.parse::<u64>()).collect_tuple()
         else {
@@ -354,7 +355,7 @@ impl WebClient {
         };
         let starting_time = Duration::from_secs(starting_minutes * 60 + starting_seconds);
 
-        let pawn_drop_ranks = data.get(PAWN_DROP_RANKS).as_string().unwrap();
+        let pawn_drop_ranks = details.get(PAWN_DROP_RANKS).as_string().unwrap();
         let Some((Some(min_pawn_drop_rank), Some(max_pawn_drop_rank))) = pawn_drop_ranks
             .split('-')
             .map(|v| v.parse::<i8>().ok().map(SubjectiveRow::from_one_based))
@@ -364,7 +365,7 @@ impl WebClient {
         };
 
         // Non-chess rules
-        let rated = match data.get(RATING).as_string().unwrap().as_str() {
+        let rated = match details.get(RATING).as_string().unwrap().as_str() {
             "rated" => true,
             "unrated" => false,
             s => return Err(format!("Invalid rating: {s}").into()),
@@ -389,7 +390,7 @@ impl WebClient {
         if let Err(message) = rules.verify() {
             return Err(IgnorableError { message }.into());
         }
-        let player_name = self.finalize_player_name(data.get(PLAYER_NAME).as_string())?;
+        let player_name = self.finalize_player_name(details.get(PLAYER_NAME).as_string())?;
         self.state.new_match(rules, player_name);
         Ok(())
     }
@@ -1185,8 +1186,11 @@ pub fn init_page() -> JsResult<()> {
 
 #[wasm_bindgen]
 pub fn init_new_match_rules_body() -> JsResult<()> {
-    let rule_body = web_document().get_existing_element_by_id("cc-rules-body")?;
-    rule_body.set_inner_html(&rules_ui::make_new_match_rules_body());
+    let (variants, details) = rules_ui::make_new_match_rules_body();
+    let variants_node = web_document().get_existing_element_by_id("cc-rule-variants")?;
+    let details_node = web_document().get_existing_element_by_id("cc-rule-details")?;
+    variants_node.set_inner_html(&variants);
+    details_node.set_inner_html(&details);
     update_new_match_rules_body()?;
     Ok(())
 }
@@ -1196,9 +1200,9 @@ pub fn init_new_match_rules_body() -> JsResult<()> {
 #[wasm_bindgen]
 pub fn update_new_match_rules_body() -> JsResult<()> {
     use rules_ui::*;
-    let data = new_match_rules_form_data()?;
-    let duck_chess = data.get(DUCK_CHESS).as_string().unwrap() == "on";
-    let fog_of_war = data.get(FOG_OF_WAR).as_string().unwrap() == "on";
+    let variants = new_match_rules_variants()?;
+    let duck_chess = variants.get(DUCK_CHESS).unwrap() == "on";
+    let fog_of_war = variants.get(FOG_OF_WAR).unwrap() == "on";
     let regicide = duck_chess || fog_of_war;
     for node in web_document().get_elements_by_class_name(REGICIDE_CLASS) {
         node.class_list().toggle_with_force("display-none", !regicide)?;
@@ -1207,6 +1211,21 @@ pub fn update_new_match_rules_body() -> JsResult<()> {
         node.class_list().toggle_with_force("display-none", regicide)?;
     }
     Ok(())
+}
+
+fn new_match_rules_variants() -> JsResult<HashMap<String, String>> {
+    let body = web_document().get_existing_element_by_id("cc-rule-variants")?;
+    let buttons =
+        HtmlCollectionIterator::from(body.get_elements_by_class_name("rule-variant-button"));
+    let mut variants = HashMap::new();
+    for button in buttons {
+        if !button.class_list().contains("display-none") {
+            let name = button.get_attribute("data-variant-name").unwrap();
+            let value = button.get_attribute("data-variant-value").unwrap();
+            assert!(variants.insert(name, value).is_none());
+        }
+    }
+    Ok(variants)
 }
 
 fn new_match_rules_form_data() -> JsResult<web_sys::FormData> {

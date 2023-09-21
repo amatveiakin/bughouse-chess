@@ -1353,9 +1353,9 @@ function show_create_match_page() {
     with_error_handling(function() {
         wasm.init_new_match_rules_body();
     });
-    let rules_body = document.getElementById('cc-rules-body');
-    for (const node of rules_body.querySelectorAll('input,select')) {
-        node.addEventListener('change', on_create_match_change);
+    let rules_variants = document.getElementById('cc-rule-variants');
+    for (const node of rules_variants.querySelectorAll('button')) {
+        node.addEventListener('click', rule_variant_button_clicked);
     }
     push_menu_page(menu_create_match_page);
 }
@@ -1383,7 +1383,12 @@ function on_join_match_submenu(event) {
     push_menu_page(menu_join_match_page);
 }
 
-function on_create_match_change(event) {
+export function rule_variant_button_clicked(event) {
+    const node = event.currentTarget;
+    const next_state = node.getAttribute('data-next-state');
+    const next_state_node = document.getElementById(next_state);
+    node.classList.add('display-none');
+    next_state_node.classList.remove('display-none');
     with_error_handling(function() {
         wasm.update_new_match_rules_body();
     });

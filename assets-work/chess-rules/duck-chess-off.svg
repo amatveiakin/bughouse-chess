@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   height="10"
+   viewBox="0 0 10 10"
+   width="10"
+   version="1.1"
+   id="svg49"
+   sodipodi:docname="duck-chess-off.svg"
+   inkscape:version="1.2.2 (732a01da63, 2022-12-09)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata
+     id="metadata55">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs53">
+    <filter
+       style="color-interpolation-filters:sRGB"
+       inkscape:label="Diffuse Light"
+       id="filter930"
+       x="-0.17356606"
+       y="-0.16614492"
+       width="1.3470117"
+       height="1.3322898">
+      <feGaussianBlur
+         in="SourceGraphic"
+         stdDeviation="5"
+         result="blur"
+         id="feGaussianBlur920" />
+      <feDiffuseLighting
+         diffuseConstant="1"
+         surfaceScale="10"
+         lighting-color="#ffffff"
+         result="diffuse"
+         id="feDiffuseLighting924">
+        <feDistantLight
+           elevation="150"
+           azimuth="0"
+           id="feDistantLight922" />
+      </feDiffuseLighting>
+      <feComposite
+         in="diffuse"
+         in2="diffuse"
+         operator="arithmetic"
+         k1="1"
+         result="composite1"
+         id="feComposite926"
+         k2="0"
+         k3="0"
+         k4="0" />
+      <feComposite
+         in="composite1"
+         in2="SourceGraphic"
+         k1="0.376471"
+         operator="arithmetic"
+         k3="1"
+         result="composite2"
+         id="feComposite928"
+         k2="0"
+         k4="0" />
+    </filter>
+  </defs>
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="2560"
+     inkscape:window-height="1476"
+     id="namedview51"
+     showgrid="false"
+     inkscape:zoom="64"
+     inkscape:cx="8.65625"
+     inkscape:cy="6.5"
+     inkscape:window-x="-12"
+     inkscape:window-y="-12"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="OUTLINE"
+     inkscape:document-rotation="0"
+     inkscape:snap-bbox="false"
+     inkscape:bbox-paths="false"
+     inkscape:showpageshadow="2"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1">
+    <inkscape:grid
+       type="xygrid"
+       id="grid2022" />
+  </sodipodi:namedview>
+  <g
+     id="OUTLINE">
+    <path
+       id="path906"
+       style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:1.02240237;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 61.108822,12.75 c -9.845143,-4.7e-5 -17.481061,7.008819 -17.826172,16.847911 -0.217364,6.197051 4.330524,11.491928 6.241761,14.399711 -0.251903,-0.0052 -0.503876,-0.0078 -0.755859,-0.0078 -5.220001,-7.6e-5 -5.852125,8.255302 -19.099411,7.675536 -5.453398,-1.407843 -8.762625,-6.860893 -13.246255,-10.36053 -0.432239,-0.708165 -2.755873,-0.329135 -3.44297,2.712751 -1.002124,7.013077 1.574784,18.586325 3.386719,26.173828 2.998814,11.269334 15.101794,19.298711 29.089844,19.298828 C 61.905754,89.490506 75.240478,78.49148 75.239682,64.923829 75.239126,58.411885 73.42682,52.92744 68.38936,47.560547 c 4.473397,-2.617185 6.860977,-5.019706 8.946025,-9.605468 l 7.617187,-3.333985 c 1.345239,-0.186937 1.769458,-1.922604 0.66211,-2.708984 l -6.9375,-4.345703 C 77.211168,19.007976 69.791906,12.750886 61.108822,12.75 Z"
+       sodipodi:nodetypes="cscccccccccccccc"
+       inkscape:export-filename="C:\Andrei\bughouse-chess\assets\pieces\duck.png"
+       inkscape:export-xdpi="307"
+       inkscape:export-ydpi="307"
+       transform="matrix(0.09780885,0,0,0.09780885,0.15873003,2.0707303e-7)" />
+  </g>
+</svg>

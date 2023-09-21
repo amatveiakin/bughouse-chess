@@ -736,6 +736,7 @@ button:active:enabled {
 }
 
 .tooltip-standalone,
+.tooltip-below,
 .tooltip-if-disabled {
   position: relative;
 }
@@ -744,13 +745,15 @@ button:active:enabled {
   justify-content: center;
   align-items: center;
   text-align: center;
-  margin-left: 0.5em;
+  margin-left: 0.6em;
   width: 1.5em;
 }
 
 .tooltip-text {
   visibility: hidden;
   text-align: initial;
+  font-style: normal;
+  font-weight: normal;
   font-size: 0.9rem;
   width: 18em;
   background-color: var(--color-dialog-tooltip);
@@ -760,22 +763,37 @@ button:active:enabled {
   z-index: 1;
   top: 0%;
   left: 100%;
-  margin-left: 1.8em;
+  margin: 0 0 0 1.8em;
   opacity: 0;
-  box-shadow: 0.1em 0.1em 0.3em #00000080;
+  box-shadow: 0.2em 0.2em 0.4em #00000080;
   transition: opacity .3s;
   transform: translate(0, -50%) translate(0, 2em);
 }
+.tooltip-below .tooltip-text {
+  width: 20em;
+  top: 100%;
+  left: 50%;
+  margin: 1.2em 0 0 0;
+  transition-delay: 0.5s;
+  transform: translate(-50%, 0) translate(0, 0);
+}
+
 /* Tooltip arrow */
 .tooltip-text::after {
   content: "";
   position: absolute;
   top: 50%;
   right: 100%;
-  margin-top: -0.5em;
+  margin: -0.5em 0 0 0;
   border-width: 0.5em;
   border-style: solid;
   border-color: transparent var(--color-dialog-tooltip) transparent transparent;
+}
+.tooltip-below .tooltip-text::after {
+  top: 0%;
+  right: 50%;
+  margin: -1em 0 0 0;
+  border-color: transparent transparent var(--color-dialog-tooltip) transparent;
 }
 
 .tooltip-standalone::after {
@@ -790,6 +808,7 @@ button:active:enabled {
   cursor: help;
 }
 .tooltip-standalone:hover .tooltip-text,
+.tooltip-below:hover .tooltip-text,
 .tooltip-if-disabled:hover:disabled .tooltip-text {
   visibility: visible;
   opacity: 1;
@@ -829,8 +848,8 @@ dialog::backdrop {
 }
 .menu-page-body {
   display: grid;
-  grid-template-columns: auto auto auto;
-  grid-auto-rows: 3em;
+  grid-template-columns: auto 1fr auto;
+  grid-auto-rows: 2.8em;
 }
 
 label {
@@ -906,7 +925,7 @@ dialog select, dialog input {
   display: block;
   box-sizing: border-box;
   padding: 0.3em 1em;
-  margin: 0.4em 0em;
+  margin: 0.3em 0em;
   width: 100%;
   font-size: 1.1em;
   border-width: 1px;
@@ -974,6 +993,48 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 }
 #about-text hr {
   width: 50%;
+}
+
+.rule-variant-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-around;
+  width: 8em;
+  height: 8em;
+}
+.rule-variant-off {
+  color: #000000c0;
+}
+.rule-variant-on {
+  font-weight: bold;
+  background-image: linear-gradient(to top left,
+                                    rgba(230, 224, 0, 0.5),
+                                    rgba(230, 224, 0, 0.5) 30%,
+                                    rgba(230, 224, 0, 0.1));
+  box-shadow: inset 1px 1px 2px rgba(255, 255, 255, .4),
+              inset -1px -1px 2px rgba(0, 0, 0, .4);
+}
+.rule-variant-icon {
+  display: block;
+  height: 4em;
+}
+.rule-variant-button-caption {
+  min-height: 2em;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+#cc-rule-variants {
+  margin: 0.5em 0 1em 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.7em;
+  justify-content: center;
+}
+#cc-rule-details {
+  font-size: 85%;
 }
 
 #menu-lobby-page {
