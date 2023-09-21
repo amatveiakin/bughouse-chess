@@ -9,6 +9,8 @@ extern crate wasm_bindgen;
 
 extern crate bughouse_chess;
 
+mod table;
+
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
@@ -25,6 +27,7 @@ use enum_map::enum_map;
 use instant::Instant;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
+use table::{td, HtmlTable};
 use wasm_bindgen::prelude::*;
 
 
@@ -1180,48 +1183,35 @@ fn init_lobby(rules: &Rules) -> JsResult<()> {
     if variants.is_empty() {
         variants.push("—");
     }
-    let mut variant_rows = vec![];
+    let mut variant_table = HtmlTable::new();
     for variant in variants {
-        let caption = if variant_rows.is_empty() {
-            "<td class='lobby-rule-caption'>Variants:</td>"
+        let caption = if variant_table.num_rows() == 0 {
+            td("Variants:").with_classes(["lobby-rule-caption", "valign-baseline"])
         } else {
-            "<td></td>"
+            td("")
         };
-        let value = format!("<td class='lobby-rule-variant'>{variant}</td>");
-        variant_rows.push(format!("{caption}{value}"));
+        let value = td(variant).with_classes(["lobby-rule-variant", "valign-baseline"]);
+        variant_table.add_row([caption, value]);
     }
-    let variants_string = format!(
-        "<table>{}</table>",
-        variant_rows
-            .iter()
-            .map(|s| format!("<tr class='valign-baseline'>{s}</tr>"))
-            .join("")
-    );
 
     let rule_rows = [
         ("Time control", rules.chess_rules.time_control.to_string()),
         ("Promotion", rules.bughouse_rules.promotion_string().to_owned()),
         ("Drop aggression", rules.bughouse_rules.drop_aggression_string().to_owned()),
         ("Pawn drop ranks", rules.bughouse_rules.pawn_drop_ranks_string()),
-    ]
-    .map(|(caption, value)| {
-        format!(
-            "<td class='lobby-rule-caption'>{caption}:</td>
-            <td class='lobby-rule-detail'>{value}</td>"
-        )
-    });
-    let rules_string = format!(
-        "<table>{}</table>",
-        rule_rows
-            .iter()
-            .map(|s| format!("<tr class='valign-baseline'>{s}</tr>"))
-            .join("")
-    );
+    ];
+    let mut rule_table = HtmlTable::new();
+    for (caption, value) in rule_rows {
+        rule_table.add_row([
+            td(caption).with_classes(["lobby-rule-caption", "valign-baseline"]),
+            td(value).with_classes(["lobby-rule-detail", "valign-baseline"]),
+        ]);
+    }
 
     let variants_node = web_document().get_existing_element_by_id("lobby-variants")?;
     let rules_node = web_document().get_existing_element_by_id("lobby-rules")?;
-    variants_node.set_inner_html(&variants_string);
-    rules_node.set_inner_html(&rules_string);
+    variants_node.set_inner_html(&variant_table.to_html());
+    rules_node.set_inner_html(&rule_table.to_html());
 
     Ok(())
 }
@@ -1576,7 +1566,7 @@ fn update_scores(
 ) -> JsResult<()> {
     let show_readiness = !game_status.is_active();
     let normalize = |score: u32| (score as f64) / 2.0;
-    let mut rows = vec![];
+    let mut score_table = HtmlTable::new();
     match scores {
         None => {}
         Some(Scores::PerTeam(score_map)) => {
@@ -1593,46 +1583,33 @@ fn update_scores(
                 let mut first = true;
                 for p in players.iter().sorted_by_key(|p| &p.name) {
                     let p_string = participant_string(p, show_readiness);
-                    let row;
                     if first {
                         first = false;
                         let score = normalize(*score_map.get(&team).unwrap_or(&0));
-                        row = vec![
-                            format!(
-                                r#"<td class="score-player-name score-first-player-name">{p_string}</td>"#,
-                            ),
-                            format!(
-                                r#"<td rowspan="{team_size}" class="team-score-value">{score}</td>"#
-                            ),
-                        ];
+                        score_table.add_row([
+                            td(p_string)
+                                .with_classes(["score-player-name", "score-first-player-name"]),
+                            td(score).with_row_span(team_size).with_classes(["team-score-value"]),
+                        ]);
                     } else {
-                        row = vec![format!(r#"<td class="score-player-name">{p_string}</td>"#)];
+                        score_table.add_row([td(p_string).with_classes(["score-player-name"])]);
                     }
-                    rows.push(row);
                 }
             }
         }
         Some(Scores::PerPlayer(score_map)) => {
-            rows = score_map
-                .iter()
-                .sorted_by_key(|(name, _)| *name)
-                .map(|(name, score)| {
-                    let p = participants.iter().find(|p| p.name == *name).unwrap();
-                    let p_string = participant_string(p, show_readiness);
-                    vec![
-                        format!(r#"<td class="score-player-name">{p_string}</td>"#),
-                        format!(r#"<td class="individual-score-value">{score}</td>"#),
-                    ]
-                })
-                .collect_vec();
+            for (name, score) in score_map.iter().sorted_by_key(|(name, _)| *name) {
+                let p = participants.iter().find(|p| p.name == *name).unwrap();
+                let p_string = participant_string(p, show_readiness);
+                score_table.add_row([
+                    td(p_string).with_classes(["score-player-name"]),
+                    td(score).with_classes(["individual-score-value"]),
+                ]);
+            }
         }
     }
-    let table = format!(
-        r#"<table>{}</table>"#,
-        rows.iter().map(|row| format!(r#"<tr>{}</tr>"#, row.iter().join(""))).join("")
-    );
     let score_node = web_document().get_existing_element_by_id("score-body")?;
-    score_node.set_inner_html(&table);
+    score_node.set_inner_html(&score_table.to_html());
     Ok(())
 }
 
