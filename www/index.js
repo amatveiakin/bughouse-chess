@@ -103,6 +103,7 @@ const menu_signup_with_google_page = document.getElementById('menu-signup-with-g
 const menu_view_account_page = document.getElementById('menu-view-account-page');
 const menu_change_account_page = document.getElementById('menu-change-account-page');
 const menu_delete_account_page = document.getElementById('menu-delete-account-page');
+const menu_create_match_name_page = document.getElementById('menu-create-match-name-page');
 const menu_create_match_page = document.getElementById('menu-create-match-page');
 const menu_join_match_page = document.getElementById('menu-join-match-page');
 const menu_lobby_page = document.getElementById('menu-lobby-page');
@@ -260,6 +261,7 @@ function drag_source_board() { return board_svg(drag_source_board_id); }
 
 const Meter = make_meters();
 
+let is_registered_user = false;
 update_session();
 
 document.addEventListener('keydown', on_document_keydown);
@@ -288,9 +290,10 @@ menu_signup_page.addEventListener('submit', sign_up);
 menu_signup_with_google_page.addEventListener('submit', sign_up_with_google);
 menu_change_account_page.addEventListener('submit', change_account);
 menu_delete_account_page.addEventListener('submit', delete_account);
-create_rated_match_button.addEventListener('click', (event) => on_create_match_submenu(event, true));
-create_unrated_match_button.addEventListener('click', (event) => on_create_match_submenu(event, false));
+create_rated_match_button.addEventListener('click', (event) => on_create_match_request(event, true));
+create_unrated_match_button.addEventListener('click', (event) => on_create_match_request(event, false));
 join_match_button.addEventListener('click', on_join_match_submenu);
+menu_create_match_name_page.addEventListener('submit', create_match_as_guest);
 menu_create_match_page.addEventListener('submit', on_create_match_confirm);
 menu_join_match_page.addEventListener('submit', on_join_match_confirm);
 
@@ -1197,7 +1200,6 @@ function update_session() {
     reset_menu();
     const session = wasm_client().session();
     const using_password_auth = session.registration_method == 'Password';
-    let is_registered_user = null;
     let is_guest = null;
     let user_name = null;
     switch (session.status) {
@@ -1347,12 +1349,23 @@ async function delete_account(event) {
     }), 'Account deleted.');
 }
 
-function on_create_match_submenu(event, rated) {
+function create_match_as_guest(event) {
+    const ccn_player_name = document.getElementById('ccn-player-name');
+    const cc_player_name = document.getElementById('cc-player-name');
+    cc_player_name.value = ccn_player_name.value;
+    push_menu_page(menu_create_match_page);
+}
+
+function on_create_match_request(event, rated) {
     const cc_rating = document.getElementById('cc-rating');
     const cc_confirm_button = document.getElementById('cc-confirm-button');
     cc_rating.value = rated ? 'rated' : 'unrated';
     cc_confirm_button.innerText = rated ? 'Create rated match!' : 'Create unrated match!';
-    push_menu_page(menu_create_match_page);
+    if (is_registered_user) {
+        push_menu_page(menu_create_match_page);
+    } else {
+        push_menu_page(menu_create_match_name_page);
+    }
 }
 
 function on_join_match_submenu(event) {

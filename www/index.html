@@ -570,12 +570,13 @@
       </div>
     </form>
 
-    <form id="menu-create-match-page" class="menu-page" action="javascript:;">
+    <form id="menu-create-match-name-page" class="menu-page" action="javascript:;">
       <div class="flex-row">
         <button type="button" class="square-button back-button" title="Go back">🡨</button>
         <div class="flex-grow"></div>
         <div class="logged-in-as">
           <span class="logged-in-as-prefix">Playing as</span>
+          <!-- Always "Guest". -->
           <span class="logged-in-as-account"></span>
         </div>
       </div>
@@ -583,19 +584,30 @@
         <!-- `pattern` and `maxlength` must be in sync with join match player name field and with `is_valid_player_name` -->
         <!-- Improvement potential. Dedup player name properties (like `pattern` and `title`),
               or reuse the same <input> via dynamic css grids. -->
-        <!-- TODO: Visually separate player name from match params. -->
-        <!-- TODO: Add presets (default and chess.com). -->
-        <label for="cc-player-name" class="guest-player-name">Player name</label>
-        <input type="text" id="cc-player-name" name="player_name" class="guest-player-name"
+        <label for="ccn-player-name" class="guest-player-name">Player name</label>
+        <input type="text" id="ccn-player-name" name="player_name" class="guest-player-name"
           placeholder="&nbsp;" spellcheck="false" required
           maxlength="16" pattern="[\p{L}\p{N}_-]+"
           title="Player name may contain letters, numbers, underscores ('_') and dashes ('-')" />
-        <div class="guest-player-name">
-          <div class="tooltip-text">
-            <p>Player name. May contain letters, numbers, underscores and dashes. Case-sensitive.</p>
-          </div>
-        </div>
+        <div class="guest-player-name"></div>
+      </div>
+      <div class="align-center">
+        <button id="ccn-confirm-button" class="big-button">Choose rules ❯</button>
+      </div>
+    </form>
 
+    <form id="menu-create-match-page" class="menu-page" action="javascript:;">
+      <div class="flex-row">
+        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <div class="flex-grow"></div>
+        <div class="logged-in-as">
+          <span class="logged-in-as-prefix">Playing as</span>
+          <!-- TODO: Should this show chosen player name in addition to "Guest"? -->
+          <span class="logged-in-as-account"></span>
+        </div>
+      </div>
+      <div class="menu-page-body">
+        <!-- TODO: Rename `ccn, `cc` and `cj`: their are based on "contest" term, which was replace by "match". -->
         <label for="cc-fairy-pieces">Fairy pieces</label>
         <select id="cc-fairy-pieces" name="fairy_pieces">
           <option value="off" selected>—</option>
@@ -746,6 +758,7 @@
           </div>
         </div>
       </div>
+      <input type="hidden" id="cc-player-name" name="player_name" />
       <input type="hidden" id="cc-rating" name="rating" />
       <div class="align-center">
         <button id="cc-confirm-button" class="big-button"></button>
