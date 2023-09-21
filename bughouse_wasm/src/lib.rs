@@ -1230,7 +1230,12 @@ fn init_lobby(rules: &Rules) -> JsResult<()> {
 
     // Note: Use a table rather than two independent blocks with valign=top in order to align the
     // caption with the baseline of the first variant.
-    let mut variants = rules.chess_rules.variants_human_readable();
+    let mut variants = rules
+        .chess_rules
+        .variants()
+        .into_iter()
+        .map(ChessVariant::to_human_readable)
+        .collect_vec();
     if variants.is_empty() {
         variants.push("—");
     }

@@ -14,7 +14,7 @@ use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, TurnRecordExpanded,
 };
 use crate::player::Team;
-use crate::rules::StartingPosition;
+use crate::rules::{ChessVariant, StartingPosition};
 
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -118,7 +118,9 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
     use Force::*;
     let now = time::OffsetDateTime::now_utc(); // TODO: Save game start time instead.
     let event = make_event(game);
-    let variants = iter::once("Bughouse").chain(game.chess_rules().variants_pgn()).collect_vec();
+    let variants = iter::once("Bughouse")
+        .chain(game.chess_rules().variants().into_iter().map(ChessVariant::to_pgn))
+        .collect_vec();
     let setup_tag = make_setup_tag(game);
     formatdoc!(
         r#"

@@ -120,6 +120,14 @@ pub struct Rules {
     pub bughouse_rules: BughouseRules,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum ChessVariant {
+    FischerRandom,
+    Accolade,
+    FogOfWar,
+    DuckChess,
+}
+
 impl MatchRules {
     pub fn unrated() -> Self { Self { rated: false } }
 }
@@ -154,50 +162,25 @@ impl ChessRules {
         }
     }
 
-    pub fn variants_pgn(&self) -> Vec<&'static str> {
+    pub fn variants(&self) -> Vec<ChessVariant> {
         let mut v = vec![];
         match self.starting_position {
             StartingPosition::Classic => {}
             StartingPosition::FischerRandom => {
-                v.push("Chess960");
+                v.push(ChessVariant::FischerRandom);
             }
         }
         match self.fairy_pieces {
             FairyPieces::NoFairy => {}
             FairyPieces::Accolade => {
-                v.push("Accolade");
+                v.push(ChessVariant::Accolade);
             }
         }
         if self.fog_of_war {
-            // TODO: Should it be "DarkChess" of "FogOfWar"? Similarity with "DuckChess" is
-            // confusing. If renaming, don't forget to update existing PGNs!
-            v.push("DarkChess");
+            v.push(ChessVariant::FogOfWar);
         }
         if self.duck_chess {
-            v.push("DuckChess");
-        }
-        v
-    }
-
-    pub fn variants_human_readable(&self) -> Vec<&'static str> {
-        let mut v = vec![];
-        match self.starting_position {
-            StartingPosition::Classic => {}
-            StartingPosition::FischerRandom => {
-                v.push("Fischer random");
-            }
-        }
-        match self.fairy_pieces {
-            FairyPieces::NoFairy => {}
-            FairyPieces::Accolade => {
-                v.push("Accolade");
-            }
-        }
-        if self.fog_of_war {
-            v.push("For of war");
-        }
-        if self.duck_chess {
-            v.push("Duck chess");
+            v.push(ChessVariant::DuckChess);
         }
         v
     }
@@ -269,5 +252,27 @@ impl Rules {
                 || self.bughouse_rules.drop_aggression == DropAggression::MateAllowed
         );
         Ok(())
+    }
+}
+
+impl ChessVariant {
+    pub fn to_pgn(self) -> &'static str {
+        match self {
+            ChessVariant::FischerRandom => "Chess960",
+            ChessVariant::Accolade => "Accolade",
+            // TODO: Should it be "DarkChess" of "FogOfWar"? Similarity with "DuckChess" is
+            // confusing. If renaming, don't forget to update existing PGNs!
+            ChessVariant::FogOfWar => "DarkChess",
+            ChessVariant::DuckChess => "DuckChess",
+        }
+    }
+
+    pub fn to_human_readable(self) -> &'static str {
+        match self {
+            ChessVariant::FischerRandom => "Fischer random",
+            ChessVariant::Accolade => "Accolade",
+            ChessVariant::FogOfWar => "Fog of war",
+            ChessVariant::DuckChess => "Duck chess",
+        }
     }
 }
