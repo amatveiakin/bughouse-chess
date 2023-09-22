@@ -1,3 +1,2 @@
 [toolchain]
-# At the time of writing (Apr 2023) the main reason for using nightly is unstable rustfmt options.
 channel = "nightly"

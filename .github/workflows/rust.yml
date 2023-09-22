@@ -7,6 +7,10 @@ env:
 
 jobs:
   build:
+    # Unfortunately this could start failing with a new Rust release, because
+    # `--features "strict"` makes the build fail on warnings. The solution used
+    # to be to hard code a fixed version of Rust and bump it manually after
+    # fixing all new warnings, but this is not possible with nightly.
     name: Build
     runs-on: ubuntu-latest
     steps:
@@ -14,12 +18,10 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          # The latest stable release. Bump the version manually, because build fails on warnings.
-          toolchain: 1.70.0
+          toolchain: nightly
           override: true
       - uses: actions-rs/cargo@v1
         with:
-          # `check` is similar to `build`, but faster because it doesn't do code generation.
           command: check
           args: --workspace --features "strict"
 
@@ -31,7 +33,7 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: nightly
           override: true
       - uses: actions-rs/cargo@v1
         with:
@@ -45,7 +47,6 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          # Use nightly for unstable rustfmt options.
           toolchain: nightly
           override: true
           components: rustfmt
