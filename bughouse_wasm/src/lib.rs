@@ -1647,10 +1647,7 @@ fn update_turn_log(
             // Add records for turns made on the other board when appropriate.
             if !record.turn_expanded.steals.is_empty() {
                 let line_node = document.create_element("div")?;
-                line_node.set_attribute(
-                    "class",
-                    "log-turn-record log-turn-record-intervention",
-                )?;
+                line_node.set_attribute("class", "log-turn-record log-turn-record-intervention")?;
                 // Clicking on the steal will send you the previous turn on this board.
                 line_node.set_attribute("data-turn-index", &prev_index)?;
 
