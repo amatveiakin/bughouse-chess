@@ -3,8 +3,18 @@ pub struct HtmlCollectionIterator {
     index: u32,
 }
 
+// Cannot implement `IntoIterator` for `HtmlCollection` because both the trait and the struct are
+// foreign.
+pub trait IntoHtmlCollectionIterator {
+    fn into_iterator(self) -> HtmlCollectionIterator;
+}
+
 impl From<web_sys::HtmlCollection> for HtmlCollectionIterator {
     fn from(collection: web_sys::HtmlCollection) -> Self { Self { collection, index: 0 } }
+}
+
+impl IntoHtmlCollectionIterator for web_sys::HtmlCollection {
+    fn into_iterator(self) -> HtmlCollectionIterator { self.into() }
 }
 
 impl Iterator for HtmlCollectionIterator {

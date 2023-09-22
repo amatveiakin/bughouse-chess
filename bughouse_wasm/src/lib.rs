@@ -27,7 +27,7 @@ use bughouse_chess::meter::*;
 use bughouse_chess::session::*;
 use bughouse_chess::*;
 use enum_map::enum_map;
-use html_collection_iterator::HtmlCollectionIterator;
+use html_collection_iterator::IntoHtmlCollectionIterator;
 use instant::Instant;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
@@ -1113,10 +1113,9 @@ pub fn update_new_match_rules_body() -> JsResult<()> {
 
 fn new_match_rules_variants() -> JsResult<HashMap<String, String>> {
     let body = web_document().get_existing_element_by_id("cc-rule-variants")?;
-    let buttons =
-        HtmlCollectionIterator::from(body.get_elements_by_class_name("rule-variant-button"));
+    let buttons = body.get_elements_by_class_name("rule-variant-button");
     let mut variants = HashMap::new();
-    for button in buttons {
+    for button in buttons.into_iterator() {
         if !button.class_list().contains("display-none") {
             let name = button.get_attribute("data-variant-name").unwrap();
             let value = button.get_attribute("data-variant-value").unwrap();
