@@ -3,7 +3,7 @@
 
 use std::{fmt, iter};
 
-use bughouse_chess::{BoardShape, ChessVariant, Rules};
+use bughouse_chess::{BoardShape, ChessVariant, Force, Rules, SubjectiveRow};
 use itertools::Itertools;
 
 use crate::table::{td, td_safe, HtmlTable};
@@ -388,6 +388,7 @@ pub fn drop_aggression_mate_allowed_tooltip() -> &'static str {
     Drop with a checkmate is allowed."
 }
 
+// Improvement potential: Update based on the current board shape.
 pub fn pawn_drop_rank_general_tooltip() -> &'static [&'static str] {
     &[
         "Allowed pawn drop ranks in “min-max” format. Ranks are counted starting from the player,
@@ -396,14 +397,30 @@ pub fn pawn_drop_rank_general_tooltip() -> &'static [&'static str] {
         "Limitations:<br> 1 ≤ min ≤ max ≤ 7",
     ]
 }
-pub fn pawn_drop_rank_specific_tooltip(board_shape: BoardShape, min: u8, max: u8) -> String {
-    let black_min = board_shape.num_rows - max + 1;
-    let black_max = board_shape.num_rows - min + 1;
-    format!(
-        "Allowed pawn drop ranks, counted starting from the player.
-        White can drop pawns on ranks {min} to {max}.
-        Black can drop pawns on ranks {black_max} to {black_min}.",
-    )
+pub fn pawn_drop_rank_specific_tooltip(
+    board_shape: BoardShape, min: SubjectiveRow, max: SubjectiveRow,
+) -> String {
+    let white_min = min.to_row(board_shape, Force::White).to_algebraic(board_shape);
+    let white_max = max.to_row(board_shape, Force::White).to_algebraic(board_shape);
+    let black_min = max.to_row(board_shape, Force::Black).to_algebraic(board_shape);
+    let black_max = min.to_row(board_shape, Force::Black).to_algebraic(board_shape);
+    let mut message = if white_min == black_min && white_max == black_max {
+        format!("Pawns can be dropped on ranks {white_min} to {white_max}.")
+    } else {
+        format!(
+            "White can drop pawns on ranks {white_min} to {white_max}.
+            Black can drop pawns on ranks {black_max} to {black_min}.",
+        )
+    };
+    match min.to_one_based() {
+        1 => message.push_str(
+            " Pawns on the first or the second rank from the player can always move two squares.",
+        ),
+        2 => message
+            .push_str(" Pawns on the second rank from the player can always move two squares."),
+        _ => {}
+    };
+    message
 }
 
 pub fn regicide_tooltip() -> &'static [&'static str] {
@@ -552,8 +569,8 @@ pub fn make_lobby_rules_body(rules: &Rules) -> (String, String) {
             rules.bughouse_rules.pawn_drop_ranks_string(),
             Some(paragraphs_to_html([pawn_drop_rank_specific_tooltip(
                 rules.chess_rules.board_shape(),
-                rules.bughouse_rules.min_pawn_drop_rank.to_one_based() as u8,
-                rules.bughouse_rules.max_pawn_drop_rank.to_one_based() as u8,
+                rules.bughouse_rules.min_pawn_drop_rank,
+                rules.bughouse_rules.max_pawn_drop_rank,
             )])),
         ),
     ];
