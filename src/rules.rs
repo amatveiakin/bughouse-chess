@@ -158,10 +158,10 @@ impl ChessRules {
         v
     }
 
-    // If true, use normal chess rules: players are not allowed to leave the king undefended,
+    // If false, use normal chess rules: players are not allowed to leave the king undefended,
     // the king cannot pass through a square attacked by an enemy piece when castling, the game
     // end with a mate.
-    // If false, there are no checks and mates. The game ends when the king is captured.
+    // If true, there are no checks and mates. The game ends when the king is captured.
     pub fn regicide(&self) -> bool { !self.regicide_reason().is_empty() }
 
     // Conceptually we always allow a single preturn, but this may technically require several
