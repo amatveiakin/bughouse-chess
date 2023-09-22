@@ -12,8 +12,9 @@ extern crate bughouse_chess;
 mod html_collection_iterator;
 mod rules_ui;
 mod table;
+mod web_document;
+mod web_error_handling;
 
-use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -32,61 +33,14 @@ use itertools::Itertools;
 use strum::IntoEnumIterator;
 use table::{td, HtmlTable};
 use wasm_bindgen::prelude::*;
+use web_document::{web_document, WebDocument};
+use web_error_handling::JsResult;
 
-
-type JsResult<T> = Result<T, JsValue>;
 
 const RESERVE_HEIGHT: f64 = 1.5; // total reserve area height, in squares
 const RESERVE_PADDING: f64 = 0.25; // padding between board and reserve, in squares
 const TOTAL_FOG_TILES: u64 = 3;
 const FOG_TILE_SIZE: f64 = 1.2;
-
-// The client is single-threaded, so wrapping all mutable singletons in `thread_local!` seems ok.
-thread_local! {
-    static LAST_PANIC: RefCell<String> = RefCell::new(String::new());
-}
-
-// Copied from console_error_panic_hook
-#[wasm_bindgen]
-extern "C" {
-    type Error;
-    #[wasm_bindgen(constructor)]
-    fn new() -> Error;
-    #[wasm_bindgen(structural, method, getter)]
-    fn stack(error: &Error) -> String;
-}
-
-// Optimization potential: Remove or shrink the panic hook when the client is stable.
-#[wasm_bindgen]
-pub fn set_panic_hook() {
-    use std::panic;
-    use std::sync::Once;
-    static SET_HOOK: Once = Once::new();
-    SET_HOOK.call_once(|| {
-        panic::set_hook(Box::new(|panic_info| {
-            // Log to the browser developer console. For more details see
-            // https://github.com/rustwasm/console_error_panic_hook#readme
-            console_error_panic_hook::hook(panic_info);
-
-            // Generate error report to be sent to the server.
-            let js_error = Error::new();
-            let backtrace = js_error.stack();
-            let event = BughouseClientEvent::ReportError(BughouseClientErrorReport::RustPanic {
-                panic_info: panic_info.to_string(),
-                backtrace,
-            });
-            LAST_PANIC.with(|cell| *cell.borrow_mut() = serde_json::to_string(&event).unwrap());
-        }));
-    });
-}
-
-#[wasm_bindgen]
-pub fn last_panic() -> String { LAST_PANIC.with(|cell| cell.borrow().clone()) }
-
-#[wasm_bindgen(getter_with_clone)]
-pub struct RustError {
-    pub message: String,
-}
 
 #[wasm_bindgen(getter_with_clone)]
 pub struct IgnorableError {
@@ -101,27 +55,6 @@ pub struct KickedFromMatch {
 #[wasm_bindgen(getter_with_clone)]
 pub struct FatalError {
     pub message: String,
-}
-
-macro_rules! rust_error {
-    ($($arg:tt)*) => {
-        JsValue::from(RustError{ message: format!($($arg)*) })
-    };
-}
-
-#[wasm_bindgen]
-pub fn make_rust_error_event(error: RustError) -> String {
-    let event = BughouseClientEvent::ReportError(BughouseClientErrorReport::RustError {
-        message: error.message,
-    });
-    serde_json::to_string(&event).unwrap()
-}
-
-#[wasm_bindgen]
-pub fn make_unknown_error_event(message: String) -> String {
-    let event =
-        BughouseClientEvent::ReportError(BughouseClientErrorReport::UnknownError { message });
-    serde_json::to_string(&event).unwrap()
 }
 
 #[wasm_bindgen]
@@ -1121,41 +1054,6 @@ enum SquareHighlightLayer {
     TurnAbove, // like `Turn`, but above the fog of war
     Drag,      // drag start, drag hover, legal moves
 }
-
-struct WebDocument(web_sys::Document);
-
-impl WebDocument {
-    fn body(&self) -> JsResult<web_sys::HtmlElement> {
-        self.0.body().ok_or_else(|| rust_error!("Cannot find document body"))
-    }
-
-    fn get_element_by_id(&self, element_id: &str) -> Option<web_sys::Element> {
-        self.0.get_element_by_id(element_id)
-    }
-    fn get_existing_element_by_id(&self, element_id: &str) -> JsResult<web_sys::Element> {
-        let element = self
-            .0
-            .get_element_by_id(element_id)
-            .ok_or_else(|| rust_error!("Cannot find element \"{}\"", element_id))?;
-        if !element.is_object() {
-            return Err(rust_error!("Element \"{}\" is not an object", element_id));
-        }
-        Ok(element)
-    }
-
-    fn get_elements_by_class_name(&self, class_name: &str) -> HtmlCollectionIterator {
-        self.0.get_elements_by_class_name(class_name).into()
-    }
-
-    pub fn create_element(&self, local_name: &str) -> JsResult<web_sys::Element> {
-        self.0.create_element(local_name)
-    }
-    pub fn create_svg_element(&self, local_name: &str) -> JsResult<web_sys::Element> {
-        self.0.create_element_ns(Some("http://www.w3.org/2000/svg"), local_name)
-    }
-}
-
-fn web_document() -> WebDocument { WebDocument(web_sys::window().unwrap().document().unwrap()) }
 
 fn remove_all_children(node: &web_sys::Node) -> JsResult<()> {
     while let Some(child) = node.last_child() {
