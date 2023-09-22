@@ -1,3 +1,0 @@
-[toolchain]
-# Bump the version manually, because CI build fails on warnings.
-channel = "nightly-2023-09-22"

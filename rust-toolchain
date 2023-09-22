@@ -1,0 +1,6 @@
+# This file has to be called `rust-toolchain`, not `rust-toolchain.toml`,
+# because GitHub `actions-rs` does not understand the latter.
+
+[toolchain]
+# Bump the version manually, because CI build fails on warnings.
+channel = "nightly-2023-09-22"
