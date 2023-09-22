@@ -24,6 +24,11 @@ Folder structure:
 - `/bughouse_wasm` — WASM (WebAssembly) bindings for the web client.
 - `/www` — Web client based on the abovementioned WASM bindings.
 
+Note on `rust-toolchain`: using the obsolete format instead of
+`rust-toolchain.toml`, because GitHub `actions-rs` does not understand the
+latter. The version needs to be bumped manually, because CI build fails on
+warnings.
+
 
 ## Docker setup
 
