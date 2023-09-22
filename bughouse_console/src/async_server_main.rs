@@ -45,17 +45,12 @@ async fn handle_connection<
     let session_store_subscription_id = session_id.as_ref().map(|session_id| {
         // Subscribe the client to all updates to the session in session store.
         let my_client_tx = client_tx.clone();
-        http_server_state
-            .session_store
-            .lock()
-            .unwrap()
-            .subscribe(&session_id, move |s| {
-                // Send the entire session data to the client.
-                // We can perform some mapping here if we want to hide
-                // some of the state from the client.
-                let _ =
-                    my_client_tx.send(BughouseServerEvent::UpdateSession { session: s.clone() });
-            })
+        http_server_state.session_store.lock().unwrap().subscribe(session_id, move |s| {
+            // Send the entire session data to the client.
+            // We can perform some mapping here if we want to hide
+            // some of the state from the client.
+            let _ = my_client_tx.send(BughouseServerEvent::UpdateSession { session: s.clone() });
+        })
     });
 
     let client_id =
@@ -65,16 +60,15 @@ async fn handle_connection<
             .add_client(client_tx, session_id.clone(), peer_addr.to_string());
     let clients_remover = Arc::clone(&clients);
     let remove_client1 = move || {
-        match (session_id, session_store_subscription_id) {
-            (Some(session_id), Some(session_store_subscription_id)) => {
-                http_server_state
-                    .session_store
-                    .lock()
-                    .unwrap()
-                    .unsubscribe(&session_id, session_store_subscription_id);
-            }
-            _ => {}
-        };
+        if let (Some(session_id), Some(session_store_subscription_id)) =
+            (session_id, session_store_subscription_id)
+        {
+            http_server_state
+                .session_store
+                .lock()
+                .unwrap()
+                .unsubscribe(&session_id, session_store_subscription_id);
+        }
         clients_remover.lock().unwrap().remove_client(client_id)
     };
     let remove_client2 = remove_client1.clone();
@@ -224,7 +218,7 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
             // are probably not something we want anyway.
             session_id
                 .as_ref()
-                .map(|s| http_server_state.session_store.lock().unwrap().touch(s));
+                .inspect(|s| http_server_state.session_store.lock().unwrap().touch(s));
 
             // tide::Request -> http_types::Request -> http::Request<Body> -> http::Request<()>.
             let http_types_req: http_types::Request = req.into();
@@ -298,14 +292,14 @@ pub fn run(config: ServerConfig) {
         DatabaseOptions::NoDatabase => None,
         DatabaseOptions::Sqlite(address) => {
             let db = database::SqlxDatabase::<sqlx::Sqlite>::new(&address)
-                .expect(format!("Cannot connect to SQLite DB {address}").as_str());
+                .unwrap_or_else(|_| panic!("Cannot connect to SQLite DB {address}"));
             let h = DatabaseServerHooks::new(db).expect("Cannot initialize hooks");
             Some(Box::new(h) as Box<dyn ServerHooks + Send>)
         }
 
         DatabaseOptions::Postgres(address) => {
             let db = database::SqlxDatabase::<sqlx::Postgres>::new(&address)
-                .expect(format!("Cannot connect to Postgres DB {address}").as_str());
+                .unwrap_or_else(|_| panic!("Cannot connect to Postgres DB {address}"));
             let h = DatabaseServerHooks::new(db).expect("Cannot initialize hooks");
             Some(Box::new(h) as Box<dyn ServerHooks + Send>)
         }
@@ -397,10 +391,10 @@ fn make_database(options: &DatabaseOptions) -> anyhow::Result<Box<dyn SecretData
     Ok(match options {
         DatabaseOptions::NoDatabase => Box::new(database::UnimplementedDatabase {}),
         DatabaseOptions::Sqlite(address) => {
-            Box::new(database::SqlxDatabase::<sqlx::Sqlite>::new(&address)?)
+            Box::new(database::SqlxDatabase::<sqlx::Sqlite>::new(address)?)
         }
         DatabaseOptions::Postgres(address) => {
-            Box::new(database::SqlxDatabase::<sqlx::Postgres>::new(&address)?)
+            Box::new(database::SqlxDatabase::<sqlx::Postgres>::new(address)?)
         }
     })
 }

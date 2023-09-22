@@ -26,7 +26,7 @@ pub fn hash_password(password: &str) -> anyhow::Result<String> {
 }
 
 pub fn verify_password(password: &str, password_hash: &str) -> anyhow::Result<bool> {
-    let parsed_hash = PasswordHash::new(&password_hash)
+    let parsed_hash = PasswordHash::new(password_hash)
         .map_err(|err| anyhow!(err))
         .context("Error parsing password hash.")?;
     Ok(Argon2::default().verify_password(password.as_bytes(), &parsed_hash).is_ok())

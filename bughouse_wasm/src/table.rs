@@ -36,7 +36,7 @@ impl TD {
         self
     }
 
-    pub fn to_html(self) -> String {
+    pub fn to_html(&self) -> String {
         let mut attributes = vec![];
         if let Some(row_span) = self.row_span {
             attributes.push(format!("rowspan='{}'", row_span));

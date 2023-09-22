@@ -53,7 +53,7 @@ impl SqlxDatabase<sqlx::Sqlite> {
 impl SqlxDatabase<sqlx::Postgres> {
     pub fn new(db_address: &str) -> Result<Self, anyhow::Error> {
         let options = sqlx::postgres::PgPoolOptions::new();
-        let pool = async_std::task::block_on(options.connect(&format!("{db_address}")))?;
+        let pool = async_std::task::block_on(options.connect(db_address))?;
         Ok(Self { pool })
     }
 }
@@ -148,7 +148,7 @@ where
         }
         if oks.is_empty() && !errs.is_empty() {
             // None of the rows parsed, return the first error.
-            Err(errs.into_iter().next().unwrap().unwrap_err().into())
+            Err(errs.into_iter().next().unwrap().unwrap_err())
         } else {
             Ok(oks.into_iter().map(Result::unwrap).collect())
         }

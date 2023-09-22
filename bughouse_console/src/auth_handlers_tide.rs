@@ -99,7 +99,7 @@ pub fn authorize_access_by_password(password: &str, account: &LiveAccount) -> an
     };
     // TODO: Update password hash on login:
     //   https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#upgrading-the-work-factor
-    let password_ok = auth::verify_password(&password, &password_hash)?;
+    let password_ok = auth::verify_password(password, password_hash)?;
     if !password_ok {
         return Err(anyhow!("Invalid password."));
     }
@@ -385,7 +385,7 @@ pub async fn handle_change_account<DB: Send + Sync + 'static>(
             old_account.id,
             Box::new(move |account| -> anyhow::Result<()> {
                 if account.registration_method == RegistrationMethod::Password {
-                    authorize_access_by_password(&current_password, &account)?;
+                    authorize_access_by_password(&current_password, account)?;
                 }
                 account.email = email;
                 if let Some(new_password) = new_password {

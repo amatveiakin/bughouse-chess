@@ -480,7 +480,7 @@ fn format_timestamp_date_and_time(maybe_ts: Option<OffsetDateTime>) -> Option<(S
 
 fn keep_last_point_per_date(points: &mut Vec<RawStats>) {
     *points = points
-        .into_iter()
+        .iter_mut()
         .filter(|p| p.last_update.is_some())
         .group_by(|p| p.last_update.unwrap().date())
         .into_iter()

@@ -200,7 +200,7 @@ fn random_action_kind(rng: &mut rand::rngs::ThreadRng) -> ActionKind {
         (CancelPreturn, n),
     ];
     let (actions, weights): (Vec<_>, Vec<_>) = weighted_actions.into_iter().unzip();
-    let dist = WeightedIndex::new(&weights).unwrap();
+    let dist = WeightedIndex::new(weights).unwrap();
     actions[dist.sample(rng)]
 }
 
@@ -291,6 +291,7 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
     })
 }
 
+#[allow(clippy::let_unit_value)]
 fn apply_action(alt_game: &mut AlteredGame, action: Action) {
     use Action::*;
     match action {

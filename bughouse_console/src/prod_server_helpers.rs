@@ -6,6 +6,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::censor::profanity_censor;
 
 
+#[allow(clippy::useless_format)]
 pub fn validate_player_name(name: &str) -> Result<(), String> {
     let name = name.nfc().collect::<String>();
     const MIN_NAME_LENGTH: usize = 2;

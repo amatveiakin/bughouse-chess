@@ -53,6 +53,7 @@ impl RawStats {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for RawStats {
     fn default() -> Self {
         RawStats {
@@ -250,6 +251,7 @@ fn process_game(
     }
 }
 
+#[allow(clippy::ptr_arg)]
 pub trait StatStore {
     fn get_team(&self, team: &[String; 2]) -> RawStats;
     fn get_player(&self, player: &String) -> RawStats;
@@ -294,6 +296,7 @@ impl<Stats> GroupStats<Stats>
 where
     Self: StatStore,
 {
+    #[allow(clippy::needless_range_loop)]
     pub fn update(
         &mut self, game: &GameResultRow, compute_meta_stats: ComputeMetaStats,
     ) -> anyhow::Result<()> {
