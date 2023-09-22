@@ -122,8 +122,8 @@ pub struct Rules {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum ChessVariant {
-    FischerRandom,
     Accolade,
+    FischerRandom,
     FogOfWar,
     DuckChess,
 }
@@ -176,16 +176,16 @@ impl ChessRules {
 
     pub fn variants(&self) -> Vec<ChessVariant> {
         let mut v = vec![];
-        match self.starting_position {
-            StartingPosition::Classic => {}
-            StartingPosition::FischerRandom => {
-                v.push(ChessVariant::FischerRandom);
-            }
-        }
         match self.fairy_pieces {
             FairyPieces::NoFairy => {}
             FairyPieces::Accolade => {
                 v.push(ChessVariant::Accolade);
+            }
+        }
+        match self.starting_position {
+            StartingPosition::Classic => {}
+            StartingPosition::FischerRandom => {
+                v.push(ChessVariant::FischerRandom);
             }
         }
         if self.fog_of_war {
