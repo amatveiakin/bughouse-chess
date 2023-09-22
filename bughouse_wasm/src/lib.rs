@@ -1,3 +1,5 @@
+#![feature(let_chains)]
+#![feature(result_option_inspect)]
 #![cfg_attr(feature = "strict", deny(warnings))]
 
 extern crate console_error_panic_hook;
@@ -790,9 +792,7 @@ impl WebClient {
                         //     it's either unnoticeable or too visisble. Ideal would be to rotate hue
                         //     within bluish color range.
                     } else {
-                        // Rust-upgrade (https://github.com/rust-lang/rust/issues/91345):
-                        //   `map` -> `inspect`.
-                        node.map(|n| n.remove());
+                        node.inspect(|n| n.remove());
                     }
                 }
                 {
@@ -800,10 +800,7 @@ impl WebClient {
                     let node = document.get_element_by_id(&node_id);
                     let node =
                         ensure_square_node(display_coord, &piece_layer, &node_id, node, 1.0)?;
-                    // Rust-upgrade (https://github.com/rust-lang/rust/issues/53667):
-                    //   Replace `is_some` + `unwrap` with `if let`.
-                    if !fog_cover_area.contains(&coord) && grid[coord].is_some() {
-                        let piece = grid[coord].unwrap();
+                    if !fog_cover_area.contains(&coord) && let Some(piece) = grid[coord] {
                         let filename = piece_path(piece.kind, piece.force);
                         node.set_attribute("href", &filename)?;
                         node.remove_attribute("class")?;

@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use crate::force::Force;
-use crate::util::div_ceil_u128;
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -191,7 +190,7 @@ impl Clock {
         let low_time = s_floor < 20;
         let time_breakdown = if low_time {
             let seconds = s_floor.try_into().unwrap();
-            let deciseconds = (div_ceil_u128(nanos, NANOS_PER_DECI) % 10).try_into().unwrap();
+            let deciseconds = (nanos.div_ceil(NANOS_PER_DECI) % 10).try_into().unwrap();
             TimeBreakdown::LowTime { seconds, deciseconds }
         } else {
             let s_ceil = (nanos + NANOS_PER_SEC - 1) / NANOS_PER_SEC;
