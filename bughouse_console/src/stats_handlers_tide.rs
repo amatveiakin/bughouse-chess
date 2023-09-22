@@ -365,7 +365,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
     }
 
     // TODO: move to static content as well.
-    const STYLESHEET: &str = r#"
+    const STYLESHEET: &'static str = r#"
 table, th, td {
     border: 1px solid black;
     border-collapse: collapse;
