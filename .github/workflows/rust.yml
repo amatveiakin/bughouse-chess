@@ -5,12 +5,10 @@ on: [push, pull_request]
 env:
   CARGO_TERM_COLOR: always
 
+# Note. No need to specify `toolchain`: `actions-rs` should be able to use
+# `rust-toolchain.toml`.
 jobs:
   build:
-    # Unfortunately this could start failing with a new Rust release, because
-    # `--features "strict"` makes the build fail on warnings. The solution used
-    # to be to hard code a fixed version of Rust and bump it manually after
-    # fixing all new warnings, but this is not possible with nightly.
     name: Build
     runs-on: ubuntu-latest
     steps:
@@ -18,8 +16,6 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly
-          override: true
       - uses: actions-rs/cargo@v1
         with:
           command: check
@@ -33,8 +29,6 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly
-          override: true
       - uses: actions-rs/cargo@v1
         with:
           command: test
@@ -47,8 +41,6 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly
-          override: true
           components: rustfmt
       - uses: actions-rs/cargo@v1
         with:
