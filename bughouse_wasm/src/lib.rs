@@ -719,7 +719,7 @@ impl WebClient {
         };
         update_observers(&mtch.participants)?;
         let Some(GameState { ref alt_game, .. }) = mtch.game_state else {
-            update_lobby(&mtch)?;
+            update_lobby(mtch)?;
             return Ok(());
         };
         let game = alt_game.local_game();
@@ -802,7 +802,7 @@ impl WebClient {
                         ensure_square_node(display_coord, &piece_layer, &node_id, node, 1.0)?;
                     if !fog_cover_area.contains(&coord) && let Some(piece) = grid[coord] {
                         let filename = piece_path(piece.kind, piece.force);
-                        node.set_attribute("href", &filename)?;
+                        node.set_attribute("href", filename)?;
                         node.remove_attribute("class")?;
                         node.class_list()
                             .toggle_with_force("draggable", is_piece_draggable(piece.force))?;
@@ -829,7 +829,7 @@ impl WebClient {
                 let player = mtch.participants.iter().find(|p| p.name == *player_name).unwrap();
                 // TODO: Show teams for the upcoming game in individual mode.
                 let show_readiness = false;
-                let player_string = participant_string(&player, show_readiness);
+                let player_string = participant_string(player, show_readiness);
                 name_node.set_text_content(Some(&player_string));
                 let is_draggable = is_piece_draggable(force.into());
                 update_reserve(
@@ -1170,7 +1170,7 @@ fn ensure_square_node(
         Some(v) => v,
         None => {
             let v = web_document().create_svg_element("use")?;
-            v.set_attribute("id", &node_id)?;
+            v.set_attribute("id", node_id)?;
             layer.append_child(&v)?;
             v
         }
@@ -1179,7 +1179,7 @@ fn ensure_square_node(
     let pos = DisplayFCoord::square_pivot(display_coord);
     node.set_attribute("x", &(pos.x - shift).to_string())?;
     node.set_attribute("y", &(pos.y - shift).to_string())?;
-    node.set_attribute("data-bughouse-location", &node_id)?;
+    node.set_attribute("data-bughouse-location", node_id)?;
     Ok(node)
 }
 
@@ -1371,7 +1371,7 @@ fn render_reserve(
                 x += piece_sep;
             }
             let node = document.create_svg_element("use")?;
-            node.set_attribute("href", &filename)?;
+            node.set_attribute("href", filename)?;
             node.set_attribute("data-bughouse-location", &reserve_piece_id(board_idx, piece_kind))?;
             node.set_attribute("x", &x.to_string())?;
             node.set_attribute("y", &y.to_string())?;
@@ -1649,7 +1649,7 @@ fn update_turn_log(
                 let line_node = document.create_element("div")?;
                 line_node.set_attribute(
                     "class",
-                    &format!("log-turn-record log-turn-record-intervention"),
+                    "log-turn-record log-turn-record-intervention",
                 )?;
                 // Clicking on the steal will send you the previous turn on this board.
                 line_node.set_attribute("data-turn-index", &prev_index)?;
@@ -1723,7 +1723,7 @@ fn render_grid(
             sq.set_attribute("y", &y.to_string())?;
             sq.set_attribute("width", "1")?;
             sq.set_attribute("height", "1")?;
-            sq.set_attribute("class", &square_color_class(row, col))?;
+            sq.set_attribute("class", square_color_class(row, col))?;
             layer.append_child(&sq)?;
             if display_coord.x == 0 {
                 let caption = document.create_svg_element("text")?;
@@ -1731,7 +1731,7 @@ fn render_grid(
                 caption.set_attribute("x", &(x + text_h_padding).to_string())?;
                 caption.set_attribute("y", &(y + text_v_padding).to_string())?;
                 caption.set_attribute("dominant-baseline", "hanging")?;
-                caption.set_attribute("class", &square_text_color_class(row, col))?;
+                caption.set_attribute("class", square_text_color_class(row, col))?;
                 layer.append_child(&caption)?;
             }
             if display_coord.y == board_shape.num_rows as i8 - 1 {
@@ -1740,7 +1740,7 @@ fn render_grid(
                 caption.set_attribute("x", &(x + 1.0 - text_h_padding).to_string())?;
                 caption.set_attribute("y", &(y + 1.0 - text_v_padding).to_string())?;
                 caption.set_attribute("text-anchor", "end")?;
-                caption.set_attribute("class", &square_text_color_class(row, col))?;
+                caption.set_attribute("class", square_text_color_class(row, col))?;
                 layer.append_child(&caption)?;
             }
         }
