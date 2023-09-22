@@ -15,7 +15,9 @@ pub struct HtmlTable {
     rows: Vec<String>,
 }
 
-pub fn td(text: impl fmt::Display) -> TD {
+pub fn td(text: impl fmt::Display) -> TD { td_safe(html_escape::encode_text(&text.to_string())) }
+
+pub fn td_safe(text: impl fmt::Display) -> TD {
     TD {
         text: text.to_string(),
         classes: vec![],
@@ -42,7 +44,7 @@ impl TD {
         if !self.classes.is_empty() {
             attributes.push(format!("class='{}'", self.classes.join(" ")));
         }
-        format!("<td {}>{}</td>", attributes.join(" "), html_escape::encode_text(&self.text))
+        format!("<td {}>{}</td>", attributes.join(" "), &self.text)
     }
 }
 

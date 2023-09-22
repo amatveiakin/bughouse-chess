@@ -3,7 +3,10 @@
 
 use std::{fmt, iter};
 
+use bughouse_chess::{BoardShape, ChessVariant, Rules};
 use itertools::Itertools;
+
+use crate::table::{td, td_safe, HtmlTable};
 
 
 pub const PLAYER_NAME: &'static str = "player_name"; // filled by JSs
@@ -346,7 +349,7 @@ pub fn fog_of_war_tooltip() -> &'static str {
 }
 
 pub fn stating_time_tooltip() -> &'static str {
-    "Starting time in “m:ss” format. Increments and delays are not allowed."
+    "Starting time in “m:ss” format. There are no increments or delays."
 }
 
 pub fn promotion_upgrade_tooltip() -> &'static str {
@@ -366,32 +369,41 @@ pub fn promotion_steal_tooltip() -> &'static str {
     piece from the board, not from reserve. Cannot check player by stealing their piece."
 }
 
-pub fn drop_no_check_aggression_tooltip() -> &'static str {
+pub fn drop_aggression_no_check_tooltip() -> &'static str {
     "<i>No check.</i>
     Drop with a check is forbidden."
 }
-pub fn drop_no_chess_mate_aggression_tooltip() -> &'static str {
+pub fn drop_aggression_no_chess_mate_tooltip() -> &'static str {
     "<i>No chess mate.</i>
     Drop with a checkmate is forbidden, even if the opponent can escape the checkmate with
     a drop of their own."
 }
-pub fn drop_no_bughouse_mate_aggression_tooltip() -> &'static str {
+pub fn drop_aggression_no_bughouse_mate_tooltip() -> &'static str {
     "<i>No bughouse mate.</i>
     Drop with a checkmate is forbidden, unless the opponent can escape the checkmate with
     a drop of their own (even if their reserve is currently empty)."
 }
-pub fn drop_mate_allowed_aggression_tooltip() -> &'static str {
+pub fn drop_aggression_mate_allowed_tooltip() -> &'static str {
     "<i>Mate allowed.</i>
     Drop with a checkmate is allowed."
 }
 
-pub fn pawn_drop_rank_tooltip() -> &'static [&'static str] {
+pub fn pawn_drop_rank_general_tooltip() -> &'static [&'static str] {
     &[
         "Allowed pawn drop ranks in “min-max” format. Ranks are counted starting from the player,
         so “2-6” means White can drop from rank 2 to rank 6 and Black can drop
         from rank 7 to rank 3.",
         "Limitations:<br> 1 ≤ min ≤ max ≤ 7",
     ]
+}
+pub fn pawn_drop_rank_specific_tooltip(board_shape: BoardShape, min: u8, max: u8) -> String {
+    let black_min = board_shape.num_rows - max + 1;
+    let black_max = board_shape.num_rows - min + 1;
+    format!(
+        "Allowed pawn drop ranks, counted starting from the player.
+        White can drop pawns on ranks {min} to {max}.
+        Black can drop pawns on ranks {black_max} to {black_min}.",
+    )
 }
 
 pub fn regicide_tooltip() -> &'static [&'static str] {
@@ -450,7 +462,7 @@ pub fn make_new_match_rules_body() -> (String, String) {
                 "min-max",
                 "2-6",
             )
-            .with_tooltip(pawn_drop_rank_tooltip()),
+            .with_tooltip(pawn_drop_rank_general_tooltip()),
         RuleNode::new(DROP_AGGRESSION, "Drop aggression")
             .with_input_select([
                 ("no-check", "No check", false),
@@ -459,10 +471,10 @@ pub fn make_new_match_rules_body() -> (String, String) {
                 ("mate-allowed", "Mate allowed", false),
             ])
             .with_tooltip([
-                drop_no_check_aggression_tooltip(),
-                drop_no_chess_mate_aggression_tooltip(),
-                drop_no_bughouse_mate_aggression_tooltip(),
-                drop_mate_allowed_aggression_tooltip(),
+                drop_aggression_no_check_tooltip(),
+                drop_aggression_no_chess_mate_tooltip(),
+                drop_aggression_no_bughouse_mate_tooltip(),
+                drop_aggression_mate_allowed_tooltip(),
             ]),
     ]
     .into_iter()
@@ -481,4 +493,99 @@ pub fn make_new_match_rules_body() -> (String, String) {
     ));
 
     (variants.join(""), details.join(""))
+}
+
+pub fn make_lobby_rules_body(rules: &Rules) -> (String, String) {
+    // Note: Use a table rather than two independent blocks with valign=top in order to align the
+    // caption with the baseline of the first variant.
+    let mut variants = rules
+        .chess_rules
+        .variants()
+        .into_iter()
+        .map(|variant| {
+            let tooltip = match variant {
+                ChessVariant::FischerRandom => fischer_random_tooltip(),
+                ChessVariant::Accolade => accolade_tooltip(),
+                ChessVariant::FogOfWar => fog_of_war_tooltip(),
+                ChessVariant::DuckChess => duck_chess_tooltip(),
+            };
+            (variant.to_human_readable(), Some(paragraphs_to_html([tooltip])))
+        })
+        .collect_vec();
+    if variants.is_empty() {
+        variants.push(("—", None));
+    }
+    let mut variant_table = HtmlTable::new();
+    for (name, tooltip) in variants {
+        let caption_td = if variant_table.num_rows() == 0 {
+            td("Variants:").with_classes(["lobby-rule-caption", "valign-baseline"])
+        } else {
+            td("")
+        };
+        let name_td = td(name).with_classes(["lobby-rule-variant", "valign-baseline"]);
+        let tooltip_td = td_safe(
+            tooltip
+                .map(|text| standalone_tooltip(&text, ["tooltip-standalone-small"]))
+                .unwrap_or_default(),
+        );
+        variant_table.add_row([caption_td, name_td, tooltip_td]);
+    }
+
+    let promotion_tooltip = match rules.bughouse_rules.promotion {
+        bughouse_chess::Promotion::Upgrade => promotion_upgrade_tooltip(),
+        bughouse_chess::Promotion::Discard => promotion_discard_tooltip(),
+        bughouse_chess::Promotion::Steal => promotion_steal_tooltip(),
+    };
+    let mut rule_rows = vec![
+        (
+            "Time control",
+            rules.chess_rules.time_control.to_string(),
+            Some(paragraphs_to_html([stating_time_tooltip()])),
+        ),
+        (
+            "Promotion",
+            rules.bughouse_rules.promotion_string().to_owned(),
+            Some(paragraphs_to_html([promotion_tooltip])),
+        ),
+        (
+            "Pawn drop ranks",
+            rules.bughouse_rules.pawn_drop_ranks_string(),
+            Some(paragraphs_to_html([pawn_drop_rank_specific_tooltip(
+                rules.chess_rules.board_shape(),
+                rules.bughouse_rules.min_pawn_drop_rank.to_one_based() as u8,
+                rules.bughouse_rules.max_pawn_drop_rank.to_one_based() as u8,
+            )])),
+        ),
+    ];
+    if rules.chess_rules.regicide() {
+        rule_rows.push(("", "Regicide".to_owned(), Some(paragraphs_to_html(regicide_tooltip()))))
+    } else {
+        let drop_aggression_tooltip = match rules.bughouse_rules.drop_aggression {
+            bughouse_chess::DropAggression::NoCheck => drop_aggression_no_check_tooltip(),
+            bughouse_chess::DropAggression::NoChessMate => drop_aggression_no_chess_mate_tooltip(),
+            bughouse_chess::DropAggression::NoBughouseMate => {
+                drop_aggression_no_bughouse_mate_tooltip()
+            }
+            bughouse_chess::DropAggression::MateAllowed => drop_aggression_mate_allowed_tooltip(),
+        };
+        rule_rows.push((
+            "Drop aggression",
+            rules.bughouse_rules.drop_aggression_string().to_owned(),
+            Some(paragraphs_to_html([drop_aggression_tooltip])),
+        ));
+    }
+    let mut rule_table = HtmlTable::new();
+    for (caption, value, tooltip) in rule_rows {
+        rule_table.add_row([
+            td(caption).with_classes(["lobby-rule-caption", "valign-baseline"]),
+            td(value).with_classes(["lobby-rule-detail", "valign-baseline"]),
+            td_safe(
+                tooltip
+                    .map(|text| standalone_tooltip(&text, ["tooltip-standalone-small"]))
+                    .unwrap_or_default(),
+            ),
+        ]);
+    }
+
+    (variant_table.to_html(), rule_table.to_html())
 }

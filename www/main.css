@@ -757,7 +757,7 @@ button:active:enabled {
   font-size: 0.9rem;
   width: 18em;
   background-color: var(--color-dialog-tooltip);
-  padding: 0 1em;
+  padding: 0em 1em;
   border-radius: 0.5em;
   position: absolute;
   z-index: 1;
@@ -797,11 +797,14 @@ button:active:enabled {
 }
 
 .tooltip-standalone::after {
-  font-size: 120%;
+  font-size: 110%;
   content: "ⓘ";
 }
 .tooltip-standalone:hover::after {
   content: "📖";
+}
+.tooltip-standalone.tooltip-standalone-small::after {
+  font-size: 90%;
 }
 .tooltip-standalone:hover,
 .tooltip-if-disabled:hover:disabled {
@@ -1106,13 +1109,17 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 .lobby-rule-caption {
   padding-right: 0.5em;
   font-size: 85%;
+  /* Set `white-space: nowrap` to compensate `width: 100%` in the value column */
+  white-space: nowrap;
   color: #000000c0;
 }
 .lobby-rule-variant {
   font-size: 105%;
+  width: 100%;
 }
 .lobby-rule-detail {
   font-size: 95%;
+  width: 100%;
 }
 .lobby-icon {
   width: 2em;

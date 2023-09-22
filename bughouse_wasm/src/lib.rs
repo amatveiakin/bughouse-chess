@@ -1143,52 +1143,11 @@ fn init_lobby(rules: &Rules) -> JsResult<()> {
         "Unrated match"
     }));
 
-    // Note: Use a table rather than two independent blocks with valign=top in order to align the
-    // caption with the baseline of the first variant.
-    let mut variants = rules
-        .chess_rules
-        .variants()
-        .into_iter()
-        .map(ChessVariant::to_human_readable)
-        .collect_vec();
-    if variants.is_empty() {
-        variants.push("—");
-    }
-    let mut variant_table = HtmlTable::new();
-    for variant in variants {
-        let caption = if variant_table.num_rows() == 0 {
-            td("Variants:").with_classes(["lobby-rule-caption", "valign-baseline"])
-        } else {
-            td("")
-        };
-        let value = td(variant).with_classes(["lobby-rule-variant", "valign-baseline"]);
-        variant_table.add_row([caption, value]);
-    }
-
-    let mut rule_rows = vec![
-        ("Time control", rules.chess_rules.time_control.to_string()),
-        ("Promotion", rules.bughouse_rules.promotion_string().to_owned()),
-        ("Pawn drop ranks", rules.bughouse_rules.pawn_drop_ranks_string()),
-    ];
-    if rules.chess_rules.regicide() {
-        rule_rows.push(("", "Regicide: no checks and mates".to_owned()))
-    } else {
-        rule_rows
-            .push(("Drop aggression", rules.bughouse_rules.drop_aggression_string().to_owned()));
-    }
-    let mut rule_table = HtmlTable::new();
-    for (caption, value) in rule_rows {
-        rule_table.add_row([
-            td(caption).with_classes(["lobby-rule-caption", "valign-baseline"]),
-            td(value).with_classes(["lobby-rule-detail", "valign-baseline"]),
-        ]);
-    }
-
-    let variants_node = web_document().get_existing_element_by_id("lobby-variants")?;
-    let rules_node = web_document().get_existing_element_by_id("lobby-rules")?;
-    variants_node.set_inner_html(&variant_table.to_html());
-    rules_node.set_inner_html(&rule_table.to_html());
-
+    let (variants, details) = rules_ui::make_lobby_rules_body(rules);
+    let variants_node = web_document().get_existing_element_by_id("lobby-rule-variants")?;
+    let rules_node = web_document().get_existing_element_by_id("lobby-rule-details")?;
+    variants_node.set_inner_html(&variants);
+    rules_node.set_inner_html(&details);
     Ok(())
 }
 
