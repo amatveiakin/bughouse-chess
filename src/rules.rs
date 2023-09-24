@@ -166,8 +166,8 @@ pub struct Rules {
 pub enum ChessVariant {
     Accolade,
     FischerRandom,
-    FogOfWar,
     DuckChess,
+    FogOfWar,
 }
 
 impl MatchRules {
@@ -238,11 +238,11 @@ impl ChessRules {
                 v.push(ChessVariant::FischerRandom);
             }
         }
-        if self.fog_of_war {
-            v.push(ChessVariant::FogOfWar);
-        }
         if self.duck_chess {
             v.push(ChessVariant::DuckChess);
+        }
+        if self.fog_of_war {
+            v.push(ChessVariant::FogOfWar);
         }
         v
     }
@@ -319,21 +319,21 @@ impl Rules {
 impl ChessVariant {
     pub fn to_pgn(self) -> &'static str {
         match self {
-            ChessVariant::FischerRandom => "Chess960",
             ChessVariant::Accolade => "Accolade",
+            ChessVariant::FischerRandom => "Chess960",
+            ChessVariant::DuckChess => "DuckChess",
             // TODO: Should it be "DarkChess" of "FogOfWar"? Similarity with "DuckChess" is
             // confusing. If renaming, don't forget to update existing PGNs!
             ChessVariant::FogOfWar => "DarkChess",
-            ChessVariant::DuckChess => "DuckChess",
         }
     }
 
     pub fn to_human_readable(self) -> &'static str {
         match self {
-            ChessVariant::FischerRandom => "Fischer random",
             ChessVariant::Accolade => "Accolade",
-            ChessVariant::FogOfWar => "Fog of war",
+            ChessVariant::FischerRandom => "Fischer random",
             ChessVariant::DuckChess => "Duck chess",
+            ChessVariant::FogOfWar => "Fog of war",
         }
     }
 }

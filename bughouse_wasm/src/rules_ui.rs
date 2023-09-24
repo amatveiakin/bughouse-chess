@@ -521,10 +521,10 @@ pub fn make_lobby_rules_body(rules: &Rules) -> (String, String) {
         .into_iter()
         .map(|variant| {
             let tooltip = match variant {
-                ChessVariant::FischerRandom => fischer_random_tooltip(),
                 ChessVariant::Accolade => accolade_tooltip(),
-                ChessVariant::FogOfWar => fog_of_war_tooltip(),
+                ChessVariant::FischerRandom => fischer_random_tooltip(),
                 ChessVariant::DuckChess => duck_chess_tooltip(),
+                ChessVariant::FogOfWar => fog_of_war_tooltip(),
             };
             (variant.to_human_readable(), Some(paragraphs_to_html([tooltip])))
         })
