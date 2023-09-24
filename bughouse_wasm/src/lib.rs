@@ -261,7 +261,11 @@ impl WebClient {
             "on" => true,
             s => return Err(format!("Invalid fog of war option: {s}").into()),
         };
-        let regicide = duck_chess || fog_of_war;
+        let koedem = match variants.get(KOEDEM).unwrap().as_str() {
+            "off" => false,
+            "on" => true,
+            s => return Err(format!("Invalid koedem option: {s}").into()),
+        };
 
         // Other chess rules
         let promotion = match details.get(PROMOTION).as_string().unwrap().as_str() {
@@ -270,16 +274,12 @@ impl WebClient {
             "steal" => Promotion::Steal,
             s => return Err(format!("Invalid promotion: {s}").into()),
         };
-        let drop_aggression = if regicide {
-            DropAggression::MateAllowed
-        } else {
-            match details.get(DROP_AGGRESSION).as_string().unwrap().as_str() {
-                "no-check" => DropAggression::NoCheck,
-                "no-chess-mate" => DropAggression::NoChessMate,
-                "no-bughouse-mate" => DropAggression::NoBughouseMate,
-                "mate-allowed" => DropAggression::MateAllowed,
-                s => return Err(format!("Invalid drop aggression: {s}").into()),
-            }
+        let drop_aggression = match details.get(DROP_AGGRESSION).as_string().unwrap().as_str() {
+            "no-check" => DropAggression::NoCheck,
+            "no-chess-mate" => DropAggression::NoChessMate,
+            "no-bughouse-mate" => DropAggression::NoBughouseMate,
+            "mate-allowed" => DropAggression::MateAllowed,
+            s => return Err(format!("Invalid drop aggression: {s}").into()),
         };
 
         let starting_time = details.get(STARTING_TIME).as_string().unwrap();
@@ -308,19 +308,24 @@ impl WebClient {
 
         // Combine everything together
         let match_rules = MatchRules { rated };
-        let chess_rules = ChessRules {
+        let mut chess_rules = ChessRules {
             fairy_pieces,
             starting_position,
             duck_chess,
             fog_of_war,
             time_control: TimeControl { starting_time },
             bughouse_rules: Some(BughouseRules {
+                koedem,
                 promotion,
                 min_pawn_drop_rank,
                 max_pawn_drop_rank,
                 drop_aggression,
             }),
         };
+        if chess_rules.regicide() {
+            chess_rules.bughouse_rules.as_mut().unwrap().drop_aggression =
+                DropAggression::MateAllowed;
+        }
         let rules = Rules { match_rules, chess_rules };
         if let Err(message) = rules.verify() {
             return Err(IgnorableError { message }.into());
@@ -461,6 +466,7 @@ impl WebClient {
         let display_board_idx = parse_board_id(board_id)?;
         let pos = DisplayFCoord { x, y };
         if let Some(dest_display) = pos.to_square(board_shape) {
+            use PieceDragError::*;
             use PieceKind::*;
             let board_idx = get_board_index(display_board_idx, alt_game.perspective());
             let board_orientation =
@@ -476,17 +482,20 @@ impl WebClient {
                     let turn_result = self.state.make_turn(display_board_idx, turn_input);
                     self.show_turn_result(turn_result)?;
                 }
-                Err(PieceDragError::DragIllegal) => {
+                Err(CannotCastleDroppedKing) => {
+                    self.show_turn_result(Err(TurnError::CastlingPieceHasMoved))?;
+                }
+                Err(DragIllegal) => {
                     // Ignore: tried to make an illegal move (this is usually checked later, but
                     // sometimes now).
                 }
-                Err(PieceDragError::DragNoLongerPossible) => {
+                Err(DragNoLongerPossible) => {
                     // Ignore: this happen when dragged piece was captured by opponent.
                 }
-                Err(PieceDragError::Cancelled) => {
+                Err(Cancelled) => {
                     // Ignore: user cancelled the move by putting the piece back in place.
                 }
-                Err(err) => {
+                Err(err @ (DragForbidden | NoDragInProgress | PieceNotFound)) => {
                     return Err(rust_error!("Drag&drop error: {:?}", err));
                 }
             };
@@ -838,7 +847,7 @@ impl WebClient {
                     display_board_idx,
                     player_idx,
                     is_draggable,
-                    board_shape,
+                    game.chess_rules(),
                 )?;
             }
             let wayback_turn_idx = alt_game.wayback_turn_index(board_idx);
@@ -1090,15 +1099,17 @@ pub fn init_new_match_rules_body() -> JsResult<()> {
     Ok(())
 }
 
-// Should mirror `ChessRules::regicide`. Could've constructed `ChessRules` and called it directly,
-// but doing so could fail due to unrelated problems, e.g. errors in "starting time" format.
 #[wasm_bindgen]
 pub fn update_new_match_rules_body() -> JsResult<()> {
     use rules_ui::*;
     let variants = new_match_rules_variants()?;
     let duck_chess = variants.get(DUCK_CHESS).unwrap() == "on";
     let fog_of_war = variants.get(FOG_OF_WAR).unwrap() == "on";
-    let regicide = duck_chess || fog_of_war;
+    let koedem = variants.get(KOEDEM).unwrap() == "on";
+    // Should mirror `ChessRules::regicide`. Could've constructed `ChessRules` and called it
+    // directly, but doing so could fail due to unrelated problems, e.g. errors in "starting time"
+    // format.
+    let regicide = duck_chess || fog_of_war || koedem;
     for node in web_document().get_elements_by_class_name(REGICIDE_CLASS) {
         node.class_list().toggle_with_force("display-none", !regicide)?;
     }
@@ -1387,13 +1398,13 @@ fn render_reserve(
 
 fn update_reserve(
     reserve: &Reserve, force: Force, board_idx: DisplayBoard, player_idx: DisplayPlayer,
-    is_draggable: bool, board_shape: BoardShape,
+    is_draggable: bool, chess_rules: &ChessRules,
 ) -> JsResult<()> {
     let piece_kind_sep = 1.0;
     let reserve_iter = reserve
         .iter()
         .filter(|(kind, &amount)| {
-            match kind.reservable() {
+            match kind.reservable(chess_rules) {
                 // Leave space for all `PieceReservable::Always` pieces, so that the icons
                 // don't shift too much and the user does not misclick after receiving a new
                 // reserve piece.
@@ -1411,7 +1422,7 @@ fn update_reserve(
         board_idx,
         player_idx,
         is_draggable,
-        board_shape,
+        chess_rules.board_shape(),
         piece_kind_sep,
         reserve_iter,
     )

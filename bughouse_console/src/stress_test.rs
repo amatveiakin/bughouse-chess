@@ -102,6 +102,7 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
                 fog_of_war: rng.gen::<bool>(),
                 time_control: TimeControl { starting_time: Duration::from_secs(300) },
                 bughouse_rules: Some(BughouseRules {
+                    koedem: rng.gen::<bool>(),
                     // Improvement potential: Test other promotion strategies.
                     promotion: Promotion::Upgrade,
                     // Improvement potential: Wider range of pawn drop ranks for larger boards.

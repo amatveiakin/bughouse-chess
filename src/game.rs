@@ -43,6 +43,7 @@ use crate::force::Force;
 use crate::player::Team;
 use crate::rules::{BughouseRules, ChessRules, MatchRules, Rules};
 use crate::starter::{generate_starting_position, EffectiveStartingPosition};
+use crate::PieceKind;
 
 
 pub const MIN_PLAYERS: usize = TOTAL_TEAMS;
@@ -515,6 +516,7 @@ impl BughouseGame {
             TurnMode::Preturn => {}
         }
         other_board.apply_sibling_turn(&turn_facts, mode);
+
         let prev_number = self
             .turn_log
             .iter()
@@ -535,7 +537,11 @@ impl BughouseGame {
             board_after: self.boards[board_idx].clone_for_wayback(),
         });
         assert!(self.status.is_active());
-        self.set_status(self.game_status_for_board(board_idx), now);
+        if self.bughouse_rules().koedem {
+            self.check_koedem_victory(now);
+        } else {
+            self.set_status(self.game_status_for_board(board_idx), now);
+        }
         Ok(turn)
     }
 
@@ -553,6 +559,32 @@ impl BughouseGame {
         &mut self, turn_record: &TurnRecord, mode: TurnMode,
     ) -> Result<Turn, TurnError> {
         self.try_turn_by_envoy(turn_record.envoy, &turn_record.turn_input, mode, turn_record.time)
+    }
+
+    pub fn check_koedem_victory(&mut self, now: GameInstant) {
+        let mut num_kings = enum_map! { _ => 0 };
+        for (board_idx, board) in &self.boards {
+            for coord in board.shape().coords() {
+                if let Some(piece) = board.grid()[coord] {
+                    if piece.kind == PieceKind::King {
+                        // Unwrap ok: King cannot be neutral.
+                        let team = get_bughouse_team(board_idx, piece.force.try_into().unwrap());
+                        num_kings[team] += 1;
+                    }
+                }
+            }
+            for force in Force::iter() {
+                let team = get_bughouse_team(board_idx, force);
+                num_kings[team] += board.reserve(force)[PieceKind::King];
+            }
+        }
+        // Note. Could be less with preturns.
+        assert!(num_kings.values().sum::<u8>() as usize <= TOTAL_ENVOYS);
+        for team in Team::iter() {
+            if num_kings[team] as usize == TOTAL_ENVOYS {
+                self.set_status(BughouseGameStatus::Victory(team, VictoryReason::Checkmate), now);
+            }
+        }
     }
 
     pub fn outcome(&self) -> String {

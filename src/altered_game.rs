@@ -33,6 +33,7 @@ use crate::game::{
 };
 use crate::piece::{CastleDirection, PieceForce, PieceKind};
 use crate::rules::{BughouseRules, ChessRules, Promotion};
+use crate::PieceOrigin;
 
 
 #[derive(Clone, Copy, Debug)]
@@ -40,6 +41,7 @@ pub enum PartialTurnInput {
     Drag {
         piece_kind: PieceKind,
         piece_force: PieceForce,
+        piece_origin: PieceOrigin,
         source: PieceDragSource,
     },
     StealPromotion {
@@ -58,6 +60,7 @@ pub enum PieceDragStart {
 pub enum PieceDragError {
     DragForbidden,
     DragIllegal,
+    CannotCastleDroppedKing,
     NoDragInProgress,
     DragNoLongerPossible,
     PieceNotFound,
@@ -413,25 +416,26 @@ impl AlteredGame {
         self.partial_turn_input = None;
         let game = self.game_with_local_turns(LocalTurns::All);
         let board = game.board(board_idx);
-        let (piece_kind, piece_force, source) = match start {
+        let (piece_kind, piece_force, piece_origin, source) = match start {
             PieceDragStart::Board(coord) => {
                 let piece = board.grid()[coord].ok_or(PieceDragError::PieceNotFound)?;
                 if !board.can_potentially_move_piece(my_envoy.force, piece.force) {
                     return Err(PieceDragError::DragForbidden);
                 }
-                (piece.kind, piece.force, PieceDragSource::Board(coord))
+                (piece.kind, piece.force, piece.origin, PieceDragSource::Board(coord))
             }
             PieceDragStart::Reserve(piece_kind) => {
                 if board.reserve(my_envoy.force)[piece_kind] == 0 {
                     return Err(PieceDragError::PieceNotFound);
                 }
                 let piece_force = piece_kind.reserve_piece_force(my_envoy.force);
-                (piece_kind, piece_force, PieceDragSource::Reserve)
+                (piece_kind, piece_force, PieceOrigin::Dropped, PieceDragSource::Reserve)
             }
         };
         self.try_partial_turn(board_idx, PartialTurnInput::Drag {
             piece_kind,
             piece_force,
+            piece_origin,
             source,
         })
         .map_err(|()| PieceDragError::DragIllegal)?;
@@ -449,8 +453,15 @@ impl AlteredGame {
     pub fn drag_piece_drop(
         &mut self, board_idx: BughouseBoard, dest: Coord, promote_to: PieceKind,
     ) -> Result<Option<TurnInput>, PieceDragError> {
-        let Some((input_board_idx, PartialTurnInput::Drag { piece_kind, piece_force, source })) =
-            self.partial_turn_input
+        let Some((
+            input_board_idx,
+            PartialTurnInput::Drag {
+                piece_kind,
+                piece_force,
+                piece_origin,
+                source,
+            },
+        )) = self.partial_turn_input
         else {
             return Err(PieceDragError::NoDragInProgress);
         };
@@ -483,6 +494,9 @@ impl AlteredGame {
                 }
                 if is_castling {
                     use CastleDirection::*;
+                    if piece_origin != PieceOrigin::Innate {
+                        return Err(PieceDragError::CannotCastleDroppedKing);
+                    }
                     let dir = if d_col > 0 { HSide } else { ASide };
                     Ok(Some(TurnInput::DragDrop(Turn::Castle(dir))))
                 } else {
@@ -674,15 +688,20 @@ impl AlteredGame {
             return Err(());
         };
         match input {
-            PartialTurnInput::Drag { piece_kind, piece_force, source } => {
+            PartialTurnInput::Drag {
+                piece_kind,
+                piece_force,
+                piece_origin,
+                source,
+            } => {
                 let board = game.board_mut(board_idx);
                 match source {
                     PieceDragSource::Defunct => {}
                     PieceDragSource::Board(coord) => {
                         // Note: `take` modifies the board
                         let piece = board.grid_mut()[coord].take().ok_or(())?;
-                        let expected = (piece_force, piece_kind);
-                        let actual = (piece.force, piece.kind);
+                        let expected = (piece_force, piece_kind, piece_origin);
+                        let actual = (piece.force, piece.kind, piece.origin);
                         if expected != actual {
                             return Err(());
                         }

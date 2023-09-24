@@ -3,7 +3,12 @@ mod common;
 use bughouse_chess::test_util::*;
 use bughouse_chess::*;
 use common::*;
+use itertools::Itertools;
 
+
+const T0: GameInstant = GameInstant::game_start();
+
+pub fn alg(s: &str) -> TurnInput { algebraic_turn(s) }
 
 fn default_rules() -> Rules {
     Rules {
@@ -14,6 +19,12 @@ fn default_rules() -> Rules {
 
 fn default_game() -> BughouseGame { BughouseGame::new(default_rules(), &sample_bughouse_players()) }
 
+fn koedem_game() -> BughouseGame {
+    let mut rules = default_rules();
+    rules.bughouse_rules_mut().unwrap().koedem = true;
+    BughouseGame::new(rules, &sample_bughouse_players())
+}
+
 fn make_turn(
     game: &mut BughouseGame, board_idx: BughouseBoard, turn_notation: &str,
 ) -> Result<(), TurnError> {
@@ -22,16 +33,19 @@ fn make_turn(
     Ok(())
 }
 
-// Improvement potential: Allow whitespace after turn number.
 fn replay_log(game: &mut BughouseGame, log: &str) -> Result<(), TurnError> {
     let turn_number_re = once_cell_regex!(r"^(?:[0-9]+([AaBb])\.)?(.*)$");
-    let now = GameInstant::game_start();
-    for turn_notation in log.split_whitespace() {
+    let mut words = log.split_whitespace().rev().collect_vec();
+    while let Some(word) = words.pop() {
         use BughouseBoard::*;
         use Force::*;
-        let captures = turn_number_re.captures(turn_notation).unwrap();
-        let player_notation = captures.get(1).unwrap().as_str();
-        let turn_notation = captures.get(2).unwrap().as_str();
+        let caps = turn_number_re.captures(word).unwrap();
+        let player_notation = caps.get(1).unwrap().as_str();
+        let mut turn_notation = caps.get(2).unwrap().as_str();
+        if turn_notation.is_empty() {
+            // There was a whitespace after turn number.
+            turn_notation = words.pop().unwrap();
+        }
         let (board_idx, force) = match player_notation {
             "A" => (A, White),
             "a" => (A, Black),
@@ -41,7 +55,7 @@ fn replay_log(game: &mut BughouseGame, log: &str) -> Result<(), TurnError> {
         };
         assert_eq!(game.board(board_idx).active_force(), force);
         let turn_input = TurnInput::Algebraic(turn_notation.to_owned());
-        game.try_turn(board_idx, &turn_input, TurnMode::Normal, now)?;
+        game.try_turn(board_idx, &turn_input, TurnMode::Normal, T0)?;
     }
     Ok(())
 }
@@ -131,7 +145,7 @@ fn threefold_repetition_draw_ignores_reserve() {
     ",
     )
     .unwrap();
-    assert!(game.status() == BughouseGameStatus::Draw(DrawReason::ThreefoldRepetition));
+    assert_eq!(game.status(), BughouseGameStatus::Draw(DrawReason::ThreefoldRepetition));
 }
 
 #[test]
@@ -197,8 +211,92 @@ fn cannot_check_by_stealing() {
             3A.a6  3a.h3
             4A.b4  4a.xg2
             5A.b5  5a.xh1=Bf8
-            "
+            ",
         ),
         Err(TurnError::CannotCheckByStealing)
     );
+}
+
+#[test]
+fn koedem_basic() {
+    let mut game = koedem_game();
+    replay_log(
+        &mut game,
+        "
+        1B.e4  1b.e5
+        1A.f4  1a.e5
+        2B.Bb5  2b.d5
+        2A.e4  2a.Qh4
+        3A.xe5  3a.Qxe1
+        3B.K@h3  3b.xe4
+        4B.Bxe8
+        ",
+    )
+    .unwrap();
+    assert_eq!(game.status(), BughouseGameStatus::Victory(Team::Blue, VictoryReason::Checkmate));
+}
+
+#[test]
+fn koedem_castling() {
+    let mut game = koedem_game();
+    replay_log(
+        &mut game,
+        "
+        1A. e4 1a. e6 2A. d4 2a. d6 3A. Bf4 3a. Qh4 4A. Bc4 4a. Be7 5A. Qe2 5a. Bd7
+        6A. Nc3 6a. Nf6 7A. Nf3 7a. Nc6 1B. c4 1b. e5 2B. Qa4 2b. Qh4 3B. f3 3b. d6
+        4B. Qxe8 4b. Qxe1 8A. K@d1 8a. K@d8
+        ",
+    )
+    .unwrap();
+    // Now we have only kings and rooks on ranks 1 and 8 on board A.
+    // Should always try to castle the original king, not the dropped one.
+    assert_eq!(
+        game.try_turn(BughouseBoard::A, &alg("0-0-0"), TurnMode::Normal, T0),
+        Err(TurnError::PathBlocked)
+    );
+    game.try_turn(BughouseBoard::A, &alg("0-0"), TurnMode::Normal, T0).unwrap();
+    assert_eq!(
+        game.try_turn(BughouseBoard::A, &alg("0-0-0"), TurnMode::Normal, T0),
+        Err(TurnError::PathBlocked)
+    );
+    game.try_turn(BughouseBoard::A, &alg("0-0"), TurnMode::Normal, T0).unwrap();
+}
+
+// Normally the only turn one can do in Koedem while having a king in reserve is to drop the king.
+// But relocating a duck is an exception.
+#[test]
+fn koedem_two_kings_and_a_duck() {
+    let mut rules = default_rules();
+    rules.chess_rules.duck_chess = true;
+    rules.bughouse_rules_mut().unwrap().koedem = true;
+    let mut game = BughouseGame::new(rules, &sample_bughouse_players());
+    replay_log(
+        &mut game,
+        "
+        1B. e4 1B. @d6 1b. e5 1b. @e7 2B. f4 2B. @f5 2b. Qh4 2b. @f2 3B. Bb5 3B. @c6
+        3b. Qxe1 1A. K@d6 1A. @d5 1a. exd6 1a. @e7 2A. f4 2A. @c6 2a. Qh4 2a. @f2
+        3A. Nf3 3A. @e7 3a. Qxe1 3b. @f1
+        ",
+    )
+    .unwrap();
+
+    // Must place the first king.
+    assert_eq!(
+        game.try_turn(BughouseBoard::B, &alg("Qf3"), TurnMode::Normal, T0),
+        Err(TurnError::MustDropKingIfPossible)
+    );
+    game.try_turn(BughouseBoard::B, &alg("K@b3"), TurnMode::Normal, T0).unwrap();
+    // We still have one more king in reserve, yet now we need to place a duck.
+    game.try_turn(BughouseBoard::B, &alg("@c4"), TurnMode::Normal, T0).unwrap();
+
+    game.try_turn(BughouseBoard::B, &alg("a5"), TurnMode::Normal, T0).unwrap();
+    game.try_turn(BughouseBoard::B, &alg("@a4"), TurnMode::Normal, T0).unwrap();
+
+    // Must place the second king.
+    assert_eq!(
+        game.try_turn(BughouseBoard::B, &alg("Qf3"), TurnMode::Normal, T0),
+        Err(TurnError::MustDropKingIfPossible)
+    );
+    game.try_turn(BughouseBoard::B, &alg("K@c3"), TurnMode::Normal, T0).unwrap();
+    game.try_turn(BughouseBoard::B, &alg("@b4"), TurnMode::Normal, T0).unwrap();
 }

@@ -21,6 +21,7 @@ use BughouseBoard::{A, B};
 fn default_chess_rules() -> ChessRules {
     ChessRules {
         bughouse_rules: Some(BughouseRules {
+            koedem: false,
             promotion: Promotion::Upgrade,
             min_pawn_drop_rank: SubjectiveRow::from_one_based(2),
             max_pawn_drop_rank: SubjectiveRow::from_one_based(6),

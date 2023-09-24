@@ -150,6 +150,7 @@ pub struct ChessRules {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BughouseRules {
+    pub koedem: bool,
     pub promotion: Promotion,
     pub min_pawn_drop_rank: SubjectiveRow,
     pub max_pawn_drop_rank: SubjectiveRow, // TODO: Update it when board shape changes
@@ -168,13 +169,15 @@ pub enum ChessVariant {
     FischerRandom,
     DuckChess,
     FogOfWar,
+    Koedem,
 }
 
 impl MatchRules {
     pub fn unrated() -> Self { Self { rated: false } }
 }
 
-// Improvement potential. Precompute `variants` and `regicide_reason`.
+// Improvement potential. Precompute `variants` and `regicide_reason`. Note that this would mean
+// all `ChessRules` fields need to become private.
 impl ChessRules {
     pub fn chess_blitz() -> Self {
         Self {
@@ -198,14 +201,14 @@ impl ChessRules {
 
     // TODO: Use to improve UI tooltips.
     pub fn regicide_reason(&self) -> Vec<ChessVariant> {
-        let mut v = vec![];
-        if self.duck_chess {
-            v.push(ChessVariant::DuckChess);
-        }
-        if self.fog_of_war {
-            v.push(ChessVariant::FogOfWar);
-        }
-        v
+        use ChessVariant::*;
+        self.variants()
+            .into_iter()
+            .filter(|v| match v {
+                FogOfWar | DuckChess | Koedem => true,
+                Accolade | FischerRandom => false,
+            })
+            .collect()
     }
 
     // If false, use normal chess rules: players are not allowed to leave the king undefended,
@@ -244,6 +247,11 @@ impl ChessRules {
         if self.fog_of_war {
             v.push(ChessVariant::FogOfWar);
         }
+        if let Some(bughouse_rules) = &self.bughouse_rules {
+            if bughouse_rules.koedem {
+                v.push(ChessVariant::Koedem);
+            }
+        }
         v
     }
 
@@ -270,6 +278,7 @@ impl ChessRules {
 impl BughouseRules {
     pub fn chess_com(board_shape: BoardShape) -> Self {
         Self {
+            koedem: false,
             promotion: Promotion::Upgrade,
             min_pawn_drop_rank: SubjectiveRow::from_one_based(2),
             max_pawn_drop_rank: SubjectiveRow::from_one_based(board_shape.num_rows as i8 - 1),
@@ -325,6 +334,7 @@ impl ChessVariant {
             // TODO: Should it be "DarkChess" of "FogOfWar"? Similarity with "DuckChess" is
             // confusing. If renaming, don't forget to update existing PGNs!
             ChessVariant::FogOfWar => "DarkChess",
+            ChessVariant::Koedem => "Koedem",
         }
     }
 
@@ -334,6 +344,7 @@ impl ChessVariant {
             ChessVariant::FischerRandom => "Fischer random",
             ChessVariant::DuckChess => "Duck chess",
             ChessVariant::FogOfWar => "Fog of war",
+            ChessVariant::Koedem => "Koedem",
         }
     }
 }

@@ -72,18 +72,24 @@ fn combine_pieces(
 }
 
 fn find_piece(grid: &Grid, predicate: impl Fn(PieceOnBoard) -> bool) -> Option<Coord> {
+    let mut coord = None;
     for pos in grid.shape().coords() {
         if let Some(piece) = grid[pos] {
             if predicate(piece) {
-                return Some(pos);
+                match coord {
+                    None => coord = Some(pos),
+                    Some(_) => return None,
+                }
             }
         }
     }
-    None
+    coord
 }
 
 fn find_piece_by_id(grid: &Grid, id: PieceId) -> Option<Coord> { find_piece(grid, |p| p.id == id) }
 
+// This assumes that there is exactly one king, so it should never be used if `chess_rules.regicide`
+// is true. Also be careful with preturns for the same reason.
 fn find_king(grid: &Grid, force: Force) -> Option<Coord> {
     find_piece(grid, |p| p.kind == PieceKind::King && p.force == force.into())
 }
@@ -685,6 +691,7 @@ pub enum TurnError {
     MustMovePieceBeforeDuck,
     MustPlaceDuck,
     MustChangeDuckPosition,
+    MustDropKingIfPossible,
     NoGameInProgress,
     GameOver,
     WaybackIsActive,
@@ -1025,12 +1032,16 @@ impl Board {
                     // This assumes opposite kings cannot be capture simultaneously.
                     for capture in facts.captures.iter() {
                         if capture.piece_kind == PieceKind::King {
-                            // Unwrap ok: King cannot be neutral.
-                            let loser: Force = capture.force.try_into().unwrap();
-                            self.status = ChessGameStatus::Victory(
-                                loser.opponent(),
-                                VictoryReason::Checkmate,
-                            );
+                            if self.bughouse_rules().map_or(false, |r| r.koedem) {
+                                // Cannot check victory condition here, need to see both boards.
+                            } else {
+                                // Unwrap ok: King cannot be neutral.
+                                let loser: Force = capture.force.try_into().unwrap();
+                                self.status = ChessGameStatus::Victory(
+                                    loser.opponent(),
+                                    VictoryReason::Checkmate,
+                                );
+                            }
                         }
                     }
                 }
@@ -1102,6 +1113,18 @@ impl Board {
             return Err(TurnError::GameOver);
         }
         let force = self.turn_owner(mode);
+        if self.bughouse_rules().map_or(false, |r| r.koedem)
+            && self.reserve(force)[PieceKind::King] > 0
+        {
+            let ok = match turn {
+                Turn::Move(_) | Turn::Castle(_) => false,
+                Turn::Drop(TurnDrop { piece_kind, .. }) => piece_kind == PieceKind::King,
+                Turn::PlaceDuck(_) => true,
+            };
+            if !ok {
+                return Err(TurnError::MustDropKingIfPossible);
+            }
+        }
         let mut new_grid = self.grid.clone();
         let mut castling_relocations = None;
         let mut next_piece_id = self.next_piece_id;
@@ -1294,9 +1317,14 @@ impl Board {
                     return Err(TurnError::MustPlaceDuck);
                 }
                 let row = SubjectiveRow::first().to_row(self.shape(), force);
+                // Can only castle the original king in koedem.
+                let original_king_pos = find_piece(&new_grid, |p| {
+                    p.kind == PieceKind::King
+                        && p.force == force.into()
+                        && p.origin == PieceOrigin::Innate
+                });
                 // King can be missing in case of pre-turns.
-                let king_from =
-                    find_king(&new_grid, force).ok_or(TurnError::CastlingPieceHasMoved)?;
+                let king_from = original_king_pos.ok_or(TurnError::CastlingPieceHasMoved)?;
                 if king_from.row != row {
                     return Err(TurnError::CastlingPieceHasMoved);
                 }
@@ -1440,7 +1468,7 @@ impl Board {
     // Applies changes caused by the turn on the other board.
     pub fn apply_sibling_turn(&mut self, facts: &TurnFacts, mode: TurnMode) {
         for capture in &facts.captures {
-            assert!(capture.piece_kind.reservable() != PieceReservable::Never);
+            assert!(capture.piece_kind.reservable(self.chess_rules()) != PieceReservable::Never);
             // Unwrap ok: duck cannot be captured.
             let force = capture.force.try_into().unwrap();
             self.reserves[force][capture.piece_kind] += 1;

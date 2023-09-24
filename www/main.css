@@ -4,7 +4,13 @@ body {
   --board-size-primary: calc(var(--sq-size-primary) * 8);
   --board-size-secondary: calc(var(--sq-size-secondary) * 8);
   --reserve-height-in-squares: 1.5;
+
   --rem: max(calc(var(--sq-size-primary) * 0.25), 6pt);
+
+  --rule-variant-button-width: 8em;
+  --rule-variant-button-height: 7.5em;
+  --rule-variant-buttons-gap: 0.7em;
+  --rule-variant-buttons-per-row: 3;
 
   --color-chalk-myself: #2b7b00;
   --color-chalk-partner: #048ea2;
@@ -1003,8 +1009,10 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   flex-direction: column;
   align-items: center;
   justify-content: space-around;
-  width: 8em;
-  height: 8em;
+  width: var(--rule-variant-button-width);
+  height: var(--rule-variant-button-height);
+  height: 7.5em;
+  margin: 0;
 }
 .rule-variant-off {
   color: #000000c0;
@@ -1030,6 +1038,11 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 }
 #cc-rule-variants {
   margin: 0.5em 0 1em 0;
+  max-width: calc(
+    var(--rule-variant-button-width) * var(--rule-variant-buttons-per-row) +
+    var(--rule-variant-buttons-gap) * (var(--rule-variant-buttons-per-row) - 1) +
+    0.1em
+  );
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
