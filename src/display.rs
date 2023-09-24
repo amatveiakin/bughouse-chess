@@ -37,9 +37,9 @@ pub enum BoardOrientation {
     Rotated, // Black at bottom
 }
 
-// These coords describe board squares, like `Coord`. Both `x` and `y` are integers
-// between 0 and 7. But here row 0 corresponds to the top-most row, which could be
-// row '1' or row '8' on the board.
+// These coords describe board squares, like `Coord`. For a regular chess board,
+// both `x` and `y` are integers between 0 and 7. But here row 0 corresponds to
+// the top-most row, which could be row '1' or row '8' on the board.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct DisplayCoord {
     pub x: i8,

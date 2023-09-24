@@ -188,10 +188,10 @@ impl ChessRules {
     }
 
     pub fn bughouse_chess_com() -> Self {
-        Self {
-            bughouse_rules: Some(BughouseRules::chess_com()),
-            ..Self::chess_blitz()
-        }
+        let mut rules = Self::chess_blitz();
+        let bughouse_rules = BughouseRules::chess_com(rules.board_shape());
+        rules.bughouse_rules = Some(bughouse_rules);
+        rules
     }
 
     pub fn board_shape(&self) -> BoardShape { BoardShape { num_rows: 8, num_cols: 8 } }
@@ -249,9 +249,10 @@ impl ChessRules {
 
     pub fn verify(&self) -> Result<(), String> {
         if let Some(bughouse_rules) = &self.bughouse_rules {
+            let num_ranks = self.board_shape().num_rows as i8;
             let min_pawn_drop_rank = bughouse_rules.min_pawn_drop_rank.to_one_based();
             let max_pawn_drop_rank = bughouse_rules.max_pawn_drop_rank.to_one_based();
-            if !chmp!(1 <= min_pawn_drop_rank <= max_pawn_drop_rank <= 7) {
+            if !chmp!(1 <= min_pawn_drop_rank <= max_pawn_drop_rank <= num_ranks - 1) {
                 return Err(format!(
                     "Invalid pawn drop ranks: {min_pawn_drop_rank}-{max_pawn_drop_rank}"
                 ));
@@ -267,11 +268,11 @@ impl ChessRules {
 }
 
 impl BughouseRules {
-    pub fn chess_com() -> Self {
+    pub fn chess_com(board_shape: BoardShape) -> Self {
         Self {
             promotion: Promotion::Upgrade,
             min_pawn_drop_rank: SubjectiveRow::from_one_based(2),
-            max_pawn_drop_rank: SubjectiveRow::from_one_based(7),
+            max_pawn_drop_rank: SubjectiveRow::from_one_based(board_shape.num_rows as i8 - 1),
             drop_aggression: DropAggression::MateAllowed,
         }
     }

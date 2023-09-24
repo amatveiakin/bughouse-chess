@@ -104,6 +104,7 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
                 bughouse_rules: Some(BughouseRules {
                     // Improvement potential: Test other promotion strategies.
                     promotion: Promotion::Upgrade,
+                    // Improvement potential: Wider range of pawn drop ranks for larger boards.
                     min_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)),
                     max_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)),
                     drop_aggression: match rng.gen_range(0..4) {
