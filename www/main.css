@@ -1023,7 +1023,7 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   height: 4em;
 }
 .rule-variant-button-caption {
-  min-height: 2em;
+  min-height: 2lh;
   display: flex;
   flex-direction: column;
   justify-content: center;
