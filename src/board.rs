@@ -10,7 +10,9 @@ use enum_map::{enum_map, EnumMap};
 use itertools::{iproduct, Itertools};
 use serde::{Deserialize, Serialize};
 
-use crate::algebraic::{AlgebraicDetails, AlgebraicDrop, AlgebraicMove, AlgebraicTurn};
+use crate::algebraic::{
+    AlgebraicDetails, AlgebraicDrop, AlgebraicMove, AlgebraicPromotionTarget, AlgebraicTurn,
+};
 use crate::clock::{Clock, GameInstant};
 use crate::coord::{BoardShape, Col, Coord, Row, SubjectiveRow};
 use crate::force::Force;
@@ -19,10 +21,9 @@ use crate::piece::{
     accolade_combine_pieces, CastleDirection, PieceForRepetitionDraw, PieceForce, PieceId,
     PieceKind, PieceMovement, PieceOnBoard, PieceOrigin, PieceReservable,
 };
-use crate::rules::{BughouseRules, ChessRules, DropAggression, FairyPieces, MatchRules};
+use crate::rules::{BughouseRules, ChessRules, DropAggression, FairyPieces, MatchRules, Rules};
 use crate::starter::{generate_starting_grid, starting_piece_row, EffectiveStartingPosition};
 use crate::util::sort_two;
-use crate::AlgebraicPromotionTarget;
 
 
 fn tuple_abs((a, b): (i8, i8)) -> (u8, u8) {
@@ -722,13 +723,10 @@ impl Reachability {
     pub fn ok(self) -> bool { self == Reachability::Reachable }
 }
 
-// Improvement potential: Rc => references to a Box in Game classes.
 // Improvement potential: Don't store players here since they don't affect game process.
 #[derive(Clone, Debug)]
 pub struct Board {
-    match_rules: Rc<MatchRules>,
-    chess_rules: Rc<ChessRules>,
-    bughouse_rules: Option<Rc<BughouseRules>>,
+    rules: Rc<Rules>,
     player_names: EnumMap<Force, String>,
     status: ChessGameStatus,
     grid: Grid,
@@ -749,23 +747,20 @@ pub struct Board {
 
 impl Board {
     pub fn new(
-        match_rules: Rc<MatchRules>, chess_rules: Rc<ChessRules>,
-        bughouse_rules: Option<Rc<BughouseRules>>, players: EnumMap<Force, String>,
+        rules: Rc<Rules>, players: EnumMap<Force, String>,
         starting_position: &EffectiveStartingPosition,
     ) -> Board {
-        let board_shape = chess_rules.board_shape();
-        let time_control = chess_rules.time_control.clone();
+        let board_shape = rules.chess_rules.board_shape();
+        let time_control = rules.chess_rules.time_control.clone();
         let mut next_piece_id = PieceId::new();
         let grid = generate_starting_grid(board_shape, starting_position, &mut next_piece_id);
         let castling_rights = initial_castling_rights(starting_position);
         let mut reserves = enum_map! { _ => enum_map!{ _ => 0 } };
-        if chess_rules.duck_chess {
+        if rules.chess_rules.duck_chess {
             reserves[Force::White][PieceKind::Duck] += 1;
         }
         let mut board = Board {
-            match_rules,
-            chess_rules,
-            bughouse_rules,
+            rules,
             player_names: players,
             status: ChessGameStatus::Active,
             grid,
@@ -789,9 +784,7 @@ impl Board {
             position_count: HashMap::new(),
 
             // Copy everything else as is:
-            match_rules: self.match_rules.clone(),
-            chess_rules: self.chess_rules.clone(),
-            bughouse_rules: self.bughouse_rules.clone(),
+            rules: self.rules.clone(),
             player_names: self.player_names.clone(),
             grid: self.grid.clone(),
             clock: self.clock.clone(),
@@ -799,9 +792,12 @@ impl Board {
         }
     }
 
-    pub fn match_rules(&self) -> &Rc<MatchRules> { &self.match_rules }
-    pub fn chess_rules(&self) -> &Rc<ChessRules> { &self.chess_rules }
-    pub fn bughouse_rules(&self) -> &Option<Rc<BughouseRules>> { &self.bughouse_rules }
+    pub fn rules(&self) -> &Rules { &self.rules }
+    pub fn match_rules(&self) -> &MatchRules { &self.rules.match_rules }
+    pub fn chess_rules(&self) -> &ChessRules { &self.rules.chess_rules }
+    pub fn bughouse_rules(&self) -> Option<&BughouseRules> {
+        self.rules.chess_rules.bughouse_rules.as_ref()
+    }
     pub fn player_name(&self, force: Force) -> &str { &self.player_names[force] }
     pub fn player_names(&self) -> &EnumMap<Force, String> { &self.player_names }
     pub fn status(&self) -> ChessGameStatus { self.status }
@@ -818,7 +814,7 @@ impl Board {
     pub fn active_force(&self) -> Force { self.active_force }
     pub fn is_duck_turn(&self, force: Force) -> bool { self.is_duck_turn[force] }
 
-    pub fn is_bughouse(&self) -> bool { self.bughouse_rules.is_some() }
+    pub fn is_bughouse(&self) -> bool { self.bughouse_rules().is_some() }
     pub fn turn_owner(&self, mode: TurnMode) -> Force {
         match mode {
             TurnMode::Normal => self.active_force,
@@ -880,9 +876,9 @@ impl Board {
         match mode {
             TurnMode::Normal => {
                 let capture = get_capture(&self.grid, from, to, self.en_passant_target);
-                reachability(&self.chess_rules, &self.grid, from, to, capture.is_some()).ok()
+                reachability(self.chess_rules(), &self.grid, from, to, capture.is_some()).ok()
             }
-            TurnMode::Preturn => is_reachable_for_premove(&self.chess_rules, &self.grid, from, to),
+            TurnMode::Preturn => is_reachable_for_premove(self.chess_rules(), &self.grid, from, to),
         }
     }
 
@@ -894,7 +890,7 @@ impl Board {
         //   - Include all possibilities,
         //   - Return two separate lists: normal turn moves + preturn moves.
         let mut ret =
-            legal_move_destinations(&self.chess_rules, &self.grid, from, self.en_passant_target);
+            legal_move_destinations(self.chess_rules(), &self.grid, from, self.en_passant_target);
         ret.extend(legal_castling_destinations(&self.grid, from, &self.castling_rights));
         ret
     }
@@ -907,7 +903,7 @@ impl Board {
                 if piece.force == force.into() {
                     ret.insert(from);
                     ret.extend(visibility_from(
-                        &self.chess_rules,
+                        self.chess_rules(),
                         &self.grid,
                         from,
                         self.en_passant_target,
@@ -943,7 +939,7 @@ impl Board {
             TurnMode::Normal => self.active_force.opponent(),
             TurnMode::Preturn => self.active_force,
         };
-        if self.chess_rules.duck_chess {
+        if self.chess_rules().duck_chess {
             if self.is_duck_turn[force] {
                 self.is_duck_turn[force] = false;
                 self.active_force = next_active_force;
@@ -1004,11 +1000,11 @@ impl Board {
                 if !matches!(turn, Turn::PlaceDuck(_)) {
                     self.en_passant_target = get_en_passant_target(&self.grid, turn);
                 }
-                if !self.chess_rules.regicide() {
+                if !self.chess_rules().regicide() {
                     let opponent_king_pos = find_king(&self.grid, force.opponent()).unwrap();
                     if self.is_bughouse() {
                         if is_bughouse_mate_to(
-                            &self.chess_rules,
+                            &self.rules.chess_rules,
                             &mut self.grid,
                             opponent_king_pos,
                             self.en_passant_target,
@@ -1017,7 +1013,7 @@ impl Board {
                         }
                     } else {
                         if is_chess_mate_to(
-                            &self.chess_rules,
+                            &self.rules.chess_rules,
                             &mut self.grid,
                             opponent_king_pos,
                             self.en_passant_target,
@@ -1062,30 +1058,30 @@ impl Board {
     fn verify_check_and_drop_aggression(
         &self, turn: Turn, mode: TurnMode, outcome: &mut TurnOutcome,
     ) -> Result<(), TurnError> {
-        if self.chess_rules.regicide() {
+        if self.chess_rules().regicide() {
             return Ok(());
         }
         let new_grid = &mut outcome.new_grid;
         let force = self.turn_owner(mode);
         let king_pos = find_king(new_grid, force).unwrap();
         let opponent_king_pos = find_king(new_grid, force.opponent()).unwrap();
-        if is_check_to(&self.chess_rules, new_grid, king_pos) {
+        if is_check_to(self.chess_rules(), new_grid, king_pos) {
             return Err(TurnError::UnprotectedKing);
         }
         if let Turn::Drop(_) = turn {
-            let bughouse_rules = self.bughouse_rules.as_ref().unwrap(); // unwrap ok: tested earlier
+            let bughouse_rules = self.bughouse_rules().unwrap(); // unwrap ok: tested earlier
             let drop_legal = match bughouse_rules.drop_aggression {
                 DropAggression::NoCheck => {
-                    !is_check_to(&self.chess_rules, new_grid, opponent_king_pos)
+                    !is_check_to(self.chess_rules(), new_grid, opponent_king_pos)
                 }
                 DropAggression::NoChessMate => !is_chess_mate_to(
-                    &self.chess_rules,
+                    self.chess_rules(),
                     new_grid,
                     opponent_king_pos,
                     self.en_passant_target,
                 ),
                 DropAggression::NoBughouseMate => !is_bughouse_mate_to(
-                    &self.chess_rules,
+                    self.chess_rules(),
                     new_grid,
                     opponent_king_pos,
                     self.en_passant_target,
@@ -1131,7 +1127,7 @@ impl Board {
                         capture_pos_or =
                             get_capture(&new_grid, mv.from, mv.to, self.en_passant_target);
                         match reachability(
-                            &self.chess_rules,
+                            self.chess_rules(),
                             &new_grid,
                             mv.from,
                             mv.to,
@@ -1143,7 +1139,8 @@ impl Board {
                         }
                     }
                     TurnMode::Preturn => {
-                        if !is_reachable_for_premove(&self.chess_rules, &new_grid, mv.from, mv.to) {
+                        if !is_reachable_for_premove(self.chess_rules(), &new_grid, mv.from, mv.to)
+                        {
                             return Err(TurnError::ImpossibleTrajectory);
                         }
                     }
@@ -1214,9 +1211,12 @@ impl Board {
                     if mv.promote_to.is_some() {
                         return Err(TurnError::BadPromotion);
                     } else if let Some(dst_piece) = new_grid[mv.to] {
-                        if let Some(combined_piece) =
-                            combine_pieces(&self.chess_rules, next_piece_id.inc(), piece, dst_piece)
-                        {
+                        if let Some(combined_piece) = combine_pieces(
+                            self.chess_rules(),
+                            next_piece_id.inc(),
+                            piece,
+                            dst_piece,
+                        ) {
                             new_grid[mv.to] = Some(combined_piece);
                         } else {
                             assert_eq!(mode, TurnMode::Preturn);
@@ -1228,7 +1228,7 @@ impl Board {
                 }
             }
             Turn::Drop(drop) => {
-                let bughouse_rules = self.bughouse_rules.as_ref().ok_or(TurnError::DropFobidden)?;
+                let bughouse_rules = self.bughouse_rules().ok_or(TurnError::DropFobidden)?;
                 if drop.piece_kind == PieceKind::Duck {
                     return Err(TurnError::DuckPlacementIsSpecialTurnKind);
                 }
@@ -1254,9 +1254,12 @@ impl Board {
                     piece_force,
                 );
                 if let Some(dst_piece) = new_grid[drop.to] {
-                    if let Some(combined_piece) =
-                        combine_pieces(&self.chess_rules, next_piece_id.inc(), new_piece, dst_piece)
-                    {
+                    if let Some(combined_piece) = combine_pieces(
+                        self.chess_rules(),
+                        next_piece_id.inc(),
+                        new_piece,
+                        dst_piece,
+                    ) {
                         new_piece = combined_piece;
                     } else {
                         match mode {
@@ -1331,8 +1334,8 @@ impl Board {
                         for col in col_range_inclusive(iter_minmax(cols.into_iter()).unwrap()) {
                             let pos = Coord::new(row, col);
                             let new_grid = new_grid.scoped_set(pos, king);
-                            if !self.chess_rules.regicide()
-                                && is_check_to(&self.chess_rules, &new_grid, pos)
+                            if !self.chess_rules().regicide()
+                                && is_check_to(self.chess_rules(), &new_grid, pos)
                             {
                                 return Err(TurnError::UnprotectedKing);
                             }
@@ -1349,7 +1352,7 @@ impl Board {
                 });
             }
             Turn::PlaceDuck(to) => {
-                if !self.chess_rules.duck_chess {
+                if !self.chess_rules().duck_chess {
                     return Err(TurnError::NotDuckChess);
                 }
                 if !self.is_duck_turn[force] {
@@ -1412,15 +1415,15 @@ impl Board {
                     if piece.force != turn_owner.into() {
                         return Err(TurnError::StealTargetInvalid);
                     }
-                    if !self.chess_rules.regicide() {
+                    if !self.chess_rules().regicide() {
                         let king_pos = find_king(&self.grid, turn_owner).unwrap();
-                        if !is_check_to(&self.chess_rules, &self.grid, king_pos) {
+                        if !is_check_to(self.chess_rules(), &self.grid, king_pos) {
                             // Technically we don't need the `clone` because of `scoped_set`, but
                             // removing the `clone` would complicate the API (we'll have to use
                             // `&mut self`) and steal promtions are rare.
                             let mut grid = self.grid.clone();
                             let grid = grid.scoped_set(pos, None);
-                            if is_check_to(&self.chess_rules, &grid, king_pos) {
+                            if is_check_to(self.chess_rules(), &grid, king_pos) {
                                 return Err(TurnError::CannotCheckByStealing);
                             }
                         }
@@ -1527,7 +1530,7 @@ impl Board {
                                         self.en_passant_target,
                                     );
                                     match reachability(
-                                        &self.chess_rules,
+                                        self.chess_rules(),
                                         &self.grid,
                                         from,
                                         mv.to,
@@ -1552,7 +1555,7 @@ impl Board {
                                 }
                                 TurnMode::Preturn => {
                                     reachable = is_reachable_for_premove(
-                                        &self.chess_rules,
+                                        self.chess_rules(),
                                         &self.grid,
                                         from,
                                         mv.to,

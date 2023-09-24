@@ -1174,12 +1174,7 @@ impl Match {
         self.init_scores(teaming);
 
         let players = self.assign_boards();
-        let game = BughouseGame::new(
-            self.rules.match_rules.clone(),
-            self.rules.chess_rules.clone(),
-            self.rules.bughouse_rules.clone(),
-            &players,
-        );
+        let game = BughouseGame::new(self.rules.clone(), &players);
         self.game_state = Some(GameState {
             game,
             game_creation: now,

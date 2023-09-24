@@ -16,7 +16,6 @@
 //     contain all the information required in order to render the game.
 
 use std::collections::HashSet;
-use std::rc::Rc;
 
 use enum_map::{enum_map, EnumMap};
 use itertools::Itertools;
@@ -145,8 +144,8 @@ impl AlteredGame {
         }
     }
 
-    pub fn chess_rules(&self) -> &Rc<ChessRules> { self.game_confirmed().chess_rules() }
-    pub fn bughouse_rules(&self) -> &Rc<BughouseRules> { self.game_confirmed().bughouse_rules() }
+    pub fn chess_rules(&self) -> &ChessRules { self.game_confirmed().chess_rules() }
+    pub fn bughouse_rules(&self) -> &BughouseRules { self.game_confirmed().bughouse_rules() }
     pub fn board_shape(&self) -> BoardShape { self.game_confirmed().board_shape() }
 
     // Status returned by this function may differ from `local_game()` status.

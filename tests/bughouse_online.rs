@@ -18,14 +18,15 @@ use itertools::Itertools;
 use BughouseBoard::{A, B};
 
 
-fn default_chess_rules() -> ChessRules { ChessRules::classic_blitz() }
-
-fn default_bughouse_rules() -> BughouseRules {
-    BughouseRules {
-        promotion: Promotion::Upgrade,
-        min_pawn_drop_rank: SubjectiveRow::from_one_based(2),
-        max_pawn_drop_rank: SubjectiveRow::from_one_based(6),
-        drop_aggression: DropAggression::NoChessMate,
+fn default_chess_rules() -> ChessRules {
+    ChessRules {
+        bughouse_rules: Some(BughouseRules {
+            promotion: Promotion::Upgrade,
+            min_pawn_drop_rank: SubjectiveRow::from_one_based(2),
+            max_pawn_drop_rank: SubjectiveRow::from_one_based(6),
+            drop_aggression: DropAggression::NoChessMate,
+        }),
+        ..ChessRules::chess_blitz()
     }
 }
 
@@ -165,24 +166,17 @@ impl World {
 
     fn new_match_with_rules(
         &mut self, client_id: TestClientId, player_name: &str, chess_rules: ChessRules,
-        bughouse_rules: BughouseRules,
     ) -> String {
         let rules = Rules {
             match_rules: MatchRules::unrated(),
             chess_rules,
-            bughouse_rules,
         };
         self[client_id].state.new_match(rules, player_name.to_owned());
         self.process_all_events();
         self[client_id].state.match_id().unwrap().clone()
     }
     fn new_match(&mut self, client_id: TestClientId, player_name: &str) -> String {
-        self.new_match_with_rules(
-            client_id,
-            player_name,
-            default_chess_rules(),
-            default_bughouse_rules(),
-        )
+        self.new_match_with_rules(client_id, player_name, default_chess_rules())
     }
 
     fn join_and_set_team(
@@ -210,14 +204,14 @@ impl World {
     fn default_clients(
         &mut self,
     ) -> (String, TestClientId, TestClientId, TestClientId, TestClientId) {
-        self.default_clients_with_rules(default_chess_rules(), default_bughouse_rules())
+        self.default_clients_with_rules(default_chess_rules())
     }
     fn default_clients_with_rules(
-        &mut self, chess_rules: ChessRules, bughouse_rules: BughouseRules,
+        &mut self, chess_rules: ChessRules,
     ) -> (String, TestClientId, TestClientId, TestClientId, TestClientId) {
         let [cl1, cl2, cl3, cl4] = self.new_clients();
 
-        let mtch = self.new_match_with_rules(cl1, "p1", chess_rules, bughouse_rules);
+        let mtch = self.new_match_with_rules(cl1, "p1", chess_rules);
         self[cl1].state.set_faction(Faction::Fixed(Team::Red));
         self.process_all_events();
 
@@ -737,12 +731,10 @@ fn turn_after_game_ended_on_another_board() {
 // properly thanks to the piece ID tracking.
 #[test]
 fn high_latency_stealing() {
+    let mut rules = default_chess_rules();
+    rules.bughouse_rules.as_mut().unwrap().promotion = Promotion::Steal;
     let mut world = World::new();
-    let (_, cl1, cl2, cl3, cl4) =
-        world.default_clients_with_rules(default_chess_rules(), BughouseRules {
-            promotion: Promotion::Steal,
-            ..default_bughouse_rules()
-        });
+    let (_, cl1, cl2, cl3, cl4) = world.default_clients_with_rules(rules);
 
     world[cl4].make_turn("Nc3").unwrap();
     world.process_all_events();

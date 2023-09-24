@@ -6,16 +6,22 @@ use common::*;
 use itertools::Itertools;
 
 
-fn chess_with_rules(rules: ChessRules) -> ChessGame {
-    ChessGame::new(MatchRules::unrated(), rules, sample_chess_players())
+fn chess_with_rules(chess_rules: ChessRules) -> ChessGame {
+    ChessGame::new(
+        Rules {
+            match_rules: MatchRules::unrated(),
+            chess_rules,
+        },
+        sample_chess_players(),
+    )
 }
 
-fn chess_classic() -> ChessGame { chess_with_rules(ChessRules::classic_blitz()) }
+fn chess_classic() -> ChessGame { chess_with_rules(ChessRules::chess_blitz()) }
 
 fn chess960_from_short_fen(pieces: &str) -> ChessGame {
-    let rules = ChessRules {
+    let chess_rules = ChessRules {
         starting_position: StartingPosition::FischerRandom,
-        ..ChessRules::classic_blitz()
+        ..ChessRules::chess_blitz()
     };
     let pieces = pieces
         .chars()
@@ -23,8 +29,10 @@ fn chess960_from_short_fen(pieces: &str) -> ChessGame {
         .collect_vec();
     let starting_position = EffectiveStartingPosition::FischerRandom(pieces);
     ChessGame::new_with_starting_position(
-        MatchRules::unrated(),
-        rules,
+        Rules {
+            match_rules: MatchRules::unrated(),
+            chess_rules,
+        },
         starting_position,
         sample_chess_players(),
     )
@@ -111,7 +119,7 @@ fn chess960_drag_king_onto_rook_castle() {
 fn king_capture() {
     let rules = ChessRules {
         fog_of_war: true,
-        ..ChessRules::classic_blitz()
+        ..ChessRules::chess_blitz()
     };
     let mut game = chess_with_rules(rules);
     replay_log(&mut game, "1.Nc3 a6 2.Nd5 a5 3.N×c7 a4 4.N×e8").unwrap();
@@ -122,7 +130,7 @@ fn king_capture() {
 fn fog_of_war_en_passant() {
     let rules = ChessRules {
         fog_of_war: true,
-        ..ChessRules::classic_blitz()
+        ..ChessRules::chess_blitz()
     };
     let mut game = chess_with_rules(rules);
     replay_log(&mut game, "1.e4 a6 2.e5 d5 3.×d6").unwrap();
@@ -132,7 +140,7 @@ fn fog_of_war_en_passant() {
 fn duck_chess_en_passant() {
     let rules = ChessRules {
         duck_chess: true,
-        ..ChessRules::classic_blitz()
+        ..ChessRules::chess_blitz()
     };
     let mut game = chess_with_rules(rules);
     replay_log(&mut game, "1.e4 @h6 a6 @h3  2.e5 @h6 d5 @h3  3.×d6").unwrap();
@@ -142,7 +150,7 @@ fn duck_chess_en_passant() {
 fn duck_cannot_stay_in_place() {
     let rules = ChessRules {
         duck_chess: true,
-        ..ChessRules::classic_blitz()
+        ..ChessRules::chess_blitz()
     };
     let mut game = chess_with_rules(rules);
     assert_eq!(replay_log(&mut game, "1.e4 @d4 d5 @d4"), Err(TurnError::MustChangeDuckPosition));

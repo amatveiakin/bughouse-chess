@@ -148,12 +148,11 @@ pub fn fix_teams_if_needed<T>(participants: &mut BTreeMap<T, Participant>) -> Te
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::{BughouseRules, ChessRules, MatchRules};
+    use crate::rules::{ChessRules, MatchRules};
 
     fn make_rules(rated: bool) -> Rules {
         Rules {
-            chess_rules: ChessRules::classic_blitz(),
-            bughouse_rules: BughouseRules::chess_com(),
+            chess_rules: ChessRules::bughouse_chess_com(),
             match_rules: MatchRules { rated },
         }
     }

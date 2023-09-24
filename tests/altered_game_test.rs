@@ -16,49 +16,34 @@ fn as_double_player(team: Team) -> BughouseParticipant {
     BughouseParticipant::Player(BughousePlayer::DoublePlayer(team))
 }
 
+fn default_rules() -> Rules {
+    Rules {
+        match_rules: MatchRules::unrated(),
+        chess_rules: ChessRules::bughouse_chess_com(),
+    }
+}
+
 fn default_game() -> BughouseGame {
-    BughouseGame::new(
-        MatchRules::unrated(),
-        ChessRules::classic_blitz(),
-        BughouseRules::chess_com(),
-        &sample_bughouse_players(),
-    )
+    let rules = default_rules();
+    BughouseGame::new(rules, &sample_bughouse_players())
 }
 
 fn stealing_promotion_game() -> BughouseGame {
-    BughouseGame::new(
-        MatchRules::unrated(),
-        ChessRules::classic_blitz(),
-        BughouseRules {
-            promotion: Promotion::Steal,
-            ..BughouseRules::chess_com()
-        },
-        &sample_bughouse_players(),
-    )
+    let mut rules = default_rules();
+    rules.bughouse_rules_mut().unwrap().promotion = Promotion::Steal;
+    BughouseGame::new(rules, &sample_bughouse_players())
 }
 
 fn duck_chess_game() -> BughouseGame {
-    BughouseGame::new(
-        MatchRules::unrated(),
-        ChessRules {
-            duck_chess: true,
-            ..ChessRules::classic_blitz()
-        },
-        BughouseRules::chess_com(),
-        &sample_bughouse_players(),
-    )
+    let mut rules = default_rules();
+    rules.chess_rules.duck_chess = true;
+    BughouseGame::new(rules, &sample_bughouse_players())
 }
 
 fn fog_of_war_bughouse_game() -> BughouseGame {
-    BughouseGame::new(
-        MatchRules::unrated(),
-        ChessRules {
-            fog_of_war: true,
-            ..ChessRules::classic_blitz()
-        },
-        BughouseRules::chess_com(),
-        &sample_bughouse_players(),
-    )
+    let mut rules = default_rules();
+    rules.chess_rules.fog_of_war = true;
+    BughouseGame::new(rules, &sample_bughouse_players())
 }
 
 macro_rules! turn_highlight {
@@ -398,16 +383,10 @@ fn preturn_fog_of_war() {
 
 #[test]
 fn duck_visible_in_the_fog() {
-    let game = BughouseGame::new(
-        MatchRules::unrated(),
-        ChessRules {
-            duck_chess: true,
-            fog_of_war: true,
-            ..ChessRules::classic_blitz()
-        },
-        BughouseRules::chess_com(),
-        &sample_bughouse_players(),
-    );
+    let mut rules = default_rules();
+    rules.chess_rules.duck_chess = true;
+    rules.chess_rules.fog_of_war = true;
+    let game = BughouseGame::new(rules, &sample_bughouse_players());
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), game);
     alt_game.apply_remote_turn(envoy!(White A), &alg("e3"), T0).unwrap();
     assert!(alt_game.fog_of_war_area(A).contains(&Coord::D6));

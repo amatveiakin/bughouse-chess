@@ -548,48 +548,55 @@ pub fn make_lobby_rules_body(rules: &Rules) -> (String, String) {
         variant_table.add_row([caption_td, name_td, tooltip_td]);
     }
 
-    let promotion_tooltip = match rules.bughouse_rules.promotion {
-        bughouse_chess::Promotion::Upgrade => promotion_upgrade_tooltip(),
-        bughouse_chess::Promotion::Discard => promotion_discard_tooltip(),
-        bughouse_chess::Promotion::Steal => promotion_steal_tooltip(),
-    };
-    let mut rule_rows = vec![
-        (
-            "Time control",
-            rules.chess_rules.time_control.to_string(),
-            Some(paragraphs_to_html([stating_time_tooltip()])),
-        ),
-        (
+    let mut rule_rows = vec![];
+    rule_rows.push((
+        "Time control",
+        rules.chess_rules.time_control.to_string(),
+        Some(paragraphs_to_html([stating_time_tooltip()])),
+    ));
+    if let Some(bughouse_rules) = rules.bughouse_rules() {
+        let promotion_tooltip = match bughouse_rules.promotion {
+            bughouse_chess::Promotion::Upgrade => promotion_upgrade_tooltip(),
+            bughouse_chess::Promotion::Discard => promotion_discard_tooltip(),
+            bughouse_chess::Promotion::Steal => promotion_steal_tooltip(),
+        };
+        rule_rows.push((
             "Promotion",
-            rules.bughouse_rules.promotion_string().to_owned(),
+            bughouse_rules.promotion_string().to_owned(),
             Some(paragraphs_to_html([promotion_tooltip])),
-        ),
-        (
+        ));
+        rule_rows.push((
             "Pawn drop ranks",
-            rules.bughouse_rules.pawn_drop_ranks_string(),
+            bughouse_rules.pawn_drop_ranks_string(),
             Some(paragraphs_to_html([pawn_drop_rank_specific_tooltip(
                 rules.chess_rules.board_shape(),
-                rules.bughouse_rules.min_pawn_drop_rank,
-                rules.bughouse_rules.max_pawn_drop_rank,
+                bughouse_rules.min_pawn_drop_rank,
+                bughouse_rules.max_pawn_drop_rank,
             )])),
-        ),
-    ];
+        ));
+    }
     if rules.chess_rules.regicide() {
         rule_rows.push(("", "Regicide".to_owned(), Some(paragraphs_to_html(regicide_tooltip()))))
     } else {
-        let drop_aggression_tooltip = match rules.bughouse_rules.drop_aggression {
-            bughouse_chess::DropAggression::NoCheck => drop_aggression_no_check_tooltip(),
-            bughouse_chess::DropAggression::NoChessMate => drop_aggression_no_chess_mate_tooltip(),
-            bughouse_chess::DropAggression::NoBughouseMate => {
-                drop_aggression_no_bughouse_mate_tooltip()
-            }
-            bughouse_chess::DropAggression::MateAllowed => drop_aggression_mate_allowed_tooltip(),
-        };
-        rule_rows.push((
-            "Drop aggression",
-            rules.bughouse_rules.drop_aggression_string().to_owned(),
-            Some(paragraphs_to_html([drop_aggression_tooltip])),
-        ));
+        if let Some(bughouse_rules) = rules.bughouse_rules() {
+            let drop_aggression_tooltip = match bughouse_rules.drop_aggression {
+                bughouse_chess::DropAggression::NoCheck => drop_aggression_no_check_tooltip(),
+                bughouse_chess::DropAggression::NoChessMate => {
+                    drop_aggression_no_chess_mate_tooltip()
+                }
+                bughouse_chess::DropAggression::NoBughouseMate => {
+                    drop_aggression_no_bughouse_mate_tooltip()
+                }
+                bughouse_chess::DropAggression::MateAllowed => {
+                    drop_aggression_mate_allowed_tooltip()
+                }
+            };
+            rule_rows.push((
+                "Drop aggression",
+                bughouse_rules.drop_aggression_string().to_owned(),
+                Some(paragraphs_to_html([drop_aggression_tooltip])),
+            ));
+        }
     }
     let mut rule_table = HtmlTable::new();
     for (caption, value, tooltip) in rule_rows {

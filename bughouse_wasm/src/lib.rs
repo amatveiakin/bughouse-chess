@@ -314,14 +314,14 @@ impl WebClient {
             duck_chess,
             fog_of_war,
             time_control: TimeControl { starting_time },
+            bughouse_rules: Some(BughouseRules {
+                promotion,
+                min_pawn_drop_rank,
+                max_pawn_drop_rank,
+                drop_aggression,
+            }),
         };
-        let bughouse_rules = BughouseRules {
-            promotion,
-            min_pawn_drop_rank,
-            max_pawn_drop_rank,
-            drop_aggression,
-        };
-        let rules = Rules { match_rules, chess_rules, bughouse_rules };
+        let rules = Rules { match_rules, chess_rules };
         if let Err(message) = rules.verify() {
             return Err(IgnorableError { message }.into());
         }

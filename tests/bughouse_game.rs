@@ -5,14 +5,14 @@ use bughouse_chess::*;
 use common::*;
 
 
-fn bughouse_chess_com() -> BughouseGame {
-    BughouseGame::new(
-        MatchRules::unrated(),
-        ChessRules::classic_blitz(),
-        BughouseRules::chess_com(),
-        &sample_bughouse_players(),
-    )
+fn default_rules() -> Rules {
+    Rules {
+        match_rules: MatchRules::unrated(),
+        chess_rules: ChessRules::bughouse_chess_com(),
+    }
 }
+
+fn default_game() -> BughouseGame { BughouseGame::new(default_rules(), &sample_bughouse_players()) }
 
 fn make_turn(
     game: &mut BughouseGame, board_idx: BughouseBoard, turn_notation: &str,
@@ -58,7 +58,7 @@ fn replay_log_symmetric(game: &mut BughouseGame, log: &str) -> Result<(), TurnEr
 
 #[test]
 fn no_castling_with_dropped_rook() {
-    let mut game = bughouse_chess_com();
+    let mut game = default_game();
     replay_log(
         &mut game,
         "
@@ -90,7 +90,7 @@ fn no_castling_with_dropped_rook() {
 // situation different.
 #[test]
 fn threefold_repetition_draw_prevented_by_drops() {
-    let mut game = bughouse_chess_com();
+    let mut game = default_game();
     replay_log_symmetric(
         &mut game,
         "
@@ -118,7 +118,7 @@ fn threefold_repetition_draw_prevented_by_drops() {
 
 #[test]
 fn threefold_repetition_draw_ignores_reserve() {
-    let mut game = bughouse_chess_com();
+    let mut game = default_game();
     replay_log(
         &mut game,
         "
@@ -136,15 +136,9 @@ fn threefold_repetition_draw_ignores_reserve() {
 
 #[test]
 fn discard_promotion() {
-    let mut game = BughouseGame::new(
-        MatchRules::unrated(),
-        ChessRules::classic_blitz(),
-        BughouseRules {
-            promotion: Promotion::Discard,
-            ..BughouseRules::chess_com()
-        },
-        &sample_bughouse_players(),
-    );
+    let mut rules = default_rules();
+    rules.bughouse_rules_mut().unwrap().promotion = Promotion::Discard;
+    let mut game = BughouseGame::new(rules, &sample_bughouse_players());
     replay_log(
         &mut game,
         "
@@ -163,15 +157,9 @@ fn discard_promotion() {
 // Test that promoted piece is not downgraded to a pawn on capture if it's promoted by stealing.
 #[test]
 fn steal_promotion_piece_goes_back_unchanged() {
-    let mut game = BughouseGame::new(
-        MatchRules::unrated(),
-        ChessRules::classic_blitz(),
-        BughouseRules {
-            promotion: Promotion::Steal,
-            ..BughouseRules::chess_com()
-        },
-        &sample_bughouse_players(),
-    );
+    let mut rules = default_rules();
+    rules.bughouse_rules_mut().unwrap().promotion = Promotion::Steal;
+    let mut game = BughouseGame::new(rules, &sample_bughouse_players());
     replay_log(
         &mut game,
         "
@@ -193,15 +181,9 @@ fn steal_promotion_piece_goes_back_unchanged() {
 
 #[test]
 fn cannot_check_by_stealing() {
-    let mut game = BughouseGame::new(
-        MatchRules::unrated(),
-        ChessRules::classic_blitz(),
-        BughouseRules {
-            promotion: Promotion::Steal,
-            ..BughouseRules::chess_com()
-        },
-        &sample_bughouse_players(),
-    );
+    let mut rules = default_rules();
+    rules.bughouse_rules_mut().unwrap().promotion = Promotion::Steal;
+    let mut game = BughouseGame::new(rules, &sample_bughouse_players());
     assert_eq!(
         replay_log(
             &mut game,

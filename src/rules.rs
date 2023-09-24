@@ -75,6 +75,47 @@ pub struct MatchRules {
     pub rated: bool,
 }
 
+// Some thoughts on relationship options between `ChessRules` and `BughouseRules`. The goal is to
+// keep the door open to adding non-bughouse chess in the future.
+//
+// # `ChessRules` and `BughouseRules` are two independent structures.
+//
+// This was the original approach. It neatly maps to type system: `Board` has `ChessRules` and
+// `Option<BughouseRules>`, `ChessGame` has `ChessRules`, `BughouseGame` has `ChessRules` and
+// `BughouseRules`. The resulting code has few `unwrap`s. The problem is, rules eventually start to
+// overlap, e.g. `regicide` depends both on chess settings (like duck chess) and bughouse settings
+// (like koedem). Which means, many things need to be resolved externally.
+//
+// # `BughouseRules` contains `ChessRules`.
+//
+// This is sort of classic OOP approach: bughouse is built on top of chess, so it reuses it. This
+// approach also results in code with few `unwrap`s. But it solidifies the idea that bughouse and
+// single-board chess exist completely in parallel, which is questionable. It means most code
+// duplication, because `BughouseRules` needs to reexport all `ChessRules` concepts. As a
+// consequence, we'll have `BughouseVariants` enum, which is a superset of `ChessVariants` enum, for
+// example. Writing generic code that works with either chess or bughouse is going to be harder.
+//
+// # `ChessRules` contains `Option<BughouseRules>`.
+//
+// This is the current approach. Here `ChessRules` encompasses all game aspects. It means less
+// strong typing than the first two options and requires a bit more `unwrap`s. But it also means
+// less code duplication. `ChessRules` is a now a one-stop shop for all game settings, which can be
+// relied upon by game engine and UI alike. It is also in line with how we treat other settings:
+// there are no separate `FogOfWarChessRules`, for example. Maybe in the future we could just have a
+// single game class, which contains a vector of boards, and differences between chess and bughouses
+// are resolved similarly to how other rules differences are resolved now.
+//
+// # There is just `ChessRules`. It contains all setting directly, some of them optional.
+//
+// This is similar to the previous approach in that `ChessRules` is self-contained. It also means
+// bughouse settings are easier to access and to override and feel less like a second-class citizen.
+// And it allows to support variants that share only some settings with bughouse (like crazy-house).
+// But it also means tonns of `unwrap`s. It allow completely non-sensical combinations
+// (`min_pawn_drop_rank` is `Some` while `max_pawn_drop_rank` is `None`) and it makes settings
+// harder to reason about: should we support somewhat sensical combinations that don't correspond to
+// any know variant but could? Whereas grouping all bughouse options together, like we do now,
+// results in a much simpler mental model.
+//
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChessRules {
     pub fairy_pieces: FairyPieces,
@@ -103,6 +144,8 @@ pub struct ChessRules {
     pub fog_of_war: bool,
 
     pub time_control: TimeControl,
+
+    pub bughouse_rules: Option<BughouseRules>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -117,7 +160,6 @@ pub struct BughouseRules {
 pub struct Rules {
     pub match_rules: MatchRules,
     pub chess_rules: ChessRules,
-    pub bughouse_rules: BughouseRules,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -134,13 +176,21 @@ impl MatchRules {
 
 // Improvement potential. Precompute `variants` and `regicide_reason`.
 impl ChessRules {
-    pub fn classic_blitz() -> Self {
+    pub fn chess_blitz() -> Self {
         Self {
             fairy_pieces: FairyPieces::NoFairy,
             starting_position: StartingPosition::Classic,
             duck_chess: false,
             fog_of_war: false,
             time_control: TimeControl { starting_time: Duration::from_secs(300) },
+            bughouse_rules: None,
+        }
+    }
+
+    pub fn bughouse_chess_com() -> Self {
+        Self {
+            bughouse_rules: Some(BughouseRules::chess_com()),
+            ..Self::chess_blitz()
         }
     }
 
@@ -196,6 +246,24 @@ impl ChessRules {
         }
         v
     }
+
+    pub fn verify(&self) -> Result<(), String> {
+        if let Some(bughouse_rules) = &self.bughouse_rules {
+            let min_pawn_drop_rank = bughouse_rules.min_pawn_drop_rank.to_one_based();
+            let max_pawn_drop_rank = bughouse_rules.max_pawn_drop_rank.to_one_based();
+            if !chmp!(1 <= min_pawn_drop_rank <= max_pawn_drop_rank <= 7) {
+                return Err(format!(
+                    "Invalid pawn drop ranks: {min_pawn_drop_rank}-{max_pawn_drop_rank}"
+                ));
+            }
+            if self.regicide() && bughouse_rules.drop_aggression != DropAggression::MateAllowed {
+                return Err("The game is played until a king is captured. \
+                    Drop aggression must be set to \"mate allowed\""
+                    .to_owned());
+            }
+        }
+        Ok(())
+    }
 }
 
 impl BughouseRules {
@@ -237,23 +305,14 @@ impl BughouseRules {
 }
 
 impl Rules {
-    pub fn verify(&self) -> Result<(), String> {
-        let min_pawn_drop_rank = self.bughouse_rules.min_pawn_drop_rank.to_one_based();
-        let max_pawn_drop_rank = self.bughouse_rules.max_pawn_drop_rank.to_one_based();
-        if !chmp!(1 <= min_pawn_drop_rank <= max_pawn_drop_rank <= 7) {
-            return Err(format!(
-                "Invalid pawn drop ranks: {min_pawn_drop_rank}-{max_pawn_drop_rank}"
-            ));
-        }
-        if self.chess_rules.regicide()
-            && self.bughouse_rules.drop_aggression != DropAggression::MateAllowed
-        {
-            return Err("The game is played until a king is captured. \
-                Drop aggression must be set to \"mate allowed\""
-                .to_owned());
-        }
-        Ok(())
+    pub fn bughouse_rules(&self) -> Option<&BughouseRules> {
+        self.chess_rules.bughouse_rules.as_ref()
     }
+    pub fn bughouse_rules_mut(&mut self) -> Option<&mut BughouseRules> {
+        self.chess_rules.bughouse_rules.as_mut()
+    }
+
+    pub fn verify(&self) -> Result<(), String> { self.chess_rules.verify() }
 }
 
 impl ChessVariant {

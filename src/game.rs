@@ -41,7 +41,7 @@ use crate::clock::GameInstant;
 use crate::coord::BoardShape;
 use crate::force::Force;
 use crate::player::Team;
-use crate::rules::{BughouseRules, ChessRules, MatchRules};
+use crate::rules::{BughouseRules, ChessRules, MatchRules, Rules};
 use crate::starter::{generate_starting_position, EffectiveStartingPosition};
 
 
@@ -104,24 +104,17 @@ pub struct ChessGame {
 }
 
 impl ChessGame {
-    pub fn new(
-        match_rules: MatchRules, rules: ChessRules, player_names: EnumMap<Force, String>,
-    ) -> Self {
-        let starting_position = generate_starting_position(&rules);
-        Self::new_with_starting_position(match_rules, rules, starting_position, player_names)
+    pub fn new(rules: Rules, player_names: EnumMap<Force, String>) -> Self {
+        let starting_position = generate_starting_position(&rules.chess_rules);
+        Self::new_with_starting_position(rules, starting_position, player_names)
     }
 
     pub fn new_with_starting_position(
-        match_rules: MatchRules, rules: ChessRules, starting_position: EffectiveStartingPosition,
+        rules: Rules, starting_position: EffectiveStartingPosition,
         player_names: EnumMap<Force, String>,
     ) -> Self {
-        let board = Board::new(
-            Rc::new(match_rules),
-            Rc::new(rules),
-            None,
-            player_names,
-            &starting_position,
-        );
+        assert!(rules.bughouse_rules().is_none());
+        let board = Board::new(Rc::new(rules), player_names, &starting_position);
         ChessGame { starting_position, board }
     }
 
@@ -319,6 +312,7 @@ impl BughouseParticipant {
 
 #[derive(Clone, Debug)]
 pub struct BughouseGame {
+    rules: Rc<Rules>,
     starting_position: EffectiveStartingPosition,
     boards: EnumMap<BughouseBoard, Board>,
     turn_log: Vec<TurnRecordExpanded>,
@@ -327,38 +321,27 @@ pub struct BughouseGame {
 
 // Improvement potential. Remove mutable access to fields.
 impl BughouseGame {
-    pub fn new(
-        match_rules: MatchRules, chess_rules: ChessRules, bughouse_rules: BughouseRules,
-        players: &[PlayerInGame],
-    ) -> Self {
-        let starting_position = generate_starting_position(&chess_rules);
-        Self::new_with_starting_position(
-            match_rules,
-            chess_rules,
-            bughouse_rules,
-            starting_position,
-            players,
-        )
+    pub fn new(rules: Rules, players: &[PlayerInGame]) -> Self {
+        assert!(rules.bughouse_rules().is_some());
+        let starting_position = generate_starting_position(&rules.chess_rules);
+        Self::new_with_starting_position(rules, starting_position, players)
     }
 
     pub fn new_with_starting_position(
-        match_rules: MatchRules, chess_rules: ChessRules, bughouse_rules: BughouseRules,
-        starting_position: EffectiveStartingPosition, players: &[PlayerInGame],
+        rules: Rules, starting_position: EffectiveStartingPosition, players: &[PlayerInGame],
     ) -> Self {
-        let match_rules = Rc::new(match_rules);
-        let chess_rules = Rc::new(chess_rules);
-        let bughouse_rules = Rc::new(bughouse_rules);
+        Self::new_with_starting_position_and_rules_rc(Rc::new(rules), starting_position, players)
+    }
+
+    fn new_with_starting_position_and_rules_rc(
+        rules: Rc<Rules>, starting_position: EffectiveStartingPosition, players: &[PlayerInGame],
+    ) -> Self {
         let player_map = make_player_map(players);
         let boards = player_map.map(|_, board_players| {
-            Board::new(
-                Rc::clone(&match_rules),
-                Rc::clone(&chess_rules),
-                Some(Rc::clone(&bughouse_rules)),
-                board_players,
-                &starting_position,
-            )
+            Board::new(Rc::clone(&rules), board_players, &starting_position)
         });
         BughouseGame {
+            rules,
             starting_position,
             boards,
             status: BughouseGameStatus::Active,
@@ -367,20 +350,19 @@ impl BughouseGame {
     }
 
     pub fn clone_from_start(&self) -> Self {
-        Self::new_with_starting_position(
-            (**self.match_rules()).clone(),
-            (**self.chess_rules()).clone(),
-            (**self.bughouse_rules()).clone(),
+        Self::new_with_starting_position_and_rules_rc(
+            Rc::clone(&self.rules),
             self.starting_position.clone(),
             &self.players(),
         )
     }
 
     pub fn starting_position(&self) -> &EffectiveStartingPosition { &self.starting_position }
-    pub fn match_rules(&self) -> &Rc<MatchRules> { self.boards[BughouseBoard::A].match_rules() }
-    pub fn chess_rules(&self) -> &Rc<ChessRules> { self.boards[BughouseBoard::A].chess_rules() }
-    pub fn bughouse_rules(&self) -> &Rc<BughouseRules> {
-        self.boards[BughouseBoard::A].bughouse_rules().as_ref().unwrap()
+    pub fn rules(&self) -> &Rules { &self.rules }
+    pub fn match_rules(&self) -> &MatchRules { &self.rules.match_rules }
+    pub fn chess_rules(&self) -> &ChessRules { &self.rules.chess_rules }
+    pub fn bughouse_rules(&self) -> &BughouseRules {
+        self.rules.chess_rules.bughouse_rules.as_ref().unwrap()
     }
     pub fn board_shape(&self) -> BoardShape { self.chess_rules().board_shape() }
     pub fn board_mut(&mut self, idx: BughouseBoard) -> &mut Board { &mut self.boards[idx] }

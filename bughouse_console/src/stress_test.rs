@@ -101,19 +101,19 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
                 duck_chess: rng.gen::<bool>(),
                 fog_of_war: rng.gen::<bool>(),
                 time_control: TimeControl { starting_time: Duration::from_secs(300) },
-            },
-            bughouse_rules: BughouseRules {
-                // Improvement potential: Test other promotion strategies.
-                promotion: Promotion::Upgrade,
-                min_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)),
-                max_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)),
-                drop_aggression: match rng.gen_range(0..4) {
-                    0 => DropAggression::NoCheck,
-                    1 => DropAggression::NoChessMate,
-                    2 => DropAggression::NoBughouseMate,
-                    3 => DropAggression::MateAllowed,
-                    _ => unreachable!(),
-                },
+                bughouse_rules: Some(BughouseRules {
+                    // Improvement potential: Test other promotion strategies.
+                    promotion: Promotion::Upgrade,
+                    min_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)),
+                    max_pawn_drop_rank: SubjectiveRow::from_one_based(rng.gen_range(1..=7)),
+                    drop_aggression: match rng.gen_range(0..4) {
+                        0 => DropAggression::NoCheck,
+                        1 => DropAggression::NoChessMate,
+                        2 => DropAggression::NoBughouseMate,
+                        3 => DropAggression::MateAllowed,
+                        _ => unreachable!(),
+                    },
+                }),
             },
         };
         if rules.verify().is_ok() {
@@ -123,12 +123,7 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
 }
 
 fn bughouse_game(rules: Rules) -> BughouseGame {
-    BughouseGame::new(
-        rules.match_rules,
-        rules.chess_rules,
-        rules.bughouse_rules,
-        &sample_bughouse_players(),
-    )
+    BughouseGame::new(rules, &sample_bughouse_players())
 }
 
 fn random_coord(rng: &mut rand::rngs::ThreadRng, board_shape: BoardShape) -> Coord {

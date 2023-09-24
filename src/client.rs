@@ -494,9 +494,7 @@ impl ClientState {
                 };
                 let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
                 let game = BughouseGame::new_with_starting_position(
-                    mtch.rules.match_rules.clone(),
-                    mtch.rules.chess_rules.clone(),
-                    mtch.rules.bughouse_rules.clone(),
+                    mtch.rules.clone(),
                     starting_position,
                     &players,
                 );
