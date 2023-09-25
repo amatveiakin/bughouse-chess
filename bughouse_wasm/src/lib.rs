@@ -810,7 +810,16 @@ impl WebClient {
                     let node =
                         ensure_square_node(display_coord, &piece_layer, &node_id, node, 1.0)?;
                     if !fog_cover_area.contains(&coord) && let Some(piece) = grid[coord] {
-                        let filename = piece_path(piece.kind, piece.force);
+                        let filename =
+                            if let ChessGameStatus::Victory(winner, reason) = board.status()
+                                && reason == VictoryReason::Checkmate
+                                && piece.kind == PieceKind::King
+                                && piece.force == winner.opponent().into()
+                            {
+                                broken_king_path(piece.force)
+                            } else {
+                                piece_path(piece.kind, piece.force)
+                            };
                         node.set_attribute("href", filename)?;
                         node.remove_attribute("class")?;
                         node.class_list()
@@ -2064,6 +2073,14 @@ fn piece_path(piece_kind: PieceKind, force: PieceForce) -> &'static str {
         (Black, King) => "#black-king",
         (_, Duck) => "#duck",
         (Neutral, _) => panic!("There is no neutral representation for {piece_kind:?}"),
+    }
+}
+
+fn broken_king_path(force: PieceForce) -> &'static str {
+    match force {
+        PieceForce::White => "#white-king-broken",
+        PieceForce::Black => "#black-king-broken",
+        PieceForce::Neutral => panic!("King cannot be neutral"),
     }
 }
 

@@ -16,6 +16,7 @@ import white_cardinal from '../assets/pieces/white-cardinal.png';
 import white_empress from '../assets/pieces/white-empress.png';
 import white_amazon from '../assets/pieces/white-amazon.png';
 import white_king from '../assets/pieces/white-king.png';
+import white_king_broken from '../assets/pieces/white-king-broken.png';
 import black_pawn from '../assets/pieces/black-pawn.png';
 import black_knight from '../assets/pieces/black-knight.png';
 import black_bishop from '../assets/pieces/black-bishop.png';
@@ -25,6 +26,7 @@ import black_cardinal from '../assets/pieces/black-cardinal.png';
 import black_empress from '../assets/pieces/black-empress.png';
 import black_amazon from '../assets/pieces/black-amazon.png';
 import black_king from '../assets/pieces/black-king.png';
+import black_king_broken from '../assets/pieces/black-king-broken.png';
 import duck from '../assets/pieces/duck.png';
 
 import fog_1 from '../assets/fog-of-war/fog-1.png';
@@ -194,6 +196,7 @@ load_svg_images([
     { path: white_empress, symbol: 'white-empress' },
     { path: white_amazon, symbol: 'white-amazon' },
     { path: white_king, symbol: 'white-king' },
+    { path: white_king_broken, symbol: 'white-king-broken' },
     { path: black_pawn, symbol: 'black-pawn' },
     { path: black_knight, symbol: 'black-knight' },
     { path: black_bishop, symbol: 'black-bishop' },
@@ -203,6 +206,7 @@ load_svg_images([
     { path: black_empress, symbol: 'black-empress' },
     { path: black_amazon, symbol: 'black-amazon' },
     { path: black_king, symbol: 'black-king' },
+    { path: black_king_broken, symbol: 'black-king-broken' },
     { path: duck, symbol: 'duck' },
     { path: fog_1, symbol: 'fog-1', size: FOG_TILE_SIZE },
     { path: fog_2, symbol: 'fog-2', size: FOG_TILE_SIZE },

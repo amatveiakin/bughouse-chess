@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 100 100"
+   x="0px"
+   y="0px"
+   version="1.1"
+   id="svg8"
+   sodipodi:docname="king-broken.svg"
+   inkscape:version="1.2.2 (732a01da63, 2022-12-09)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <defs
+     id="defs7" />
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="2560"
+     inkscape:window-height="1476"
+     id="namedview5"
+     showgrid="false"
+     inkscape:snap-global="false"
+     inkscape:zoom="3.4082547"
+     inkscape:cx="17.16421"
+     inkscape:cy="47.238254"
+     inkscape:window-x="-12"
+     inkscape:window-y="-12"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg8"
+     inkscape:showpageshadow="2"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1" />
+  <metadata
+     id="metadata12">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <path
+     id="path884"
+     style="display:inline;fill:#000000;fill-rule:nonzero"
+     inkscape:transform-center-x="-11.960312"
+     inkscape:transform-center-y="-37.765144"
+     d="m 51.255,11.352071 -0.652044,6.57052 -7.697092,-0.523049 -0.536952,7.901699 7.459359,0.506894 -0.963431,8.876982 7.023423,17.581077 -11.676179,20.380275 9.950932,15.638368 23.490747,1.596291 0.671223,-9.877611 L 67.352612,77.75444 C 67.555639,70.740066 73.401448,66.331958 79.901393,61.789187 91.3755,53.769653 92.403885,38.626893 84.950572,31.505189 c -7.435917,-7.097469 -18.37557,-3.754398 -26.08958,3.403079 -0.164719,0.152517 -0.326224,0.308593 -0.482083,0.468394 l 0.247431,-8.970663 7.449616,0.506232 0.536953,-7.901699 -7.697092,-0.523049 0.242832,-6.598327 z m 23.195132,26.774807 c 1.048219,0.216941 1.974636,0.687035 2.673493,1.420854 2.795427,2.935278 1.409968,9.912228 -2.389391,14.420012 -5.278663,6.261526 -14.676096,9.650246 -17.096514,9.485769 0.272886,-4.015739 1.540542,-13.22359 6.906838,-20.80421 2.515483,-3.553883 6.760916,-5.173248 9.905574,-4.522425 z m -20.279301,50.141499 -12.0357,-14.096862 8.718164,-21.810144 -9.407909,-16.429059 0.0012,0.04495 C 41.290133,35.818794 41.127959,35.663413 40.962538,35.51094 33.21281,28.386012 22.256983,25.091083 14.858589,32.219908 7.43991,39.373259 8.5333019,54.511464 20.037745,62.481949 c 6.51939,4.514821 12.384073,8.897789 12.617213,15.911227 L 21.692342,80.689342 22.40597,90.56398 Z M 25.377669,38.797155 c 3.141835,-0.664318 7.394181,0.936803 9.924899,4.479853 5.398794,7.55751 6.705974,16.759834 6.996099,20.774364 -2.41969,0.174868 -11.831586,-3.173473 -17.137084,-9.412277 -3.818679,-4.49143 -5.234081,-11.462368 -2.451282,-14.40962 0.6957,-0.736813 1.62009,-1.21088 2.667368,-1.43232 z" />
+</svg>
