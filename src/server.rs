@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::time::Duration;
-use std::{iter, mem, ops};
+use std::{cmp, iter, mem, ops};
 
 use enum_map::enum_map;
 use indoc::printdoc;
@@ -783,6 +783,7 @@ impl Match {
                     is_registered_user,
                     faction: Faction::Observer,
                     games_played: 0,
+                    double_games_played: 0,
                     is_online: true,
                     is_ready: false,
                 })
@@ -840,6 +841,7 @@ impl Match {
                 is_registered_user,
                 faction: Faction::Random,
                 games_played: 0,
+                double_games_played: 0,
                 is_online: true,
                 is_ready: false,
             });
@@ -1254,11 +1256,9 @@ impl Match {
     // Priorities (from highest to lowest):
     //   1. Don't make people double play if they don't have to.
     //   2. Balance the number of games played by each person.
-    //   3. [TBD] Balance the number of times people double play (if they have to).
+    //   3. Balance the number of times people double play (if they have to).
     //   4. Uniformly randomize teams, opponents and seating out order.
     //
-    // Improvement potential: In a game with three players also balance the number of times
-    //   each person double-plays.
     // TODO: Add unit tests for `assign_boards` since it's not covered by `bughouse_online.rs`.
     // TODO: Move together with `verify_participants` and `fix_teams_if_needed`.
     fn assign_boards(&self) -> Vec<PlayerInGame> {
@@ -1315,17 +1315,38 @@ impl Match {
                 break;
             }
         }
-        for p in random_players {
-            // Note. Although the players are already shuffled, we still need to randomize the team.
-            // If we always started with, say, Red team, then in case of (Blue, Random, Random) the
-            // first player would always play on two boards.
-            let mut team = if rng.gen() { Team::Red } else { Team::Blue };
-            if players_per_team[team].len() >= TOTAL_ENVOYS_PER_TEAM
-                || players_per_team[team.opponent()].is_empty()
-            {
-                team = team.opponent();
+        if !random_players.iter().map(|p| p.double_games_played).all_equal() {
+            // Try to balance the number of times each person double plays. This usually happens
+            // when we have three players (with four+ players people typically don't double play and
+            // with two people both players always double play), but we cannot assume that,
+            // epsecially given the fact that we plan to support joining and leaving the match in
+            // the middle.
+            random_players.sort_by_key(|p| cmp::Reverse(p.double_games_played));
+            let smaller_team =
+                Team::iter().min_by_key(|&team| players_per_team[team].len()).unwrap();
+            let larger_team = smaller_team.opponent();
+            players_per_team[smaller_team].push(random_players.pop().unwrap());
+            for p in random_players {
+                let team = if players_per_team[larger_team].len() < TOTAL_ENVOYS_PER_TEAM {
+                    larger_team
+                } else {
+                    smaller_team
+                };
+                players_per_team[team].push(p);
             }
-            players_per_team[team].push(p);
+        } else {
+            for p in random_players {
+                // Note. Although the players are already shuffled, we still need to randomize the team.
+                // If we always started with, say, Red team, then in case of (Blue, Random, Random) the
+                // first player would always play on two boards.
+                let mut team = if rng.gen() { Team::Red } else { Team::Blue };
+                if players_per_team[team].len() >= TOTAL_ENVOYS_PER_TEAM
+                    || players_per_team[team.opponent()].is_empty()
+                {
+                    team = team.opponent();
+                }
+                players_per_team[team].push(p);
+            }
         }
 
         players_per_team
@@ -1442,10 +1463,16 @@ fn update_on_game_over(
             }
         }
     }
-    let player_names: HashSet<_> = game.players().into_iter().map(|p| p.name).collect();
-    for p in participants.iter_mut() {
-        if player_names.contains(&p.name) {
-            p.games_played += 1;
+    let mut num_players_per_team = enum_map! { _ => 0 };
+    for p in game.players() {
+        num_players_per_team[p.id.team()] += 1;
+    }
+    for p in game.players() {
+        if let Some(id) = participants.find_by_name(&p.name) {
+            participants[id].games_played += 1;
+            if num_players_per_team[p.id.team()] == 1 {
+                participants[id].double_games_played += 1;
+            }
         }
     }
     ctx.hooks.on_game_over(game, game_start_offset_time, round);

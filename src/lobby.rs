@@ -166,6 +166,7 @@ mod tests {
             is_registered_user: false,
             faction,
             games_played: 0,
+            double_games_played: 0,
             is_online: true,
             is_ready,
         });

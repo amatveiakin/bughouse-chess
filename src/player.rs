@@ -31,6 +31,7 @@ pub struct Participant {
     pub is_registered_user: bool, // fixed for the entire match
     pub faction: Faction,         // fixed for the entire match
     pub games_played: u32,
+    pub double_games_played: u32,
     pub is_online: bool,
     pub is_ready: bool,
 }
