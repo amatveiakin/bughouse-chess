@@ -6,6 +6,7 @@ body {
   --reserve-height-in-squares: 1.5;
 
   --rem: max(calc(var(--sq-size-primary) * 0.25), 6pt);
+  --dialog-rem: clamp(6pt, min(3vw, 2.5vh), 12pt);
 
   --rule-variant-button-width: 8em;
   --rule-variant-button-height: 7.5em;
@@ -760,7 +761,7 @@ button:active:enabled {
   text-align: initial;
   font-style: normal;
   font-weight: normal;
-  font-size: 0.9rem;
+  font-size: calc(0.9 * var(--dialog-rem));
   width: 18em;
   background-color: var(--color-dialog-tooltip);
   padding: 0em 1em;
@@ -825,7 +826,7 @@ button:active:enabled {
 
 dialog {
   background-color: var(--color-dialog-background);
-  /* font-size: max(1em, 8pt); */
+  font-size: var(--dialog-rem);
   padding: 0.6em 1em;
   overflow: visible;  /* allow tooltips go outside of the page area */
 }
