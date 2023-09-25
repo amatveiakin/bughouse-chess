@@ -1405,7 +1405,7 @@ impl Board {
                         PieceForce::Neutral,
                     )
                 };
-                if new_grid[to].is_some() {
+                if new_grid[to].is_some() && mode == TurnMode::Normal {
                     return Err(TurnError::PathBlocked);
                 }
                 new_grid[to] = Some(duck);
