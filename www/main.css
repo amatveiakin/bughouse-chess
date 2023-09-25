@@ -738,6 +738,7 @@ button {
               inset -2px -2px 3px rgba(0, 0, 0, .6);
 }
 button:active:enabled {
+  transform: translate(0.1em, 0.1em);
   box-shadow: inset -2px -2px 3px rgba(255, 255, 255, .6),
               inset 2px 2px 3px rgba(0, 0, 0, .6);
 }
