@@ -828,11 +828,15 @@ function set_up_drag_and_drop() {
 }
 
 function set_up_chalk_drawing() {
+    let chalk_target = null;
+    let ignore_next_cancellation = false;
+    let ignore_next_context_menu = false;
+
     function is_draw_button(event) { return event.button == 2; }
     function is_cancel_button(event) { return event.button == 0; }
 
-    function viewbox_mouse_position(event) {
-        const ctm = event.currentTarget.getScreenCTM();
+    function viewbox_mouse_position(node, event) {
+        const ctm = node.getScreenCTM();
         return {
             x: (event.clientX - ctm.e) / ctm.a,
             y: (event.clientY - ctm.f) / ctm.d,
@@ -844,9 +848,12 @@ function set_up_chalk_drawing() {
             if (drag_element) {
                 // Do not draw while a turn is being made.
             } else if (!wasm_client().is_chalk_active() && is_draw_button(event)) {
-                const coord = viewbox_mouse_position(event);
-                wasm_client().chalk_down(event.currentTarget.id, coord.x, coord.y, event.ctrlKey);
+                chalk_target = event.currentTarget;
+                const coord = viewbox_mouse_position(chalk_target, event);
+                wasm_client().chalk_down(chalk_target.id, coord.x, coord.y, event.ctrlKey);
             } else if (wasm_client().is_chalk_active() && is_cancel_button(event)) {
+                chalk_target = null;
+                ignore_next_cancellation = true;
                 wasm_client().chalk_abort();
             }
         });
@@ -855,8 +862,9 @@ function set_up_chalk_drawing() {
     function mouse_move(event) {
         with_error_handling(function() {
             if (wasm_client().is_chalk_active()) {
-                const coord = viewbox_mouse_position(event);
-                wasm_client().chalk_move(coord.x, coord.y, event.shiftKey);
+                console.assert(chalk_target != null);
+                const coord = viewbox_mouse_position(chalk_target, event);
+                wasm_client().chalk_move(coord.x, coord.y);
             }
         });
     }
@@ -864,18 +872,11 @@ function set_up_chalk_drawing() {
     function mouse_up(event) {
         with_error_handling(function() {
             if (wasm_client().is_chalk_active() && is_draw_button(event)) {
-                const coord = viewbox_mouse_position(event);
-                wasm_client().chalk_up(coord.x, coord.y, event.shiftKey);
-            }
-        });
-    }
-
-    function mouse_leave(event) {
-        // Improvement potential: Don't abort drawing if the user temporarily moved the
-        //   mouse outside the board.
-        with_error_handling(function() {
-            if (wasm_client().is_chalk_active()) {
-                wasm_client().chalk_abort();
+                console.assert(chalk_target != null);
+                const coord = viewbox_mouse_position(chalk_target, event);
+                wasm_client().chalk_up(coord.x, coord.y);
+                chalk_target = null;
+                ignore_next_context_menu = true;
             }
         });
     }
@@ -883,6 +884,10 @@ function set_up_chalk_drawing() {
     function mouse_click(event) {
         with_error_handling(function() {
             if (is_cancel_button(event)) {
+                if (ignore_next_cancellation) {
+                    ignore_next_cancellation = false;
+                    return;
+                }
                 if (event.shiftKey) {
                     wasm_client().chalk_clear(event.currentTarget.id);
                 } else {
@@ -892,16 +897,24 @@ function set_up_chalk_drawing() {
         });
     }
 
+    function on_context_menu(event) {
+        // Note. This relies on `contextmenu` arriving after `mouseup`. I'm not
+        // sure if the order is specified anywhere, but it seems to be the case.
+        if (ignore_next_context_menu) {
+            event.preventDefault();
+            ignore_next_context_menu = false;
+        }
+    }
+
     for (const board_id of ['primary', 'secondary']) {
         // Improvement potential. Support chalk on touch screens.
         const svg = board_svg(board_id);
         svg.addEventListener('mousedown', mouse_down);
-        svg.addEventListener('mousemove', mouse_move);
-        svg.addEventListener('mouseup', mouse_up);
-        svg.addEventListener('mouseleave', mouse_leave);
         svg.addEventListener('click', mouse_click);
-        svg.addEventListener('contextmenu', (event) => event.preventDefault());
     }
+    document.addEventListener('mousemove', mouse_move);
+    document.addEventListener('mouseup', mouse_up);
+    document.addEventListener('contextmenu', on_context_menu);
 }
 
 function update_cookie_policy() {

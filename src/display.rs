@@ -194,11 +194,19 @@ pub fn display_to_fcoord(
 
 impl FCoord {
     // Returns the closes valid board square.
-    pub fn to_coord_snapped(&self, board_shape: BoardShape) -> Coord {
+    pub fn to_coord_snapped(self, board_shape: BoardShape) -> Coord {
         Coord::new(
             Row::from_zero_based((self.y.clamp(0., (board_shape.num_rows - 1) as f64)) as i8),
             Col::from_zero_based((self.x.clamp(0., (board_shape.num_cols - 1) as f64)) as i8),
         )
+    }
+
+    // Returns the closest valid board coord.
+    pub fn snap(self, board_shape: BoardShape) -> Self {
+        FCoord {
+            x: self.x.clamp(0., board_shape.num_cols as f64),
+            y: self.y.clamp(0., board_shape.num_rows as f64),
+        }
     }
 }
 
@@ -218,7 +226,7 @@ impl DisplayFCoord {
         }
     }
 
-    pub fn to_square(&self, board_shape: BoardShape) -> Option<DisplayCoord> {
+    pub fn to_square(self, board_shape: BoardShape) -> Option<DisplayCoord> {
         let x = self.x as i32;
         let y = self.y as i32;
         if 0 <= x && x < board_shape.num_cols as i32 && 0 <= y && y < board_shape.num_rows as i32 {
