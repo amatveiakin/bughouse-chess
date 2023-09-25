@@ -474,11 +474,11 @@ impl AlteredGame {
             PieceDragSource::Defunct => Err(PieceDragError::DragNoLongerPossible),
             PieceDragSource::Board(source_coord) => {
                 use PieceKind::*;
-                if source_coord == dest {
-                    return Err(PieceDragError::Cancelled);
-                }
                 if piece_kind == PieceKind::Duck {
                     return Ok(Some(TurnInput::DragDrop(Turn::PlaceDuck(dest))));
+                }
+                if source_coord == dest {
+                    return Err(PieceDragError::Cancelled);
                 }
                 let board_shape = self.board_shape();
                 let d_col = dest.col - source_coord.col;

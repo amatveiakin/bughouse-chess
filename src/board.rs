@@ -1388,7 +1388,7 @@ impl Board {
                 }
                 let from = find_piece(&new_grid, |p| p.kind == PieceKind::Duck);
                 let duck = if let Some(from) = from {
-                    if to == from {
+                    if to == from && mode == TurnMode::Normal {
                         return Err(TurnError::MustChangeDuckPosition);
                     }
                     new_grid[from].take().unwrap()
