@@ -9,12 +9,13 @@
 // TODO: streaming support + APIs.
 use std::ops::Range;
 
-use bughouse_chess::{my_git_version, BughouseClientPerformance};
+use bughouse_chess::my_git_version;
 use log::error;
 use sqlx::prelude::*;
 use tide::utils::async_trait;
 use time::{OffsetDateTime, PrimitiveDateTime};
 
+use crate::bughouse_prelude::*;
 use crate::persistence::*;
 
 pub struct UnimplementedDatabase {}

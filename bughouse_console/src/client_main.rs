@@ -7,7 +7,6 @@ use std::time::Duration;
 use std::{fmt, io, panic, thread};
 
 use bughouse_chess::client::*;
-use bughouse_chess::*;
 use crossterm::style::{self, Stylize};
 use crossterm::{cursor, event as term_event, execute, terminal};
 use instant::Instant;
@@ -16,6 +15,7 @@ use scopeguard::defer;
 use tungstenite::protocol;
 use url::Url;
 
+use crate::bughouse_prelude::*;
 use crate::{network, tui};
 
 

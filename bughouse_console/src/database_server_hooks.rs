@@ -1,8 +1,9 @@
+use bughouse_chess::my_git_version;
 use bughouse_chess::server_hooks::ServerHooks;
-use bughouse_chess::*;
 use log::error;
 use time::OffsetDateTime;
 
+use crate::bughouse_prelude::*;
 use crate::persistence::*;
 
 pub struct DatabaseServerHooks<DB> {

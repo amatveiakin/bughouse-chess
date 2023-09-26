@@ -10,9 +10,24 @@ use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Mutex};
 use std::{iter, ops};
 
+use bughouse_chess::altered_game::AlteredGame;
+use bughouse_chess::board::{Board, TurnError, TurnInput, VictoryReason};
+use bughouse_chess::coord::{Coord, SubjectiveRow};
+use bughouse_chess::display::{get_display_board_index, DisplayBoard, Perspective};
+use bughouse_chess::event::{BughouseClientEvent, BughouseServerEvent};
+use bughouse_chess::force::Force;
+use bughouse_chess::game::{
+    BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
+    BughousePlayer, PlayerInGame,
+};
+use bughouse_chess::piece::PieceKind;
+use bughouse_chess::player::{Faction, Team};
+use bughouse_chess::rules::{
+    BughouseRules, ChessRules, DropAggression, MatchRules, Promotion, Rules,
+};
 use bughouse_chess::server_helpers::TestServerHelpers;
 use bughouse_chess::session_store::SessionStore;
-use bughouse_chess::*;
+use bughouse_chess::{client, pgn, server};
 use common::*;
 use itertools::Itertools;
 use BughouseBoard::{A, B};

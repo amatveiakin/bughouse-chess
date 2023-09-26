@@ -4,8 +4,7 @@ use chain_cmp::chmp;
 use serde::{Deserialize, Serialize};
 
 use crate::clock::TimeControl;
-use crate::coord::SubjectiveRow;
-use crate::BoardShape;
+use crate::coord::{BoardShape, SubjectiveRow};
 
 
 // Time spent in the lobby before starting the first game after all players signal readiness.

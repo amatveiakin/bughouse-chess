@@ -1,7 +1,8 @@
 use std::cell::RefCell;
 
-use bughouse_chess::{BughouseClientErrorReport, BughouseClientEvent};
 use wasm_bindgen::prelude::*;
+
+use crate::bughouse_prelude::*;
 
 
 pub type JsResult<T> = Result<T, JsValue>;

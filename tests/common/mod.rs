@@ -6,9 +6,16 @@
 
 use std::rc::Rc;
 
+use bughouse_chess::board::{Board, TurnInput};
+use bughouse_chess::coord::{Col, Coord, Row};
+use bughouse_chess::grid::Grid;
+use bughouse_chess::piece::{
+    piece_from_ascii, PieceForce, PieceId, PieceKind, PieceOnBoard, PieceOrigin,
+};
+use bughouse_chess::rules::Rules;
+use bughouse_chess::starter::assign_piece_ids;
 use bughouse_chess::test_util::sample_chess_players;
 use bughouse_chess::util::as_single_char;
-use bughouse_chess::*;
 use enum_map::enum_map;
 use itertools::Itertools;
 
@@ -37,8 +44,8 @@ impl PieceIs for Option<PieceOnBoard> {
 macro_rules! piece {
     ($force:ident $kind:ident) => {
         common::PieceMatcher {
-            force: bughouse_chess::PieceForce::$force,
-            kind: bughouse_chess::PieceKind::$kind,
+            force: bughouse_chess::piece::PieceForce::$force,
+            kind: bughouse_chess::piece::PieceKind::$kind,
         }
     };
 }
@@ -59,47 +66,53 @@ impl AutoTurnInput for TurnInput {
 #[macro_export]
 macro_rules! drag_move {
     ($from:ident -> $to:ident) => {
-        bughouse_chess::TurnInput::DragDrop(bughouse_chess::Turn::Move(bughouse_chess::TurnMove {
-            from: bughouse_chess::Coord::$from,
-            to: bughouse_chess::Coord::$to,
-            promote_to: None,
-        }))
+        bughouse_chess::board::TurnInput::DragDrop(bughouse_chess::board::Turn::Move(
+            bughouse_chess::board::TurnMove {
+                from: bughouse_chess::coord::Coord::$from,
+                to: bughouse_chess::coord::Coord::$to,
+                promote_to: None,
+            },
+        ))
     };
     ($from:ident -> $to:ident = $steal_piece_kind:ident $steal_piece_id:ident) => {
-        bughouse_chess::TurnInput::DragDrop(bughouse_chess::Turn::Move(bughouse_chess::TurnMove {
-            from: bughouse_chess::Coord::$from,
-            to: bughouse_chess::Coord::$to,
-            promote_to: Some(PromotionTarget::Steal((
-                bughouse_chess::PieceKind::$steal_piece_kind,
-                $steal_piece_id,
-            ))),
-        }))
+        bughouse_chess::board::TurnInput::DragDrop(bughouse_chess::board::Turn::Move(
+            bughouse_chess::board::TurnMove {
+                from: bughouse_chess::coord::Coord::$from,
+                to: bughouse_chess::coord::Coord::$to,
+                promote_to: Some(bughouse_chess::board::PromotionTarget::Steal((
+                    bughouse_chess::piece::PieceKind::$steal_piece_kind,
+                    $steal_piece_id,
+                ))),
+            },
+        ))
     };
     ($piece_kind:ident @ $to:ident) => {
-        bughouse_chess::TurnInput::DragDrop(bughouse_chess::Turn::Drop(bughouse_chess::TurnDrop {
-            piece_kind: bughouse_chess::PieceKind::$piece_kind,
-            to: bughouse_chess::Coord::$to,
-        }))
+        bughouse_chess::board::TurnInput::DragDrop(bughouse_chess::board::Turn::Drop(
+            bughouse_chess::board::TurnDrop {
+                piece_kind: bughouse_chess::piece::PieceKind::$piece_kind,
+                to: bughouse_chess::coord::Coord::$to,
+            },
+        ))
     };
     (@ $to:ident) => {
-        bughouse_chess::TurnInput::DragDrop(bughouse_chess::Turn::PlaceDuck(
-            bughouse_chess::Coord::$to,
+        bughouse_chess::board::TurnInput::DragDrop(bughouse_chess::board::Turn::PlaceDuck(
+            bughouse_chess::coord::Coord::$to,
         ))
     };
 }
 
 #[allow(dead_code)]
 pub fn algebraic_turn(algebraic: &str) -> TurnInput {
-    bughouse_chess::TurnInput::Algebraic(algebraic.to_owned())
+    bughouse_chess::board::TurnInput::Algebraic(algebraic.to_owned())
 }
 
 
 #[macro_export]
 macro_rules! envoy {
     ($force:ident $board_idx:ident) => {
-        bughouse_chess::BughouseEnvoy {
-            board_idx: bughouse_chess::BughouseBoard::$board_idx,
-            force: bughouse_chess::Force::$force,
+        bughouse_chess::game::BughouseEnvoy {
+            board_idx: bughouse_chess::game::BughouseBoard::$board_idx,
+            force: bughouse_chess::force::Force::$force,
         }
     };
 }
@@ -155,6 +168,11 @@ pub fn parse_board(rules: Rules, board_str: &str) -> Result<Board, String> {
 
 #[cfg(test)]
 mod tests {
+    use bughouse_chess::board::TurnMode;
+    use bughouse_chess::clock::GameInstant;
+    use bughouse_chess::game::ChessGame;
+    use bughouse_chess::rules::{ChessRules, MatchRules};
+
     use super::*;
 
     fn strip_piece_ids(grid: &Grid) -> Grid {

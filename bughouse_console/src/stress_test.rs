@@ -7,11 +7,12 @@ use std::time::Duration;
 use std::{io, panic};
 
 use bughouse_chess::test_util::*;
-use bughouse_chess::*;
 use instant::Instant;
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use rand::seq::SliceRandom;
+
+use crate::bughouse_prelude::*;
 
 
 const PURE_GAMES_PER_BATCH: usize = 100;

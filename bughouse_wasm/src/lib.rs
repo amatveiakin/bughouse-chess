@@ -11,6 +11,7 @@ extern crate wasm_bindgen;
 
 extern crate bughouse_chess;
 
+mod bughouse_prelude;
 mod html_collection_iterator;
 mod rules_ui;
 mod table;
@@ -27,7 +28,6 @@ use bughouse_chess::client::*;
 use bughouse_chess::lobby::*;
 use bughouse_chess::meter::*;
 use bughouse_chess::session::*;
-use bughouse_chess::*;
 use enum_map::enum_map;
 use html_collection_iterator::IntoHtmlCollectionIterator;
 use instant::Instant;
@@ -37,6 +37,8 @@ use table::{td, HtmlTable};
 use wasm_bindgen::prelude::*;
 use web_document::{web_document, WebDocument};
 use web_error_handling::JsResult;
+
+use crate::bughouse_prelude::*;
 
 
 const RESERVE_HEIGHT: f64 = 1.5; // total reserve area height, in squares

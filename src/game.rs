@@ -40,10 +40,10 @@ use crate::board::{
 use crate::clock::GameInstant;
 use crate::coord::BoardShape;
 use crate::force::Force;
+use crate::piece::PieceKind;
 use crate::player::Team;
 use crate::rules::{BughouseRules, ChessRules, MatchRules, Rules};
 use crate::starter::{generate_starting_position, EffectiveStartingPosition};
-use crate::PieceKind;
 
 
 pub const MIN_PLAYERS: usize = TOTAL_TEAMS;

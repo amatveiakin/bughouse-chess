@@ -29,6 +29,7 @@ pub mod tui;
 mod async_server_main;
 mod auth;
 mod auth_handlers_tide;
+mod bughouse_prelude;
 mod censor;
 mod client_main;
 mod database;

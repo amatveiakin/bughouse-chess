@@ -8,10 +8,10 @@ use std::thread;
 use std::time::Duration;
 
 use async_tungstenite::WebSocketStream;
+use bughouse_chess::event::BughouseServerEvent;
 use bughouse_chess::server::*;
 use bughouse_chess::server_hooks::ServerHooks;
 use bughouse_chess::session_store::*;
-use bughouse_chess::BughouseServerEvent;
 use futures_io::{AsyncRead, AsyncWrite};
 use futures_util::StreamExt;
 use log::{error, info, warn};

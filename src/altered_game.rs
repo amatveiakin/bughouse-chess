@@ -31,9 +31,8 @@ use crate::game::{
     get_bughouse_force, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
     BughouseParticipant, TurnRecord, TurnRecordExpanded,
 };
-use crate::piece::{CastleDirection, PieceForce, PieceKind};
+use crate::piece::{CastleDirection, PieceForce, PieceKind, PieceOrigin};
 use crate::rules::{BughouseRules, ChessRules, Promotion};
-use crate::PieceOrigin;
 
 
 #[derive(Clone, Copy, Debug)]

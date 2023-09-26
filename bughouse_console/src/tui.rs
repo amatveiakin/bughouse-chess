@@ -1,9 +1,10 @@
 // Improvement potential. Use `crossterm` instead (fix: for some reason rendering
 //   reserve background was more buggy with it).
 
-use bughouse_chess::*;
 use console::Style;
 use itertools::Itertools;
+
+use crate::bughouse_prelude::*;
 
 
 fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, usize) {

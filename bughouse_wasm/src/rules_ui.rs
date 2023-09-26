@@ -3,9 +3,9 @@
 
 use std::{fmt, iter};
 
-use bughouse_chess::{BoardShape, ChessVariant, Force, Rules, SubjectiveRow};
 use itertools::Itertools;
 
+use crate::bughouse_prelude::*;
 use crate::table::{td, td_safe, HtmlTable};
 
 
@@ -606,9 +606,9 @@ pub fn make_lobby_rules_body(rules: &Rules) -> (String, String) {
     ));
     if let Some(bughouse_rules) = rules.bughouse_rules() {
         let promotion_tooltip = match bughouse_rules.promotion {
-            bughouse_chess::Promotion::Upgrade => promotion_upgrade_tooltip(),
-            bughouse_chess::Promotion::Discard => promotion_discard_tooltip(),
-            bughouse_chess::Promotion::Steal => promotion_steal_tooltip(),
+            Promotion::Upgrade => promotion_upgrade_tooltip(),
+            Promotion::Discard => promotion_discard_tooltip(),
+            Promotion::Steal => promotion_steal_tooltip(),
         };
         rule_rows.push((
             "Promotion",
@@ -630,16 +630,10 @@ pub fn make_lobby_rules_body(rules: &Rules) -> (String, String) {
     } else {
         if let Some(bughouse_rules) = rules.bughouse_rules() {
             let drop_aggression_tooltip = match bughouse_rules.drop_aggression {
-                bughouse_chess::DropAggression::NoCheck => drop_aggression_no_check_tooltip(),
-                bughouse_chess::DropAggression::NoChessMate => {
-                    drop_aggression_no_chess_mate_tooltip()
-                }
-                bughouse_chess::DropAggression::NoBughouseMate => {
-                    drop_aggression_no_bughouse_mate_tooltip()
-                }
-                bughouse_chess::DropAggression::MateAllowed => {
-                    drop_aggression_mate_allowed_tooltip()
-                }
+                DropAggression::NoCheck => drop_aggression_no_check_tooltip(),
+                DropAggression::NoChessMate => drop_aggression_no_chess_mate_tooltip(),
+                DropAggression::NoBughouseMate => drop_aggression_no_bughouse_mate_tooltip(),
+                DropAggression::MateAllowed => drop_aggression_mate_allowed_tooltip(),
             };
             rule_rows.push((
                 "Drop aggression",
