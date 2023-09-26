@@ -320,6 +320,26 @@ pub fn accolade_combine_pieces(
     Some(PieceOnBoard { id, kind, origin, force })
 }
 
+pub fn piece_to_ascii(kind: PieceKind, force: PieceForce) -> char {
+    let s = kind.to_full_algebraic();
+    match force {
+        PieceForce::Neutral => s,
+        PieceForce::White => s.to_ascii_uppercase(),
+        PieceForce::Black => s.to_ascii_lowercase(),
+    }
+}
+
+pub fn piece_from_ascii(ch: char) -> Option<(PieceKind, PieceForce)> {
+    let kind = PieceKind::from_algebraic_char(ch.to_ascii_uppercase())?;
+    if kind.is_neutral() {
+        Some((kind, PieceForce::Neutral))
+    } else if ch.is_ascii_uppercase() {
+        Some((kind, PieceForce::White))
+    } else {
+        Some((kind, PieceForce::Black))
+    }
+}
+
 pub fn piece_to_pictogram(piece_kind: PieceKind, force: PieceForce) -> char {
     use self::PieceForce::*;
     use self::PieceKind::*;
@@ -338,10 +358,8 @@ pub fn piece_to_pictogram(piece_kind: PieceKind, force: PieceForce) -> char {
         (Black, King) => '♚',
         // Normally `(Neutral, Duck)` would suffice. However a duck could be considered
         // to have an owner when it's in reserve in the beginning of the game.
-        (_, Duck) => piece_kind.to_full_algebraic(),
-        (White, _) => piece_kind.to_full_algebraic().to_ascii_uppercase(),
-        (Black, _) => piece_kind.to_full_algebraic().to_ascii_lowercase(),
-        (Neutral, _) => panic!("There is no neutral representation for {piece_kind:?}"),
+        (_, Duck) => '🦆',
+        _ => piece_to_ascii(piece_kind, force),
     }
 }
 

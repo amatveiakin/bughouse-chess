@@ -699,7 +699,7 @@ pub enum TurnError {
 
 pub type Reserve = EnumMap<PieceKind, u8>;
 
-type CastlingRights = EnumMap<CastleDirection, Option<Col>>;
+pub type CastlingRights = EnumMap<CastleDirection, Option<Col>>;
 
 // In classic chess, positions are compared for threefold repetition using FIDE rules:
 //
@@ -758,10 +758,18 @@ impl Board {
         starting_position: &EffectiveStartingPosition,
     ) -> Board {
         let board_shape = rules.chess_rules.board_shape();
-        let time_control = rules.chess_rules.time_control.clone();
         let mut next_piece_id = PieceId::new();
         let grid = generate_starting_grid(board_shape, starting_position, &mut next_piece_id);
-        let castling_rights = initial_castling_rights(starting_position);
+        let each_castling_rights = initial_castling_rights(starting_position);
+        let castling_rights = enum_map! { _ => each_castling_rights };
+        Self::new_from_grid(rules, players, grid, next_piece_id, castling_rights)
+    }
+
+    pub fn new_from_grid(
+        rules: Rc<Rules>, players: EnumMap<Force, String>, grid: Grid, next_piece_id: PieceId,
+        castling_rights: EnumMap<Force, CastlingRights>,
+    ) -> Board {
+        let time_control = rules.chess_rules.time_control.clone();
         let mut reserves = enum_map! { _ => enum_map!{ _ => 0 } };
         if rules.chess_rules.duck_chess {
             reserves[Force::White][PieceKind::Duck] += 1;
@@ -772,7 +780,7 @@ impl Board {
             status: ChessGameStatus::Active,
             grid,
             next_piece_id,
-            castling_rights: enum_map! { _ => castling_rights },
+            castling_rights,
             en_passant_target: None,
             reserves,
             total_drops: 0,

@@ -39,7 +39,7 @@ fn setup_black_pieces_mirrorlike(grid: &mut Grid) {
     }
 }
 
-fn assign_piece_ids(grid: &mut Grid, piece_id: &mut PieceId) {
+pub fn assign_piece_ids(grid: &mut Grid, piece_id: &mut PieceId) {
     for coord in grid.shape().coords() {
         if let Some(piece) = grid[coord] {
             grid[coord] = Some(PieceOnBoard { id: piece_id.inc(), ..piece });

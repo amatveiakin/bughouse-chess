@@ -4,7 +4,13 @@
 // Improvement potential. Combine integration tests together:
 //   https://matklad.github.io/2021/02/27/delete-cargo-integration-tests.html
 
+use std::rc::Rc;
+
+use bughouse_chess::test_util::sample_chess_players;
+use bughouse_chess::util::as_single_char;
 use bughouse_chess::*;
+use enum_map::enum_map;
+use itertools::Itertools;
 
 
 #[derive(Clone, Copy, Debug)]
@@ -96,4 +102,89 @@ macro_rules! envoy {
             force: bughouse_chess::Force::$force,
         }
     };
+}
+
+#[allow(dead_code)]
+pub fn parse_board(rules: Rules, board_str: &str) -> Result<Board, String> {
+    let board_shape = rules.chess_rules.board_shape();
+    let rows = board_str
+        .split('\n')
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .map(|line| line.split_ascii_whitespace().collect_vec())
+        .collect_vec();
+    assert_eq!(rows.len(), board_shape.num_rows as usize);
+    assert!(rows.iter().all(|row| row.len() == board_shape.num_cols as usize));
+    let mut grid = Grid::new(board_shape);
+    for (row_idx, row) in rows.iter().rev().enumerate() {
+        for (col_idx, piece_str) in row.iter().enumerate() {
+            let piece_char =
+                as_single_char(piece_str).ok_or_else(|| format!("Invalid piece: {}", piece_str))?;
+            let coord = Coord::new(
+                Row::from_zero_based(row_idx as i8),
+                Col::from_zero_based(col_idx as i8),
+            );
+            let piece = if piece_char == '.' {
+                None
+            } else {
+                let (kind, force) = piece_from_ascii(piece_char)
+                    .ok_or_else(|| format!("Invalid piece: {}", piece_char))?;
+                Some(PieceOnBoard {
+                    id: PieceId::tmp(),
+                    kind,
+                    origin: PieceOrigin::Innate,
+                    force,
+                })
+            };
+            grid[coord] = piece;
+        }
+    }
+    let mut next_piece_id = PieceId::new();
+    assign_piece_ids(&mut grid, &mut next_piece_id);
+    let castling_rights = enum_map! { _ => enum_map! { _ => None } };
+    let players = sample_chess_players();
+    Ok(Board::new_from_grid(
+        Rc::new(rules),
+        players,
+        grid,
+        next_piece_id,
+        castling_rights,
+    ))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strip_piece_ids(grid: &Grid) -> Grid {
+        grid.map(|p| PieceOnBoard { id: PieceId::tmp(), ..p })
+    }
+
+    #[test]
+    fn parse_board_opening() {
+        const T0: GameInstant = GameInstant::game_start();
+        let rules = Rules {
+            match_rules: MatchRules::unrated(),
+            chess_rules: ChessRules::chess_blitz(),
+        };
+        let board_str = "
+            r n b q k b n r
+            p p p . p p p p
+            . . . . . . . .
+            . . . p . . . .
+            . . . . P . . .
+            . . . . . . . .
+            P P P P . P P P
+            R N B Q K B N R
+        ";
+        let board = parse_board(rules.clone(), board_str).unwrap();
+
+        let mut game = ChessGame::new(rules, sample_chess_players());
+        game.try_turn(&algebraic_turn("e4"), TurnMode::Normal, T0).unwrap();
+        game.try_turn(&algebraic_turn("d5"), TurnMode::Normal, T0).unwrap();
+        let board_expected = game.board();
+
+        assert_eq!(strip_piece_ids(board.grid()), strip_piece_ids(board_expected.grid()));
+    }
 }

@@ -7,22 +7,13 @@ use strum::IntoEnumIterator;
 use crate::board::Board;
 use crate::coord::{BoardShape, Col, Coord};
 use crate::force::Force;
-use crate::piece::{CastleDirection, PieceForce, PieceKind};
+use crate::piece::{piece_to_ascii, CastleDirection};
 
 
 fn force_notation(force: Force) -> char {
     match force {
         Force::White => 'w',
         Force::Black => 'b',
-    }
-}
-
-fn piece_notation(kind: PieceKind, force: PieceForce) -> char {
-    let s = kind.to_full_algebraic();
-    match force {
-        PieceForce::Neutral => s,
-        PieceForce::White => s.to_ascii_uppercase(),
-        PieceForce::Black => s.to_ascii_lowercase(),
     }
 }
 
@@ -69,7 +60,7 @@ pub fn starting_position_to_shredder_fen(board: &Board) -> String {
                         row_notation.push_str(&empty_col_count.to_string());
                         empty_col_count = 0;
                     }
-                    row_notation.push(piece_notation(piece.kind, piece.force));
+                    row_notation.push(piece_to_ascii(piece.kind, piece.force));
                     // Note. If this is extended to save arbitrary (not just starting) position,
                     // then we need to include "~" after promoted pieces.
                     // See https://bughousedb.com/Lieven_BPGN_Standard.txt, section 3.2.
