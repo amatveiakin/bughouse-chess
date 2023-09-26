@@ -202,7 +202,7 @@ fn steal_promotion_piece_goes_back_unchanged() {
 }
 
 #[test]
-fn cannot_check_by_stealing() {
+fn steal_promotion_cannot_expose_opponent_king() {
     let mut rules = default_rules();
     rules.bughouse_rules_mut().unwrap().promotion = Promotion::Steal;
     let mut game = BughouseGame::new(rules, &sample_bughouse_players());
@@ -221,7 +221,28 @@ fn cannot_check_by_stealing() {
             5A.b5  5a.xh1=Bf8
             ",
         ),
-        Err(TurnError::CannotCheckByStealing)
+        Err(TurnError::CannotExposeKingByStealing)
+    );
+}
+
+#[test]
+fn steal_promotion_cannot_expose_partner_king() {
+    let mut rules = default_rules();
+    rules.bughouse_rules_mut().unwrap().promotion = Promotion::Steal;
+    let game_str = "
+        . . . . k . . .     . . . . . K . .
+        P . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . K . . .     . R . N . k . .
+    ";
+    let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
+    assert_eq!(
+        game.try_turn(BughouseBoard::A, &alg("a8=Ne8"), TurnMode::Normal, T0),
+        Err(TurnError::CannotExposePartnerKingByStealing)
     );
 }
 

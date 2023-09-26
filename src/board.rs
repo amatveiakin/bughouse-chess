@@ -687,7 +687,8 @@ pub enum TurnError {
     StealingPromotionRequiresBughouse,
     StealTargetMissing,
     StealTargetInvalid,
-    CannotCheckByStealing,
+    CannotExposeKingByStealing,
+    CannotExposePartnerKingByStealing,
     NotDuckChess,
     DuckPlacementIsSpecialTurnKind,
     MustMovePieceBeforeDuck,
@@ -1461,15 +1462,22 @@ impl Board {
                         return Err(TurnError::StealTargetInvalid);
                     }
                     if !self.chess_rules().regicide() {
-                        let king_pos = find_king(&self.grid, turn_owner).unwrap();
-                        if !is_check_to(self.chess_rules(), &self.grid, king_pos) {
-                            // Technically we don't need the `clone` because of `scoped_set`, but
-                            // removing the `clone` would complicate the API (we'll have to use
-                            // `&mut self`) and steal promtions are rare.
-                            let mut grid = self.grid.clone();
-                            let grid = grid.scoped_set(pos, None);
-                            if is_check_to(self.chess_rules(), &grid, king_pos) {
-                                return Err(TurnError::CannotCheckByStealing);
+                        for king_owner in [turn_owner, turn_owner.opponent()] {
+                            let king_pos = find_king(&self.grid, king_owner).unwrap();
+                            if !is_check_to(self.chess_rules(), &self.grid, king_pos) {
+                                // Technically we don't need the `clone` because of `scoped_set`,
+                                // but removing the `clone` would complicate the API (we'll have to
+                                // use `&mut self`) and steal promtions are rare.
+                                let mut grid = self.grid.clone();
+                                let grid = grid.scoped_set(pos, None);
+                                if is_check_to(self.chess_rules(), &grid, king_pos) {
+                                    let partner_force = turn_owner.opponent();
+                                    if king_owner == partner_force {
+                                        return Err(TurnError::CannotExposePartnerKingByStealing);
+                                    } else {
+                                        return Err(TurnError::CannotExposeKingByStealing);
+                                    }
+                                }
                             }
                         }
                     }
