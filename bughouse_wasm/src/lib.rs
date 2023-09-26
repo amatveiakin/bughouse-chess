@@ -1539,7 +1539,7 @@ fn update_scores(
                     let p_string = participant_string(p, show_readiness);
                     if first {
                         first = false;
-                        let score = normalize(*score_map.get(&team).unwrap_or(&0));
+                        let score = normalize(score_map[team]);
                         score_table.add_row([
                             td(p_string)
                                 .with_classes(["score-player-name", "score-first-player-name"]),

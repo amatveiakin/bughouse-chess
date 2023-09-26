@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use enum_map::EnumMap;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
@@ -22,24 +23,14 @@ pub enum ChalkMark {
 // Represents all chalk marks by a given player.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ChalkDrawing {
-    // Cannot use `EnumMap`, because it doesn't support serde.
-    pub board_a: Vec<ChalkMark>,
-    pub board_b: Vec<ChalkMark>,
+    pub board: EnumMap<BughouseBoard, Vec<ChalkMark>>,
 }
 
 impl ChalkDrawing {
     pub fn new() -> Self { ChalkDrawing::default() }
-    pub fn board(&self, board_idx: BughouseBoard) -> &Vec<ChalkMark> {
-        match board_idx {
-            BughouseBoard::A => &self.board_a,
-            BughouseBoard::B => &self.board_b,
-        }
-    }
+    pub fn board(&self, board_idx: BughouseBoard) -> &Vec<ChalkMark> { &self.board[board_idx] }
     pub fn board_mut(&mut self, board_idx: BughouseBoard) -> &mut Vec<ChalkMark> {
-        match board_idx {
-            BughouseBoard::A => &mut self.board_a,
-            BughouseBoard::B => &mut self.board_b,
-        }
+        &mut self.board[board_idx]
     }
 }
 

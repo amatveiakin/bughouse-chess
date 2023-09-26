@@ -1196,10 +1196,7 @@ impl Match {
         }
         match teaming {
             Teaming::FixedTeams => {
-                let mut scores = HashMap::new();
-                for team in Team::iter() {
-                    scores.insert(team, 0);
-                }
+                let scores = enum_map! { _ => 0 };
                 self.scores = Some(Scores::PerTeam(scores));
             }
             Teaming::DynamicTeams => {
@@ -1454,7 +1451,7 @@ fn update_on_game_over(
     match scores {
         Scores::PerTeam(ref mut score_map) => {
             for (team, score) in team_scores {
-                *score_map.entry(team).or_insert(0) += score;
+                score_map[team] += score;
             }
         }
         Scores::PerPlayer(ref mut score_map) => {

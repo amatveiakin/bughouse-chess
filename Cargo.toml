@@ -21,7 +21,7 @@ chain-cmp = "0.2.0"
 # Bumping the version to fix this.
 chrono = "0.4.31"
 derive-new = "0.5.9"
-enum-map = "2.6.3"
+enum-map = { version = "2.6.3", features = ["serde"] }
 git-version = "0.3.5"
 hdrhistogram = "7.5.2"
 indoc = "2.0.4"
