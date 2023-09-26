@@ -26,9 +26,7 @@ where
     S: io::Read + io::Write,
 {
     let serialized = serde_json::to_string(obj).map_err(CommunicationError::Serde)?;
-    socket
-        .write_message(Message::Text(serialized))
-        .map_err(CommunicationError::Socket)
+    socket.send(Message::Text(serialized)).map_err(CommunicationError::Socket)
 }
 
 pub fn read_obj<T, S>(socket: &mut WebSocket<S>) -> Result<T, CommunicationError>
@@ -36,7 +34,7 @@ where
     T: de::DeserializeOwned,
     S: io::Read + io::Write,
 {
-    let msg = socket.read_message().map_err(CommunicationError::Socket)?;
+    let msg = socket.read().map_err(CommunicationError::Socket)?;
     match msg {
         Message::Text(msg) => serde_json::from_str(&msg).map_err(CommunicationError::Serde),
         Message::Close(_) => Err(CommunicationError::ConnectionClosed),

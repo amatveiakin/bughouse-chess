@@ -165,7 +165,7 @@ fn process_game(
                 &WengLinConfig::default(),
             );
             let (expected_red_players_score, expected_blue_players_score) =
-                weng_lin::expected_score_teams(
+                weng_lin::expected_score_two_teams(
                     &prior_red_players_ratings,
                     &prior_blue_players_ratings,
                     &WengLinConfig::default(),
