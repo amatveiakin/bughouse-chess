@@ -16,6 +16,10 @@ strict = []  # treat warnings as a build error
 
 [dependencies]
 chain-cmp = "0.2.0"
+# We don't use `chrono` ourselves, but some dependencies do. Until recently `chrono` depended
+# on `time 0.1.45`, which is affected by https://rustsec.org/advisories/RUSTSEC-2020-0071.
+# Bumping the version to fix this.
+chrono = "0.4.31"
 derive-new = "0.5.9"
 enum-map = "2.6.3"
 git-version = "0.3.5"
