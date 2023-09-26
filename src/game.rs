@@ -338,9 +338,15 @@ impl BughouseGame {
         rules: Rc<Rules>, starting_position: EffectiveStartingPosition, players: &[PlayerInGame],
     ) -> Self {
         let player_map = make_player_map(players);
-        let boards = player_map.map(|_, board_players| {
-            Board::new(Rc::clone(&rules), board_players, &starting_position)
-        });
+        let boards = if let EffectiveStartingPosition::ManualSetup(setup) = &starting_position {
+            player_map.map(|board_idx, board_players| {
+                Board::new_from_setup(Rc::clone(&rules), board_players, setup[&board_idx].clone())
+            })
+        } else {
+            player_map.map(|_, board_players| {
+                Board::new(Rc::clone(&rules), board_players, &starting_position)
+            })
+        };
         BughouseGame {
             rules,
             starting_position,

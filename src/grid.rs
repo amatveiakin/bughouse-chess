@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::coord::{BoardShape, Col, Coord, Row};
 use crate::janitor::Janitor;
-use crate::piece::{PieceForRepetitionDraw, PieceOnBoard, PieceOrigin};
+use crate::piece::{PieceForRepetitionDraw, PieceId, PieceOnBoard, PieceOrigin};
 
 
 pub type Grid = GenericGrid<PieceOnBoard>;
@@ -127,7 +127,12 @@ fn out_of_bound_message(pos: Coord, board_shape: BoardShape) -> String {
 }
 
 fn debug_format_piece(piece: &PieceOnBoard) -> String {
-    let mut s = format!("[{}]-{:?}-{:?}", piece.id.0, piece.force, piece.kind);
+    let id = if piece.id == PieceId::tmp() {
+        ".".to_string()
+    } else {
+        piece.id.0.to_string()
+    };
+    let mut s = format!("[{}]-{:?}-{:?}", id, piece.force, piece.kind);
     if piece.origin != PieceOrigin::Innate {
         s.push_str(&format!("-{:?}", piece.origin));
     }

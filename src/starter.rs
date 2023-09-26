@@ -1,17 +1,35 @@
+use std::collections::HashMap;
+
+use enum_map::EnumMap;
 use itertools::Itertools;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::board::{CastlingRights, Reserve};
 use crate::coord::{BoardShape, Col, Coord, Row};
+use crate::force::Force;
+use crate::game::BughouseBoard;
 use crate::grid::Grid;
 use crate::piece::{PieceForce, PieceId, PieceKind, PieceOnBoard, PieceOrigin};
 use crate::rules::{ChessRules, StartingPosition};
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BoardSetup {
+    pub grid: Grid,
+    pub next_piece_id: PieceId,
+    pub castling_rights: EnumMap<Force, CastlingRights>,
+    pub en_passant_target: Option<Coord>,
+    pub reserves: EnumMap<Force, Reserve>,
+    pub active_force: Force,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum EffectiveStartingPosition {
     Classic,
     FischerRandom(Vec<PieceKind>),
+    // Not using EnumMap: it is inconvenient with complex non-copiable types.
+    ManualSetup(HashMap<BughouseBoard, BoardSetup>),
 }
 
 fn new_white(kind: PieceKind) -> PieceOnBoard {
@@ -86,6 +104,9 @@ pub fn starting_piece_row(starting_position: &EffectiveStartingPosition) -> &[Pi
             &[Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]
         }
         EffectiveStartingPosition::FischerRandom(row) => row,
+        EffectiveStartingPosition::ManualSetup(_) => {
+            panic!("Must use Board::new_from_setup with EffectiveStartingPosition::ManualSetup")
+        }
     }
 }
 

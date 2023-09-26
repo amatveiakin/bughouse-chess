@@ -22,7 +22,9 @@ use crate::piece::{
     PieceKind, PieceMovement, PieceOnBoard, PieceOrigin, PieceReservable,
 };
 use crate::rules::{BughouseRules, ChessRules, DropAggression, FairyPieces, MatchRules, Rules};
-use crate::starter::{generate_starting_grid, starting_piece_row, EffectiveStartingPosition};
+use crate::starter::{
+    generate_starting_grid, starting_piece_row, BoardSetup, EffectiveStartingPosition,
+};
 use crate::util::sort_two;
 
 
@@ -762,31 +764,38 @@ impl Board {
         let grid = generate_starting_grid(board_shape, starting_position, &mut next_piece_id);
         let each_castling_rights = initial_castling_rights(starting_position);
         let castling_rights = enum_map! { _ => each_castling_rights };
-        Self::new_from_grid(rules, players, grid, next_piece_id, castling_rights)
-    }
-
-    pub fn new_from_grid(
-        rules: Rc<Rules>, players: EnumMap<Force, String>, grid: Grid, next_piece_id: PieceId,
-        castling_rights: EnumMap<Force, CastlingRights>,
-    ) -> Board {
-        let time_control = rules.chess_rules.time_control.clone();
         let mut reserves = enum_map! { _ => enum_map!{ _ => 0 } };
         if rules.chess_rules.duck_chess {
             reserves[Force::White][PieceKind::Duck] += 1;
         }
-        let mut board = Board {
-            rules,
-            player_names: players,
-            status: ChessGameStatus::Active,
+        let setup = BoardSetup {
             grid,
             next_piece_id,
             castling_rights,
             en_passant_target: None,
             reserves,
+            active_force: Force::White,
+        };
+        Self::new_from_setup(rules, players, setup)
+    }
+
+    pub fn new_from_setup(
+        rules: Rc<Rules>, players: EnumMap<Force, String>, setup: BoardSetup,
+    ) -> Board {
+        let time_control = rules.chess_rules.time_control.clone();
+        let mut board = Board {
+            rules,
+            player_names: players,
+            status: ChessGameStatus::Active,
+            grid: setup.grid,
+            next_piece_id: setup.next_piece_id,
+            castling_rights: setup.castling_rights,
+            en_passant_target: setup.en_passant_target,
+            reserves: setup.reserves,
             total_drops: 0,
             position_count: HashMap::new(),
             clock: Clock::new(time_control),
-            active_force: Force::White,
+            active_force: setup.active_force,
             is_duck_turn: enum_map! { _ => false },
         };
         board.log_position_for_repetition_draw();

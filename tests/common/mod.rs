@@ -4,17 +4,21 @@
 // Improvement potential. Combine integration tests together:
 //   https://matklad.github.io/2021/02/27/delete-cargo-integration-tests.html
 
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use bughouse_chess::board::{Board, TurnInput};
-use bughouse_chess::coord::{Col, Coord, Row};
+use bughouse_chess::display::{from_display_coord, BoardOrientation, DisplayCoord};
+use bughouse_chess::force::Force;
+use bughouse_chess::game::{BughouseBoard, BughouseGame};
 use bughouse_chess::grid::Grid;
+use bughouse_chess::once_cell_regex;
 use bughouse_chess::piece::{
     piece_from_ascii, PieceForce, PieceId, PieceKind, PieceOnBoard, PieceOrigin,
 };
 use bughouse_chess::rules::Rules;
-use bughouse_chess::starter::assign_piece_ids;
-use bughouse_chess::test_util::sample_chess_players;
+use bughouse_chess::starter::{assign_piece_ids, BoardSetup, EffectiveStartingPosition};
+use bughouse_chess::test_util::{sample_bughouse_players, sample_chess_players};
 use bughouse_chess::util::as_single_char;
 use enum_map::enum_map;
 use itertools::Itertools;
@@ -117,26 +121,21 @@ macro_rules! envoy {
     };
 }
 
-#[allow(dead_code)]
-pub fn parse_board(rules: Rules, board_str: &str) -> Result<Board, String> {
+fn parse_ascii_setup<'a>(
+    rules: &Rules, board_line: impl IntoIterator<Item = &'a str>,
+    board_orientation: BoardOrientation,
+) -> Result<BoardSetup, String> {
     let board_shape = rules.chess_rules.board_shape();
-    let rows = board_str
-        .split('\n')
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .map(|line| line.split_ascii_whitespace().collect_vec())
-        .collect_vec();
+    let rows = board_line.into_iter().map(|line| line.split(' ').collect_vec()).collect_vec();
     assert_eq!(rows.len(), board_shape.num_rows as usize);
     assert!(rows.iter().all(|row| row.len() == board_shape.num_cols as usize));
     let mut grid = Grid::new(board_shape);
-    for (row_idx, row) in rows.iter().rev().enumerate() {
-        for (col_idx, piece_str) in row.iter().enumerate() {
+    for (y, row) in rows.iter().enumerate() {
+        for (x, piece_str) in row.iter().enumerate() {
             let piece_char =
                 as_single_char(piece_str).ok_or_else(|| format!("Invalid piece: {}", piece_str))?;
-            let coord = Coord::new(
-                Row::from_zero_based(row_idx as i8),
-                Col::from_zero_based(col_idx as i8),
-            );
+            let display_coord = DisplayCoord { x: x as i8, y: y as i8 };
+            let coord = from_display_coord(display_coord, board_shape, board_orientation).unwrap();
             let piece = if piece_char == '.' {
                 None
             } else {
@@ -154,17 +153,89 @@ pub fn parse_board(rules: Rules, board_str: &str) -> Result<Board, String> {
     }
     let mut next_piece_id = PieceId::new();
     assign_piece_ids(&mut grid, &mut next_piece_id);
-    let castling_rights = enum_map! { _ => enum_map! { _ => None } };
-    let players = sample_chess_players();
-    Ok(Board::new_from_grid(
-        Rc::new(rules),
-        players,
+    Ok(BoardSetup {
         grid,
         next_piece_id,
-        castling_rights,
-    ))
+        castling_rights: enum_map! { _ => enum_map! { _ => None } },
+        en_passant_target: None,
+        reserves: enum_map! { _ => enum_map!{ _ => 0 } },
+        active_force: Force::White,
+    })
 }
 
+// Parses board representation in ASCII format.
+//   - Board squares must be separated by exactly one space.
+//   - Pieces are denoted by their algebraic notations.
+//   - Capital letter mean white pieces, small letter mean black pieces (as in FEN).
+//   - Empty squares are denoted with '.'.
+//   - Boards orientation: white is at the bottom, black is at the top.
+//
+// In the produced board:
+//   - All pieces are considered innate (not promoted or dropped).
+//   - Castling is forbidden.
+//   - White is to move.
+//
+// For an example, see `parse_ascii_board_opening` test.
+#[allow(dead_code)]
+pub fn parse_ascii_board(rules: Rules, board_str: &str) -> Result<Board, String> {
+    let lines = board_str.split('\n').map(|line| line.trim()).filter(|line| !line.is_empty());
+    let setup = parse_ascii_setup(&rules, lines, BoardOrientation::Normal)?;
+    let players = sample_chess_players();
+    Ok(Board::new_from_setup(Rc::new(rules), players, setup))
+}
+
+// Parses board representation in ASCII format.
+//   - Boards must be separated by two or more spaces.
+//   - Boards orientation: white is at the bottom left and top right, black is at the top left and
+//     bottom right.
+//   - ... otherwise the format follows that of `parse_ascii_board`.
+//
+// In the produced game:
+//   - All pieces are considered innate (not promoted or dropped).
+//   - Reserves are empty.
+//   - Castling is forbidden.
+//   - White is to move on both boards.
+//   - Board A is the left one, board B is the right one.
+//
+// For an example, see `parse_ascii_bughouse_opening` test.
+#[allow(dead_code)]
+pub fn parse_ascii_bughouse(rules: Rules, game_str: &str) -> Result<BughouseGame, String> {
+    let lots_of_spaces = once_cell_regex!(r" {2,}");
+    let (lines_a, lines_b): (Vec<_>, Vec<_>) = game_str
+        .split('\n')
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .map(|line| lots_of_spaces.split(line).collect_tuple().unwrap())
+        .unzip();
+    let mut setup = HashMap::new();
+    setup.insert(BughouseBoard::A, parse_ascii_setup(&rules, lines_a, BoardOrientation::Normal)?);
+    setup.insert(BughouseBoard::B, parse_ascii_setup(&rules, lines_b, BoardOrientation::Rotated)?);
+    let starting_position = EffectiveStartingPosition::ManualSetup(setup);
+    let players = sample_bughouse_players();
+    Ok(BughouseGame::new_with_starting_position(rules, starting_position, &players))
+}
+
+/*
+    Copy-pasteable!
+
+    r n b q k b n r     R N B K Q B N R
+    p p p p p p p p     P P P P P P P P
+    . . . . . . . .     . . . . . . . .
+    . . . . . . . .     . . . . . . . .
+    . . . . . . . .     . . . . . . . .
+    . . . . . . . .     . . . . . . . .
+    P P P P P P P P     p p p p p p p p
+    R N B Q K B N R     r n b k q b n r
+
+    . . . . . . . .     . . . . . . . .
+    . . . . . . . .     . . . . . . . .
+    . . . . . . . .     . . . . . . . .
+    . . . . . . . .     . . . . . . . .
+    . . . . . . . .     . . . . . . . .
+    . . . . . . . .     . . . . . . . .
+    . . . . . . . .     . . . . . . . .
+    . . . . . . . .     . . . . . . . .
+*/
 
 #[cfg(test)]
 mod tests {
@@ -172,6 +243,7 @@ mod tests {
     use bughouse_chess::clock::GameInstant;
     use bughouse_chess::game::ChessGame;
     use bughouse_chess::rules::{ChessRules, MatchRules};
+    use strum::IntoEnumIterator;
 
     use super::*;
 
@@ -180,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_board_opening() {
+    fn parse_ascii_board_opening() {
         const T0: GameInstant = GameInstant::game_start();
         let rules = Rules {
             match_rules: MatchRules::unrated(),
@@ -196,13 +268,47 @@ mod tests {
             P P P P . P P P
             R N B Q K B N R
         ";
-        let board = parse_board(rules.clone(), board_str).unwrap();
+        let board = parse_ascii_board(rules.clone(), board_str).unwrap();
 
-        let mut game = ChessGame::new(rules, sample_chess_players());
-        game.try_turn(&algebraic_turn("e4"), TurnMode::Normal, T0).unwrap();
-        game.try_turn(&algebraic_turn("d5"), TurnMode::Normal, T0).unwrap();
-        let board_expected = game.board();
+        let mut game_expected = ChessGame::new(rules, sample_chess_players());
+        game_expected.try_turn(&algebraic_turn("e4"), TurnMode::Normal, T0).unwrap();
+        game_expected.try_turn(&algebraic_turn("d5"), TurnMode::Normal, T0).unwrap();
+        let board_expected = game_expected.board();
 
         assert_eq!(strip_piece_ids(board.grid()), strip_piece_ids(board_expected.grid()));
+    }
+
+    #[test]
+    fn parse_ascii_bughouse_opening() {
+        use BughouseBoard::*;
+        const T0: GameInstant = GameInstant::game_start();
+        let rules = Rules {
+            match_rules: MatchRules::unrated(),
+            chess_rules: ChessRules::bughouse_chess_com(),
+        };
+        let game_str = "
+            r n b q k b n r     R N B K Q B N R
+            p p p . p p p p     P P P . P P P P
+            . . . . . . . .     . . . P . . . .
+            . . . p . . . .     . . . . . . . .
+            . . . . P . . .     . . . . . . . .
+            . . . . . . . .     . . n . . . . .
+            P P P P . P P P     p p p p p p p p
+            R N B Q K B N R     r . b k q b n r
+        ";
+        let game = parse_ascii_bughouse(rules.clone(), game_str).unwrap();
+
+        let mut game_expected = BughouseGame::new(rules, &sample_bughouse_players());
+        game_expected.try_turn(A, &algebraic_turn("e4"), TurnMode::Normal, T0).unwrap();
+        game_expected.try_turn(A, &algebraic_turn("d5"), TurnMode::Normal, T0).unwrap();
+        game_expected.try_turn(B, &algebraic_turn("e3"), TurnMode::Normal, T0).unwrap();
+        game_expected.try_turn(B, &algebraic_turn("Nf6"), TurnMode::Normal, T0).unwrap();
+
+        for board_idx in BughouseBoard::iter() {
+            assert_eq!(
+                strip_piece_ids(game.board(board_idx).grid()),
+                strip_piece_ids(game_expected.board(board_idx).grid())
+            );
+        }
     }
 }
