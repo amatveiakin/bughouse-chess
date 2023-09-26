@@ -221,7 +221,28 @@ fn steal_promotion_cannot_expose_opponent_king() {
             5A.b5  5a.xh1=Bf8
             ",
         ),
-        Err(TurnError::CannotExposeKingByStealing)
+        Err(TurnError::ExposedKingByStealing)
+    );
+}
+
+#[test]
+fn steal_promotion_cannot_expose_checked_king() {
+    let mut rules = default_rules();
+    rules.bughouse_rules_mut().unwrap().promotion = Promotion::Steal;
+    let game_str = "
+        . . . . k . . .     K . . . r . . .
+        P . . . . . . .     B . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     r . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . K . . .     . . . . . . . k
+    ";
+    let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
+    assert_eq!(
+        game.try_turn(BughouseBoard::A, &alg("a8=Bh2"), TurnMode::Normal, T0),
+        Err(TurnError::ExposedKingByStealing)
     );
 }
 
@@ -242,7 +263,32 @@ fn steal_promotion_cannot_expose_partner_king() {
     let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
     assert_eq!(
         game.try_turn(BughouseBoard::A, &alg("a8=Ne8"), TurnMode::Normal, T0),
-        Err(TurnError::CannotExposePartnerKingByStealing)
+        Err(TurnError::ExposedPartnerKingByStealing)
+    );
+}
+
+// This is an extreme corner case of stealing promotion: not only we are exposing our partner rather
+// than the opponent, but also the number of pieces attacking the king hasn't changes: basically
+// we'are swapping one attacking rook for another. Yet the steal is illegal, since we now have a
+// piece, which is able to attack the king but weren't before.
+#[test]
+fn steal_promotion_cannot_expose_checked_partner_king() {
+    let mut rules = default_rules();
+    rules.bughouse_rules_mut().unwrap().promotion = Promotion::Steal;
+    let game_str = "
+        . . . . k . . .     . . . . . K . .
+        P . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . K . . .     . R . R . k . .
+    ";
+    let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
+    assert_eq!(
+        game.try_turn(BughouseBoard::A, &alg("a8=Re8"), TurnMode::Normal, T0),
+        Err(TurnError::ExposedPartnerKingByStealing)
     );
 }
 

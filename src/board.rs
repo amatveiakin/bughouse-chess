@@ -101,18 +101,26 @@ fn should_promote(board_shape: BoardShape, force: Force, piece_kind: PieceKind, 
     piece_kind == PieceKind::Pawn && to.row == last_row
 }
 
+fn can_capture(attacker_force: PieceForce, target_force: PieceForce) -> bool {
+    use PieceForce::*;
+    match (attacker_force, target_force) {
+        (White, Black) | (Black, White) => return true,
+        (White, White) | (Black, Black) => return false,
+        // Duck cannot be captured. Could require checking piece kind if other neutral pieces
+        // are introduced.
+        (_, Neutral) | (Neutral, _) => return false,
+    }
+}
+
 fn get_capture(
     grid: &Grid, from: Coord, to: Coord, en_passant_target: Option<Coord>,
 ) -> Option<Coord> {
-    use PieceForce::*;
     let piece = grid[from].unwrap();
     if let Some(target_piece) = grid[to] {
-        match (piece.force, target_piece.force) {
-            (White, Black) | (Black, White) => return Some(to),
-            (White, White) | (Black, Black) => return None,
-            // Duck cannot be captured. Could require checking piece kind if other neutral pieces
-            // are introduced.
-            (_, Neutral) | (Neutral, _) => return None,
+        if can_capture(piece.force, target_piece.force) {
+            return Some(to);
+        } else {
+            return None;
         }
     } else if let Some(en_passant_target) = en_passant_target {
         if piece.kind == PieceKind::Pawn && to == en_passant_target {
@@ -292,6 +300,22 @@ fn is_check_to(rules: &ChessRules, grid: &Grid, king_pos: Coord) -> bool {
         }
     }
     false
+}
+
+// Returns the set of pieces that are attacking a given square.
+fn attacker_set(
+    rules: &ChessRules, grid: &Grid, pos: Coord, en_passant_target: Option<Coord>,
+) -> HashSet<Coord> {
+    let mut ret = HashSet::new();
+    for from in grid.shape().coords() {
+        if grid[from].is_some() {
+            let capture = get_capture(grid, from, pos, en_passant_target);
+            if reachability(rules, grid, from, pos, capture.is_some()).ok() {
+                ret.insert(from);
+            }
+        }
+    }
+    ret
 }
 
 fn reachability(
@@ -663,6 +687,9 @@ pub enum ChessGameStatus {
     Draw(DrawReason),
 }
 
+// Improvement potential: Consistent naming. Either always describe what went wrong, or always
+// describe what should have happened. The first one is used more often, but second one is also
+// used, e.g. `...Requires...` or `Must...`.
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TurnError {
@@ -687,8 +714,8 @@ pub enum TurnError {
     StealingPromotionRequiresBughouse,
     StealTargetMissing,
     StealTargetInvalid,
-    CannotExposeKingByStealing,
-    CannotExposePartnerKingByStealing,
+    ExposedKingByStealing,
+    ExposedPartnerKingByStealing,
     NotDuckChess,
     DuckPlacementIsSpecialTurnKind,
     MustMovePieceBeforeDuck,
@@ -1449,6 +1476,7 @@ impl Board {
         match turn {
             Turn::Move(mv) => {
                 if let Some(PromotionTarget::Steal((piece_kind, piece_id))) = mv.promote_to {
+                    let partner_force = turn_owner.opponent();
                     let Some(pos) = find_piece_by_id(&self.grid, piece_id) else {
                         return Err(TurnError::StealTargetMissing);
                     };
@@ -1456,27 +1484,36 @@ impl Board {
                     if piece.kind != piece_kind {
                         return Err(TurnError::StealTargetInvalid);
                     }
-                    // Usually we would be looking for `turn_owner.opponent()`, but this the the
-                    // other board, so the opponent is the same force.
-                    if piece.force != turn_owner.into() {
+                    // Should've been already verified by `turn_outcome`.
+                    assert!(piece_kind.can_be_steal_promotion_target());
+                    if piece.force != partner_force.opponent().into() {
                         return Err(TurnError::StealTargetInvalid);
                     }
                     if !self.chess_rules().regicide() {
-                        for king_owner in [turn_owner, turn_owner.opponent()] {
-                            let king_pos = find_king(&self.grid, king_owner).unwrap();
-                            if !is_check_to(self.chess_rules(), &self.grid, king_pos) {
-                                // Technically we don't need the `clone` because of `scoped_set`,
-                                // but removing the `clone` would complicate the API (we'll have to
-                                // use `&mut self`) and steal promtions are rare.
-                                let mut grid = self.grid.clone();
-                                let grid = grid.scoped_set(pos, None);
-                                if is_check_to(self.chess_rules(), &grid, king_pos) {
-                                    let partner_force = turn_owner.opponent();
-                                    if king_owner == partner_force {
-                                        return Err(TurnError::CannotExposePartnerKingByStealing);
-                                    } else {
-                                        return Err(TurnError::CannotExposeKingByStealing);
-                                    }
+                        for king_owner in [partner_force, partner_force.opponent()] {
+                            // Technically we don't need the `clone` because of `scoped_set`,
+                            // but removing the `clone` would complicate the API (we'll have to
+                            // use `&mut self`) and steal promtions are rare.
+                            let mut grid = self.grid.clone();
+                            let king_pos = find_king(&grid, king_owner).unwrap();
+                            let attackers_before = attacker_set(
+                                self.chess_rules(),
+                                &grid,
+                                king_pos,
+                                self.en_passant_target,
+                            );
+                            let grid = grid.scoped_set(pos, None);
+                            let attackers_after = attacker_set(
+                                self.chess_rules(),
+                                &grid,
+                                king_pos,
+                                self.en_passant_target,
+                            );
+                            if attackers_after.difference(&attackers_before).next().is_some() {
+                                if king_owner == partner_force {
+                                    return Err(TurnError::ExposedPartnerKingByStealing);
+                                } else {
+                                    return Err(TurnError::ExposedKingByStealing);
                                 }
                             }
                         }

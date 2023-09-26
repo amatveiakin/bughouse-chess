@@ -409,8 +409,8 @@ pub fn promotion_discard_tooltip() -> &'static str {
 }
 pub fn promotion_steal_tooltip() -> &'static str {
     "<i>Steal.</i>
-    Expropriate your partner opponent's piece when promoting a pawn! Can only steal a
-    piece from the board, not from reserve. Cannot check player by stealing their piece."
+    Expropriate your partner opponent's piece when promoting a pawn! Can only steal a piece
+    from the board, not from reserve. Cannot expose king to new attacks by stealing a piece."
 }
 
 pub fn drop_aggression_no_check_tooltip() -> &'static str {

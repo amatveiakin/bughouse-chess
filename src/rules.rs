@@ -61,11 +61,13 @@ pub enum Promotion {
     Discard,
 
     // Take diagonal opponent's piece. Can only steal a piece from the board, not from reserve. The
-    // pawn goes to their reserve. Cannot check player by stealing their piece.
-    //   Q. Is "no introducing checks" a good limitation? Or should it be "cannot checkmate"?
-    //      Alternatively, should it be "no new checks", e.g. even if the king is checked, cannot
-    //      intoduce a check by another piece?
-    //   Q. What about king-capture chess? Should you be able to expose the king?
+    // pawn goes to their reserve. Limitations on king exposure:
+    //   - Normally a king cannot be exposed to new attacks y stealing. Meaning that no pieces that
+    //     we not attacking the king before should be able to attack the king afterwards. Even if
+    //     it's already checked. Even if the total number of attacking pieces has not increased.
+    //     This limitation does not depend on the drop aggression setting.
+    //   - In regicide mode there are no limitation on king exposure.
+    // The very same rules apply to you teammate's king.
     Steal,
 }
 
