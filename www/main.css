@@ -677,6 +677,11 @@ dialog ::-webkit-scrollbar-thumb {
 .log-piece-black {
   background: radial-gradient(circle farthest-corner, #ffffff28 50%, #ffffff00 80%);
 }
+.log-steal-icon {
+  width: 1.5em;
+  height: 1em;
+  margin-right: 0.1em;
+}
 
 #command {
   width: max(var(--board-size-secondary), 6em);

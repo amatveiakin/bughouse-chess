@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   height="100"
+   viewBox="0 0 100 100"
+   width="100"
+   version="1.1"
+   id="svg49"
+   sodipodi:docname="back.svg"
+   inkscape:version="1.2.2 (732a01da63, 2022-12-09)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata
+     id="metadata55">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs53" />
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="2560"
+     inkscape:window-height="1476"
+     id="namedview51"
+     showgrid="false"
+     inkscape:zoom="8"
+     inkscape:cx="58.25"
+     inkscape:cy="60.875"
+     inkscape:window-x="-12"
+     inkscape:window-y="-12"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="OUTLINE"
+     inkscape:document-rotation="0"
+     inkscape:snap-bbox="false"
+     inkscape:bbox-paths="false"
+     inkscape:showpageshadow="2"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1">
+    <inkscape:grid
+       type="xygrid"
+       id="grid2022"
+       originx="0"
+       originy="0" />
+  </sodipodi:namedview>
+  <g
+     id="OUTLINE">
+    <text
+       xml:space="preserve"
+       style="font-weight:bold;font-size:64px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans Bold';text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1;stroke-linejoin:round"
+       x="48.890625"
+       y="73.125"
+       id="text319"><tspan
+         sodipodi:role="line"
+         id="tspan317"
+         x="48.890625"
+         y="73.125"
+         style="font-size:64px">🡨</tspan></text>
+  </g>
+</svg>

@@ -1298,18 +1298,22 @@ fn participant_line_html(p: &Participant, show_readiness: bool) -> JsResult<Stri
     ))
 }
 
+fn svg_icon(image: &str, width: u32, height: u32, classes: &[&str]) -> JsResult<web_sys::Element> {
+    let document = web_document();
+    let svg_node = document.create_svg_element("svg")?;
+    svg_node.set_attribute("viewBox", &format!("0 0 {width} {height}"))?;
+    svg_node.set_attribute("class", &classes.iter().join(" "))?;
+    let use_node = document.create_svg_element("use")?;
+    use_node.set_attribute("href", image)?;
+    svg_node.append_child(&use_node)?;
+    Ok(svg_node)
+}
+
 // Standalone chess piece icon to be used outside of SVG area.
 fn make_piece_icon(
     piece_kind: PieceKind, force: PieceForce, classes: &[&str],
 ) -> JsResult<web_sys::Element> {
-    let document = web_document();
-    let svg_node = document.create_svg_element("svg")?;
-    svg_node.set_attribute("viewBox", "0 0 1 1")?;
-    svg_node.set_attribute("class", &classes.iter().join(" "))?;
-    let use_node = document.create_svg_element("use")?;
-    use_node.set_attribute("href", piece_path(piece_kind, force))?;
-    svg_node.append_child(&use_node)?;
-    Ok(svg_node)
+    svg_icon(piece_path(piece_kind, force), 1, 1, classes)
 }
 
 fn make_menu_icon(images: &[&str]) -> JsResult<web_sys::Element> {
@@ -1710,9 +1714,8 @@ fn update_turn_log(
                 turn_number_node.set_attribute("class", "log-turn-number")?;
                 line_node.append_child(&turn_number_node)?;
 
-                let algebraic_node = document.create_element("span")?;
-                algebraic_node.set_text_content(Some("🫳"));
-                line_node.append_child(&algebraic_node)?;
+                let stealing_hand_node = svg_icon("#stealing-hand", 150, 100, &["log-steal-icon"])?;
+                line_node.append_child(&stealing_hand_node)?;
 
                 for steal in record.turn_expanded.steals.iter() {
                     let capture_classes = [
