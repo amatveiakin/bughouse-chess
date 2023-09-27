@@ -221,7 +221,7 @@ fn steal_promotion_cannot_expose_opponent_king() {
             5A.b5  5a.xh1=Bf8
             ",
         ),
-        Err(TurnError::ExposedKingByStealing)
+        Err(TurnError::ExposingKingByStealing)
     );
 }
 
@@ -242,7 +242,7 @@ fn steal_promotion_cannot_expose_checked_king() {
     let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
     assert_eq!(
         game.try_turn(BughouseBoard::A, &alg("a8=Bh2"), TurnMode::Normal, T0),
-        Err(TurnError::ExposedKingByStealing)
+        Err(TurnError::ExposingKingByStealing)
     );
 }
 
@@ -263,7 +263,7 @@ fn steal_promotion_cannot_expose_partner_king() {
     let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
     assert_eq!(
         game.try_turn(BughouseBoard::A, &alg("a8=Ne8"), TurnMode::Normal, T0),
-        Err(TurnError::ExposedPartnerKingByStealing)
+        Err(TurnError::ExposingPartnerKingByStealing)
     );
 }
 
@@ -288,7 +288,7 @@ fn steal_promotion_cannot_expose_checked_partner_king() {
     let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
     assert_eq!(
         game.try_turn(BughouseBoard::A, &alg("a8=Re8"), TurnMode::Normal, T0),
-        Err(TurnError::ExposedPartnerKingByStealing)
+        Err(TurnError::ExposingPartnerKingByStealing)
     );
 }
 

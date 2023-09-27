@@ -747,7 +747,7 @@ impl WebClient {
             let is_glowing_duck = |piece: PieceOnBoard| {
                 alt_game.is_my_duck_turn(board_idx) && piece.kind == PieceKind::Duck
             };
-            let is_glowing_steal = |piece: PieceOnBoard| {
+            let is_glowing_steal = |coord: Coord| {
                 let Some((input_board_idx, partial_input)) = alt_game.partial_turn_input() else {
                     return false;
                 };
@@ -758,8 +758,7 @@ impl WebClient {
                     return false;
                 }
                 board_idx == input_board_idx.other()
-                    && piece.force == envoy.force.into()
-                    && piece.kind.can_be_steal_promotion_target()
+                    && board.stealing_result(coord, envoy.force).is_ok()
             };
             let see_though_fog = alt_game.see_though_fog();
             let empty_area = HashSet::new();
@@ -829,7 +828,7 @@ impl WebClient {
                         node.class_list()
                             .toggle_with_force("glowing-duck", is_glowing_duck(piece))?;
                         node.class_list()
-                            .toggle_with_force("glowing-steal", is_glowing_steal(piece))?;
+                            .toggle_with_force("glowing-steal", is_glowing_steal(coord))?;
                     } else {
                         node.set_attribute("href", "#transparent")?;
                         node.remove_attribute("class")?;
