@@ -172,6 +172,9 @@ body.symmetric #page {
 .inline-block {
   display: inline-block;
 }
+.nowrap {
+  white-space: nowrap;
+}
 .align-left {
   width: 100%;
   text-align: left;
@@ -428,6 +431,23 @@ body.observer .reserve {
 body.observer .player-name {
   color: #b2b2b2;
 }
+
+.participant-name {
+  font-family: "Open Sans", sans-serif;
+}
+.participant-name-l ,
+.participant-name-xl {
+  font-stretch: semi-condensed;
+}
+.participant-name-xxl {
+  font-stretch: condensed;
+  font-size: 90%;
+}
+.participant-name-xxxl {
+  font-stretch: condensed;
+  font-size: 80%;
+}
+
 #score-body,
 #observers {
   color: #7fb5a1;
@@ -448,11 +468,11 @@ body.observer .player-name {
   padding: 0.5em 0;
 }
 #observers {
-  white-space: pre;
   font-size: 75%;
 }
 .score-player-name {
   min-width: 2em;
+  max-width: 10em;
   font-size: 85%;
   line-height: 110%;
 }
@@ -1143,6 +1163,9 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 .lobby-icon.registered-user-icon {
   width: 1em;
   height: 1em;
+}
+.lobby-name-xl {
+  font-size: 90%;
 }
 .lobby-name.lobby-me {
   text-shadow: -0.05em -0.05em 0.1em #ffffff40, 0.05em 0.05em 0.1em #00000040;

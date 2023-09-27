@@ -33,7 +33,7 @@ use html_collection_iterator::IntoHtmlCollectionIterator;
 use instant::Instant;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
-use table::{td, HtmlTable};
+use table::{td, td_safe, HtmlTable};
 use wasm_bindgen::prelude::*;
 use web_document::{web_document, WebDocument};
 use web_error_handling::JsResult;
@@ -848,8 +848,8 @@ impl WebClient {
                 let player = mtch.participants.iter().find(|p| p.name == *player_name).unwrap();
                 // TODO: Show teams for the upcoming game in individual mode.
                 let show_readiness = false;
-                let player_string = participant_string(player, show_readiness);
-                name_node.set_text_content(Some(&player_string));
+                let player_line = participant_line_html(player, show_readiness)?;
+                name_node.set_inner_html(&player_line);
                 let is_draggable = is_piece_draggable(force.into());
                 update_reserve(
                     board.reserve(force),
@@ -1266,8 +1266,35 @@ fn participant_prefix(p: &Participant, show_readiness: bool) -> &'static str {
     ""
 }
 
-fn participant_string(p: &Participant, show_readiness: bool) -> String {
-    format!("{}{}", participant_prefix(p, show_readiness), p.name)
+fn get_text_width(s: &str) -> JsResult<u32> {
+    let canvas = web_document()
+        .get_existing_element_by_id("canvas")?
+        .dyn_into::<web_sys::HtmlCanvasElement>()?;
+    let context = canvas
+        .get_context("2d")?
+        .ok_or_else(|| rust_error!("Canvas 2D context missing"))?
+        .dyn_into::<web_sys::CanvasRenderingContext2d>()?;
+    Ok(context.measure_text(&s)?.width() as u32)
+}
+
+fn participant_line_html(p: &Participant, show_readiness: bool) -> JsResult<String> {
+    let width = get_text_width(&p.name)?;
+    // Context. Player name limit is 16 characters. String consisting of 'W' repeated 16 times
+    // measured 151px on my laptop. 'W' is usually the widest latter in common Latin, but you could
+    // go wider with 'Ǆ' and even wider with non-Latin characters. So this solution might be
+    // insufficient in case of complete outliers, but it should work for all realistic cases.
+    let class = match width {
+        140.. => "participant-name-xxxl",
+        120.. => "participant-name-xxl",
+        100.. => "participant-name-xl",
+        80.. => "participant-name-l",
+        _ => "participant-name-m",
+    };
+    Ok(format!(
+        "<span class='nowrap'>{}<span class='participant-name {class}'>{}</span></span>",
+        participant_prefix(p, show_readiness),
+        html_escape::encode_text(&p.name)
+    ))
 }
 
 // Standalone chess piece icon to be used outside of SVG area.
@@ -1319,8 +1346,13 @@ fn add_lobby_participant_node(
         parent.append_child(&registered_user_node)?;
     }
     {
+        let width_class = match get_text_width(&p.name)? {
+            140.. => "lobby-name-xl",
+            120.. => "lobby-name-l",
+            _ => "lobby-name-m",
+        };
         let name_node = document.create_element("div")?;
-        name_node.set_attribute("class", "lobby-name")?;
+        name_node.set_attribute("class", &format!("lobby-name {width_class}"))?;
         add_relation_class(&name_node)?;
         name_node.set_text_content(Some(&p.name));
         parent.append_child(&name_node)?;
@@ -1535,17 +1567,17 @@ fn update_scores(
                 let team_size = players.len();
                 let mut first = true;
                 for p in players.iter().sorted_by_key(|p| &p.name) {
-                    let p_string = participant_string(p, show_readiness);
+                    let p_line = participant_line_html(p, show_readiness)?;
                     if first {
                         first = false;
                         let score = normalize(score_map[team]);
                         score_table.add_row([
-                            td(p_string)
+                            td_safe(p_line)
                                 .with_classes(["score-player-name", "score-first-player-name"]),
                             td(score).with_row_span(team_size).with_classes(["team-score-value"]),
                         ]);
                     } else {
-                        score_table.add_row([td(p_string).with_classes(["score-player-name"])]);
+                        score_table.add_row([td_safe(p_line).with_classes(["score-player-name"])]);
                     }
                 }
             }
@@ -1553,9 +1585,9 @@ fn update_scores(
         Some(Scores::PerPlayer(score_map)) => {
             for (name, score) in score_map.iter().sorted_by_key(|(name, _)| *name) {
                 let p = participants.iter().find(|p| p.name == *name).unwrap();
-                let p_string = participant_string(p, show_readiness);
+                let p_line = participant_line_html(p, show_readiness)?;
                 score_table.add_row([
-                    td(p_string).with_classes(["score-player-name"]),
+                    td_safe(p_line).with_classes(["score-player-name"]),
                     td(score).with_classes(["individual-score-value"]),
                 ]);
             }
@@ -1568,12 +1600,13 @@ fn update_scores(
 
 fn update_observers(participants: &[Participant]) -> JsResult<()> {
     let observers_node = web_document().get_existing_element_by_id("observers")?;
-    let text = participants
-        .iter()
-        .filter(|p| p.faction == Faction::Observer)
-        .map(|p| participant_string(p, false))
-        .join("\n");
-    observers_node.set_text_content(Some(&text));
+    let mut text = String::new();
+    for p in participants {
+        if p.faction == Faction::Observer {
+            text.push_str(&format!("<div>{}</div>", participant_line_html(p, false)?));
+        }
+    }
+    observers_node.set_inner_html(&text);
     Ok(())
 }
 
