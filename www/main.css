@@ -826,6 +826,7 @@ button:active:enabled {
 
 .tooltip-standalone::after {
   font-size: 110%;
+  height: 1lh;
   content: "ⓘ";
 }
 .tooltip-standalone:hover::after {
