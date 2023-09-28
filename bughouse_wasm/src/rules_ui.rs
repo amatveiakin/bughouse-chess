@@ -561,7 +561,7 @@ pub fn make_new_match_rules_body() -> (String, String) {
     (variants.join(""), details.join(""))
 }
 
-pub fn make_lobby_rules_body(rules: &Rules) -> (String, String) {
+pub fn make_readonly_rules_body(rules: &Rules) -> String {
     // Note: Use a table rather than two independent blocks with valign=top in order to align the
     // caption with the baseline of the first variant.
     let mut variants = rules
@@ -585,11 +585,11 @@ pub fn make_lobby_rules_body(rules: &Rules) -> (String, String) {
     let mut variant_table = HtmlTable::new();
     for (name, tooltip) in variants {
         let caption_td = if variant_table.num_rows() == 0 {
-            td("Variants:").with_classes(["lobby-rule-caption", "valign-baseline"])
+            td("Variants:").with_classes(["readonly-rule-caption", "valign-baseline"])
         } else {
             td("")
         };
-        let name_td = td(name).with_classes(["lobby-rule-variant", "valign-baseline"]);
+        let name_td = td(name).with_classes(["readonly-rule-variant", "valign-baseline"]);
         let tooltip_td = td_safe(
             tooltip
                 .map(|text| standalone_tooltip(&text, ["tooltip-standalone-small"]))
@@ -645,8 +645,8 @@ pub fn make_lobby_rules_body(rules: &Rules) -> (String, String) {
     let mut rule_table = HtmlTable::new();
     for (caption, value, tooltip) in rule_rows {
         rule_table.add_row([
-            td(caption).with_classes(["lobby-rule-caption", "valign-baseline"]),
-            td(value).with_classes(["lobby-rule-detail", "valign-baseline"]),
+            td(caption).with_classes(["readonly-rule-caption", "valign-baseline"]),
+            td(value).with_classes(["readonly-rule-detail", "valign-baseline"]),
             td_safe(
                 tooltip
                     .map(|text| standalone_tooltip(&text, ["tooltip-standalone-small"]))
@@ -654,6 +654,12 @@ pub fn make_lobby_rules_body(rules: &Rules) -> (String, String) {
             ),
         ]);
     }
-
-    (variant_table.to_html(), rule_table.to_html())
+    format!(
+        "
+        <div class='readonly-rule-variants'>{}</div>
+        <div class='readonly-rule-details'>{}</div>
+        ",
+        variant_table.to_html(),
+        rule_table.to_html()
+    )
 }

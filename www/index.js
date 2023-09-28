@@ -135,6 +135,7 @@ const jc_match_id = document.getElementById('jc-match-id');
 
 const ready_button = document.getElementById('ready-button');
 const resign_button = document.getElementById('resign-button');
+const rules_button = document.getElementById('rules-button');
 const export_button = document.getElementById('export-button');
 const volume_button = document.getElementById('volume-button');
 
@@ -275,6 +276,7 @@ command_input.addEventListener('keydown', on_command_keydown);
 
 ready_button.addEventListener('click', () => execute_command('/ready'));
 resign_button.addEventListener('click', request_resign);
+rules_button.addEventListener('click', () => execute_command('/rules'));
 export_button.addEventListener('click', () => execute_command('/save'));
 volume_button.addEventListener('click', next_volume);
 
@@ -508,6 +510,10 @@ function execute_command(input) {
                     get_args(args, []);
                     wasm_client().toggle_ready();
                     break;
+                case 'rules':
+                    get_args(args, []);
+                    show_match_rules();
+                    break;
                 case 'save':
                     get_args(args, []);
                     wasm_client().request_export();
@@ -672,7 +678,7 @@ function update_buttons() {
 }
 
 async function request_resign() {
-    const ret = await simple_dialog('Are you sure you want to resign?', [
+    const ret = await text_dialog('Are you sure you want to resign?', [
         new MyButton('Keep playing', MyButton.HIDE),
         new MyButton('🏳 Resign', MyButton.DO),
     ]);
@@ -967,9 +973,8 @@ function set_up_menu_pointers() {
         }
     }
 
-    const menu = document.getElementById('menu-dialog');
-    menu.addEventListener('mousedown', mouse_down);
-    menu.addEventListener('contextmenu', context_menu);
+    menu_dialog.addEventListener('mousedown', mouse_down);
+    menu_dialog.addEventListener('contextmenu', context_menu);
 }
 
 function set_up_log_navigation() {
@@ -1092,13 +1097,10 @@ function init_menu() {
 // If there is a button with `MyButton.HIDE` action, then `Escape` will close the dialog and
 // also return `MyButton.HIDE`. If there are no buttons with `MyButton.HIDE` action, then
 // `Escape` key will be ignored.
-function simple_dialog(message, buttons) {
+function html_dialog(body, buttons) {
     return new Promise(resolve => {
         const dialog = document.createElement('dialog');
         document.body.appendChild(dialog);
-        const message_node = document.createElement('div');
-        message_node.className = 'simple-dialog-message';
-        message_node.textContent = message;
         const button_box = document.createElement('div');
         button_box.className = 'simple-dialog-button-box';
         let can_hide = false;
@@ -1123,7 +1125,7 @@ function simple_dialog(message, buttons) {
                 event.preventDefault();
             }
         });
-        dialog.appendChild(message_node);
+        dialog.appendChild(body);
         dialog.appendChild(button_box);
         // Delay `showModal`. If it's called directly, then the dialog gets `Enter` key press if it
         // was the trigger, e.g. if the dialog displays an error processing command line instruction.
@@ -1131,8 +1133,15 @@ function simple_dialog(message, buttons) {
     });
 }
 
+function text_dialog(message, buttons) {
+  const message_node = document.createElement('div');
+  message_node.className = 'simple-dialog-message';
+  message_node.innerText = message;
+  return html_dialog(message_node, buttons);
+}
+
 function info_dialog(message) {
-    return simple_dialog(message, [new MyButton('Ok', MyButton.HIDE)]);
+    return text_dialog(message, [new MyButton('Ok', MyButton.HIDE)]);
 }
 
 function ignorable_error_dialog(message) {
@@ -1140,7 +1149,7 @@ function ignorable_error_dialog(message) {
 }
 
 function fatal_error_dialog(message) {
-    return simple_dialog(message);
+    return text_dialog(message);
 }
 
 function make_svg_image(symbol_id, size) {
@@ -1301,7 +1310,7 @@ async function sign_up(event) {
     }
     data.delete('confirm_password');
     if (!data.get('email')) {
-        const ret = await simple_dialog(
+        const ret = await text_dialog(
             'Without an email you will not be able to restore your account ' +
             'if you forget your password. Continue?',
             [
@@ -1427,6 +1436,15 @@ function on_join_match_confirm(event) {
         );
         update();
     });
+}
+
+function show_match_rules() {
+  with_error_handling(function() {
+    const rules_node = document.createElement('div');
+    rules_node.className = 'match-rules-body';
+    rules_node.innerHTML = wasm_client().readonly_rules_body();
+    html_dialog(rules_node, [new MyButton('Ok', MyButton.HIDE)]);
+  });
 }
 
 function set_volume(volume) {

@@ -757,7 +757,7 @@ button {
   box-shadow: inset 2px 2px 3px rgba(255, 255, 255, .6),
               inset -2px -2px 3px rgba(0, 0, 0, .6);
 }
-button:active:enabled {
+button:active:enabled:not(.icon-button) {
   transform: translate(0.1em, 0.1em);
   box-shadow: inset -2px -2px 3px rgba(255, 255, 255, .6),
               inset 2px 2px 3px rgba(0, 0, 0, .6);
@@ -1078,6 +1078,29 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   font-size: 85%;
 }
 
+.readonly-rule-details {
+  margin-top: 0.2em
+}
+.readonly-rule-caption {
+  padding-right: 0.5em;
+  font-size: 85%;
+  /* Set `white-space: nowrap` to compensate `width: 100%` in the value column */
+  white-space: nowrap;
+  color: #000000c0;
+}
+.readonly-rule-variant {
+  font-size: 105%;
+  width: 100%;
+}
+.readonly-rule-detail {
+  font-size: 95%;
+  width: 100%;
+}
+
+.match-rules-body {
+  max-width: 20em;
+}
+
 #menu-lobby-page {
   width: 24em;
 }
@@ -1143,21 +1166,6 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 #lobby-footer.countdown > #lobby-countdown-progressbar {
   width: 100%;
   transition: width 3s linear;
-}
-.lobby-rule-caption {
-  padding-right: 0.5em;
-  font-size: 85%;
-  /* Set `white-space: nowrap` to compensate `width: 100%` in the value column */
-  white-space: nowrap;
-  color: #000000c0;
-}
-.lobby-rule-variant {
-  font-size: 105%;
-  width: 100%;
-}
-.lobby-rule-detail {
-  font-size: 95%;
-  width: 100%;
 }
 .lobby-icon {
   width: 2em;

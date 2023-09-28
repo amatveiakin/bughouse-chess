@@ -924,6 +924,10 @@ impl WebClient {
         Ok(())
     }
 
+    pub fn readonly_rules_body(&self) -> Option<String> {
+        Some(rules_ui::make_readonly_rules_body(&self.state.mtch()?.rules))
+    }
+
     fn show_turn_result(&self, turn_result: Result<(), TurnError>) -> JsResult<()> {
         // Improvement potential: Human-readable error messages (and/or visual hints).
         //   Ideally also include rule-dependent context, e.g. "Illegal drop position:
@@ -1160,12 +1164,9 @@ fn init_lobby(rules: &Rules) -> JsResult<()> {
     } else {
         "Unrated match"
     }));
-
-    let (variants, details) = rules_ui::make_lobby_rules_body(rules);
-    let variants_node = web_document().get_existing_element_by_id("lobby-rule-variants")?;
-    let rules_node = web_document().get_existing_element_by_id("lobby-rule-details")?;
-    variants_node.set_inner_html(&variants);
-    rules_node.set_inner_html(&details);
+    let rules_body = rules_ui::make_readonly_rules_body(rules);
+    let rules_node = web_document().get_existing_element_by_id("lobby-rules")?;
+    rules_node.set_inner_html(&rules_body);
     Ok(())
 }
 
