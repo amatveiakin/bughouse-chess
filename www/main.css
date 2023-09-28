@@ -883,6 +883,7 @@ dialog::backdrop {
   grid-auto-rows: 2.8em;
 }
 
+.label,
 label {
   display: flex;
   align-items: center;
