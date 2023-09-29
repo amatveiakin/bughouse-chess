@@ -1664,10 +1664,23 @@ fn update_turn_log(
                 ),
             };
 
+            const LOG_PIECE_WIDTH: u32 = 5;
+            // The "one plus" part nicely accounts for the fact that there is a separator in
+            // addition to captured pieces and, on the one hand, it is smaller that a single piece,
+            // but on the other hand, pieces overlap, so the very first piece takes more space than
+            // each next one.
+            let width_estimate =
+                get_text_width(&algebraic)? + LOG_PIECE_WIDTH * (1 + captures.len() as u32);
+            let width_class = match width_estimate {
+                55.. => "log-record-xl",
+                50.. => "log-record-l",
+                _ => "",
+            };
+
             let line_node = document.create_element("div")?;
             line_node.set_attribute(
                 "class",
-                &format!("log-turn-record log-turn-record-{}", force_id(force)),
+                &format!("log-turn-record log-turn-record-{} {width_class}", force_id(force)),
             )?;
             line_node.set_attribute("data-turn-index", &record.index())?;
             if Some(record.index().as_str()) == wayback_turn_idx {
@@ -1682,6 +1695,7 @@ fn update_turn_log(
 
             let algebraic_node = document.create_element("span")?;
             algebraic_node.set_text_content(Some(&algebraic));
+            algebraic_node.set_attribute("class", "log-algebraic")?;
             line_node.append_child(&algebraic_node)?;
 
             if !captures.is_empty() {
@@ -1692,7 +1706,7 @@ fn update_turn_log(
 
                 for capture in captures.iter() {
                     let capture_classes = [
-                        "log-capture",
+                        "log-piece",
                         &format!("log-piece-{}", piece_force_id(capture.force)),
                     ];
                     let capture_node =
@@ -1706,6 +1720,7 @@ fn update_turn_log(
             // Add records for turns made on the other board when appropriate.
             if !record.turn_expanded.steals.is_empty() {
                 let line_node = document.create_element("div")?;
+                // No need to add a width class: steal records are always small.
                 line_node.set_attribute("class", "log-turn-record log-turn-record-intervention")?;
                 // Clicking on the steal will send you the previous turn on this board.
                 line_node.set_attribute("data-turn-index", &prev_index)?;
@@ -1719,7 +1734,7 @@ fn update_turn_log(
 
                 for steal in record.turn_expanded.steals.iter() {
                     let capture_classes = [
-                        "log-steal",
+                        "log-piece",
                         &format!("log-piece-{}", piece_force_id(steal.force)),
                     ];
                     let steal_node =

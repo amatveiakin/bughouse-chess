@@ -619,7 +619,6 @@ dialog ::-webkit-scrollbar-thumb {
   text-align: left;
   font-size: 80%;
   display: inline-block;
-  min-width: 7.8em;
   height: 100%;
   overflow-x: visible;
   overflow-y: scroll;
@@ -637,15 +636,12 @@ dialog ::-webkit-scrollbar-thumb {
 #turn-log-scroll-area-primary { direction: rtl; }
 #turn-log-primary { direction: ltr; }
 
-.log-turn-number {
-  display: inline-block;
-  min-width: 3ch;
-  font-size: 70%;
-  transform: scaleX(0.9);
-  transform-origin: 0 100%;
-}
 .log-turn-record {
+  box-sizing: border-box;
+  width: 7.8em;
   padding: 0.15em 0.3em;
+  overflow: hidden;
+  font-family: "Open Sans", sans-serif;
 }
 .log-turn-record.wayback-current-turn {
   border: 0.2em solid #00b000;
@@ -660,16 +656,37 @@ dialog ::-webkit-scrollbar-thumb {
 .log-turn-record-intervention {
   background-color: #373c00;
 }
-.log-capture-separator {
-  margin: 0 0.15em;
-  user-select: none;
+.log-turn-number {
+  display: inline-block;
+  min-width: 3ch;
+  font-size: 70%;
 }
-.log-capture,
-.log-steal {
+.log-record-xl .log-algebraic {
+  font-stretch: semi-condensed;
+}
+.log-capture-separator {
+  user-select: none;
+  margin: 0 0.15em;
+}
+.log-record-l .log-capture-separator {
+  margin: 0 0.1em;
+}
+.log-record-xl .log-capture-separator {
+  margin: 0 0.07em;
+}
+.log-piece {
   display: inline-block;
   height: 1em;
   scale: 120%;
   margin-right: -0.3em;
+}
+.log-record-l .log-piece {
+  scale: 120%;
+  margin-right: -0.35em;
+}
+.log-record-xl .log-piece {
+  scale: 110%;
+  margin-right: -0.4em;
 }
 .log-piece-white {
   opacity: 75%;
