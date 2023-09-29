@@ -43,6 +43,10 @@ pub enum PartialTurnInput {
         piece_origin: PieceOrigin,
         source: PieceDragSource,
     },
+    UpgradePromotion {
+        from: Coord,
+        to: Coord,
+    },
     StealPromotion {
         from: Coord,
         to: Coord,
@@ -363,6 +367,7 @@ impl AlteredGame {
                 PartialTurnInput::Drag { .. } => {
                     self.partial_turn_input = None;
                 }
+                PartialTurnInput::UpgradePromotion { .. } => {}
                 PartialTurnInput::StealPromotion { from, to } => {
                     if board_idx == input_board_idx.other() {
                         let game = self.game_with_local_turns(LocalTurns::All);
@@ -385,6 +390,29 @@ impl AlteredGame {
         } else if self.is_my_duck_turn(board_idx) {
             // Improvement potential: Also allow to make regular moves in two clicks.
             return Some((board_idx, TurnInput::DragDrop(Turn::PlaceDuck(coord))));
+        }
+        None
+    }
+
+    pub fn choose_promotion_upgrade(
+        &mut self, board_idx: BughouseBoard, piece_kind: PieceKind,
+    ) -> Option<TurnInput> {
+        if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
+            match partial_input {
+                PartialTurnInput::Drag { .. } => {}
+                PartialTurnInput::UpgradePromotion { from, to } => {
+                    if board_idx == input_board_idx {
+                        let full_input = TurnInput::DragDrop(Turn::Move(TurnMove {
+                            from,
+                            to,
+                            promote_to: Some(PromotionTarget::Upgrade(piece_kind)),
+                        }));
+                        self.partial_turn_input = None;
+                        return Some(full_input);
+                    }
+                }
+                PartialTurnInput::StealPromotion { .. } => {}
+            }
         }
         None
     }
@@ -454,7 +482,7 @@ impl AlteredGame {
     // Stop drag and returns turn on success. The client should then manually apply this
     // turn via `make_turn`.
     pub fn drag_piece_drop(
-        &mut self, board_idx: BughouseBoard, dest: Coord, promote_to: PieceKind,
+        &mut self, board_idx: BughouseBoard, dest: Coord,
     ) -> Result<Option<TurnInput>, PieceDragError> {
         let Some((
             input_board_idx,
@@ -505,13 +533,16 @@ impl AlteredGame {
                 } else {
                     if is_promotion {
                         match self.bughouse_rules().promotion {
-                            // TODO: Use partial_turn_input to allow proper promotion target choice.
                             Promotion::Upgrade => {
-                                Ok(Some(TurnInput::DragDrop(Turn::Move(TurnMove {
-                                    from: source_coord,
-                                    to: dest,
-                                    promote_to: Some(PromotionTarget::Upgrade(promote_to)),
-                                }))))
+                                self.try_partial_turn(
+                                    board_idx,
+                                    PartialTurnInput::UpgradePromotion {
+                                        from: source_coord,
+                                        to: dest,
+                                    },
+                                )
+                                .map_err(|()| PieceDragError::DragIllegal)?;
+                                Ok(None)
                             }
                             Promotion::Discard => {
                                 Ok(Some(TurnInput::DragDrop(Turn::Move(TurnMove {
@@ -718,7 +749,8 @@ impl AlteredGame {
                     }
                 }
             }
-            PartialTurnInput::StealPromotion { from, to } => {
+            PartialTurnInput::UpgradePromotion { from, to }
+            | PartialTurnInput::StealPromotion { from, to } => {
                 let Ok(mode) = game.turn_mode_for_envoy(envoy) else {
                     return Err(());
                 };
@@ -741,7 +773,7 @@ impl AlteredGame {
             PartialTurnInput::Drag { source, .. } => {
                 *source = PieceDragSource::Defunct;
             }
-            PartialTurnInput::StealPromotion { .. } => {
+            PartialTurnInput::UpgradePromotion { .. } | PartialTurnInput::StealPromotion { .. } => {
                 self.partial_turn_input = None;
             }
         }
@@ -861,7 +893,8 @@ fn get_partial_turn_highlight_basis(
             // Highlighted separately. (Q. Should it?)
             vec![]
         }
-        PartialTurnInput::StealPromotion { from, to } => vec![
+        PartialTurnInput::StealPromotion { from, to }
+        | PartialTurnInput::UpgradePromotion { from, to } => vec![
             (TurnHighlightItem::MoveFrom, *from),
             (TurnHighlightItem::MoveTo, *to),
         ],

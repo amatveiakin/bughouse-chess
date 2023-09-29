@@ -10,7 +10,6 @@ use bughouse_chess::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
     BughousePlayer,
 };
-use bughouse_chess::piece::PieceKind;
 use bughouse_chess::player::Team;
 use bughouse_chess::rules::{ChessRules, MatchRules, Promotion, Rules};
 use bughouse_chess::test_util::*;
@@ -91,7 +90,7 @@ fn drag_depends_on_preturn_to_blocked_square() {
     alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::E5)).unwrap();
     alt_game.apply_remote_turn(envoy!(White A), &alg("e5"), T0).unwrap();
     assert_eq!(
-        alt_game.drag_piece_drop(A, Coord::E4, PieceKind::Queen),
+        alt_game.drag_piece_drop(A, Coord::E4),
         Err(PieceDragError::DragNoLongerPossible)
     );
 }
@@ -107,7 +106,7 @@ fn drag_depends_on_preturn_with_captured_piece() {
     alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::D4)).unwrap();
     alt_game.apply_remote_turn(envoy!(White A), &alg("xd5"), T0).unwrap();
     assert_eq!(
-        alt_game.drag_piece_drop(A, Coord::D3, PieceKind::Queen),
+        alt_game.drag_piece_drop(A, Coord::D3),
         Err(PieceDragError::DragNoLongerPossible)
     );
 }
@@ -123,7 +122,7 @@ fn start_drag_with_a_preturn() {
     alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::E4)).unwrap();
     alt_game.apply_remote_turn(envoy!(White A), &alg("e3"), T0).unwrap();
     alt_game.apply_remote_turn(envoy!(Black A), &alg("Nc6"), T0).unwrap();
-    let drag_result = alt_game.drag_piece_drop(A, Coord::E5, PieceKind::Queen).unwrap();
+    let drag_result = alt_game.drag_piece_drop(A, Coord::E5).unwrap();
     assert_eq!(drag_result, Some(drag_move!(E4 -> E5)));
 }
 
@@ -239,7 +238,7 @@ fn stealing_promotion() {
     assert!(alt_game.local_game().board(B).grid()[Coord::C3].is(piece!(White Knight)));
 
     alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::G7)).unwrap();
-    assert!(alt_game.drag_piece_drop(A, Coord::F8, PieceKind::Queen).unwrap().is_none());
+    assert!(alt_game.drag_piece_drop(A, Coord::F8).unwrap().is_none());
     let (input_board_idx, input) = alt_game.click_square(B, Coord::C3).unwrap();
     assert_eq!(input_board_idx, A);
     alt_game.try_local_turn(input_board_idx, input, T0).unwrap();
@@ -264,10 +263,7 @@ fn stealing_promotion_cannot_move_pawn_onto_piece() {
     alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H6 -> G7), T0).unwrap();
     alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A3 -> B2), T0).unwrap();
     alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::G7)).unwrap();
-    assert_eq!(
-        alt_game.drag_piece_drop(A, Coord::G8, PieceKind::Queen),
-        Err(PieceDragError::DragIllegal)
-    );
+    assert_eq!(alt_game.drag_piece_drop(A, Coord::G8), Err(PieceDragError::DragIllegal));
     assert!(alt_game.local_game().board(A).grid()[Coord::G7].is(piece!(White Pawn)));
     assert!(alt_game.local_game().board(A).grid()[Coord::G8].is(piece!(Black Knight)));
 }

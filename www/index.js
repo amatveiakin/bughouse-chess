@@ -743,9 +743,15 @@ function set_up_drag_and_drop() {
     function click(event, board_id) {
         with_error_handling(function() {
             if (is_main_pointer(event)) {
+              const promotion_target = event.target.getAttribute('data-promotion-target');
+              if (promotion_target) {
+                wasm_client().choose_promotion_upgrade(board_id, promotion_target);
+                update();
+              } else {
                 const coord = mouse_position_relative_to_board(event, board_svg(board_id));
                 wasm_client().click_board(board_id, coord.x, coord.y);
                 update();
+              }
             }
         });
     }
@@ -803,7 +809,7 @@ function set_up_drag_and_drop() {
         with_error_handling(function() {
             if (drag_element && is_main_pointer(event)) {
                 const coord = mouse_position_relative_to_board(event, drag_source_board());
-                wasm_client().drag_piece_drop(drag_source_board_id, coord.x, coord.y, event.shiftKey);
+                wasm_client().drag_piece_drop(drag_source_board_id, coord.x, coord.y);
                 drag_element.remove();
                 drag_element = null;
                 drag_source_board_id = null;

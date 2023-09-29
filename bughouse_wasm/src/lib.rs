@@ -14,6 +14,7 @@ extern crate bughouse_chess;
 mod bughouse_prelude;
 mod html_collection_iterator;
 mod rules_ui;
+mod svg;
 mod table;
 mod web_document;
 mod web_error_handling;
@@ -388,6 +389,21 @@ impl WebClient {
         Ok(())
     }
 
+    pub fn choose_promotion_upgrade(&mut self, board_id: &str, piece_kind: &str) -> JsResult<()> {
+        let Some(alt_game) = self.state.alt_game_mut() else {
+            return Ok(());
+        };
+        let display_board_idx = parse_board_id(board_id)?;
+        let piece_kind = PieceKind::from_algebraic(piece_kind)
+            .ok_or(rust_error!("Invalid piece kind: {piece_kind}"))?;
+        let board_idx = get_board_index(display_board_idx, alt_game.perspective());
+        if let Some(turn_input) = alt_game.choose_promotion_upgrade(board_idx, piece_kind) {
+            let turn_result = self.state.make_turn(display_board_idx, turn_input);
+            self.show_turn_result(turn_result)?;
+        }
+        Ok(())
+    }
+
     pub fn start_drag_piece(&mut self, source: &str) -> JsResult<String> {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Err(rust_error!("Cannot drag: no game in progress"));
@@ -458,9 +474,7 @@ impl WebClient {
         )
     }
 
-    pub fn drag_piece_drop(
-        &mut self, board_id: &str, x: f64, y: f64, alternative_promotion: bool,
-    ) -> JsResult<()> {
+    pub fn drag_piece_drop(&mut self, board_id: &str, x: f64, y: f64) -> JsResult<()> {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
@@ -469,14 +483,13 @@ impl WebClient {
         let pos = DisplayFCoord { x, y };
         if let Some(dest_display) = pos.to_square(board_shape) {
             use PieceDragError::*;
-            use PieceKind::*;
+            // use PieceKind::*;
             let board_idx = get_board_index(display_board_idx, alt_game.perspective());
             let board_orientation =
                 get_board_orientation(display_board_idx, alt_game.perspective());
             let dest_coord =
                 from_display_coord(dest_display, board_shape, board_orientation).unwrap();
-            let promote_to = if alternative_promotion { Knight } else { Queen };
-            match alt_game.drag_piece_drop(board_idx, dest_coord, promote_to) {
+            match alt_game.drag_piece_drop(board_idx, dest_coord) {
                 Ok(None) => {
                     // Probably a partial turn input. Awaiting completion.
                 }
@@ -760,6 +773,16 @@ impl WebClient {
                 board_idx == input_board_idx.other()
                     && board.stealing_result(coord, envoy.force).is_ok()
             };
+            let upgrade_promotion_target =
+                if let Some((input_board_idx, partial_input)) = alt_game.partial_turn_input()
+                    && let PartialTurnInput::UpgradePromotion { to, .. } = partial_input
+                    && board_idx == input_board_idx
+                {
+                    Some(to)
+                } else {
+                    None
+                };
+            let my_force = my_id.envoy_for(board_idx).map(|e| e.force);
             let see_though_fog = alt_game.see_though_fog();
             let empty_area = HashSet::new();
             let fog_render_area = alt_game.fog_of_war_area(board_idx);
@@ -777,7 +800,6 @@ impl WebClient {
                 let display_coord = to_display_coord(coord, board_shape, board_orientation);
                 {
                     let node_id = fog_of_war_id(display_board_idx, coord);
-                    let node = document.get_element_by_id(&node_id);
                     if fog_render_area.contains(&coord) {
                         let sq_hash = calculate_hash(&(&mtch.match_id, board_idx, coord));
                         let fog_tile = sq_hash % TOTAL_FOG_TILES + 1;
@@ -785,7 +807,6 @@ impl WebClient {
                             display_coord,
                             &fog_of_war_layer,
                             &node_id,
-                            node,
                             FOG_TILE_SIZE,
                         )?;
                         node.set_attribute("href", &format!("#fog-{fog_tile}"))?;
@@ -802,14 +823,12 @@ impl WebClient {
                         //     it's either unnoticeable or too visisble. Ideal would be to rotate hue
                         //     within bluish color range.
                     } else {
-                        node.inspect(|n| n.remove());
+                        document.get_element_by_id(&node_id).inspect(|n| n.remove());
                     }
                 }
                 {
                     let node_id = square_id(display_board_idx, coord);
-                    let node = document.get_element_by_id(&node_id);
-                    let node =
-                        ensure_square_node(display_coord, &piece_layer, &node_id, node, 1.0)?;
+                    let node = ensure_square_node(display_coord, &piece_layer, &node_id, 1.0)?;
                     if !fog_cover_area.contains(&coord) && let Some(piece) = grid[coord] {
                         let filename =
                             if let ChessGameStatus::Victory(winner, reason) = board.status()
@@ -835,6 +854,12 @@ impl WebClient {
                     }
                 }
             }
+            render_upgrade_promotion_selector(
+                my_force,
+                display_board_idx,
+                upgrade_promotion_target
+                    .map(|c| to_display_coord(c, board_shape, board_orientation)),
+            )?;
             fog_of_war_layer
                 .class_list()
                 .toggle_with_force("see-though-fog", see_though_fog)?;
@@ -1076,6 +1101,7 @@ enum SquareHighlightLayer {
 }
 
 fn remove_all_children(node: &web_sys::Node) -> JsResult<()> {
+    // TODO: Consider: replace_children_with_node_0.
     while let Some(child) = node.last_child() {
         node.remove_child(&child)?;
     }
@@ -1185,18 +1211,9 @@ fn update_lobby(mtch: &Match) -> JsResult<()> {
 }
 
 fn ensure_square_node(
-    display_coord: DisplayCoord, layer: &web_sys::Element, node_id: &str,
-    existing_node: Option<web_sys::Element>, size: f64,
+    display_coord: DisplayCoord, layer: &web_sys::Element, node_id: &str, size: f64,
 ) -> JsResult<web_sys::Element> {
-    let node = match existing_node {
-        Some(v) => v,
-        None => {
-            let v = web_document().create_svg_element("use")?;
-            v.set_attribute("id", node_id)?;
-            layer.append_child(&v)?;
-            v
-        }
-    };
+    let node = web_document().ensure_svg_node("use", node_id, layer)?;
     let shift = (size - 1.0) / 2.0;
     let pos = DisplayFCoord::square_pivot(display_coord);
     node.set_attribute("x", &(pos.x - shift).to_string())?;
@@ -1473,6 +1490,76 @@ fn update_reserve(
         piece_kind_sep,
         reserve_iter,
     )
+}
+
+fn render_upgrade_promotion_selector(
+    force: Option<Force>, display_board_idx: DisplayBoard,
+    upgrade_promotion_target: Option<DisplayCoord>,
+) -> JsResult<()> {
+    use std::f64::consts::PI;
+    const PIECE_SIZE: f64 = 1.0;
+    const INNER_RADIUS: f64 = 0.65;
+    const OUTER_RADIUS: f64 = 1.6;
+    const MID_RADIUS: f64 = (INNER_RADIUS + OUTER_RADIUS) / 2.0;
+
+    let document = web_document();
+    let layer =
+        document.get_existing_element_by_id(&promotion_target_layer_id(display_board_idx))?;
+    let Some(display_coord) = upgrade_promotion_target else {
+        return remove_all_children(&layer);
+    };
+    let force = force.unwrap();
+
+    let promotion_targets = PieceKind::iter()
+        .filter(|&kind| kind.can_be_upgrade_promotion_target())
+        .collect_vec();
+    let primary_target = PieceKind::Queen;
+    assert!(promotion_targets.contains(&primary_target));
+    let secondary_targets = promotion_targets
+        .into_iter()
+        .filter(|&kind| kind != primary_target)
+        .collect_vec();
+    let bg_node_id = |kind: PieceKind| format!("promotion-bg-{}", kind.to_full_algebraic());
+    let make_fg_node = |piece: PieceKind, x: f64, y: f64| -> JsResult<()> {
+        let id = format!("promotion-fg-{}", piece.to_full_algebraic());
+        let node = document.ensure_svg_node("use", &id, &layer)?;
+        node.set_attribute("class", "promotion-target-fg")?;
+        node.set_attribute("x", &(x - PIECE_SIZE / 2.0).to_string())?;
+        node.set_attribute("y", &(y - PIECE_SIZE / 2.0).to_string())?;
+        node.set_attribute("href", &piece_path(piece, force.into()))?;
+        Ok(())
+    };
+    let pos = DisplayFCoord::square_center(display_coord);
+
+    let num_steps = secondary_targets.len();
+    let start_rad = PI;
+    let end_rad = 2.0 * PI;
+    let step_rad = (end_rad - start_rad) / (num_steps as f64);
+    for (i, &piece) in secondary_targets.iter().enumerate() {
+        let from_rad = start_rad + (i as f64) * step_rad;
+        let to_rad = from_rad + step_rad;
+        let mid_rad = (from_rad + to_rad) / 2.0;
+        let piece_pos = svg::polar_to_cartesian(pos.x, pos.y, MID_RADIUS, mid_rad);
+        let bg_node = document.ensure_svg_node("path", &bg_node_id(piece), &layer)?;
+        bg_node.set_attribute(
+            "d",
+            &svg::ring_arc_path(pos.x, pos.y, INNER_RADIUS, OUTER_RADIUS, from_rad, to_rad),
+        )?;
+        bg_node.set_attribute("data-promotion-target", &piece.to_full_algebraic().to_string())?;
+        bg_node.set_attribute("class", "promotion-target-bg promotion-target-bg-secondary")?;
+        make_fg_node(piece, piece_pos.0, piece_pos.1)?;
+    }
+
+    let bg_node = document.ensure_svg_node("circle", &bg_node_id(primary_target), &layer)?;
+    bg_node.set_attribute("cx", &pos.x.to_string())?;
+    bg_node.set_attribute("cy", &pos.y.to_string())?;
+    bg_node.set_attribute("r", &INNER_RADIUS.to_string())?;
+    bg_node
+        .set_attribute("data-promotion-target", &primary_target.to_full_algebraic().to_string())?;
+    bg_node.set_attribute("class", "promotion-target-bg promotion-target-bg-primary")?;
+    make_fg_node(primary_target, pos.x, pos.y)?;
+
+    Ok(())
 }
 
 fn render_starting() -> JsResult<()> {
@@ -1783,6 +1870,7 @@ fn render_grid(
     let board_orientation = get_board_orientation(board_idx, perspective);
     let document = web_document();
     let layer = document.get_existing_element_by_id(&square_grid_layer_id(board_idx))?;
+    layer.set_attribute("shape-rendering", "crispEdges")?;
     for row in board_shape.rows() {
         for col in board_shape.cols() {
             let sq = document.create_svg_element("rect")?;
@@ -1869,6 +1957,7 @@ fn render_board(
     // Note that the dragged piece will still be above the highlight.
     add_layer(square_highlight_layer_id(SquareHighlightLayer::Drag, board_idx))?;
     add_layer(chalk_drawing_layer_id(board_idx))?;
+    add_layer(promotion_target_layer_id(board_idx))?;
 
     for player_idx in DisplayPlayer::iter() {
         let reserve = document.create_svg_element("g")?;
@@ -2055,6 +2144,10 @@ fn chalk_highlight_layer_id(board_idx: DisplayBoard) -> String {
 
 fn chalk_drawing_layer_id(board_idx: DisplayBoard) -> String {
     format!("chalk-drawing-layer-{}", board_id(board_idx))
+}
+
+fn promotion_target_layer_id(board_idx: DisplayBoard) -> String {
+    format!("promotion-target-layer-{}", board_id(board_idx))
 }
 
 fn participant_relation_id(owner: PlayerRelation) -> &'static str {

@@ -246,6 +246,30 @@ body.symmetric #page {
   font: normal 0.25px sans-serif;
 }
 
+.promotion-target-bg {
+  fill: #84c0bc;
+  stroke-width: 0.04;
+  stroke: #1c8c9a;
+  stroke-opacity: 0.5;
+  opacity: 0.8;
+}
+.promotion-target-bg:hover {
+  fill: #06baaf;
+  stroke-width: 0.06;
+  stroke: #007c8a;
+  stroke-opacity: 1;
+  opacity: 1;
+}
+.promotion-target-fg {
+  pointer-events: none;
+}
+.promotion-target-bg + .promotion-target-fg {
+  filter: opacity(0.8);
+}
+.promotion-target-bg:hover + .promotion-target-fg {
+  filter: none;
+}
+
 .see-though-fog {
   opacity: 0.5;
 }

@@ -34,6 +34,20 @@ impl WebDocument {
     pub fn create_svg_element(&self, local_name: &str) -> JsResult<web_sys::Element> {
         self.0.create_element_ns(Some("http://www.w3.org/2000/svg"), local_name)
     }
+
+    pub fn ensure_svg_node(
+        &self, local_name: &str, id: &str, parent: &web_sys::Element,
+    ) -> JsResult<web_sys::Element> {
+        Ok(match self.get_element_by_id(id) {
+            Some(v) => v,
+            None => {
+                let v = self.create_svg_element(local_name)?;
+                v.set_attribute("id", id)?;
+                parent.append_child(&v)?;
+                v
+            }
+        })
+    }
 }
 
 pub fn web_document() -> WebDocument { WebDocument(web_sys::window().unwrap().document().unwrap()) }

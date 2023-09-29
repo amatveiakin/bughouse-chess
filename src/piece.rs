@@ -41,7 +41,7 @@ pub enum PieceMovement {
 }
 
 #[derive(
-    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Enum, Serialize, Deserialize,
+    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Enum, EnumIter, Serialize, Deserialize,
 )]
 pub enum PieceKind {
     Pawn,
