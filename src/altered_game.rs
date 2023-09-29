@@ -370,7 +370,11 @@ impl AlteredGame {
                             let full_input = TurnInput::DragDrop(Turn::Move(TurnMove {
                                 from,
                                 to,
-                                promote_to: Some(PromotionTarget::Steal((piece.kind, piece.id))),
+                                promote_to: Some(PromotionTarget::Steal((
+                                    piece.kind,
+                                    piece.origin,
+                                    piece.id,
+                                ))),
                             }));
                             self.partial_turn_input = None;
                             return Some((input_board_idx, full_input));

@@ -774,8 +774,8 @@ fn high_latency_stealing() {
     // Improvement potential: track piece ID for algebraic notation (see `PromotionTarget::Steal`
     // comment) and replace `drag_move!(...)` with "xc8=Nc3" for a more end-to-end experience
     // (without manual piece ID lookup).
-    let steal_target_id = world[cl1].local_game().board(B).grid()[Coord::C3].unwrap().id;
-    world[cl1].make_turn(drag_move!(B7 -> C8 = Knight steal_target_id)).unwrap();
+    let steal_target = world[cl1].local_game().board(B).grid()[Coord::C3].unwrap();
+    world[cl1].make_turn(drag_move!(B7 -> C8 = steal_target)).unwrap();
 
     world[cl2].make_turn("e5").unwrap();
     world.process_events_for(cl2).unwrap();

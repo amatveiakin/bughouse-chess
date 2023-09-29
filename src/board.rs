@@ -21,7 +21,9 @@ use crate::piece::{
     accolade_combine_pieces, CastleDirection, PieceForRepetitionDraw, PieceForce, PieceId,
     PieceKind, PieceMovement, PieceOnBoard, PieceOrigin, PieceReservable,
 };
-use crate::rules::{BughouseRules, ChessRules, DropAggression, FairyPieces, MatchRules, Rules};
+use crate::rules::{
+    BughouseRules, ChessRules, DropAggression, FairyPieces, MatchRules, Promotion, Rules,
+};
 use crate::starter::{
     generate_starting_grid, starting_piece_row, BoardSetup, EffectiveStartingPosition,
 };
@@ -570,7 +572,7 @@ pub enum PromotionTarget {
     // with algebraic input. If this becomes a problem, one way to deal with it would be convert
     // `TurnInput` to contain a parsed turn representation with additional flags that convey all
     // additional information (e.g. `must_capture == true` if algebraic input contained "x").
-    Steal((PieceKind, PieceId)),
+    Steal((PieceKind, PieceOrigin, PieceId)),
 }
 
 // Note. Generally speaking, it's impossible to detect castling based on king movement in Chess960.
@@ -705,6 +707,7 @@ pub enum TurnError {
     PathBlocked,
     UnprotectedKing,
     CastlingPieceHasMoved,
+    BadPromotionType,
     BadPromotion,
     DropFobidden,
     DropPieceMissing,
@@ -1263,6 +1266,29 @@ impl Board {
                     }));
                     new_grid[capture_pos] = None;
                 }
+                // Verify that requested promotion does not violate promotion rules.
+                match (mv.promote_to, self.bughouse_rules().map(|r| r.promotion)) {
+                    // No promotion - no problem.
+                    (None, _) => {}
+                    // Promotion in bughouse, rules match.
+                    (Some(PromotionTarget::Upgrade(..)), Some(Promotion::Upgrade))
+                    | (Some(PromotionTarget::Discard), Some(Promotion::Discard))
+                    | (Some(PromotionTarget::Steal(..)), Some(Promotion::Steal)) => {}
+                    // Regular chess promotion.
+                    (Some(PromotionTarget::Upgrade(..)), None) => {}
+                    // Discard promotion isn't really supported in chess mode now (mostly because
+                    // there is no way to enable it, since promotion options are part of bughouse
+                    // settings), but these isn't any reason in principle why it shouldn't work.
+                    (Some(PromotionTarget::Discard), None) => {}
+                    // There is no way to meaningfully interpret stealing promotion in chess mode.
+                    (Some(PromotionTarget::Steal(..)), None) => {
+                        return Err(TurnError::StealingPromotionRequiresBughouse)
+                    }
+                    // Promotion type doesn't match game rules. The user shouldn't be able to
+                    // achieve this via drag&drop, so it means eather bad algebraic notation, or an
+                    // internal error.
+                    (Some(_), Some(_)) => return Err(TurnError::BadPromotionType),
+                };
                 if should_promote(self.shape(), force, piece.kind, mv.to) {
                     let Some(promote_to) = mv.promote_to else {
                         return Err(TurnError::BadPromotion);
@@ -1287,7 +1313,11 @@ impl Board {
                                 force: piece.force,
                             });
                         }
-                        PromotionTarget::Steal((promo_piece_kind, promo_piece_id)) => {
+                        PromotionTarget::Steal((
+                            promo_piece_kind,
+                            promo_piece_origin,
+                            promo_piece_id,
+                        )) => {
                             if !promo_piece_kind.can_be_steal_promotion_target() {
                                 return Err(TurnError::BadPromotion);
                             }
@@ -1302,10 +1332,23 @@ impl Board {
                                 piece_kind: promo_piece_kind,
                                 force: piece.force,
                             });
+                            let origin = match promo_piece_origin {
+                                // Not `Promoted`: piece shouldn't convert to pawn on capture.
+                                PieceOrigin::Innate => PieceOrigin::Dropped,
+                                PieceOrigin::Dropped => PieceOrigin::Dropped,
+                                // Shouldn't happen: this would imply promotion strategies can be
+                                // mixed, which they can't. Assuming promotion mixing exists, we
+                                // should keep the origin for "mass preservation". That is, not
+                                // transmuting pawns into pieces permanently.
+                                PieceOrigin::Promoted => PieceOrigin::Promoted,
+                                // Preserve composition information, so that the piece falls apart
+                                // properly later when captured.
+                                PieceOrigin::Combined(_) => promo_piece_origin,
+                            };
                             new_grid[mv.to] = Some(PieceOnBoard::new(
                                 next_piece_id.inc(),
                                 promo_piece_kind,
-                                PieceOrigin::Dropped, // not `Promoted`: piece shouldn't convert to pawn on capture
+                                origin,
                                 piece.force,
                             ));
                         }
@@ -1510,7 +1553,9 @@ impl Board {
         }
         match turn {
             Turn::Move(mv) => {
-                if let Some(PromotionTarget::Steal((piece_kind, piece_id))) = mv.promote_to {
+                if let Some(PromotionTarget::Steal((piece_kind, piece_origin, piece_id))) =
+                    mv.promote_to
+                {
                     let Some(pos) = find_piece_by_id(&self.grid, piece_id) else {
                         return Err(TurnError::StealTargetMissing);
                     };
@@ -1518,6 +1563,9 @@ impl Board {
                         return Err(TurnError::StealTargetMissing);
                     };
                     if piece.kind != piece_kind {
+                        return Err(TurnError::StealTargetInvalid);
+                    }
+                    if piece.origin != piece_origin {
                         return Err(TurnError::StealTargetInvalid);
                     }
                     return self.stealing_result(pos, turn_owner);
@@ -1680,7 +1728,11 @@ impl Board {
                                         if piece.kind != piece_kind {
                                             return Err(TurnError::StealTargetInvalid);
                                         }
-                                        Some(PromotionTarget::Steal((piece_kind, piece.id)))
+                                        Some(PromotionTarget::Steal((
+                                            piece.kind,
+                                            piece.origin,
+                                            piece.id,
+                                        )))
                                     }
                                     None => None,
                                 };
@@ -1745,7 +1797,7 @@ impl Board {
                             Some(AlgebraicPromotionTarget::Upgrade(piece_kind))
                         }
                         Some(PromotionTarget::Discard) => Some(AlgebraicPromotionTarget::Discard),
-                        Some(PromotionTarget::Steal((piece_kind, piece_id))) => {
+                        Some(PromotionTarget::Steal((piece_kind, _, piece_id))) => {
                             let other_board = other_board?;
                             let pos = find_piece_by_id(&other_board.grid, piece_id)?;
                             if other_board.grid[pos].unwrap().kind != piece_kind {

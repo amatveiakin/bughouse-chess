@@ -277,7 +277,7 @@ fn stealing_promotion_cannot_move_pawn_onto_piece() {
 fn stealing_promotion_invalidates_local_turn() {
     let mut alt_game =
         AlteredGame::new(as_single_player(envoy!(White B)), stealing_promotion_game());
-    let steal_target_id = alt_game.local_game().board(B).grid()[Coord::B1].unwrap().id;
+    let steal_target = alt_game.local_game().board(B).grid()[Coord::B1].unwrap();
     alt_game.try_local_turn(B, drag_move!(B1 -> C3), T0).unwrap();
 
     alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H2 -> H4), T0).unwrap();
@@ -289,7 +289,7 @@ fn stealing_promotion_invalidates_local_turn() {
     alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H6 -> G7), T0).unwrap();
     alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A3 -> B2), T0).unwrap();
     alt_game
-        .apply_remote_turn(envoy!(White A), &drag_move!(G7 -> F8 = Knight steal_target_id), T0)
+        .apply_remote_turn(envoy!(White A), &drag_move!(G7 -> F8 = steal_target), T0)
         .unwrap();
 
     assert!(alt_game.local_game().board(B).grid()[Coord::B1].is_none());

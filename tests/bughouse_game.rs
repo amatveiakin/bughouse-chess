@@ -8,7 +8,7 @@ use bughouse_chess::game::{BughouseBoard, BughouseGame, BughouseGameStatus};
 use bughouse_chess::once_cell_regex;
 use bughouse_chess::piece::PieceKind;
 use bughouse_chess::player::Team;
-use bughouse_chess::rules::{ChessRules, MatchRules, Promotion, Rules};
+use bughouse_chess::rules::{ChessRules, FairyPieces, MatchRules, Promotion, Rules};
 use bughouse_chess::test_util::*;
 use common::*;
 use itertools::Itertools;
@@ -289,6 +289,60 @@ fn steal_promotion_cannot_expose_checked_partner_king() {
     assert_eq!(
         game.try_turn(BughouseBoard::A, &alg("a8=Re8"), TurnMode::Normal, T0),
         Err(TurnError::ExposingPartnerKingByStealing)
+    );
+}
+
+#[test]
+fn combined_piece_falls_apart_on_capture() {
+    let mut rules = default_rules();
+    rules.chess_rules.fairy_pieces = FairyPieces::Accolade;
+    let game_str = "
+        . . . . k . . .     . . . K . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . b . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . N . . . . .     . . . . . . . .
+        R . . . K . . .     . . . k . . . .
+    ";
+    let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
+    game.try_turn(BughouseBoard::A, &alg("Na1"), TurnMode::Normal, T0).unwrap();
+    game.try_turn(BughouseBoard::A, &alg("Bxa1"), TurnMode::Normal, T0).unwrap();
+    assert_eq!(
+        game.board(BughouseBoard::B).reserve(Force::White).as_map(),
+        [(PieceKind::Knight, 1), (PieceKind::Rook, 1)].into_iter().collect()
+    );
+}
+
+#[test]
+fn steal_promotion_preserves_piece_composition() {
+    let mut rules = default_rules();
+    rules.chess_rules.fairy_pieces = FairyPieces::Accolade;
+    rules.bughouse_rules_mut().unwrap().promotion = Promotion::Steal;
+    let game_str = "
+        . . . . k . . .     . . . K . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . b . .
+        . . N . . . . .     . . . . . . . P
+        R . . . K . . .     . . . k . . . .
+    ";
+    let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
+    game.try_turn(BughouseBoard::A, &alg("Na1"), TurnMode::Normal, T0).unwrap();
+    game.try_turn(BughouseBoard::B, &alg("Pa8=Ea1"), TurnMode::Normal, T0).unwrap();
+    game.try_turn(BughouseBoard::B, &alg("Bxa8"), TurnMode::Normal, T0).unwrap();
+    assert_eq!(
+        game.board(BughouseBoard::A).reserve(Force::White).as_map(),
+        [
+            (PieceKind::Pawn, 1),
+            (PieceKind::Knight, 1),
+            (PieceKind::Rook, 1)
+        ]
+        .into_iter()
+        .collect()
     );
 }
 

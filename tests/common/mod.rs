@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use bughouse_chess::board::{Board, TurnInput};
+use bughouse_chess::board::{Board, Reserve, TurnInput};
 use bughouse_chess::display::{from_display_coord, BoardOrientation, DisplayCoord};
 use bughouse_chess::force::Force;
 use bughouse_chess::game::{BughouseBoard, BughouseGame};
@@ -78,14 +78,15 @@ macro_rules! drag_move {
             },
         ))
     };
-    ($from:ident -> $to:ident = $steal_piece_kind:ident $steal_piece_id:ident) => {
+    ($from:ident -> $to:ident = $steal_piece:ident) => {
         bughouse_chess::board::TurnInput::DragDrop(bughouse_chess::board::Turn::Move(
             bughouse_chess::board::TurnMove {
                 from: bughouse_chess::coord::Coord::$from,
                 to: bughouse_chess::coord::Coord::$to,
                 promote_to: Some(bughouse_chess::board::PromotionTarget::Steal((
-                    bughouse_chess::piece::PieceKind::$steal_piece_kind,
-                    $steal_piece_id,
+                    $steal_piece.kind,
+                    $steal_piece.origin,
+                    $steal_piece.id,
                 ))),
             },
         ))
@@ -119,6 +120,14 @@ macro_rules! envoy {
             force: bughouse_chess::force::Force::$force,
         }
     };
+}
+
+pub trait ReserveAsHashMap {
+    fn as_map(self) -> HashMap<PieceKind, u8>;
+}
+
+impl ReserveAsHashMap for Reserve {
+    fn as_map(self) -> HashMap<PieceKind, u8> { self.into_iter().filter(|&(_, n)| n > 0).collect() }
 }
 
 fn parse_ascii_setup<'a>(
