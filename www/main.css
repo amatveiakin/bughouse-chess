@@ -652,9 +652,8 @@ dialog ::-webkit-scrollbar-thumb {
   box-shadow: 0.1em 0.1em 0.4em #000000ff;
 }
 .turn-log {
-  height: 0;
-  white-space: pre;
-  color: #ffffffa0;
+  height: 0;  /* make log scrollable rather than expandable */
+  width: 7.8em;
 }
 /* Put scrol bars on the left */
 #turn-log-scroll-area-primary { direction: rtl; }
@@ -662,7 +661,6 @@ dialog ::-webkit-scrollbar-thumb {
 
 .log-turn-record {
   box-sizing: border-box;
-  width: 7.8em;
   padding: 0.15em 0.3em;
   overflow: hidden;
   font-family: "Open Sans", sans-serif;
