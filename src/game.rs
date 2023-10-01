@@ -229,6 +229,19 @@ impl BughouseEnvoy {
 }
 
 impl BughousePlayer {
+    pub fn as_single_player(self) -> Option<BughouseEnvoy> {
+        match self {
+            BughousePlayer::SinglePlayer(envoy) => Some(envoy),
+            BughousePlayer::DoublePlayer(_) => None,
+        }
+    }
+    pub fn as_double_player(self) -> Option<Team> {
+        match self {
+            BughousePlayer::SinglePlayer(_) => None,
+            BughousePlayer::DoublePlayer(team) => Some(team),
+        }
+    }
+
     pub fn team(self) -> Team {
         match self {
             BughousePlayer::SinglePlayer(envoy) => envoy.team(),

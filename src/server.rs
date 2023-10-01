@@ -4,15 +4,14 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::time::Duration;
-use std::{cmp, iter, mem, ops};
+use std::{iter, mem, ops};
 
 use enum_map::enum_map;
 use indoc::printdoc;
 use instant::Instant;
 use itertools::Itertools;
 use log::{info, warn};
-use rand::seq::SliceRandom;
-use rand::Rng;
+use rand::prelude::*;
 use strum::IntoEnumIterator;
 
 use crate::board::{TurnInput, TurnMode, VictoryReason};
@@ -22,13 +21,13 @@ use crate::event::{
     BughouseClientErrorReport, BughouseClientEvent, BughouseServerEvent, BughouseServerRejection,
 };
 use crate::game::{
-    get_bughouse_force, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
-    BughousePlayer, PlayerInGame, TurnRecord, TOTAL_ENVOYS, TOTAL_ENVOYS_PER_TEAM,
+    BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughousePlayer, PlayerInGame,
+    TurnRecord,
 };
-use crate::lobby::{fix_teams_if_needed, verify_participants, Teaming};
+use crate::lobby::{assign_boards, fix_teams_if_needed, verify_participants, Teaming};
 use crate::pgn::{self, BughouseExportFormat};
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
-use crate::player::{Faction, Participant, Team};
+use crate::player::{Faction, Participant};
 use crate::rules::{Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
 use crate::server_helpers::ServerHelpers;
@@ -1248,16 +1247,6 @@ impl Match {
 
     fn reset_readiness(&mut self) { self.participants.iter_mut().for_each(|p| p.is_ready = false); }
 
-    // Assigns boards to players. Also assigns teams to players without a fixed team.
-    //
-    // Priorities (from highest to lowest):
-    //   1. Don't make people double play if they don't have to.
-    //   2. Balance the number of games played by each person.
-    //   3. Balance the number of times people double play (if they have to).
-    //   4. Uniformly randomize teams, opponents and seating out order.
-    //
-    // TODO: Add unit tests for `assign_boards` since it's not covered by `bughouse_online.rs`.
-    // TODO: Move together with `verify_participants` and `fix_teams_if_needed`.
     fn assign_boards(&self) -> Vec<PlayerInGame> {
         if let Some(assignment) = &self.board_assignment_override {
             for player_assignment in assignment {
@@ -1271,105 +1260,7 @@ impl Match {
             }
             return assignment.clone();
         }
-
-        let rng = &mut rand::thread_rng();
-
-        let priority_buckets = self
-            .participants
-            .iter()
-            .sorted_by_key(|p| p.games_played)
-            .group_by(|p| p.games_played);
-        // Note. Even though we randomize the team for players with `Faction::Random`, randomizing
-        // the order within each bucket is still necessary for multiple reasons:
-        //   - To randomize opponents;
-        //   - To randomize seating out;
-        //   - To make team randomization uniform: if we iterated the array [p1, p2, p3, p4] in the
-        //     same order and assigned each player to a random non-full team with equal probability,
-        //     then p1 and p2 would be on the same team with probability 1/2 rather than 1/3.
-        let player_queue = priority_buckets.into_iter().flat_map(|(_, bucket)| {
-            let mut bucket = bucket.collect_vec();
-            bucket.shuffle(rng);
-            bucket
-        });
-
-        let mut players_per_team = enum_map! { _ => vec![] };
-        let mut random_players = vec![];
-        for p in player_queue {
-            match p.faction {
-                Faction::Fixed(team) => {
-                    if players_per_team[team].len() < TOTAL_ENVOYS_PER_TEAM {
-                        players_per_team[team].push(p);
-                    }
-                }
-                Faction::Random => {
-                    random_players.push(p);
-                }
-                Faction::Observer => {}
-            }
-            let total_players =
-                players_per_team.values().map(|v| v.len()).sum::<usize>() + random_players.len();
-            if total_players == TOTAL_ENVOYS {
-                break;
-            }
-        }
-        if !random_players.iter().map(|p| p.double_games_played).all_equal() {
-            // Try to balance the number of times each person double plays. This usually happens
-            // when we have three players (with four+ players people typically don't double play and
-            // with two people both players always double play), but we cannot assume that,
-            // epsecially given the fact that we plan to support joining and leaving the match in
-            // the middle.
-            random_players.sort_by_key(|p| cmp::Reverse(p.double_games_played));
-            let smaller_team =
-                Team::iter().min_by_key(|&team| players_per_team[team].len()).unwrap();
-            let larger_team = smaller_team.opponent();
-            players_per_team[smaller_team].push(random_players.pop().unwrap());
-            for p in random_players {
-                let team = if players_per_team[larger_team].len() < TOTAL_ENVOYS_PER_TEAM {
-                    larger_team
-                } else {
-                    smaller_team
-                };
-                players_per_team[team].push(p);
-            }
-        } else {
-            for p in random_players {
-                // Note. Although the players are already shuffled, we still need to randomize the team.
-                // If we always started with, say, Red team, then in case of (Blue, Random, Random) the
-                // first player would always play on two boards.
-                let mut team = if rng.gen() { Team::Red } else { Team::Blue };
-                if players_per_team[team].len() >= TOTAL_ENVOYS_PER_TEAM
-                    || players_per_team[team.opponent()].is_empty()
-                {
-                    team = team.opponent();
-                }
-                players_per_team[team].push(p);
-            }
-        }
-
-        players_per_team
-            .into_iter()
-            .flat_map(|(team, team_players)| match team_players.len() {
-                0 => panic!("Empty team: {}", team_players.len()),
-                1 => {
-                    // TODO: `assert!(!need_to_double_play);`
-                    vec![PlayerInGame {
-                        name: team_players.into_iter().exactly_one().unwrap().name.clone(),
-                        id: BughousePlayer::DoublePlayer(team),
-                    }]
-                }
-                2 => BughouseBoard::iter()
-                    .zip_eq(team_players)
-                    .map(move |(board_idx, participant)| PlayerInGame {
-                        name: participant.name.clone(),
-                        id: BughousePlayer::SinglePlayer(BughouseEnvoy {
-                            board_idx,
-                            force: get_bughouse_force(team, board_idx),
-                        }),
-                    })
-                    .collect_vec(),
-                _ => panic!("Too many players: {:?}", team_players),
-            })
-            .collect_vec()
+        assign_boards(self.participants.iter(), &mut rand::thread_rng())
     }
 }
 
