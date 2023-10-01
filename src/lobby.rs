@@ -270,8 +270,6 @@ pub fn assign_boards<'a>(
 mod tests {
     use std::collections::HashMap;
 
-    use chain_cmp::chmp;
-
     use super::*;
     use crate::force::Force;
     use crate::rules::{ChessRules, MatchRules};
@@ -361,6 +359,16 @@ mod tests {
                 }
             }
         }
+    }
+
+    macro_rules! assert_close {
+        ($lhs:expr, $rhs:literal, $($arg:tt)+) => {{
+            let lhs = $lhs;
+            let rhs = $rhs;
+            // This is for random tests, no floating point errors, so the marging should be big.
+            let margin = rhs / 10;
+            assert!(lhs.abs_diff(rhs) < margin, $($arg)+);
+        }};
     }
 
     #[test]
@@ -565,10 +573,10 @@ mod tests {
         }
         for p in participants.values() {
             let st = &stats[&p.name];
-            assert!(chmp!(400 <= st.played_for_force[Force::White] <= 600), "{stats:?}");
-            assert!(chmp!(400 <= st.played_for_force[Force::Black] <= 600), "{stats:?}");
-            assert!(chmp!(400 <= st.played_for_team[Team::Red] <= 600), "{stats:?}");
-            assert!(chmp!(400 <= st.played_for_team[Team::Blue] <= 600), "{stats:?}");
+            assert_close!(st.played_for_force[Force::White], 500, "{stats:?}");
+            assert_close!(st.played_for_force[Force::Black], 500, "{stats:?}");
+            assert_close!(st.played_for_team[Team::Red], 500, "{stats:?}");
+            assert_close!(st.played_for_team[Team::Blue], 500, "{stats:?}");
         }
     }
 
@@ -588,8 +596,8 @@ mod tests {
         }
         for p in participants.values() {
             let st = &stats[&p.name];
-            assert!(chmp!(400 <= st.played_for_force[Force::White] <= 600), "{stats:?}");
-            assert!(chmp!(400 <= st.played_for_force[Force::Black] <= 600), "{stats:?}");
+            assert_close!(st.played_for_force[Force::White], 500, "{stats:?}");
+            assert_close!(st.played_for_force[Force::Black], 500, "{stats:?}");
         }
     }
 
@@ -610,13 +618,13 @@ mod tests {
         }
         for p in participants.values() {
             let st = &stats[&p.name];
-            assert!(chmp!(300 <= st.played_for_force[Force::White] <= 500), "{stats:?}");
-            assert!(chmp!(300 <= st.played_for_force[Force::Black] <= 500), "{stats:?}");
+            assert_close!(st.played_for_force[Force::White], 400, "{stats:?}");
+            assert_close!(st.played_for_force[Force::Black], 400, "{stats:?}");
         }
         for name in ["p3", "p4", "p5"] {
             let st = &stats[name];
-            assert!(chmp!(300 <= st.played_for_team[Team::Red] <= 500), "{stats:?}");
-            assert!(chmp!(300 <= st.played_for_team[Team::Blue] <= 500), "{stats:?}");
+            assert_close!(st.played_for_team[Team::Red], 400, "{stats:?}");
+            assert_close!(st.played_for_team[Team::Blue], 400, "{stats:?}");
         }
     }
 }
