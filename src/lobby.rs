@@ -235,29 +235,36 @@ pub fn assign_boards<'a>(
 
     players_per_team
         .into_iter()
-        .flat_map(|(team, team_players)| match team_players.len() {
-            0 => panic!("Empty team: {}", team_players.len()),
-            1 => {
-                // TODO: `assert!(!need_to_double_play);`
-                vec![PlayerInGame {
-                    name: team_players.into_iter().exactly_one().unwrap().name.clone(),
-                    id: BughousePlayer::DoublePlayer(team),
-                }]
+        .flat_map(|(team, mut team_players)| {
+            // Another shuffle. Since players with fixed teams are added first, we need it to make
+            // sure forces are distributed evenly between players with fixed and dynamic teams.
+            team_players.shuffle(rng);
+
+            match team_players.len() {
+                0 => panic!("Empty team: {}", team_players.len()),
+                1 => {
+                    // TODO: `assert!(!need_to_double_play);`
+                    vec![PlayerInGame {
+                        name: team_players.into_iter().exactly_one().unwrap().name.clone(),
+                        id: BughousePlayer::DoublePlayer(team),
+                    }]
+                }
+                2 => BughouseBoard::iter()
+                    .zip_eq(team_players)
+                    .map(move |(board_idx, participant)| PlayerInGame {
+                        name: participant.name.clone(),
+                        id: BughousePlayer::SinglePlayer(BughouseEnvoy {
+                            board_idx,
+                            force: get_bughouse_force(team, board_idx),
+                        }),
+                    })
+                    .collect_vec(),
+                _ => panic!("Too many players: {:?}", team_players),
             }
-            2 => BughouseBoard::iter()
-                .zip_eq(team_players)
-                .map(move |(board_idx, participant)| PlayerInGame {
-                    name: participant.name.clone(),
-                    id: BughousePlayer::SinglePlayer(BughouseEnvoy {
-                        board_idx,
-                        force: get_bughouse_force(team, board_idx),
-                    }),
-                })
-                .collect_vec(),
-            _ => panic!("Too many players: {:?}", team_players),
         })
         .collect_vec()
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -586,31 +593,30 @@ mod tests {
         }
     }
 
-    // // TODO: Fix and enable this test.
-    // #[test]
-    // fn assign_board_randomizes_evenly_with_partially_fixed() {
-    //     let rng = &mut deterministic_rng();
-    //     let mut participants = Participants::new();
-    //     participants.add("p1", Faction::Fixed(Team::Red));
-    //     participants.add("p2", Faction::Fixed(Team::Blue));
-    //     participants.add("p3", Faction::Random);
-    //     participants.add("p4", Faction::Random);
-    //     participants.add("p5", Faction::Random);
-    //     let mut stats = ParticipantStatsMap::new();
-    //     for _ in 0..1000 {
-    //         let players = assign_boards(participants.values(), rng);
-    //         collect_stats(&players, &mut stats);
-    //         simulate_play(&players, &mut participants);
-    //     }
-    //     for p in participants.values() {
-    //         let st = &stats[&p.name];
-    //         assert!(chmp!(300 <= st.played_for_force[Force::White] <= 500), "{stats:?}");
-    //         assert!(chmp!(300 <= st.played_for_force[Force::Black] <= 500), "{stats:?}");
-    //     }
-    //     for name in ["p3", "p4", "p5"] {
-    //         let st = &stats[name];
-    //         assert!(chmp!(300 <= st.played_for_team[Team::Red] <= 500), "{stats:?}");
-    //         assert!(chmp!(300 <= st.played_for_team[Team::Blue] <= 500), "{stats:?}");
-    //     }
-    // }
+    #[test]
+    fn assign_board_randomizes_evenly_with_partially_fixed() {
+        let rng = &mut deterministic_rng();
+        let mut participants = Participants::new();
+        participants.add("p1", Faction::Fixed(Team::Red));
+        participants.add("p2", Faction::Fixed(Team::Blue));
+        participants.add("p3", Faction::Random);
+        participants.add("p4", Faction::Random);
+        participants.add("p5", Faction::Random);
+        let mut stats = ParticipantStatsMap::new();
+        for _ in 0..1000 {
+            let players = assign_boards(participants.values(), rng);
+            collect_stats(&players, &mut stats);
+            simulate_play(&players, &mut participants);
+        }
+        for p in participants.values() {
+            let st = &stats[&p.name];
+            assert!(chmp!(300 <= st.played_for_force[Force::White] <= 500), "{stats:?}");
+            assert!(chmp!(300 <= st.played_for_force[Force::Black] <= 500), "{stats:?}");
+        }
+        for name in ["p3", "p4", "p5"] {
+            let st = &stats[name];
+            assert!(chmp!(300 <= st.played_for_team[Team::Red] <= 500), "{stats:?}");
+            assert!(chmp!(300 <= st.played_for_team[Team::Blue] <= 500), "{stats:?}");
+        }
+    }
 }
