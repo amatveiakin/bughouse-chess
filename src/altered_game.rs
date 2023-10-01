@@ -297,13 +297,20 @@ impl AlteredGame {
         let BughouseParticipant::Player(my_player_id) = self.my_id else {
             return HashSet::new();
         };
-        // Don't use `local_game`: preturns and drags should not reveal new areas.
+
+        // Don't use `local_game`: preturns and drags should not reveal new areas. Even this logic
+        // is not 100% safe: in some game variants local in-order turns could be reverted, e.g. when
+        // a piece is stolen after a pawn promotion or when you receive a king in koedem. In such
+        // cases you would be able to briefly see areas that shouldn't have been revealed. But such
+        // occasions are rare, so it seem better than waiting for server response in order to lift
+        // the fog. The latter would feel laggy.
         let mut game = self.game_with_local_turns(LocalTurns::OnlyNormal);
+
         let board_shape = self.board_shape();
         let wayback_active = self.apply_wayback_for_board(&mut game, board_idx);
         let force = get_bughouse_force(my_player_id.team(), board_idx);
         let mut visible = game.board(board_idx).fog_free_area(force);
-        // ... but do show preturn pieces themselves:
+        // Still, do show preturn pieces themselves:
         if !wayback_active {
             let game_with_preturns = self.game_with_local_turns(LocalTurns::All);
             for coord in board_shape.coords() {
