@@ -654,6 +654,7 @@ dialog ::-webkit-scrollbar-thumb {
 .turn-log {
   height: 0;  /* make log scrollable rather than expandable */
   width: 7.8em;
+  margin: 0.1em;  /* keep in sync with `.wayback-current-turn` outline */
 }
 /* Put scrol bars on the left */
 #turn-log-scroll-area-primary { direction: rtl; }
@@ -661,12 +662,13 @@ dialog ::-webkit-scrollbar-thumb {
 
 .log-turn-record {
   box-sizing: border-box;
-  padding: 0.15em 0.3em;
+  padding: 0.15em 0.2em;
   overflow: hidden;
   font-family: "Open Sans", sans-serif;
 }
 .log-turn-record.wayback-current-turn {
-  border: 0.2em solid #00b000;
+  outline: 0.2em solid #00b000;
+  outline-offset: -0.1em;
   border-radius: 0.5em;
 }
 .log-turn-record-white {
