@@ -70,6 +70,14 @@ pub enum IncomingEvent {
     Terminate,
 }
 
+pub struct ServerInfo {
+    pub num_active_matches: usize,
+}
+
+impl ServerInfo {
+    pub fn new() -> Self { ServerInfo { num_active_matches: 0 } }
+}
+
 #[derive(Clone, Debug)]
 pub struct TurnRequest {
     pub envoy: BughouseEnvoy,
@@ -257,6 +265,7 @@ struct Match {
 struct Context<'a, 'b> {
     clients: &'b mut MutexGuard<'a, Clients>,
     session_store: &'b mut MutexGuard<'a, SessionStore>,
+    info: &'b mut MutexGuard<'a, ServerInfo>,
     helpers: &'a mut dyn ServerHelpers,
     hooks: &'a mut dyn ServerHooks,
     disable_countdown: bool,
@@ -279,6 +288,7 @@ pub struct ServerState {
     // Optimization potential: Lock-free map instead of Mutex<HashMap>.
     clients: Arc<Mutex<Clients>>,
     session_store: Arc<Mutex<SessionStore>>,
+    info: Arc<Mutex<ServerInfo>>,
     helpers: Box<dyn ServerHelpers>,
     hooks: Box<dyn ServerHooks>,
     // TODO: Remove special test paths, use proper mock clock instead.
@@ -289,11 +299,13 @@ pub struct ServerState {
 impl ServerState {
     pub fn new(
         clients: Arc<Mutex<Clients>>, session_store: Arc<Mutex<SessionStore>>,
-        helpers: Box<dyn ServerHelpers>, hooks: Option<Box<dyn ServerHooks>>,
+        info: Arc<Mutex<ServerInfo>>, helpers: Box<dyn ServerHelpers>,
+        hooks: Option<Box<dyn ServerHooks>>,
     ) -> Self {
         ServerState {
             clients,
             session_store,
+            info,
             helpers,
             hooks: hooks.unwrap_or_else(|| Box::new(NoopServerHooks {})),
             disable_countdown: false,
@@ -311,12 +323,14 @@ impl ServerState {
         // single-threaded.
         let mut clients = self.clients.lock().unwrap();
         let mut session_store = self.session_store.lock().unwrap();
+        let mut info = self.info.lock().unwrap();
 
         // Improvement potential. Consider adding commonly used things like `now` and `execution`
         // to `Context`.
         let mut ctx = Context {
             clients: &mut clients,
             session_store: &mut session_store,
+            info: &mut info,
             helpers: self.helpers.as_mut(),
             hooks: self.hooks.as_mut(),
             disable_countdown: self.disable_countdown,
@@ -406,6 +420,8 @@ impl CoreServerState {
             IncomingEvent::Tick => self.on_tick(ctx, now),
             IncomingEvent::Terminate => self.on_terminate(ctx, now),
         }
+
+        ctx.info.num_active_matches = self.num_active_matches(now);
     }
 
     fn on_client_event(

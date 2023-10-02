@@ -25,6 +25,7 @@ use bughouse_chess::player::{Faction, Team};
 use bughouse_chess::rules::{
     BughouseRules, ChessRules, DropAggression, MatchRules, Promotion, Rules,
 };
+use bughouse_chess::server::ServerInfo;
 use bughouse_chess::server_helpers::TestServerHelpers;
 use bughouse_chess::session_store::SessionStore;
 use bughouse_chess::{client, pgn, server};
@@ -71,9 +72,11 @@ impl Server {
         let clients = Arc::new(Mutex::new(server::Clients::new()));
         let clients_copy = Arc::clone(&clients);
         let session_store = Arc::new(Mutex::new(SessionStore::new()));
+        let server_info = Arc::new(Mutex::new(ServerInfo::new()));
         let mut state = server::ServerState::new(
             clients_copy,
             session_store,
+            server_info,
             Box::new(TestServerHelpers {}),
             None,
         );

@@ -16,6 +16,7 @@ use futures_io::{AsyncRead, AsyncWrite};
 use futures_util::StreamExt;
 use log::{error, info, warn};
 use tide::StatusCode;
+use tide_jsx::html;
 use time::OffsetDateTime;
 use tungstenite::protocol;
 
@@ -128,7 +129,7 @@ async fn handle_connection<
 fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     config: ServerConfig, db: DB, secret_db: Box<dyn SecretDatabaseRW>,
     session_store: Arc<Mutex<SessionStore>>, clients: Arc<Mutex<Clients>>,
-    tx: mpsc::SyncSender<IncomingEvent>,
+    server_info: Arc<Mutex<ServerInfo>>, tx: mpsc::SyncSender<IncomingEvent>,
 ) {
     let (google_auth, auth_callback_is_https) = match config.auth_options {
         AuthOptions::NoAuth => (None, false),
@@ -149,6 +150,7 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
         secret_db,
         static_content_url_prefix: config.static_content_url_prefix,
         session_store,
+        server_info,
     }));
 
     if let SessionOptions::WithSessions { secret, expire_in } = config.session_options {
@@ -184,6 +186,8 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     app.at(AUTH_CHANGE_ACCOUNT_PATH).post(handle_change_account);
     app.at(AUTH_DELETE_ACCOUNT_PATH).post(handle_delete_account);
     app.at(AUTH_MYSESSION_PATH).get(handle_mysession);
+
+    app.at("/dyn/server").get(handle_server_into);
 
     crate::stats_handlers_tide::Handlers::<HttpServerState<DB>>::register_handlers(&mut app);
 
@@ -277,6 +281,8 @@ pub fn run(config: ServerConfig) {
     let (tx, rx) = mpsc::sync_channel(100000);
     let tx_tick = tx.clone();
     let tx_terminate = tx.clone();
+    let server_info = Arc::new(Mutex::new(ServerInfo::new()));
+    let server_info_copy = Arc::clone(&server_info);
     let clients = Arc::new(Mutex::new(Clients::new()));
     let clients_copy = Arc::clone(&clients);
 
@@ -349,6 +355,7 @@ pub fn run(config: ServerConfig) {
         let mut server_state = ServerState::new(
             clients_copy,
             session_store_copy,
+            server_info_copy,
             Box::new(ProdServerHelpers {}),
             hooks.map(|h| h as Box<dyn ServerHooks>),
         );
@@ -366,6 +373,7 @@ pub fn run(config: ServerConfig) {
             secret_database,
             session_store,
             clients,
+            server_info,
             tx,
         ),
         DatabaseOptions::Sqlite(address) => run_tide(
@@ -374,6 +382,7 @@ pub fn run(config: ServerConfig) {
             secret_database,
             session_store,
             clients,
+            server_info,
             tx,
         ),
         DatabaseOptions::Postgres(address) => run_tide(
@@ -382,6 +391,7 @@ pub fn run(config: ServerConfig) {
             secret_database,
             session_store,
             clients,
+            server_info,
             tx,
         ),
     }
@@ -405,4 +415,23 @@ fn restore_sessions(
     let sessions = async_std::task::block_on(db.list_sessions())?;
     sessions.into_iter().for_each(|(id, value)| session_store.set(id, value));
     Ok(())
+}
+
+async fn handle_server_into<DB>(req: tide::Request<HttpServerState<DB>>) -> tide::Result {
+    let num_active_matches = req.state().server_info.lock().unwrap().num_active_matches;
+    let h: String = html! {
+        <html>
+        <head>
+        </head>
+        <body>
+            <p>
+                {"Active matches: "}{num_active_matches}
+            </p>
+        </body>
+        </html>
+    };
+    let mut resp = tide::Response::new(StatusCode::Ok);
+    resp.set_content_type(http_types::Mime::from("text/html; charset=UTF-8"));
+    resp.set_body(h);
+    Ok(resp)
 }

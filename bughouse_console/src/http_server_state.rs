@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use bughouse_chess::server;
 use bughouse_chess::session_store::{SessionId, SessionStore};
 use http_types::StatusCode;
 use url::Url;
@@ -14,6 +15,7 @@ pub struct HttpServerStateImpl<DB> {
     pub secret_db: Box<dyn SecretDatabaseRW>,
     pub static_content_url_prefix: String,
     pub session_store: Arc<Mutex<SessionStore>>,
+    pub server_info: Arc<Mutex<server::ServerInfo>>,
 }
 
 pub type HttpServerState<DB> = Arc<HttpServerStateImpl<DB>>;
