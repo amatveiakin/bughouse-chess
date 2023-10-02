@@ -889,9 +889,9 @@ impl WebClient {
             board_node
                 .class_list()
                 .toggle_with_force("wayback", wayback_turn_idx.is_some())?;
-            self.update_turn_highlights()?;
             update_turn_log(&game, my_id, board_idx, display_board_idx, wayback_turn_idx)?;
         }
+        self.update_turn_highlights()?;
         document
             .body()?
             .class_list()
