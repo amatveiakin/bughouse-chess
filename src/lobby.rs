@@ -313,7 +313,7 @@ mod tests {
 
     #[derive(Debug, Default)]
     struct ParticipantStats {
-        played_for_force: EnumMap<Force, usize>,
+        played_for_single_force: EnumMap<Force, usize>,
         played_for_team: EnumMap<Team, usize>,
     }
 
@@ -349,13 +349,10 @@ mod tests {
             match player.id {
                 BughousePlayer::DoublePlayer(team) => {
                     st.played_for_team[team] += 1;
-                    for force in Force::iter() {
-                        st.played_for_force[force] += 1;
-                    }
                 }
                 BughousePlayer::SinglePlayer(envoy) => {
                     st.played_for_team[envoy.team()] += 1;
-                    st.played_for_force[envoy.force] += 1;
+                    st.played_for_single_force[envoy.force] += 1;
                 }
             }
         }
@@ -573,8 +570,8 @@ mod tests {
         }
         for p in participants.values() {
             let st = &stats[&p.name];
-            assert_close!(st.played_for_force[Force::White], 500, "{stats:?}");
-            assert_close!(st.played_for_force[Force::Black], 500, "{stats:?}");
+            assert_close!(st.played_for_single_force[Force::White], 500, "{stats:?}");
+            assert_close!(st.played_for_single_force[Force::Black], 500, "{stats:?}");
             assert_close!(st.played_for_team[Team::Red], 500, "{stats:?}");
             assert_close!(st.played_for_team[Team::Blue], 500, "{stats:?}");
         }
@@ -596,13 +593,44 @@ mod tests {
         }
         for p in participants.values() {
             let st = &stats[&p.name];
-            assert_close!(st.played_for_force[Force::White], 500, "{stats:?}");
-            assert_close!(st.played_for_force[Force::Black], 500, "{stats:?}");
+            assert_close!(st.played_for_single_force[Force::White], 500, "{stats:?}");
+            assert_close!(st.played_for_single_force[Force::Black], 500, "{stats:?}");
         }
     }
 
     #[test]
-    fn assign_board_randomizes_evenly_with_partially_fixed() {
+    fn assign_board_randomizes_evenly_with_partially_fixed_three_players() {
+        let rng = &mut deterministic_rng();
+        let mut participants = Participants::new();
+        participants.add("p1", Faction::Fixed(Team::Red));
+        participants.add("p2", Faction::Fixed(Team::Blue));
+        participants.add("p3", Faction::Random);
+        let mut stats = ParticipantStatsMap::new();
+        for _ in 0..2000 {
+            let players = assign_boards(participants.values(), rng);
+            collect_stats(&players, &mut stats);
+            simulate_play(&players, &mut participants);
+        }
+        for name in ["p1", "p2"] {
+            let p = &participants[name];
+            let st = &stats[name];
+            assert_close!(p.double_games_played, 1000, "{participants:?}");
+            assert_close!(st.played_for_single_force[Force::White], 500, "{stats:?}");
+            assert_close!(st.played_for_single_force[Force::Black], 500, "{stats:?}");
+        }
+        for name in ["p3"] {
+            let p = &participants[name];
+            let st = &stats[name];
+            assert_eq!(p.double_games_played, 0, "{participants:?}");
+            assert_close!(st.played_for_single_force[Force::White], 1000, "{stats:?}");
+            assert_close!(st.played_for_single_force[Force::Black], 1000, "{stats:?}");
+            assert_close!(st.played_for_team[Team::Red], 1000, "{stats:?}");
+            assert_close!(st.played_for_team[Team::Blue], 1000, "{stats:?}");
+        }
+    }
+
+    #[test]
+    fn assign_board_randomizes_evenly_with_partially_fixed_five_players() {
         let rng = &mut deterministic_rng();
         let mut participants = Participants::new();
         participants.add("p1", Faction::Fixed(Team::Red));
@@ -618,8 +646,8 @@ mod tests {
         }
         for p in participants.values() {
             let st = &stats[&p.name];
-            assert_close!(st.played_for_force[Force::White], 400, "{stats:?}");
-            assert_close!(st.played_for_force[Force::Black], 400, "{stats:?}");
+            assert_close!(st.played_for_single_force[Force::White], 400, "{stats:?}");
+            assert_close!(st.played_for_single_force[Force::Black], 400, "{stats:?}");
         }
         for name in ["p3", "p4", "p5"] {
             let st = &stats[name];
