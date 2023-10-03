@@ -38,7 +38,7 @@ use table::{td, td_safe, HtmlTable};
 use wasm_bindgen::prelude::*;
 use web_document::{web_document, WebDocument};
 use web_error_handling::JsResult;
-use web_sys::{ScrollIntoViewOptions, ScrollLogicalPosition};
+use web_sys::{ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
 
 use crate::bughouse_prelude::*;
 
@@ -886,11 +886,9 @@ impl WebClient {
                     game.chess_rules(),
                 )?;
             }
-            let wayback_turn_idx = alt_game.wayback_turn_index(board_idx);
-            board_node
-                .class_list()
-                .toggle_with_force("wayback", wayback_turn_idx.is_some())?;
-            update_turn_log(&game, my_id, board_idx, display_board_idx, wayback_turn_idx)?;
+            let wayback = alt_game.wayback(board_idx);
+            board_node.class_list().toggle_with_force("wayback", wayback.active())?;
+            update_turn_log(&game, my_id, board_idx, display_board_idx, wayback)?;
         }
         self.update_turn_highlights()?;
         document
@@ -950,7 +948,7 @@ impl WebClient {
         Ok(())
     }
 
-    pub fn on_arrow_key_down(&mut self, key: &str, ctrl: bool, alt: bool) -> JsResult<()> {
+    pub fn on_vertical_arrow_key_down(&mut self, key: &str, ctrl: bool, alt: bool) -> JsResult<()> {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
@@ -969,12 +967,14 @@ impl WebClient {
             ("ArrowUp", true) => alt_game.wayback_to_first(board_idx),
             _ => {}
         };
-        let node = alt_game.wayback_turn_index(board_idx).and_then(|index| {
+        let node = alt_game.wayback(board_idx).turn_index().and_then(|index| {
             web_document().get_element_by_id(&turn_record_node_id(display_board_idx, index))
         });
         if let Some(node) = node {
             node.scroll_into_view_with_scroll_into_view_options(
-                ScrollIntoViewOptions::new().block(ScrollLogicalPosition::Nearest),
+                ScrollIntoViewOptions::new()
+                    .behavior(ScrollBehavior::Instant)
+                    .block(ScrollLogicalPosition::Nearest),
             );
         }
         Ok(())
@@ -1743,7 +1743,7 @@ fn render_boards(board_shape: BoardShape, perspective: Perspective) -> JsResult<
 
 fn update_turn_log(
     game: &BughouseGame, my_id: BughouseParticipant, board_idx: BughouseBoard,
-    display_board_idx: DisplayBoard, wayback_turn_idx: Option<&str>,
+    display_board_idx: DisplayBoard, wayback: WaybackState,
 ) -> JsResult<()> {
     let board_shape = game.board_shape();
     let document = web_document();
@@ -1751,7 +1751,7 @@ fn update_turn_log(
         document.get_existing_element_by_id(&turn_log_scroll_area_node_id(display_board_idx))?;
     log_scroll_area_node
         .class_list()
-        .toggle_with_force("wayback", wayback_turn_idx.is_some())?;
+        .toggle_with_force("wayback", wayback.active())?;
     let log_node = document.get_existing_element_by_id(&turn_log_node_id(display_board_idx))?;
     remove_all_children(&log_node)?;
     let mut prev_number = 0;
@@ -1804,8 +1804,12 @@ fn update_turn_log(
                 &format!("log-turn-record log-turn-record-{} {width_class}", force_id(force)),
             )?;
             line_node.set_attribute("data-turn-index", &index)?;
-            if Some(index.as_str()) == wayback_turn_idx {
-                line_node.class_list().add_1("wayback-current-turn")?;
+            if Some(index.as_str()) == wayback.turn_index() {
+                if wayback.active() {
+                    line_node.class_list().add_1("wayback-current-turn-active")?;
+                } else {
+                    line_node.class_list().add_1("wayback-current-turn-inactive")?;
+                }
             }
             prev_index = index;
 

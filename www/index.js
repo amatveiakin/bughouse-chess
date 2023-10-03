@@ -468,8 +468,11 @@ function on_document_keydown(event) {
             let isPrintableKey = event.key.length === 1;  // https://stackoverflow.com/a/38802011/3092679
             if (isPrintableKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
                 command_input.focus();
-            } else if (['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp'].includes(event.key)) {
-                wasm_client().on_arrow_key_down(event.key, event.ctrlKey, event.altKey);
+            } else if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
+                // Make sure log is not scrolled by arrow keys: we are scrolling it
+                // programmatically to make sure the current turn is visible.
+                event.preventDefault();
+                wasm_client().on_vertical_arrow_key_down(event.key, event.ctrlKey, event.altKey);
                 update();
             }
         }

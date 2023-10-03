@@ -41,6 +41,7 @@ features = [
   'HtmlElement',
   'HtmlFormElement',
   'Node',
+  'ScrollBehavior',
   'ScrollIntoViewOptions',
   'ScrollLogicalPosition',
   'TextMetrics',

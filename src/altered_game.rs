@@ -121,6 +121,24 @@ enum LocalTurns {
     All,          // normal + pre + partial
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum WaybackState {
+    Disabled,        // cannot view old turns
+    Enabled(String), // can view old turns, but currently at the last turn
+    Active(String),  // viewing a historical turn
+}
+
+impl WaybackState {
+    pub fn turn_index(&self) -> Option<&str> {
+        match self {
+            WaybackState::Disabled => None,
+            WaybackState::Enabled(index) => Some(index),
+            WaybackState::Active(index) => Some(index),
+        }
+    }
+    pub fn active(&self) -> bool { matches!(self, WaybackState::Active(_)) }
+}
+
 #[derive(Clone, Debug)]
 pub struct AlteredGame {
     // All local actions are assumed to be made on behalf of this player.
@@ -239,7 +257,8 @@ impl AlteredGame {
             let fog_render_area = self.fog_of_war_area(board_idx);
             let fog_cover_area = if see_though_fog { &empty_area } else { &fog_render_area };
 
-            let wayback_turn_idx = self.wayback_turn_index(board_idx);
+            let wayback = self.wayback(board_idx);
+            let wayback_turn_idx = wayback.turn_index();
             let turn_log = board_turn_log_modulo_wayback(&game, board_idx, wayback_turn_idx);
 
             if let Some(latest_turn_record) = turn_log.last() {
@@ -348,8 +367,23 @@ impl AlteredGame {
         Ok(mode)
     }
 
-    pub fn wayback_turn_index(&self, board_idx: BughouseBoard) -> Option<&str> {
-        self.wayback_turn_index[board_idx].as_deref()
+    pub fn wayback(&self, board_idx: BughouseBoard) -> WaybackState {
+        if self.is_active() {
+            WaybackState::Disabled
+        } else if let Some(index) = &self.wayback_turn_index[board_idx] {
+            WaybackState::Active(index.clone())
+        } else {
+            let mut turn_index_iter = self
+                .game_confirmed
+                .turn_log()
+                .iter()
+                .filter_map(FilterByBoardGetIndex { board_idx });
+            if let Some(last_turn_idx) = turn_index_iter.next_back() {
+                WaybackState::Enabled(last_turn_idx)
+            } else {
+                WaybackState::Disabled
+            }
+        }
     }
     pub fn wayback_to_turn(&mut self, board_idx: BughouseBoard, turn_idx: Option<String>) {
         self.wayback_to(board_idx, |_, _| turn_idx)
@@ -632,14 +666,6 @@ impl AlteredGame {
         self.partial_turn_input = None;
     }
 
-    fn cancel_partial_turn_on_board(&mut self, board_idx: BughouseBoard) {
-        if let Some((input_board_idx, _)) = self.partial_turn_input {
-            if input_board_idx == board_idx {
-                self.partial_turn_input = None;
-            }
-        }
-    }
-
     fn discard_invalid_local_turns(&mut self) {
         // Although we don't allow it currently, this function is written in a way that supports
         // turns cross-board turn dependencies.
@@ -708,11 +734,13 @@ impl AlteredGame {
             Option<String>,
         ) -> Option<String>,
     ) {
-        self.cancel_partial_turn_on_board(board_idx);
-        let local_game = self.game_with_local_turns(LocalTurns::All);
-        let turn_index_iter =
-            local_game.turn_log().iter().filter_map(FilterByBoardGetIndex { board_idx });
-        let last_turn_idx = turn_index_iter.clone().last();
+        assert!(!self.is_active());
+        let turn_index_iter = self
+            .game_confirmed
+            .turn_log()
+            .iter()
+            .filter_map(FilterByBoardGetIndex { board_idx });
+        let last_turn_idx = turn_index_iter.clone().next_back();
         let old_turn_idx = self.wayback_turn_index[board_idx].clone();
         let new_turn_idx = get_turn_index(turn_index_iter, old_turn_idx);
         self.wayback_turn_index[board_idx] = if new_turn_idx == last_turn_idx {
