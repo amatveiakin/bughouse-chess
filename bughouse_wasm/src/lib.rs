@@ -38,6 +38,7 @@ use table::{td, td_safe, HtmlTable};
 use wasm_bindgen::prelude::*;
 use web_document::{web_document, WebDocument};
 use web_error_handling::JsResult;
+use web_sys::{ScrollIntoViewOptions, ScrollLogicalPosition};
 
 use crate::bughouse_prelude::*;
 
@@ -949,6 +950,36 @@ impl WebClient {
         Ok(())
     }
 
+    pub fn on_arrow_key_down(&mut self, key: &str, ctrl: bool, alt: bool) -> JsResult<()> {
+        let Some(alt_game) = self.state.alt_game_mut() else {
+            return Ok(());
+        };
+        if alt_game.is_active() {
+            return Ok(());
+        }
+        let display_board_idx = match alt {
+            false => DisplayBoard::Primary,
+            true => DisplayBoard::Secondary,
+        };
+        let board_idx = get_board_index(display_board_idx, alt_game.perspective());
+        match (key, ctrl) {
+            ("ArrowDown", false) => alt_game.wayback_to_next(board_idx),
+            ("ArrowDown", true) => alt_game.wayback_to_last(board_idx),
+            ("ArrowUp", false) => alt_game.wayback_to_previous(board_idx),
+            ("ArrowUp", true) => alt_game.wayback_to_first(board_idx),
+            _ => {}
+        };
+        let node = alt_game.wayback_turn_index(board_idx).and_then(|index| {
+            web_document().get_element_by_id(&turn_record_node_id(display_board_idx, index))
+        });
+        if let Some(node) = node {
+            node.scroll_into_view_with_scroll_into_view_options(
+                ScrollIntoViewOptions::new().block(ScrollLogicalPosition::Nearest),
+            );
+        }
+        Ok(())
+    }
+
     pub fn readonly_rules_body(&self) -> Option<String> {
         Some(rules_ui::make_readonly_rules_body(&self.state.mtch()?.rules))
     }
@@ -1732,6 +1763,7 @@ fn update_turn_log(
                 turn_number_str = format!("{}.", record.number);
                 prev_number = record.number;
             }
+            let index = record.index();
             let is_in_fog = game.chess_rules().fog_of_war
                 && game.is_active()
                 && my_id.as_player().map_or(false, |p| p.team() != record.envoy.team());
@@ -1765,15 +1797,16 @@ fn update_turn_log(
             };
 
             let line_node = document.create_element("div")?;
+            line_node.set_attribute("id", &turn_record_node_id(display_board_idx, &index))?;
             line_node.set_attribute(
                 "class",
                 &format!("log-turn-record log-turn-record-{} {width_class}", force_id(force)),
             )?;
-            line_node.set_attribute("data-turn-index", &record.index())?;
-            if Some(record.index().as_str()) == wayback_turn_idx {
+            line_node.set_attribute("data-turn-index", &index)?;
+            if Some(index.as_str()) == wayback_turn_idx {
                 line_node.class_list().add_1("wayback-current-turn")?;
             }
-            prev_index = record.index().clone();
+            prev_index = index;
 
             let turn_number_node = document.create_element("span")?;
             turn_number_node.set_text_content(Some(&turn_number_str));
@@ -2090,6 +2123,10 @@ fn turn_log_scroll_area_node_id(board_idx: DisplayBoard) -> String {
 
 fn turn_log_node_id(board_idx: DisplayBoard) -> String {
     format!("turn-log-{}", board_id(board_idx))
+}
+
+fn turn_record_node_id(board_idx: DisplayBoard, index: &str) -> String {
+    format!("turn-record-{}-{index}", board_id(board_idx))
 }
 
 fn square_grid_layer_id(board_idx: DisplayBoard) -> String {

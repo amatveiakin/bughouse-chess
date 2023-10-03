@@ -459,16 +459,21 @@ function get_args(args_array, expected_args) {
 }
 
 function on_document_keydown(event) {
-    if (menu_dialog.open) {
-        if (event.key === 'Escape') {
-            pop_menu_page();
+    with_error_handling(function() {
+        if (menu_dialog.open) {
+            if (event.key === 'Escape') {
+                pop_menu_page();
+            }
+        } else {
+            let isPrintableKey = event.key.length === 1;  // https://stackoverflow.com/a/38802011/3092679
+            if (isPrintableKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+                command_input.focus();
+            } else if (['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp'].includes(event.key)) {
+                wasm_client().on_arrow_key_down(event.key, event.ctrlKey, event.altKey);
+                update();
+            }
         }
-    } else {
-        let isPrintableKey = event.key.length === 1;  // https://stackoverflow.com/a/38802011/3092679
-        if (isPrintableKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
-            command_input.focus();
-        }
-    }
+    });
 }
 
 function on_paste(event) {

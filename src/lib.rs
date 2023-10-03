@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(feature = "strict", deny(warnings))]
+#![feature(fn_traits)]
 #![feature(int_roundings)]
+#![feature(type_alias_impl_trait)]
+#![feature(unboxed_closures)]
 // Clippy philosophy. The goal is to have zero warnings from `cargo clippy` on the main branch.
 // Thus silencing all warning that I don't want to fix now. These decisions could be revised.
 #![allow(

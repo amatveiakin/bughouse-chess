@@ -352,16 +352,33 @@ impl AlteredGame {
         self.wayback_turn_index[board_idx].as_deref()
     }
     pub fn wayback_to_turn(&mut self, board_idx: BughouseBoard, turn_idx: Option<String>) {
-        self.cancel_partial_turn_on_board(board_idx);
-        let last_turn_idx = self
-            .local_game()
-            .turn_log()
-            .iter()
-            .rev()
-            .find(|record| record.envoy.board_idx == board_idx)
-            .map(|record| record.index());
-        let turn_idx = if turn_idx == last_turn_idx { None } else { turn_idx };
-        self.wayback_turn_index[board_idx] = turn_idx;
+        self.wayback_to(board_idx, |_, _| turn_idx)
+    }
+    pub fn wayback_to_previous(&mut self, board_idx: BughouseBoard) {
+        self.wayback_to(board_idx, |iter, current| {
+            if let Some(current) = current {
+                iter.rev().find_or_last(|index| *index < current)
+            } else {
+                iter.rev().nth(1)
+            }
+        })
+    }
+    pub fn wayback_to_next(&mut self, board_idx: BughouseBoard) {
+        self.wayback_to(board_idx, |mut iter, current| {
+            if let Some(current) = current {
+                iter.find(|index| *index > current)
+            } else {
+                // Logically no wayback means turn iterator is in the end, so there is no going
+                // forward. Alternatively could've wrapped around and go to the first entry.
+                None
+            }
+        })
+    }
+    pub fn wayback_to_first(&mut self, board_idx: BughouseBoard) {
+        self.wayback_to(board_idx, |mut iter, _| iter.nth(0))
+    }
+    pub fn wayback_to_last(&mut self, board_idx: BughouseBoard) {
+        self.wayback_to(board_idx, |_, _| None)
     }
 
     // Improvement: Less ad-hoc solution for "gluing" board index to TurnInput; use it here, in
@@ -684,6 +701,27 @@ impl AlteredGame {
         num_preturns
     }
 
+    fn wayback_to(
+        &mut self, board_idx: BughouseBoard,
+        get_turn_index: impl FnOnce(
+            std::iter::FilterMap<std::slice::Iter<TurnRecordExpanded>, FilterByBoardGetIndex>,
+            Option<String>,
+        ) -> Option<String>,
+    ) {
+        self.cancel_partial_turn_on_board(board_idx);
+        let local_game = self.game_with_local_turns(LocalTurns::All);
+        let turn_index_iter =
+            local_game.turn_log().iter().filter_map(FilterByBoardGetIndex { board_idx });
+        let last_turn_idx = turn_index_iter.clone().last();
+        let old_turn_idx = self.wayback_turn_index[board_idx].clone();
+        let new_turn_idx = get_turn_index(turn_index_iter, old_turn_idx);
+        self.wayback_turn_index[board_idx] = if new_turn_idx == last_turn_idx {
+            None
+        } else {
+            new_turn_idx
+        };
+    }
+
     fn apply_wayback_for_board(&self, game: &mut BughouseGame, board_idx: BughouseBoard) -> bool {
         let Some(ref turn_idx) = self.wayback_turn_index[board_idx] else {
             return false;
@@ -936,4 +974,37 @@ fn get_partial_turn_highlights(
         board_idx,
         fog_of_war_area,
     )
+}
+
+// Rust-upgrade (https://github.com/rust-lang/rust/issues/116380):
+//   Replace `RecordFilterByBoard` + manual iterator type with an existential type:
+//
+// type BoardRecordLogIterator<'a> = impl DoubleEndedIterator<Item = String> + 'a;
+// fn get_board_record_log_iterator(
+//     turn_log: &[TurnRecordExpanded], board_idx: BughouseBoard,
+// ) -> BoardRecordLogIterator {
+//     turn_log
+//         .iter()
+//         .filter(move |record| record.envoy.board_idx == board_idx)
+//         .map(|record| record.index())
+// }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FilterByBoardGetIndex {
+    board_idx: BughouseBoard,
+}
+impl FnOnce<(&TurnRecordExpanded,)> for FilterByBoardGetIndex {
+    type Output = Option<String>;
+    extern "rust-call" fn call_once(self, args: (&TurnRecordExpanded,)) -> Self::Output {
+        if args.0.envoy.board_idx == self.board_idx {
+            Some(args.0.index())
+        } else {
+            None
+        }
+    }
+}
+impl FnMut<(&TurnRecordExpanded,)> for FilterByBoardGetIndex {
+    extern "rust-call" fn call_mut(&mut self, args: (&TurnRecordExpanded,)) -> Self::Output {
+        Self::call_once(*self, args)
+    }
 }
