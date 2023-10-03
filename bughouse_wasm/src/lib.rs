@@ -1707,6 +1707,7 @@ fn update_scores(
         }
         Some(Scores::PerPlayer(score_map)) => {
             for (name, score) in score_map.iter().sorted_by_key(|(name, _)| *name) {
+                let score = normalize(*score);
                 let p = participants.iter().find(|p| p.name == *name).unwrap();
                 let p_line = participant_line_html(p, show_readiness)?;
                 score_table.add_row([
