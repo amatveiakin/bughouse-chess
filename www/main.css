@@ -649,7 +649,7 @@ dialog ::-webkit-scrollbar-thumb {
   box-shadow: 0.05em 0.05em 0.2em #00000080;
 }
 .turn-log-scroll-area.wayback {
-  box-shadow: 0.1em 0.1em 0.4em #000000ff;
+  box-shadow: 0.2em 0.2em 0.6em #000000ff;
 }
 .turn-log {
   height: 0;  /* make log scrollable rather than expandable */
