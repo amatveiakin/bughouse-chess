@@ -144,13 +144,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
             .await
             .map_err(anyhow::Error::from)?;
 
-        // TODO: initialize from a persisted state and only look at games played since the last
-        // committed game.
-        let mut all_stats = GroupStats::default();
-
-        for (_, game) in games.into_iter() {
-            all_stats.update(&game, ComputeMetaStats::No)?;
-        }
+        let all_stats = GroupStats::from_games(games, ComputeMetaStats::No)?;
 
         let mut final_player_stats = process_stats(all_stats.per_player.into_iter());
         let mut final_team_stats = process_stats(
@@ -297,13 +291,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
             .await
             .map_err(anyhow::Error::from)?;
 
-        // TODO: initialize from a persisted state and only look at games played since the last
-        // committed game.
-        let mut all_stats = GroupStats::<Vec<RawStats>>::default();
-
-        for (_, game) in games.into_iter() {
-            all_stats.update(&game, ComputeMetaStats::No)?;
-        }
+        let mut all_stats = GroupStats::<Vec<RawStats>>::from_games(games, ComputeMetaStats::No)?;
 
         if x_axis == crate::history_graphs::XAxis::Date {
             all_stats.per_player.values_mut().for_each(keep_last_point_per_date);
@@ -339,13 +327,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
             .await
             .map_err(anyhow::Error::from)?;
 
-        // TODO: initialize from a persisted state and only look at games played since the last
-        // committed game.
-        let mut all_stats = GroupStats::<RawStats>::default();
-
-        for (_, game) in games.into_iter() {
-            all_stats.update(&game, ComputeMetaStats::Yes)?;
-        }
+        let all_stats = GroupStats::<RawStats>::from_games(games, ComputeMetaStats::Yes)?;
 
         let graph_html = history_graphs::meta_stats_graph_html(&all_stats);
         let h: String = html! {

@@ -2,13 +2,24 @@
 
 use std::collections::HashMap;
 
+use lazy_static::lazy_static;
 use log::error;
+use prometheus::{register_histogram, Histogram};
 use skillratings::elo::{self, elo, EloConfig, EloRating};
 use skillratings::weng_lin::{self, weng_lin, weng_lin_two_teams, WengLinConfig, WengLinRating};
 use skillratings::Outcomes;
 use time::OffsetDateTime;
 
-use crate::persistence::GameResultRow;
+use crate::persistence::{GameResultRow, RowId};
+
+lazy_static! {
+    static ref STATS_PROCESSING_HISTOGRAM: Histogram = register_histogram!(
+        "stats_processing_time_seconds",
+        "Incoming event processing time in seconds.",
+        vec![0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+    )
+    .unwrap();
+}
 
 type Rating = WengLinRating;
 
@@ -328,6 +339,24 @@ where
             self.meta_stats.push(new_meta_stats);
         }
         Ok(())
+    }
+
+    pub fn from_games(
+        games: impl IntoIterator<Item = (RowId, GameResultRow)>,
+        compute_meta_stats: ComputeMetaStats,
+    ) -> anyhow::Result<Self>
+    where
+        Stats: Default,
+    {
+        // TODO: initialize from a persisted state and only look at games played since the last
+        // committed game.
+        let timer = STATS_PROCESSING_HISTOGRAM.start_timer();
+        let mut all_stats = Self::default();
+        for (_, game) in games.into_iter() {
+            all_stats.update(&game, compute_meta_stats)?;
+        }
+        timer.observe_duration();
+        Ok(all_stats)
     }
 }
 
