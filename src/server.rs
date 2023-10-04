@@ -1059,7 +1059,8 @@ impl Match {
         };
         if let Some(GameState { ref game, .. }) = self.game_state {
             if game.is_active() {
-                return Err(unknown_error!("Cannot update readiness: game still in progress"));
+                // No error: somebody could've tried to unset ready flag while the game has started.
+                return Ok(());
             }
         }
         self.participants[participant_id].is_ready = is_ready;
