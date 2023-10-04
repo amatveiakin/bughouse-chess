@@ -10,7 +10,9 @@ use enum_map::enum_map;
 use indoc::printdoc;
 use instant::Instant;
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use log::{info, warn};
+use prometheus::{register_histogram_vec, HistogramVec};
 use rand::prelude::*;
 use strum::IntoEnumIterator;
 
@@ -39,6 +41,16 @@ use crate::session_store::{SessionId, SessionStore};
 const DOUBLE_TERMINATION_ABORT_THRESHOLD: Duration = Duration::from_secs(1);
 const TERMINATION_WAITING_PERIOD: Duration = Duration::from_secs(60);
 const MATCH_GC_INACTIVITY_THRESHOLD: Duration = Duration::from_secs(3600 * 24);
+
+lazy_static! {
+    static ref EVENT_PROCESSING_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "event_processing_time_seconds",
+        "Incoming event processing time in seconds.",
+        &["event"],
+        vec![0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1],
+    )
+    .unwrap();
+}
 
 macro_rules! unknown_error {
     ($($arg:tt)*) => {
@@ -70,6 +82,7 @@ pub enum IncomingEvent {
     Terminate,
 }
 
+// TODO: Use Prometheus instead.
 pub struct ServerInfo {
     pub num_active_matches: usize,
 }
@@ -406,6 +419,10 @@ impl CoreServerState {
     }
 
     fn apply_event(&mut self, ctx: &mut Context, event: IncomingEvent) {
+        let timer = EVENT_PROCESSING_HISTOGRAM
+            .with_label_values(&[event_name(&event)])
+            .start_timer();
+
         // Use the same timestamp for the entire event processing. Other code reachable
         // from this function should not call `Instant::now()`. Doing so may cause a race
         // condition: e.g. if we check the flag, see that it's ok and then continue to
@@ -420,8 +437,9 @@ impl CoreServerState {
             IncomingEvent::Tick => self.on_tick(ctx, now),
             IncomingEvent::Terminate => self.on_terminate(ctx, now),
         }
-
         ctx.info.num_active_matches = self.num_active_matches(now);
+
+        timer.observe_duration();
     }
 
     fn on_client_event(
@@ -1410,6 +1428,28 @@ fn process_report_error(ctx: &Context, client_id: ClientId, report: &BughouseCli
 
 fn process_ping(ctx: &mut Context, client_id: ClientId) {
     ctx.clients[client_id].send(BughouseServerEvent::Pong);
+}
+
+fn event_name(event: &IncomingEvent) -> &'static str {
+    match &event {
+        IncomingEvent::Network(_, event) => match event {
+            BughouseClientEvent::NewMatch { .. } => "Client_NewMatch",
+            BughouseClientEvent::Join { .. } => "Client_Join",
+            BughouseClientEvent::SetFaction { .. } => "Client_SetFaction",
+            BughouseClientEvent::MakeTurn { .. } => "Client_MakeTurn",
+            BughouseClientEvent::CancelPreturn { .. } => "Client_CancelPreturn",
+            BughouseClientEvent::Resign => "Client_Resign",
+            BughouseClientEvent::SetReady { .. } => "Client_SetReady",
+            BughouseClientEvent::Leave => "Client_Leave",
+            BughouseClientEvent::UpdateChalkDrawing { .. } => "Client_UpdateChalkDrawing",
+            BughouseClientEvent::RequestExport { .. } => "Client_RequestExport",
+            BughouseClientEvent::ReportPerformace(_) => "Client_ReportPerformace",
+            BughouseClientEvent::ReportError(_) => "Client_ReportError",
+            BughouseClientEvent::Ping => "Client_Ping",
+        },
+        IncomingEvent::Tick => "Tick",
+        IncomingEvent::Terminate => "Terminate",
+    }
 }
 
 fn shutdown() {

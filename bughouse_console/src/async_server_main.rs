@@ -15,6 +15,7 @@ use bughouse_chess::session_store::*;
 use futures_io::{AsyncRead, AsyncWrite};
 use futures_util::StreamExt;
 use log::{error, info, warn};
+use prometheus::Encoder;
 use tide::StatusCode;
 use tide_jsx::html;
 use time::OffsetDateTime;
@@ -187,7 +188,8 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     app.at(AUTH_DELETE_ACCOUNT_PATH).post(handle_delete_account);
     app.at(AUTH_MYSESSION_PATH).get(handle_mysession);
 
-    app.at("/dyn/server").get(handle_server_into);
+    app.at("/dyn/metrics").get(handle_metrics);
+    app.at("/dyn/server").get(handle_server_info);
 
     crate::stats_handlers_tide::Handlers::<HttpServerState<DB>>::register_handlers(&mut app);
 
@@ -417,7 +419,19 @@ fn restore_sessions(
     Ok(())
 }
 
-async fn handle_server_into<DB>(req: tide::Request<HttpServerState<DB>>) -> tide::Result {
+// TODO: Add Prometheus config to git.
+// TODO: Add instructions on Prometheus and Grafana.
+async fn handle_metrics<DB>(_req: tide::Request<HttpServerState<DB>>) -> tide::Result {
+    let encoder = prometheus::TextEncoder::new();
+    let mut buffer = Vec::new();
+    encoder.encode(&prometheus::gather(), &mut buffer).unwrap();
+    let body = String::from_utf8(buffer.clone()).unwrap();
+    let mut resp = tide::Response::new(StatusCode::Ok);
+    resp.set_body(body);
+    Ok(resp)
+}
+
+async fn handle_server_info<DB>(req: tide::Request<HttpServerState<DB>>) -> tide::Result {
     let num_active_matches = req.state().server_info.lock().unwrap().num_active_matches;
     let h: String = html! {
         <html>

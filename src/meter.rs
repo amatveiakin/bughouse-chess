@@ -1,4 +1,4 @@
-// Improvement potential. Synchronized version for server-side logging.
+// TODO: Replace with prometheus::local.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
