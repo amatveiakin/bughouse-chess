@@ -1140,6 +1140,14 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   font-size: 110%;
   width: 100%;
 }
+.readonly-rule-variant-icon {
+  width: 0;
+  padding: 0 0.3em 0 0;
+}
+.readonly-rule-variant-icon .rule-variant-icon {
+  width: 1.5em;
+  height: 1.5em;
+}
 .readonly-rule-separator {
   height: 0.7em;
 }

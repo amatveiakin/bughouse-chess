@@ -7,6 +7,7 @@ use itertools::Itertools;
 pub struct TD {
     pub text: String,
     pub classes: Vec<String>,
+    pub col_span: Option<usize>,
     pub row_span: Option<usize>,
 }
 
@@ -21,6 +22,7 @@ pub fn td_safe(text: impl fmt::Display) -> TD {
     TD {
         text: text.to_string(),
         classes: vec![],
+        col_span: None,
         row_span: None,
     }
 }
@@ -31,6 +33,11 @@ impl TD {
         self
     }
 
+    pub fn with_col_span(mut self, col_span: usize) -> Self {
+        self.col_span = Some(col_span);
+        self
+    }
+
     pub fn with_row_span(mut self, row_span: usize) -> Self {
         self.row_span = Some(row_span);
         self
@@ -38,6 +45,9 @@ impl TD {
 
     pub fn to_html(&self) -> String {
         let mut attributes = vec![];
+        if let Some(col_span) = self.col_span {
+            attributes.push(format!("colspan='{}'", col_span));
+        }
         if let Some(row_span) = self.row_span {
             attributes.push(format!("rowspan='{}'", row_span));
         }

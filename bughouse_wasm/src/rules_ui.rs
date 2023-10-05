@@ -569,33 +569,35 @@ pub fn make_readonly_rules_body(rules: &Rules) -> String {
         .variants()
         .into_iter()
         .map(|variant| {
-            let tooltip = match variant {
-                ChessVariant::Accolade => accolade_tooltip(),
-                ChessVariant::FischerRandom => fischer_random_tooltip(),
-                ChessVariant::DuckChess => duck_chess_tooltip(),
-                ChessVariant::FogOfWar => fog_of_war_tooltip(),
-                ChessVariant::Koedem => koedem_tooltip(),
+            use ChessVariant::*;
+            let (icon, tooltip) = match variant {
+                Accolade => (ACCOLADE_ON_ICON, accolade_tooltip()),
+                FischerRandom => (FISCHER_RANDOM_ON_ICON, fischer_random_tooltip()),
+                DuckChess => (DUCK_CHESS_ON_ICON, duck_chess_tooltip()),
+                FogOfWar => (FOG_OF_WAR_ON_ICON, fog_of_war_tooltip()),
+                Koedem => (KOEDEM_ON_ICON, koedem_tooltip()),
             };
-            (variant.to_human_readable(), Some(paragraphs_to_html([tooltip])))
+            (icon, variant.to_human_readable(), Some(paragraphs_to_html([tooltip])))
         })
         .collect_vec();
     if variants.is_empty() {
-        variants.push(("—", None));
+        variants.push(("", "—", None));
     }
     let mut table = HtmlTable::new();
-    for (i, (name, tooltip)) in variants.into_iter().enumerate() {
+    for (i, (icon, name, tooltip)) in variants.into_iter().enumerate() {
         let caption_td = if i == 0 {
             td("Variants").with_classes(["readonly-rule-caption", "valign-baseline"])
         } else {
             td("")
         };
+        let icon_td = td_safe(icon).with_classes(["readonly-rule-variant-icon"]);
         let name_td = td(name).with_classes(["readonly-rule-variant", "valign-baseline"]);
         let tooltip_td = td_safe(
             tooltip
                 .map(|text| standalone_tooltip(&text, ["tooltip-standalone-small"]))
                 .unwrap_or_default(),
         );
-        table.add_row([caption_td, name_td, tooltip_td]);
+        table.add_row([caption_td, icon_td, name_td, tooltip_td]);
     }
 
     let separator_td = td("").with_classes(["readonly-rule-separator"]);
@@ -647,7 +649,9 @@ pub fn make_readonly_rules_body(rules: &Rules) -> String {
     }
     for (caption, value, tooltip) in rule_rows {
         table.add_row([
-            td(caption).with_classes(["readonly-rule-caption", "valign-baseline"]),
+            td(caption)
+                .with_col_span(2)
+                .with_classes(["readonly-rule-caption", "valign-baseline"]),
             td(value).with_classes(["readonly-rule-detail", "valign-baseline"]),
             td_safe(
                 tooltip
