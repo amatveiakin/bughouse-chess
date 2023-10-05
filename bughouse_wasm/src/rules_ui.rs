@@ -582,10 +582,10 @@ pub fn make_readonly_rules_body(rules: &Rules) -> String {
     if variants.is_empty() {
         variants.push(("—", None));
     }
-    let mut variant_table = HtmlTable::new();
-    for (name, tooltip) in variants {
-        let caption_td = if variant_table.num_rows() == 0 {
-            td("Variants:").with_classes(["readonly-rule-caption", "valign-baseline"])
+    let mut table = HtmlTable::new();
+    for (i, (name, tooltip)) in variants.into_iter().enumerate() {
+        let caption_td = if i == 0 {
+            td("Variants").with_classes(["readonly-rule-caption", "valign-baseline"])
         } else {
             td("")
         };
@@ -595,8 +595,11 @@ pub fn make_readonly_rules_body(rules: &Rules) -> String {
                 .map(|text| standalone_tooltip(&text, ["tooltip-standalone-small"]))
                 .unwrap_or_default(),
         );
-        variant_table.add_row([caption_td, name_td, tooltip_td]);
+        table.add_row([caption_td, name_td, tooltip_td]);
     }
+
+    let separator_td = td("").with_classes(["readonly-rule-separator"]);
+    table.add_row([separator_td]);
 
     let mut rule_rows = vec![];
     rule_rows.push((
@@ -642,9 +645,8 @@ pub fn make_readonly_rules_body(rules: &Rules) -> String {
             ));
         }
     }
-    let mut rule_table = HtmlTable::new();
     for (caption, value, tooltip) in rule_rows {
-        rule_table.add_row([
+        table.add_row([
             td(caption).with_classes(["readonly-rule-caption", "valign-baseline"]),
             td(value).with_classes(["readonly-rule-detail", "valign-baseline"]),
             td_safe(
@@ -654,12 +656,5 @@ pub fn make_readonly_rules_body(rules: &Rules) -> String {
             ),
         ]);
     }
-    format!(
-        "
-        <div class='readonly-rule-variants'>{}</div>
-        <div class='readonly-rule-details'>{}</div>
-        ",
-        variant_table.to_html(),
-        rule_table.to_html()
-    )
+    table.to_html()
 }

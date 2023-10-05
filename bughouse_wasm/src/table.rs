@@ -51,8 +51,6 @@ impl TD {
 impl HtmlTable {
     pub fn new() -> Self { HtmlTable { rows: vec![] } }
 
-    pub fn num_rows(&self) -> usize { self.rows.len() }
-
     pub fn add_row(&mut self, row: impl IntoIterator<Item = TD>) {
         self.rows
             .push(format!("<tr>{}</tr>", row.into_iter().map(|cell| cell.to_html()).join("")));

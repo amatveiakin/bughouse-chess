@@ -1129,19 +1129,19 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   font-size: 85%;
 }
 
-.readonly-rule-details {
-  margin-top: 0.2em
-}
 .readonly-rule-caption {
-  padding-right: 0.5em;
+  padding-right: 0.7em;
   font-size: 85%;
   /* Set `white-space: nowrap` to compensate `width: 100%` in the value column */
   white-space: nowrap;
   color: #000000c0;
 }
 .readonly-rule-variant {
-  font-size: 105%;
+  font-size: 110%;
   width: 100%;
+}
+.readonly-rule-separator {
+  height: 0.7em;
 }
 .readonly-rule-detail {
   font-size: 95%;
