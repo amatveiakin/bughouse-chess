@@ -240,7 +240,10 @@ set_up_log_navigation();
 
 let wasm_client_object = make_wasm_client();
 let wasm_client_panicked = false;
-let socket = make_socket();
+
+let last_socket_connection_attempt = null;
+let socket = null;
+open_socket();
 
 let audio_context = null;
 
@@ -337,7 +340,7 @@ function with_error_handling(f) {
             // If this turns out to be buggy, could do
             //   ignorable_error_dialog(e.message).then(() => location.reload());
             // instead.
-            socket = make_socket();
+            open_socket();
             open_menu();
             push_menu_page(menu_join_match_page);
         } else if (e?.constructor?.name == 'FatalError') {
@@ -413,13 +416,17 @@ function make_meters() {
 
 function on_socket_close(event) {
     // TODO: Report socket errors.
-    // TODO: Reconnect automatically.
-    console.error('WebSocket closed: ', event);
-    fatal_error_dialog('Connection lost. Please reload the page.');
+    console.warn('WebSocket closed: ', event);
+    open_socket();
 }
 
-function make_socket() {
-    const socket = new WebSocket(server_websocket_address());
+function open_socket() {
+    let now = performance.now();
+    if (last_socket_connection_attempt !== null && now - last_socket_connection_attempt <= 7000) {
+        return;
+    }
+    last_socket_connection_attempt = now;
+    socket = new WebSocket(server_websocket_address());
     socket.addEventListener('message', function(event) {
         on_server_event(event.data);
     });
@@ -427,7 +434,6 @@ function make_socket() {
         loading_tracker.connected();
     });
     socket.addEventListener('close', on_socket_close);
-    return socket;
 }
 
 function page_redirect(href) {
@@ -581,7 +587,7 @@ function update() {
 }
 
 function process_outgoing_events() {
-    if (socket.readyState == WebSocket.CONNECTING) {
+    if (socket.readyState !== WebSocket.OPEN) {
         // Try again later when the socket is open.
         return;
     }
@@ -656,10 +662,25 @@ function update_lobby_countdown() {
 function update_connection_status() {
     const FIGURE_SPACE = ' ';  // &numsp;
     const s = wasm_client().current_turnaround_time();
-    const ms = (s == null) ? '–––' : Math.round(s * 1000);
+    const ms = Math.round(s * 1000);
     const ms_str = ms.toString().padStart(4, FIGURE_SPACE);
-    connection_info.textContent = `Ping: ${ms_str} ms`;
-    connection_info.classList.toggle('bad-connection', s >= 3.0);
+    if (s < 3.0) {
+        connection_info.textContent = `Ping: ${ms_str} ms`;
+        connection_info.classList.toggle('bad-connection', false);
+    } else {
+        // Set the content once to avoid breaking dots animation.
+        if (!connection_info.classList.contains('bad-connection')) {
+            // TODO: A solution for reusing the dots animation.
+            connection_info.innerHTML = `
+                Reconnecting
+                <span>
+                    <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+                </span>
+            `;
+            connection_info.classList.toggle('bad-connection', true);
+        }
+        open_socket();
+    }
 }
 
 function update_buttons() {

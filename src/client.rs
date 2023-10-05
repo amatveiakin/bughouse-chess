@@ -110,10 +110,10 @@ struct Connection {
 }
 
 impl Connection {
-    fn new(events_tx: mpsc::Sender<BughouseClientEvent>) -> Self {
+    fn new(events_tx: mpsc::Sender<BughouseClientEvent>, now: Instant) -> Self {
         Connection {
             events_tx,
-            health_monitor: ActiveConnectionMonitor::new(),
+            health_monitor: ActiveConnectionMonitor::new(now),
         }
     }
 
@@ -155,12 +155,13 @@ impl ClientState {
     pub fn new(
         user_agent: String, time_zone: String, events_tx: mpsc::Sender<BughouseClientEvent>,
     ) -> Self {
+        let now = Instant::now();
         let mut meter_box = MeterBox::new();
         let ping_meter = meter_box.meter("ping".to_owned());
         ClientState {
             user_agent,
             time_zone,
-            connection: Connection::new(events_tx),
+            connection: Connection::new(events_tx, now),
             match_state: MatchState::NotConnected,
             notable_event_queue: VecDeque::new(),
             meter_box,
@@ -246,7 +247,7 @@ impl ClientState {
         self.meter_box.consume_stats()
     }
 
-    pub fn current_turnaround_time(&self) -> Option<Duration> {
+    pub fn current_turnaround_time(&self) -> Duration {
         let now = Instant::now();
         self.connection.health_monitor.current_turnaround_time(now)
     }

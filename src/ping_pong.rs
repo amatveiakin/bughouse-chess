@@ -17,6 +17,7 @@ pub struct PassiveConnectionMonitor {
 
 // Connection monitor for the party that sends pings.
 pub struct ActiveConnectionMonitor {
+    instantiated: Instant,
     latest_turnaround_time: Option<Duration>,
     latest_ping_sent: Option<Instant>,
     latest_ping_answered: bool,
@@ -80,8 +81,9 @@ impl PassiveConnectionMonitor {
 }
 
 impl ActiveConnectionMonitor {
-    pub fn new() -> Self {
+    pub fn new(now: Instant) -> Self {
         ActiveConnectionMonitor {
+            instantiated: now,
             latest_turnaround_time: None,
             latest_ping_sent: None,
             latest_ping_answered: true,
@@ -118,16 +120,14 @@ impl ActiveConnectionMonitor {
         }
     }
 
-    pub fn current_turnaround_time(&self, now: Instant) -> Option<Duration> {
-        let mut t = self.latest_turnaround_time?;
+    pub fn current_turnaround_time(&self, now: Instant) -> Duration {
+        let Some(mut t) = self.latest_turnaround_time else {
+            return now.duration_since(self.instantiated);
+        };
         if !self.latest_ping_answered {
             let latest_ping_sent = self.latest_ping_sent.unwrap();
             t = cmp::max(t, now.duration_since(latest_ping_sent))
         }
-        Some(t)
+        t
     }
-}
-
-impl Default for ActiveConnectionMonitor {
-    fn default() -> Self { Self::new() }
 }
