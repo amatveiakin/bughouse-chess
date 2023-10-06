@@ -1439,10 +1439,11 @@ function show_create_match_page() {
 }
 
 function create_match_as_guest(event) {
-    const ccn_player_name = document.getElementById('ccn-player-name');
-    const cc_player_name = document.getElementById('cc-player-name');
-    cc_player_name.value = ccn_player_name.value;
-    show_create_match_page();
+    with_error_handling(function() {
+        const player_name = document.getElementById('ccn-player-name').value;
+        wasm_client().set_guest_player_name(player_name);
+        show_create_match_page();
+    });
 }
 
 function on_create_match_request(event, rated) {
@@ -1482,10 +1483,8 @@ function on_create_match_confirm(event) {
 function on_join_match_confirm(event) {
     with_error_handling(function() {
         const data = new FormData(event.target);
-        wasm_client().join(
-            data.get('match_id').toUpperCase(),
-            data.get('player_name'),
-        );
+        wasm_client().set_guest_player_name(data.get('player_name'));
+        wasm_client().join(data.get('match_id').toUpperCase());
         update();
     });
 }

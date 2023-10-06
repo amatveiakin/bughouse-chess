@@ -115,7 +115,8 @@ impl Client {
     }
 
     fn join(&mut self, match_id: &str, my_name: &str) {
-        self.state.join(match_id.to_owned(), my_name.to_owned())
+        self.state.set_guest_player_name(Some(my_name.to_owned()));
+        self.state.join(match_id.to_owned())
     }
 
     fn alt_game(&self) -> &AlteredGame { &self.state.game_state().unwrap().alt_game }
@@ -190,7 +191,8 @@ impl World {
             match_rules: MatchRules::unrated(),
             chess_rules,
         };
-        self[client_id].state.new_match(rules, player_name.to_owned());
+        self[client_id].state.set_guest_player_name(Some(player_name.to_owned()));
+        self[client_id].state.new_match(rules);
         self.process_all_events();
         self[client_id].state.match_id().unwrap().clone()
     }

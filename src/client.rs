@@ -129,6 +129,7 @@ pub struct ClientState {
     meter_box: MeterBox,
     ping_meter: Meter,
     session: Session,
+    guest_player_name: Option<String>, // used only to create/join match
 }
 
 const LOW_TIME_WARNING_THRESHOLDS: &[Duration] = &[
@@ -167,6 +168,7 @@ impl ClientState {
             meter_box,
             ping_meter,
             session: Session::Unknown,
+            guest_player_name: None,
         }
     }
 
@@ -204,7 +206,7 @@ impl ClientState {
     }
     pub fn my_name(&self) -> Option<&str> {
         match &self.match_state {
-            MatchState::NotConnected => None,
+            MatchState::NotConnected { .. } => None,
             MatchState::Creating { my_name } => Some(my_name),
             MatchState::Joining { my_name, .. } => Some(my_name),
             MatchState::Connected(Match { my_name, .. }) => Some(my_name),
@@ -252,12 +254,31 @@ impl ClientState {
         self.connection.health_monitor.current_turnaround_time(now)
     }
 
-    pub fn new_match(&mut self, rules: Rules, my_name: String) {
+    fn finalize_my_name_for_match(&self) -> String {
+        // Let user name take priority: the user might have entered guest player name first and then
+        // gone back and logged in.
+        if let Some(user_info) = self.session.user_info() {
+            return user_info.user_name.clone();
+        }
+        if let Some(guest_player_name) = &self.guest_player_name {
+            return guest_player_name.clone();
+        }
+        panic!("Cannot determine player name: not logged in and no guest name set.");
+    }
+    pub fn set_guest_player_name(&mut self, player_name: Option<String>) {
+        // TODO: Verify name locally and return an error instantly if it's obvious.
+        // TODO: Verify name on the server and return an error if it's taken or banned.
+        self.guest_player_name = player_name;
+    }
+
+    pub fn new_match(&mut self, rules: Rules) {
+        let my_name = self.finalize_my_name_for_match();
         self.match_state = MatchState::Creating { my_name: my_name.clone() };
         self.connection
             .send(BughouseClientEvent::NewMatch { rules, player_name: my_name });
     }
-    pub fn join(&mut self, match_id: String, my_name: String) {
+    pub fn join(&mut self, match_id: String) {
+        let my_name = self.finalize_my_name_for_match();
         self.connection.send(BughouseClientEvent::Join {
             match_id: match_id.clone(),
             player_name: my_name.clone(),

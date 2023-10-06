@@ -9,7 +9,6 @@ use crate::bughouse_prelude::*;
 use crate::table::{td, td_safe, HtmlTable};
 
 
-pub const PLAYER_NAME: &str = "player_name"; // filled by JSs
 pub const RATING: &str = "rating"; // filled by JSs
 pub const FAIRY_PIECES: &str = "fairy_pieces";
 pub const STARTING_POSITION: &str = "starting_position";

@@ -234,10 +234,11 @@ impl WebClient {
         self.state.first_game_countdown_left().map(|d| d.as_secs_f64().ceil() as u32)
     }
 
-    fn finalize_player_name(&self, player_name: Option<String>) -> JsResult<String> {
-        player_name
-            .or_else(|| self.state.session().user_info().map(|u| u.user_name.clone()))
-            .ok_or(rust_error!("Player name is required if not a registered user"))
+    pub fn set_guest_player_name(&mut self, player_name: Option<String>) -> JsResult<()> {
+        // Can never be certain if JS passes an empty string or null.
+        let player_name = player_name.filter(|s| !s.is_empty());
+        self.state.set_guest_player_name(player_name);
+        Ok(())
     }
     pub fn new_match(&mut self) -> JsResult<()> {
         use rules_ui::*;
@@ -334,14 +335,12 @@ impl WebClient {
         if let Err(message) = rules.verify() {
             return Err(IgnorableError { message }.into());
         }
-        let player_name = self.finalize_player_name(details.get(PLAYER_NAME).as_string())?;
-        self.state.new_match(rules, player_name);
+        self.state.new_match(rules);
         Ok(())
     }
 
-    pub fn join(&mut self, match_id: String, player_name: Option<String>) -> JsResult<()> {
-        let player_name = self.finalize_player_name(player_name)?;
-        self.state.join(match_id, player_name);
+    pub fn join(&mut self, match_id: String) -> JsResult<()> {
+        self.state.join(match_id);
         Ok(())
     }
     pub fn resign(&mut self) { self.state.resign(); }

@@ -172,7 +172,8 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     let mut client_state = ClientState::new(user_agent, time_zone, server_tx);
     let mut keyboard_input = String::new();
     let mut command_error = None;
-    client_state.join(match_id, my_name.to_owned());
+    client_state.set_guest_player_name(Some(my_name.to_owned()));
+    client_state.join(match_id);
     for event in rx {
         match event {
             IncomingEvent::Network(event) => {
