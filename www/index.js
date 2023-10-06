@@ -1347,7 +1347,7 @@ async function process_authentification_request(request, success_message) {
         }
         // Emulate a navigation to indicate that the form has been submitted to password managers:
         // https://www.chromium.org/developers/design-documents/create-amazing-password-forms/#make-sure-form-submission-is-clear
-        window.history.replaceState({});
+        window.history.replaceState({}, '');
         // Now wait for `UpdateSession` socket event...
     } else {
         await ignorable_error_dialog(await response.text());
