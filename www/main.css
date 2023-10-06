@@ -813,10 +813,14 @@ button:active:enabled:not(.icon-button) {
   box-shadow: inset -2px -2px 3px rgba(255, 255, 255, .6),
               inset 2px 2px 3px rgba(0, 0, 0, .6);
 }
+button:disabled:not(.icon-button) {
+  color: #606060;
+  background-color: #d0d0d0;
+}
 
 .tooltip-standalone,
-.tooltip-below,
-.tooltip-if-disabled {
+.tooltip-right,
+.tooltip-below {
   position: relative;
 }
 .tooltip-standalone {
@@ -886,13 +890,12 @@ button:active:enabled:not(.icon-button) {
 .tooltip-standalone.tooltip-standalone-small::after {
   font-size: 90%;
 }
-.tooltip-standalone:hover,
-.tooltip-if-disabled:hover:disabled {
+.tooltip-standalone:hover {
   cursor: help;
 }
 .tooltip-standalone:hover .tooltip-text,
 .tooltip-below:hover .tooltip-text,
-.tooltip-if-disabled:hover:disabled .tooltip-text {
+.tooltip-right:hover .tooltip-text {
   visibility: visible;
   opacity: 1;
 }

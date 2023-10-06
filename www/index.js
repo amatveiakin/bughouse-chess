@@ -1279,13 +1279,27 @@ function update_session() {
             break;
         }
     }
-    const read_to_play = is_registered_user || is_guest;
+    const session_info_loaded = is_registered_user || is_guest;
     registered_user_bar.style.display = is_registered_user ? null : 'None';
     guest_user_bar.style.display = !is_registered_user ? null : 'None';
     guest_user_tooltip.style.display = is_guest ? null : 'None';
-    create_rated_match_button.disabled = !is_registered_user;
-    create_unrated_match_button.disabled = !read_to_play;
-    join_match_button.disabled = !read_to_play;
+    if (session_info_loaded) {
+        if (is_registered_user) {
+            create_rated_match_button.disabled = false;
+            set_tooltip(create_rated_match_button, null);
+        } else {
+            create_rated_match_button.disabled = true;
+            set_tooltip(create_rated_match_button, 'Please sign in to play rated games');
+        }
+        create_unrated_match_button.disabled = false;
+        join_match_button.disabled = false;
+        authorization_button.disabled = false;
+    } else {
+        create_rated_match_button.disabled = true;
+        create_unrated_match_button.disabled = true;
+        join_match_button.disabled = true;
+        authorization_button.disabled = true;
+    }
     for (const node of document.querySelectorAll('.logged-in-as-account')) {
         node.classList.toggle('account-user', is_registered_user);
         node.classList.toggle('account-guest', is_guest);
@@ -1565,6 +1579,21 @@ function download(text, filename) {
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+}
+
+// Must have corresponding tooltip class (`tooltip-right` or `tooltip-below`).
+function set_tooltip(node, text) {
+    for (const tooltip_node of node.querySelectorAll('.tooltip-text')) {
+        tooltip_node.remove();
+    }
+    if (text !== null) {
+        const tooltip_node = document.createElement('div');
+        tooltip_node.className = 'tooltip-text';
+        const p = document.createElement('p');
+        p.innerText = text;
+        tooltip_node.appendChild(p);
+        node.appendChild(tooltip_node);
+    }
 }
 
 // TODO: Dedup against `index.html`.
