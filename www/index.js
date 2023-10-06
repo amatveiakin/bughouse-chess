@@ -670,13 +670,8 @@ function update_connection_status() {
     } else {
         // Set the content once to avoid breaking dots animation.
         if (!connection_info.classList.contains('bad-connection')) {
-            // TODO: A solution for reusing the dots animation.
-            connection_info.innerHTML = `
-                Reconnecting
-                <span>
-                    <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
-                </span>
-            `;
+            connection_info.textContent = "Reconnecting ";
+            connection_info.appendChild(make_animated_dots());
             connection_info.classList.toggle('bad-connection', true);
         }
         open_socket();
@@ -1268,7 +1263,7 @@ function update_session() {
         case 'google_oauth_registering': {
             is_registered_user = false;
             is_guest = false;
-            user_name = '...';
+            user_name = null;
             break;
         }
         case 'logged_out': {
@@ -1284,14 +1279,22 @@ function update_session() {
             break;
         }
     }
+    const read_to_play = is_registered_user || is_guest;
     registered_user_bar.style.display = is_registered_user ? null : 'None';
     guest_user_bar.style.display = !is_registered_user ? null : 'None';
     guest_user_tooltip.style.display = is_guest ? null : 'None';
     create_rated_match_button.disabled = !is_registered_user;
+    create_unrated_match_button.disabled = !read_to_play;
+    join_match_button.disabled = !read_to_play;
     for (const node of document.querySelectorAll('.logged-in-as-account')) {
         node.classList.toggle('account-user', is_registered_user);
         node.classList.toggle('account-guest', is_guest);
-        node.textContent = user_name;
+        if (user_name === null) {
+            node.textContent = '';
+            node.appendChild(make_animated_dots());
+        } else {
+            node.textContent = user_name;
+        }
     }
     change_account_email.value = session.email;
     for (const node of document.querySelectorAll('.logged-in-as-email')) {
@@ -1562,4 +1565,16 @@ function download(text, filename) {
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+}
+
+// TODO: Dedup against `index.html`.
+function make_animated_dots() {
+    const parent = document.createElement('span');
+    for (let i = 0; i < 3; ++i) {
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.innerText = '.';
+        parent.appendChild(dot);
+    }
+    return parent;
 }
