@@ -242,6 +242,7 @@ let wasm_client_object = make_wasm_client();
 let wasm_client_panicked = false;
 
 let last_socket_connection_attempt = null;
+let consecutive_socket_connection_attempts = 0;
 let socket = null;
 open_socket();
 
@@ -420,6 +421,10 @@ function open_socket() {
         return;
     }
     last_socket_connection_attempt = now;
+    consecutive_socket_connection_attempts += 1;
+    if (consecutive_socket_connection_attempts > 3) {
+        fatal_error_dialog('Cannot connect to the server. Sorry! Please come again later.');
+    }
     socket = new WebSocket(server_websocket_address());
     socket.addEventListener('message', function(event) {
         on_server_event(event.data);
@@ -427,6 +432,7 @@ function open_socket() {
     socket.addEventListener('open', function(event) {
         with_error_handling(function() {
             console.info(log_time(), 'WebSocket connection opened');
+            consecutive_socket_connection_attempts = 0;
             loading_tracker.connected();
             wasm_client().reset_connection_monitor();
         });
