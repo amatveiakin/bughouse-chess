@@ -415,7 +415,6 @@ function make_meters() {
 }
 
 function on_socket_close(event) {
-    // TODO: Report socket errors.
     console.warn('WebSocket closed: ', event);
     open_socket();
 }
@@ -431,7 +430,12 @@ function open_socket() {
         on_server_event(event.data);
     });
     socket.addEventListener('open', function(event) {
+        console.info('WebSocket connection opened');
         loading_tracker.connected();
+    });
+    socket.addEventListener('error', function(event) {
+        // TODO: Report socket errors.
+        console.warn('WebSocket error: ', event);
     });
     socket.addEventListener('close', on_socket_close);
 }
