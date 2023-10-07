@@ -316,7 +316,7 @@ for (const button of document.querySelectorAll('[data-suburl]')) {
 // TODO: Make sounds louder and set volume to 2 by default.
 set_volume(max_volume);
 
-let on_tick_interval_id = setInterval(on_tick, 50);
+setInterval(on_tick, 50);
 
 
 function with_error_handling(f) {
@@ -329,7 +329,6 @@ function with_error_handling(f) {
             throw e;
         } else if (e instanceof WasmClientPanicked) {
             // Error dialog should already be shown.
-            throw e;
         } else if (e instanceof InvalidCommand) {
             command_result.innerText = e.msg;
         } else if (e?.constructor?.name == 'IgnorableError') {
@@ -370,10 +369,6 @@ function with_error_handling(f) {
                     'Only refreshing the page may help you. We are very sorry. ' +
                     reported
                 );
-                if (on_tick_interval_id != null) {
-                    clearInterval(on_tick_interval_id);
-                    on_tick_interval_id = null;
-                }
             } else {
                 console.log(log_time(), 'Unknown error: ', e);
                 ignorable_error_dialog(`Unknown error: ${e}`);
