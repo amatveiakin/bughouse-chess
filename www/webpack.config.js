@@ -18,10 +18,6 @@ module.exports = {
           to: "logo.svg"
         },
         {
-          from: "../assets/wayback-mask.png",
-          to: "wayback-mask.png"
-        },
-        {
           from: "../assets/favicon.png",
           to: "favicon.png"
         },

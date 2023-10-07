@@ -429,9 +429,6 @@ body.observer .reserve {
   filter: contrast(0.9) sepia(0.3) saturate(2) brightness(1.05) hue-rotate(120deg) url(#glowing-steal);
 }
 
-.board.wayback {
-  filter: url(#wayback-filter);
-}
 .board.wayback .square-grid-layer {
   filter: saturate(0.5);
 }
