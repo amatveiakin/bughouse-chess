@@ -434,7 +434,7 @@ function open_socket() {
             console.info(log_time(), 'WebSocket connection opened');
             consecutive_socket_connection_attempts = 0;
             loading_tracker.connected();
-            wasm_client().reset_connection_monitor();
+            wasm_client().on_socket_connected();
         });
     });
     socket.addEventListener('error', function(event) {
@@ -540,6 +540,7 @@ function execute_command(input) {
                     get_args(args, []);
                     wasm_client().request_export();
                     break;
+                // Internal.
                 case 'perf': {
                     get_args(args, []);
                     const stats = wasm_client().meter_stats();
@@ -547,6 +548,10 @@ function execute_command(input) {
                     command_result_message = stats;
                     break;
                 }
+                // Internal. For testing WebSocket re-connection.
+                case 'reconnect':
+                    socket.close();
+                    break;
                 default:
                     throw new InvalidCommand(`Command does not exist: /${args[0]}`);
             }
