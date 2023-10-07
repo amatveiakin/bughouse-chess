@@ -410,7 +410,7 @@ function make_meters() {
 }
 
 function on_socket_close(event) {
-    console.warn('WebSocket closed: ', event);
+    console.warn(log_time(), 'WebSocket closed: ', event);
     open_socket();
 }
 
@@ -425,12 +425,15 @@ function open_socket() {
         on_server_event(event.data);
     });
     socket.addEventListener('open', function(event) {
-        console.info('WebSocket connection opened');
-        loading_tracker.connected();
+        with_error_handling(function() {
+            console.info(log_time(), 'WebSocket connection opened');
+            loading_tracker.connected();
+            wasm_client().reset_connection_monitor();
+        });
     });
     socket.addEventListener('error', function(event) {
         // TODO: Report socket errors.
-        console.warn('WebSocket error: ', event);
+        console.warn(log_time(), 'WebSocket error: ', event);
     });
     socket.addEventListener('close', on_socket_close);
 }

@@ -171,6 +171,7 @@ impl WebClient {
 
     pub fn meter(&mut self, name: String) -> JsMeter { JsMeter::new(self.state.meter(name)) }
 
+    pub fn reset_connection_monitor(&mut self) { self.state.reset_connection_monitor(); }
     pub fn current_turnaround_time(&self) -> f64 {
         self.state.current_turnaround_time().as_secs_f64()
     }

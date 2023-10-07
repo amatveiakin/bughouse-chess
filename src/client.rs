@@ -249,6 +249,7 @@ impl ClientState {
         self.meter_box.consume_stats()
     }
 
+    pub fn reset_connection_monitor(&mut self) { self.connection.health_monitor.reset(); }
     pub fn current_turnaround_time(&self) -> Duration {
         let now = Instant::now();
         self.connection.health_monitor.current_turnaround_time(now)

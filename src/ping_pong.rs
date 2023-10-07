@@ -9,19 +9,26 @@ pub const PING_INTERVAL: Duration = Duration::from_millis(500);
 pub const OTHER_PARTY_TEMPORARY_LOST_THRESHOLD: Duration = Duration::from_secs(3);
 pub const OTHER_PARTY_PERMANENTLY_LOST_THRESHOLD: Duration = Duration::from_secs(60);
 
+// These many ping values will be excluded from statistics after each (re)connection, as they are
+// usually outliers. This does not affect ping displayed to the user.
+pub const FIRST_PINGS_TO_EXCLUDE: usize = 10;
+
 
 // Connection monitor for the party that replies to pings with pongs.
+#[derive(Debug)]
 pub struct PassiveConnectionMonitor {
     latest_incoming: Instant,
 }
 
 // Connection monitor for the party that sends pings.
+#[derive(Debug)]
 pub struct ActiveConnectionMonitor {
     instantiated: Instant,
     latest_turnaround_time: Option<Duration>,
     latest_ping_sent: Option<Instant>,
     latest_ping_answered: bool,
-    first_ping: bool,
+    connected_reset: bool,
+    pongs_received_after_reset: usize,
 }
 
 #[must_use]
@@ -87,37 +94,43 @@ impl ActiveConnectionMonitor {
             latest_turnaround_time: None,
             latest_ping_sent: None,
             latest_ping_answered: true,
-            first_ping: true,
+            connected_reset: false,
+            pongs_received_after_reset: 0,
         }
     }
 
+    // Should be called after WebSocket connection is recreated.
+    pub fn reset(&mut self) {
+        self.connected_reset = true;
+        self.pongs_received_after_reset = 0;
+    }
+
     pub fn update(&mut self, now: Instant) -> ActiveConnectionStatus {
-        if !self.latest_ping_answered {
-            return ActiveConnectionStatus::Noop;
-        }
-        if let Some(latest_ping_sent) = self.latest_ping_sent {
-            if now.duration_since(latest_ping_sent) < PING_INTERVAL {
+        if !self.connected_reset {
+            if !self.latest_ping_answered {
                 return ActiveConnectionStatus::Noop;
             }
-        };
+            if let Some(latest_ping_sent) = self.latest_ping_sent {
+                if now.duration_since(latest_ping_sent) < PING_INTERVAL {
+                    return ActiveConnectionStatus::Noop;
+                }
+            }
+        }
+        self.connected_reset = false;
         self.latest_ping_sent = Some(now);
         self.latest_ping_answered = false;
         ActiveConnectionStatus::SendPing
     }
 
     pub fn register_pong(&mut self, now: Instant) -> Option<Duration> {
-        assert!(!self.latest_ping_answered);
+        // Normally this should hold, be we could receive multiple replies after a (re)connection.
+        //   assert!(!self.latest_ping_answered);
+
         self.latest_ping_answered = true;
-        if self.first_ping {
-            self.first_ping = false;
-            // Ignore the first ping value: it is usually an outlier.
-            // Improvement potential. Consider if more pings should be ignored in the beginning.
-            None
-        } else {
-            let d = now.duration_since(self.latest_ping_sent.unwrap());
-            self.latest_turnaround_time = Some(d);
-            Some(d)
-        }
+        let d = now.duration_since(self.latest_ping_sent.unwrap());
+        self.latest_turnaround_time = Some(d);
+        self.pongs_received_after_reset += 1;
+        (self.pongs_received_after_reset >= FIRST_PINGS_TO_EXCLUDE).then_some(d)
     }
 
     pub fn current_turnaround_time(&self, now: Instant) -> Duration {
