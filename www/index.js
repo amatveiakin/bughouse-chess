@@ -73,8 +73,8 @@ function log_time() {
     if (typeof log_time.start == 'undefined') {
         log_time.start = performance.now();
     }
-    const t = performance.now() - log_time.start;
-    return `[t=${t.toFixed(1)}]`;
+    const sec = (performance.now() - log_time.start) / 1000.0;
+    return `[t=${sec.toFixed(2)}]`;
 }
 log_time();  // start the counter
 
