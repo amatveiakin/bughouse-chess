@@ -435,6 +435,13 @@ body.observer .reserve {
 .board.wayback .piece-layer {
   filter: contrast(0.9);
 }
+.board.wayback .board-shadow {
+  filter: url(#board-shadow-slim);
+}
+.board.wayback .board-border {
+  stroke: #303030;
+}
+
 
 #player-name-container-primary-top,
 #player-name-container-primary-bottom {
