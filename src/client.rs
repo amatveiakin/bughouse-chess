@@ -482,7 +482,7 @@ impl ClientState {
                     game_state: None,
                 });
             }
-            LobbyUpdated { participants } => {
+            LobbyUpdated { participants, countdown_elapsed } => {
                 let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
                 // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
                 //   (e.g. is_ready from another player) arrived before is_ready update from this
@@ -491,14 +491,7 @@ impl ClientState {
                 mtch.is_ready = me.is_ready;
                 mtch.my_faction = me.faction;
                 mtch.participants = participants;
-            }
-            FirstGameCountdownStarted => {
-                let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
-                mtch.first_game_countdown_since = Some(now);
-            }
-            FirstGameCountdownCancelled => {
-                let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
-                mtch.first_game_countdown_since = None;
+                mtch.first_game_countdown_since = countdown_elapsed.map(|t| now - t);
             }
             GameStarted {
                 starting_position,

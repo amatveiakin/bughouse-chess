@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -48,10 +49,8 @@ pub enum BughouseServerEvent {
     },
     LobbyUpdated {
         participants: Vec<Participant>,
+        countdown_elapsed: Option<Duration>,
     },
-    // Improvement potential: Merge countdown events into `LobbyUpdated`.
-    FirstGameCountdownStarted,
-    FirstGameCountdownCancelled,
     // Improvement potential: Rename `GameStarted` to take reconnection into account.
     GameStarted {
         starting_position: EffectiveStartingPosition,

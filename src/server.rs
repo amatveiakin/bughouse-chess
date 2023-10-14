@@ -715,7 +715,7 @@ impl Match {
                 self.join_participant(ctx, client_id, execution, now, player_name)
             }
             BughouseClientEvent::SetFaction { faction } => {
-                self.process_set_faction(ctx, client_id, faction)
+                self.process_set_faction(ctx, client_id, now, faction)
             }
             BughouseClientEvent::MakeTurn { board_idx, turn_input } => {
                 self.process_make_turn(ctx, client_id, now, board_idx, turn_input)
@@ -725,7 +725,7 @@ impl Match {
             }
             BughouseClientEvent::Resign => self.process_resign(ctx, client_id, now),
             BughouseClientEvent::SetReady { is_ready } => {
-                self.process_set_ready(ctx, client_id, is_ready)
+                self.process_set_ready(ctx, client_id, now, is_ready)
             }
             BughouseClientEvent::Leave => self.process_leave(ctx, client_id),
             BughouseClientEvent::UpdateChalkDrawing { drawing } => {
@@ -826,7 +826,7 @@ impl Match {
             ctx.clients[client_id].send(self.make_match_welcome_event());
             // LobbyUpdated should precede GameStarted, because this is how the client gets their
             // team in FixedTeam mode.
-            self.send_lobby_updated(ctx);
+            self.send_lobby_updated(ctx, now);
             ctx.clients[client_id].send(self.make_game_start_event(now, Some(participant_id)));
             let chalkboard = game_state.chalkboard.clone();
             ctx.clients[client_id].send(BughouseServerEvent::ChalkboardUpdated { chalkboard });
@@ -880,13 +880,13 @@ impl Match {
             });
             ctx.clients[client_id].participant_id = Some(participant_id);
             ctx.clients[client_id].send(self.make_match_welcome_event());
-            self.send_lobby_updated(ctx);
+            self.send_lobby_updated(ctx, now);
             Ok(())
         }
     }
 
     fn process_set_faction(
-        &mut self, ctx: &mut Context, client_id: ClientId, faction: Faction,
+        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, faction: Faction,
     ) -> EventResult {
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
             return Err(unknown_error!("Cannot set faction: not joined"));
@@ -895,7 +895,7 @@ impl Match {
             return Err(unknown_error!("Cannot set faction: match already started"));
         }
         self.participants[participant_id].faction = faction;
-        self.send_lobby_updated(ctx);
+        self.send_lobby_updated(ctx, now);
         Ok(())
     }
 
@@ -1052,7 +1052,7 @@ impl Match {
     }
 
     fn process_set_ready(
-        &mut self, ctx: &mut Context, client_id: ClientId, is_ready: bool,
+        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, is_ready: bool,
     ) -> EventResult {
         let Some(participant_id) = ctx.clients[client_id].participant_id else {
             return Err(unknown_error!("Cannot update readiness: not joined"));
@@ -1064,7 +1064,7 @@ impl Match {
             }
         }
         self.participants[participant_id].is_ready = is_ready;
-        self.send_lobby_updated(ctx);
+        self.send_lobby_updated(ctx, now);
         Ok(())
     }
 
@@ -1148,7 +1148,7 @@ impl Match {
             true
         });
         if lobby_updated {
-            self.send_lobby_updated(ctx);
+            self.send_lobby_updated(ctx, now);
         }
         if chalkboard_updated {
             let chalkboard = self.game_state.as_ref().unwrap().chalkboard.clone();
@@ -1160,7 +1160,7 @@ impl Match {
         if let Some(first_game_countdown_start) = self.first_game_countdown_since {
             if !can_start_game {
                 self.first_game_countdown_since = None;
-                self.broadcast(ctx, &BughouseServerEvent::FirstGameCountdownCancelled);
+                self.send_lobby_updated(ctx, now);
             } else if now.duration_since(first_game_countdown_start)
                 >= FIRST_GAME_COUNTDOWN_DURATION
             {
@@ -1185,7 +1185,7 @@ impl Match {
             } else if self.first_game_countdown_since.is_none() {
                 // Show final teams when countdown begins.
                 fix_teams_if_needed(&mut self.participants.map);
-                self.send_lobby_updated(ctx);
+                self.send_lobby_updated(ctx, now);
 
                 if ctx.disable_countdown {
                     self.start_game(ctx, now);
@@ -1194,8 +1194,8 @@ impl Match {
                     //   - Forbid all changes other than resetting readiness;
                     //   - Allow changes, but restart the count-down;
                     //   - Blizzard-style: allow changes during the first half of the count-down.
-                    self.broadcast(ctx, &BughouseServerEvent::FirstGameCountdownStarted);
                     self.first_game_countdown_since = Some(now);
+                    self.send_lobby_updated(ctx, now);
                 }
             }
         }
@@ -1221,7 +1221,7 @@ impl Match {
             chalkboard: Chalkboard::new(),
         });
         self.broadcast(ctx, &self.make_game_start_event(now, None));
-        self.send_lobby_updated(ctx); // update readiness flags
+        self.send_lobby_updated(ctx, now); // update readiness flags
     }
 
     fn init_scores(&mut self, teaming: Teaming) {
@@ -1275,9 +1275,10 @@ impl Match {
         }
     }
 
-    fn send_lobby_updated(&self, ctx: &mut Context) {
+    fn send_lobby_updated(&self, ctx: &mut Context, now: Instant) {
         let participants = self.participants.iter().cloned().collect();
-        self.broadcast(ctx, &BughouseServerEvent::LobbyUpdated { participants });
+        let countdown_elapsed = self.first_game_countdown_since.map(|t| now.duration_since(t));
+        self.broadcast(ctx, &BughouseServerEvent::LobbyUpdated { participants, countdown_elapsed });
     }
 
     fn reset_readiness(&mut self) { self.participants.iter_mut().for_each(|p| p.is_ready = false); }
