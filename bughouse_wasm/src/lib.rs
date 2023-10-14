@@ -22,7 +22,6 @@ mod web_error_handling;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::sync::mpsc;
 use std::time::Duration;
 
 use bughouse_chess::client::*;
@@ -125,16 +124,13 @@ pub struct WebClient {
     //   is only relevant during game phase, add a generic `UserData` parameter to
     //   `MatchState::Game`. Could move `chalk_canvas` there, for example.
     state: ClientState,
-    server_rx: mpsc::Receiver<BughouseClientEvent>,
 }
 
 #[wasm_bindgen]
 impl WebClient {
     pub fn new_client(user_agent: String, time_zone: String) -> JsResult<WebClient> {
-        let (server_tx, server_rx) = mpsc::channel();
         Ok(WebClient {
-            state: ClientState::new(user_agent, time_zone, server_tx),
-            server_rx,
+            state: ClientState::new(user_agent, time_zone),
         })
     }
 
@@ -731,11 +727,9 @@ impl WebClient {
     }
 
     pub fn next_outgoing_event(&mut self) -> Option<String> {
-        match self.server_rx.try_recv() {
-            Ok(event) => Some(serde_json::to_string(&event).unwrap()),
-            Err(mpsc::TryRecvError::Empty) => None,
-            Err(mpsc::TryRecvError::Disconnected) => panic!("Event channel disconnected"),
-        }
+        self.state
+            .next_outgoing_event()
+            .map(|event| serde_json::to_string(&event).unwrap())
     }
 
     pub fn refresh(&mut self) { self.state.refresh(); }

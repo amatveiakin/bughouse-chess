@@ -169,7 +169,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     // Note. One could do this:
     //   let time_zone = tzdata::Timezone::local().map_or("?".to_owned(), |tz| tz.name.clone());
     // using `tzdata` crate, but it's unmaintained.
-    let mut client_state = ClientState::new(user_agent, time_zone, server_tx);
+    let mut client_state = ClientState::new(user_agent, time_zone);
     let mut keyboard_input = String::new();
     let mut command_error = None;
     client_state.set_guest_player_name(Some(my_name.to_owned()));
@@ -233,6 +233,9 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
             }
         }
         client_state.refresh();
+        while let Some(event) = client_state.next_outgoing_event() {
+            server_tx.send(event).unwrap();
+        }
         while let Some(event) = client_state.next_notable_event() {
             match event {
                 NotableEvent::SessionUpdated => {}

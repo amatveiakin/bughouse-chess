@@ -1,5 +1,4 @@
 use std::collections::{HashMap, VecDeque};
-use std::sync::mpsc;
 use std::time::Duration;
 
 use enum_map::{enum_map, EnumMap};
@@ -105,19 +104,19 @@ enum MatchState {
 }
 
 struct Connection {
-    events_tx: mpsc::Sender<BughouseClientEvent>,
+    outgoing_events: VecDeque<BughouseClientEvent>,
     health_monitor: ActiveConnectionMonitor,
 }
 
 impl Connection {
-    fn new(events_tx: mpsc::Sender<BughouseClientEvent>, now: Instant) -> Self {
+    fn new(now: Instant) -> Self {
         Connection {
-            events_tx,
+            outgoing_events: VecDeque::new(),
             health_monitor: ActiveConnectionMonitor::new(now),
         }
     }
 
-    fn send(&mut self, event: BughouseClientEvent) { self.events_tx.send(event).unwrap(); }
+    fn send(&mut self, event: BughouseClientEvent) { self.outgoing_events.push_back(event); }
 }
 
 pub struct ClientState {
@@ -153,16 +152,14 @@ macro_rules! internal_error {
 }
 
 impl ClientState {
-    pub fn new(
-        user_agent: String, time_zone: String, events_tx: mpsc::Sender<BughouseClientEvent>,
-    ) -> Self {
+    pub fn new(user_agent: String, time_zone: String) -> Self {
         let now = Instant::now();
         let mut meter_box = MeterBox::new();
         let ping_meter = meter_box.meter("ping".to_owned());
         ClientState {
             user_agent,
             time_zone,
-            connection: Connection::new(events_tx, now),
+            connection: Connection::new(now),
             match_state: MatchState::NotConnected,
             notable_event_queue: VecDeque::new(),
             meter_box,
@@ -581,6 +578,9 @@ impl ClientState {
         Ok(())
     }
 
+    pub fn next_outgoing_event(&mut self) -> Option<BughouseClientEvent> {
+        self.connection.outgoing_events.pop_front()
+    }
     pub fn next_notable_event(&mut self) -> Option<NotableEvent> {
         self.notable_event_queue.pop_front()
     }

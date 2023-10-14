@@ -99,19 +99,17 @@ impl Server {
 struct Client {
     id: server::ClientId,
     incoming_rx: mpsc::Receiver<BughouseServerEvent>,
-    outgoing_rx: mpsc::Receiver<BughouseClientEvent>,
     state: client::ClientState,
 }
 
 impl Client {
     pub fn new(server: &mut Server) -> Self {
         let (incoming_tx, incoming_rx) = mpsc::channel();
-        let (outgoing_tx, outgoing_rx) = mpsc::channel();
         let id = server.add_client(incoming_tx);
         let user_agent = "Test".to_owned();
         let time_zone = "?".to_owned();
-        let state = client::ClientState::new(user_agent, time_zone, outgoing_tx);
-        Client { id, incoming_rx, outgoing_rx, state }
+        let state = client::ClientState::new(user_agent, time_zone);
+        Client { id, incoming_rx, state }
     }
 
     fn join(&mut self, match_id: &str, my_name: &str) {
@@ -148,7 +146,7 @@ impl Client {
 
     fn process_outgoing_events(&mut self, server: &mut Server) -> bool {
         let mut something_changed = false;
-        for event in self.outgoing_rx.try_iter() {
+        while let Some(event) = self.state.next_outgoing_event() {
             something_changed = true;
             println!("{:?} >>> {:?}", self.id, event);
             server.send_network_event(self.id, event);
