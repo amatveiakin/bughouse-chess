@@ -12,6 +12,7 @@ use crate::clock::{GameInstant, WallGameTimePair};
 use crate::display::{get_board_index, DisplayBoard};
 use crate::event::{
     BughouseClientEvent, BughouseClientPerformance, BughouseServerEvent, BughouseServerRejection,
+    GameUpdate,
 };
 use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
@@ -494,18 +495,13 @@ impl ClientState {
                 starting_position,
                 players,
                 time,
-                turn_log,
+                updates,
                 preturns,
-                game_status,
                 scores,
             } => {
-                let time_pair = if turn_log.is_empty() {
-                    assert!(time.elapsed_since_start().is_zero());
-                    None
-                } else {
-                    Some(WallGameTimePair::new(now, time.approximate()))
-                };
+                let time_pair = time.map(|t| WallGameTimePair::new(now, t.approximate()));
                 let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
+                mtch.scores = Some(scores);
                 let game = BughouseGame::new_with_starting_position(
                     mtch.rules.clone(),
                     starting_position,
@@ -525,8 +521,8 @@ impl ClientState {
                     chalk_canvas: ChalkCanvas::new(board_shape, perspective),
                     next_low_time_warning_idx: enum_map! { _ => 0 },
                 });
-                for turn in turn_log {
-                    self.apply_remote_turn(turn, false)?;
+                for update in updates {
+                    self.apply_game_update(update, false)?;
                 }
                 for (board_idx, preturn) in preturns.into_iter() {
                     let now = Instant::now();
@@ -538,28 +534,13 @@ impl ClientState {
                     let mode = alt_game.try_local_turn(board_idx, preturn, game_now).unwrap();
                     assert_eq!(mode, TurnMode::Preturn);
                 }
-                self.update_game_status(game_status, time)?;
-                self.update_scores(scores)?;
                 self.notable_event_queue.push_back(NotableEvent::GameStarted);
                 self.update_low_time_warnings(false);
             }
-            TurnsMade { turns, game_status, scores } => {
-                for turn in turns {
-                    self.apply_remote_turn(turn, true)?;
+            GameUpdated { updates } => {
+                for update in updates {
+                    self.apply_game_update(update, true)?;
                 }
-                self.verify_game_status(game_status)?;
-                self.update_scores(scores)?;
-                if !game_status.is_active() {
-                    self.game_over_postprocess()?;
-                }
-            }
-            GameOver { time, game_status, scores: new_scores } => {
-                let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
-                let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
-                assert!(game_state.alt_game.is_active());
-                game_state.alt_game.set_status(game_status, time);
-                mtch.scores = Some(new_scores);
-                self.game_over_postprocess()?;
             }
             ChalkboardUpdated { chalkboard } => {
                 let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
@@ -583,6 +564,19 @@ impl ClientState {
     }
     pub fn next_notable_event(&mut self) -> Option<NotableEvent> {
         self.notable_event_queue.pop_front()
+    }
+
+    fn apply_game_update(
+        &mut self, update: GameUpdate, generate_notable_events: bool,
+    ) -> Result<(), EventError> {
+        match update {
+            GameUpdate::TurnMade { turn_record } => {
+                self.apply_remote_turn(turn_record, generate_notable_events)
+            }
+            GameUpdate::GameOver { time, game_status, scores } => {
+                self.apply_game_over(time, game_status, scores, generate_notable_events)
+            }
+        }
     }
 
     fn apply_remote_turn(
@@ -624,65 +618,48 @@ impl ClientState {
         Ok(())
     }
 
-    fn verify_game_status(&mut self, game_status: BughouseGameStatus) -> Result<(), EventError> {
-        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
-        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
-        let GameState { ref mut alt_game, .. } = game_state;
-        if game_status != alt_game.status() {
-            return Err(internal_error!(
-                "Expected game status {:?}, got {:?}",
-                game_status,
-                alt_game.status()
-            ));
-        }
-        Ok(())
-    }
-
-    fn update_game_status(
-        &mut self, game_status: BughouseGameStatus, game_now: GameInstant,
+    fn apply_game_over(
+        &mut self, game_now: GameInstant, game_status: BughouseGameStatus, scores: Scores,
+        generate_notable_events: bool,
     ) -> Result<(), EventError> {
         let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
         let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
         let GameState { ref mut alt_game, .. } = game_state;
+
+        mtch.scores = Some(scores);
+
+        assert!(!game_status.is_active());
         if alt_game.is_active() {
-            if !game_status.is_active() {
-                alt_game.set_status(game_status, game_now);
-            }
-            Ok(())
+            alt_game.set_status(game_status, game_now);
         } else {
-            self.verify_game_status(game_status)
+            if game_status != alt_game.status() {
+                return Err(internal_error!(
+                    "Expected game status {:?}, got {:?}",
+                    game_status,
+                    alt_game.status()
+                ));
+            }
         }
-    }
 
-    fn game_over_postprocess(&mut self) -> Result<(), EventError> {
-        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
-        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
-        let GameState { ref mut alt_game, .. } = game_state;
-        if let BughouseParticipant::Player(my_player_id) = alt_game.my_id() {
-            let game_status = match alt_game.status() {
-                BughouseGameStatus::Active => {
-                    return Err(internal_error!());
-                }
-                BughouseGameStatus::Victory(team, _) => {
-                    if team == my_player_id.team() {
-                        SubjectiveGameResult::Victory
-                    } else {
-                        SubjectiveGameResult::Defeat
+        if generate_notable_events {
+            if let BughouseParticipant::Player(my_player_id) = alt_game.my_id() {
+                let game_status = match alt_game.status() {
+                    BughouseGameStatus::Active => unreachable!(),
+                    BughouseGameStatus::Victory(team, _) => {
+                        if team == my_player_id.team() {
+                            SubjectiveGameResult::Victory
+                        } else {
+                            SubjectiveGameResult::Defeat
+                        }
                     }
-                }
-                BughouseGameStatus::Draw(_) => SubjectiveGameResult::Draw,
-            };
-            self.notable_event_queue.push_back(NotableEvent::GameOver(game_status));
-            // Note. It would make more sense to send performanse stats on leave, but there doesn't
-            // seem to be a way to do this reliably, especially on mobile.
-            self.report_performance();
+                    BughouseGameStatus::Draw(_) => SubjectiveGameResult::Draw,
+                };
+                self.notable_event_queue.push_back(NotableEvent::GameOver(game_status));
+                // Note. It would make more sense to send performanse stats on leave, but there doesn't
+                // seem to be a way to do this reliably, especially on mobile.
+                self.report_performance();
+            }
         }
-        Ok(())
-    }
-
-    fn update_scores(&mut self, new_scores: Scores) -> Result<(), EventError> {
-        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
-        mtch.scores = Some(new_scores);
         Ok(())
     }
 

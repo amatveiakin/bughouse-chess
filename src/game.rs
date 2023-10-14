@@ -145,6 +145,7 @@ pub enum BughouseBoard {
     B,
 }
 
+// Improvement potential. Consider whether "not started" should be a separate status.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum BughouseGameStatus {
     Active,
@@ -394,6 +395,7 @@ impl BughouseGame {
     pub fn turn_log(&self) -> &Vec<TurnRecordExpanded> { &self.turn_log }
     pub fn turn_log_mut(&mut self) -> &mut Vec<TurnRecordExpanded> { &mut self.turn_log }
     pub fn last_turn_record(&self) -> Option<&TurnRecordExpanded> { self.turn_log.last() }
+    pub fn started(&self) -> bool { !self.turn_log.is_empty() }
     pub fn status(&self) -> BughouseGameStatus { self.status }
     pub fn is_active(&self) -> bool { self.status.is_active() }
 

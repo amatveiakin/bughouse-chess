@@ -38,6 +38,28 @@ pub enum BughouseServerRejection {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum GameUpdate {
+    TurnMade {
+        turn_record: TurnRecord,
+    },
+    // Sent when game is ended for any reason. If the game ended due to checkmate, must be sent
+    // together with the corresponding `TurnMade` event and `game_status` must match the status
+    // resulting from the turn (in other words, registered turn always taked priority over flag,
+    // resigns, etc.). Cannot be followed by `TurnMade` events.
+    GameOver {
+        time: GameInstant,
+        game_status: BughouseGameStatus,
+        scores: Scores,
+    },
+}
+
+// Improvement potential. Automatically bundle all event generated during a single cycle into one
+// message. This would:
+//   - Make sure that all updates are atomic (e.g. this would remove the gap between `MatchWelcome`
+//     and getting the faction in `LobbyUpdated`)
+//   - Allow to stop bunding events manually, as in `GameUpdated` and `GameStarted`.
+//   - Allow to remove duplication resulting from the manual bundling.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseServerEvent {
     Rejection(BughouseServerRejection),
     UpdateSession {
@@ -55,24 +77,15 @@ pub enum BughouseServerEvent {
     GameStarted {
         starting_position: EffectiveStartingPosition,
         players: Vec<PlayerInGame>,
-        time: GameInstant,                         // for re-connection
-        turn_log: Vec<TurnRecord>,                 // for re-connection
+        time: Option<GameInstant>,                 // for re-connection
+        updates: Vec<GameUpdate>,                  // for re-connection
         preturns: Vec<(BughouseBoard, TurnInput)>, // for re-connection
-        game_status: BughouseGameStatus,           // for re-connection
+        // It's a bit weird that we send the scores two times (here and in `GameUpdate::GameOver`)
+        // for finished games, but not really problematic. And we do need it for unfinished games.
         scores: Scores,
     },
-    // Improvement potential: unite `TurnsMade` and `GameOver` into a single event "something happened".
-    // This would make reconnection more consistent with normal game flow.
-    TurnsMade {
-        turns: Vec<TurnRecord>,
-        game_status: BughouseGameStatus,
-        scores: Scores,
-    },
-    // Used when game is ended for a reason unrelated to the last turn (flag, resign).
-    GameOver {
-        time: GameInstant,
-        game_status: BughouseGameStatus,
-        scores: Scores,
+    GameUpdated {
+        updates: Vec<GameUpdate>,
     },
     ChalkboardUpdated {
         chalkboard: Chalkboard,

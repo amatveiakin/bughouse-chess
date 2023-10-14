@@ -21,6 +21,7 @@ use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::clock::GameInstant;
 use crate::event::{
     BughouseClientErrorReport, BughouseClientEvent, BughouseServerEvent, BughouseServerRejection,
+    GameUpdate,
 };
 use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughousePlayer, PlayerInGame,
@@ -110,7 +111,9 @@ pub struct GameState {
     game_start: Option<Instant>,
     game_start_offset_time: Option<time::OffsetDateTime>,
     game_end: Option<Instant>,
-    // Turns requestd by clients that have been executed yet. Presumably because
+    // All game updates. Mostly duplicates turn log. Used for reconnection.
+    updates: Vec<GameUpdate>,
+    // Turns requests by clients that have been executed yet. Presumably because
     // these are preturns, but maybe we'll have other reasons in the future, e.g.
     // attemping to drop an as-of-yet-missing piece.
     turn_requests: Vec<TurnRequest>,
@@ -678,24 +681,29 @@ impl Match {
         game.test_flag(game_now);
         if !game.is_active() {
             let round = self.match_history.len() + 1;
-            update_on_game_over(
+            let update = update_on_game_over(
                 ctx,
                 round,
                 game,
                 turn_requests,
                 &mut self.participants,
                 self.scores.as_mut().unwrap(),
+                game_now,
                 game_start_offset_time,
                 game_end,
                 now,
             );
-            let ev = BughouseServerEvent::GameOver {
-                time: game_now,
-                game_status: game.status(),
-                scores: self.scores.clone().unwrap(),
-            };
-            self.broadcast(ctx, &ev);
+            self.add_game_updates(ctx, vec![update]);
         }
+    }
+
+    fn add_game_updates(&mut self, ctx: &mut Context, new_updates: Vec<GameUpdate>) {
+        let Some(GameState { ref mut updates, .. }) = self.game_state else {
+            return;
+        };
+        updates.extend_from_slice(&new_updates);
+        let ev = BughouseServerEvent::GameUpdated { updates: new_updates };
+        self.broadcast(ctx, &ev);
     }
 
     fn broadcast(&self, ctx: &mut Context, event: &BughouseServerEvent) {
@@ -936,6 +944,7 @@ impl Match {
         turn_requests.push(request);
 
         let mut turns = vec![];
+        let mut game_over_update = None;
         // Note. Turn resolution is currently O(N^2) where N is the number of turns in the queue,
         // but this is fine because in practice N is very low.
         while let Some(turn_event) = resolve_one_turn(now, *game_start, game, turn_requests) {
@@ -945,28 +954,32 @@ impl Match {
                 *game_start_offset_time = Some(time::OffsetDateTime::now_utc());
             }
             if !game.is_active() {
+                let game_now = GameInstant::from_now_game_active(game_start.unwrap(), now);
                 let round = self.match_history.len() + 1;
-                update_on_game_over(
+                game_over_update = Some(update_on_game_over(
                     ctx,
                     round,
                     game,
                     turn_requests,
                     participants,
                     scores,
+                    game_now,
                     *game_start_offset_time,
                     game_end,
                     now,
-                );
+                ));
                 break;
             }
         }
         if !turns.is_empty() {
-            let ev = BughouseServerEvent::TurnsMade {
-                turns,
-                game_status: game.status(),
-                scores: scores.clone(),
-            };
-            self.broadcast(ctx, &ev);
+            let mut updates = turns
+                .into_iter()
+                .map(|turn_record| GameUpdate::TurnMade { turn_record })
+                .collect_vec();
+            if let Some(game_over_update) = game_over_update {
+                updates.push(game_over_update);
+            }
+            self.add_game_updates(ctx, updates);
         }
         Ok(())
     }
@@ -1031,23 +1044,19 @@ impl Match {
         let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
         game.set_status(status, game_now);
         let round = self.match_history.len() + 1;
-        update_on_game_over(
+        let update = update_on_game_over(
             ctx,
             round,
             game,
             turn_requests,
             participants,
             scores,
+            game_now,
             game_start_offset_time,
             game_end,
             now,
         );
-        let ev = BughouseServerEvent::GameOver {
-            time: game_now,
-            game_status: status,
-            scores: scores.clone(),
-        };
-        self.broadcast(ctx, &ev);
+        self.add_game_updates(ctx, vec![update]);
         Ok(())
     }
 
@@ -1217,6 +1226,7 @@ impl Match {
             game_start: None,
             game_start_offset_time: None,
             game_end: None,
+            updates: Vec::new(),
             turn_requests: Vec::new(),
             chalkboard: Chalkboard::new(),
         });
@@ -1268,9 +1278,8 @@ impl Match {
             starting_position: game_state.game.starting_position().clone(),
             players: game_state.game.players(),
             time: current_game_time(game_state, now),
-            turn_log: game_state.game.turn_log().iter().map(|t| t.trim_for_sending()).collect(),
+            updates: game_state.updates.clone(),
             preturns,
-            game_status: game_state.game.status(),
             scores: self.scores.clone().unwrap(),
         }
     }
@@ -1300,9 +1309,11 @@ impl Match {
     }
 }
 
-fn current_game_time(game_state: &GameState, now: Instant) -> GameInstant {
-    if game_state.game.is_active() {
-        GameInstant::from_now_game_maybe_active(game_state.game_start, now)
+fn current_game_time(game_state: &GameState, now: Instant) -> Option<GameInstant> {
+    if !game_state.game.started() {
+        None
+    } else if game_state.game.is_active() {
+        Some(GameInstant::from_now_game_maybe_active(game_state.game_start, now))
     } else {
         // Normally `clock().total_time_elapsed()` should be the same on all boards. But
         // it could differ in case the of a flag defeat. Consider the following situation:
@@ -1317,7 +1328,7 @@ fn current_game_time(game_state: &GameState, now: Instant) -> GameInstant {
             .map(|board_idx| game_state.game.board(board_idx).clock().total_time_elapsed())
             .min()
             .unwrap();
-        GameInstant::from_duration(elapsed_since_start)
+        Some(GameInstant::from_duration(elapsed_since_start))
     }
 }
 
@@ -1338,9 +1349,9 @@ fn resolve_one_turn(
                     turn_requests.extend(iter);
                     return Some(game.last_turn_record().unwrap().trim_for_sending());
                 } else {
-                    // Discard. Ignore error: It is completely fine for a preturn to fail. Even
-                    // an valid in-order turn can fail, e.g. if the game ended on the board
-                    // board in the meantime.
+                    // Discard. Ignore error: Preturns fail all the time and even a valid in-order
+                    // turn can fail, e.g. if the game ended on the board board in the meantime, or
+                    // the piece was stolen, or you got a new king in Koedem.
                 }
             }
             Ok(TurnMode::Preturn) => {
@@ -1357,10 +1368,10 @@ fn resolve_one_turn(
 
 fn update_on_game_over(
     ctx: &mut Context, round: usize, game: &BughouseGame, turn_requests: &mut Vec<TurnRequest>,
-    participants: &mut Participants, scores: &mut Scores,
+    participants: &mut Participants, scores: &mut Scores, game_now: GameInstant,
     game_start_offset_time: Option<time::OffsetDateTime>, game_end: &mut Option<Instant>,
     now: Instant,
-) {
+) -> GameUpdate {
     assert!(game_end.is_none());
     *game_end = Some(now);
     turn_requests.clear();
@@ -1400,6 +1411,11 @@ fn update_on_game_over(
         }
     }
     ctx.hooks.on_game_over(game, game_start_offset_time, round);
+    GameUpdate::GameOver {
+        time: game_now,
+        game_status: game.status(),
+        scores: scores.clone(),
+    }
 }
 
 fn player_turn_requests(
