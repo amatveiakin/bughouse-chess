@@ -75,6 +75,7 @@ pub enum BughouseServerEvent {
     },
     // Improvement potential: Rename `GameStarted` to take reconnection into account.
     GameStarted {
+        game_index: usize,
         starting_position: EffectiveStartingPosition,
         players: Vec<PlayerInGame>,
         time: Option<GameInstant>,                 // for re-connection
@@ -128,6 +129,9 @@ pub enum BughouseClientEvent {
     },
     SetFaction {
         faction: Faction,
+    },
+    SetTurns {
+        turns: Vec<(BughouseBoard, TurnInput)>,
     },
     MakeTurn {
         board_idx: BughouseBoard,

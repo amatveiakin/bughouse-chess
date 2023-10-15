@@ -172,6 +172,8 @@ impl AlteredGame {
     pub fn bughouse_rules(&self) -> &BughouseRules { self.game_confirmed().bughouse_rules() }
     pub fn board_shape(&self) -> BoardShape { self.game_confirmed().board_shape() }
 
+    pub fn local_turns(&self) -> &[TurnRecord] { &self.local_turns }
+
     // Status returned by this function may differ from `local_game()` status.
     // This function should be used as the source of truth when showing game status to the
     // user, as it's possible that the final status from the server will be different, e.g.

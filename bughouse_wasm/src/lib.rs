@@ -168,9 +168,8 @@ impl WebClient {
     pub fn meter(&mut self, name: String) -> JsMeter { JsMeter::new(self.state.meter(name)) }
 
     pub fn on_socket_connected(&mut self) {
-        self.state.reset_connection_monitor();
         if let Some(match_id) = self.state.match_id() {
-            self.state.join(match_id.clone());
+            self.state.hot_reconnect(match_id.clone());
         }
     }
     pub fn current_turnaround_time(&self) -> f64 {

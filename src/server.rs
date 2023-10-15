@@ -100,6 +100,8 @@ pub struct TurnRequest {
 
 #[derive(Debug)]
 pub struct GameState {
+    // The index of this game within the match.
+    game_index: usize,
     game: BughouseGame,
     // `game_creation` is the time when seating and starting position were
     // generated and presented to the users.
@@ -725,6 +727,9 @@ impl Match {
             BughouseClientEvent::SetFaction { faction } => {
                 self.process_set_faction(ctx, client_id, now, faction)
             }
+            BughouseClientEvent::SetTurns { turns } => {
+                self.process_set_turns(ctx, client_id, now, turns)
+            }
             BughouseClientEvent::MakeTurn { board_idx, turn_input } => {
                 self.process_make_turn(ctx, client_id, now, board_idx, turn_input)
             }
@@ -904,6 +909,27 @@ impl Match {
         }
         self.participants[participant_id].faction = faction;
         self.send_lobby_updated(ctx, now);
+        Ok(())
+    }
+
+    fn process_set_turns(
+        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
+        turns: Vec<(BughouseBoard, TurnInput)>,
+    ) -> EventResult {
+        let Some(GameState { ref game, ref mut turn_requests, .. }) = self.game_state else {
+            return Err(unknown_error!("Cannot set turns: no game in progress"));
+        };
+        let Some(participant_id) = ctx.clients[client_id].participant_id else {
+            return Err(unknown_error!("Cannot set turns: not joined"));
+        };
+        let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name)
+        else {
+            return Err(unknown_error!("Cannot set turns: player does not participate"));
+        };
+        turn_requests.retain(|r| !player_bughouse_id.plays_for(r.envoy));
+        for (board_idx, turn_input) in turns {
+            self.process_make_turn(ctx, client_id, now, board_idx, turn_input)?;
+        }
         Ok(())
     }
 
@@ -1220,7 +1246,9 @@ impl Match {
 
         let players = self.assign_boards();
         let game = BughouseGame::new(self.rules.clone(), &players);
+        let game_index = self.match_history.len();
         self.game_state = Some(GameState {
+            game_index,
             game,
             game_creation: now,
             game_start: None,
@@ -1275,6 +1303,7 @@ impl Match {
             vec![]
         };
         BughouseServerEvent::GameStarted {
+            game_index: game_state.game_index,
             starting_position: game_state.game.starting_position().clone(),
             players: game_state.game.players(),
             time: current_game_time(game_state, now),
@@ -1454,6 +1483,7 @@ fn event_name(event: &IncomingEvent) -> &'static str {
             BughouseClientEvent::NewMatch { .. } => "Client_NewMatch",
             BughouseClientEvent::Join { .. } => "Client_Join",
             BughouseClientEvent::SetFaction { .. } => "Client_SetFaction",
+            BughouseClientEvent::SetTurns { .. } => "Client_SetTurns",
             BughouseClientEvent::MakeTurn { .. } => "Client_MakeTurn",
             BughouseClientEvent::CancelPreturn { .. } => "Client_CancelPreturn",
             BughouseClientEvent::Resign => "Client_Resign",

@@ -9,7 +9,7 @@ use strum::IntoEnumIterator;
 use crate::force::Force;
 
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct TimeControl {
     pub starting_time: Duration,
     // Improvement potential. Support increment, delay, etc.

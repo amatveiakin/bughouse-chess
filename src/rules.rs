@@ -71,7 +71,7 @@ pub enum Promotion {
     Steal,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct MatchRules {
     pub rated: bool,
 }
@@ -117,7 +117,7 @@ pub struct MatchRules {
 // any know variant but could? Whereas grouping all bughouse options together, like we do now,
 // results in a much simpler mental model.
 //
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct ChessRules {
     pub fairy_pieces: FairyPieces,
 
@@ -149,7 +149,7 @@ pub struct ChessRules {
     pub bughouse_rules: Option<BughouseRules>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct BughouseRules {
     pub koedem: bool,
     pub promotion: Promotion,
@@ -158,7 +158,7 @@ pub struct BughouseRules {
     pub drop_aggression: DropAggression,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct Rules {
     pub match_rules: MatchRules,
     pub chess_rules: ChessRules,

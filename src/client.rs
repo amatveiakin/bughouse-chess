@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use enum_map::{enum_map, EnumMap};
 use instant::Instant;
+use itertools::Itertools;
 use strum::IntoEnumIterator;
 
 use crate::altered_game::AlteredGame;
@@ -73,6 +74,10 @@ pub struct GameState {
     pub chalkboard: Chalkboard,
     // Canvas for the current client to draw on.
     pub chalk_canvas: ChalkCanvas,
+    // The index of this game within the match.
+    game_index: usize,
+    // The number of `GameUpdate`s applied so far.
+    updates_applied: usize,
     // Index of the next warning in `LOW_TIME_WARNING_THRESHOLDS`.
     next_low_time_warning_idx: EnumMap<BughouseBoard, usize>,
 }
@@ -118,6 +123,11 @@ impl Connection {
     }
 
     fn send(&mut self, event: BughouseClientEvent) { self.outgoing_events.push_back(event); }
+
+    fn reset(&mut self) {
+        self.outgoing_events.clear();
+        self.health_monitor.reset();
+    }
 }
 
 pub struct ClientState {
@@ -247,7 +257,6 @@ impl ClientState {
         self.meter_box.consume_stats()
     }
 
-    pub fn reset_connection_monitor(&mut self) { self.connection.health_monitor.reset(); }
     pub fn current_turnaround_time(&self) -> Duration {
         let now = Instant::now();
         self.connection.health_monitor.current_turnaround_time(now)
@@ -276,6 +285,11 @@ impl ClientState {
         self.connection
             .send(BughouseClientEvent::NewMatch { rules, player_name: my_name });
     }
+    // Should be called in one the two situations:
+    //   - Connecting to a match during a normal app flow;
+    //   - Cold reconnection, when a there is no preexisting `Match` object, e.g. when the user
+    //     refreshes the browser tab. If network connection was lost, but a client object is still
+    //     alive, use `hot_reconnect` instead.
     pub fn join(&mut self, match_id: String) {
         let my_name = self.finalize_my_name_for_match();
         self.connection.send(BughouseClientEvent::Join {
@@ -283,6 +297,19 @@ impl ClientState {
             player_name: my_name.clone(),
         });
         self.match_state = MatchState::Joining { match_id, my_name };
+    }
+    // Hot reconnect should be called when WebSocket connection was lost due to network issues, but
+    // the client object is still alive. Re-establishes connection while giving un uninterrupted
+    // experience to the user. For example, it's possible to continue making and cancelling turns
+    // while the connection is being restored.
+    pub fn hot_reconnect(&mut self, match_id: String) {
+        let my_name = self.my_name().unwrap().to_owned();
+        self.notable_event_queue.clear();
+        self.connection.reset();
+        self.connection.send(BughouseClientEvent::Join {
+            match_id: match_id.clone(),
+            player_name: my_name,
+        });
     }
     pub fn set_faction(&mut self, faction: Faction) {
         if let Some(mtch) = self.mtch_mut() {
@@ -453,32 +480,47 @@ impl ClientState {
                 self.notable_event_queue.push_back(NotableEvent::SessionUpdated);
             }
             MatchWelcome { match_id, rules } => {
-                let my_name = match &self.match_state {
-                    MatchState::Creating { my_name } => my_name.clone(),
-                    MatchState::Joining { match_id: id, my_name } => {
-                        if match_id != *id {
-                            return Err(internal_error!("Expected match {id}, but got {match_id}"));
-                        }
-                        my_name.clone()
+                if let Some(mtch) = self.mtch_mut() {
+                    if mtch.match_id != match_id {
+                        return Err(internal_error!(
+                            "Expected match {}, but got {match_id}",
+                            mtch.match_id
+                        ));
                     }
-                    _ => return Err(internal_error!()),
-                };
-                self.notable_event_queue.push_back(NotableEvent::MatchStarted(match_id.clone()));
-                // `Observer` is a safe faction default that wouldn't allow us to try acting as
-                // a player if we are in fact an observer. We'll get the real faction afterwards
-                // in a `LobbyUpdated` event.
-                let my_faction = Faction::Observer;
-                self.match_state = MatchState::Connected(Match {
-                    match_id,
-                    my_name,
-                    my_faction,
-                    rules,
-                    participants: Vec::new(),
-                    scores: None,
-                    is_ready: false,
-                    first_game_countdown_since: None,
-                    game_state: None,
-                });
+                    assert_eq!(mtch.rules, rules);
+                    // TODO: Send faction and ready status if they changed while we were
+                    // disconnected from the server.
+                } else {
+                    let my_name = match &self.match_state {
+                        MatchState::Creating { my_name } => my_name.clone(),
+                        MatchState::Joining { match_id: id, my_name } => {
+                            if match_id != *id {
+                                return Err(internal_error!(
+                                    "Expected match {id}, but got {match_id}"
+                                ));
+                            }
+                            my_name.clone()
+                        }
+                        _ => return Err(internal_error!()),
+                    };
+                    self.notable_event_queue
+                        .push_back(NotableEvent::MatchStarted(match_id.clone()));
+                    // `Observer` is a safe faction default that wouldn't allow us to try acting as
+                    // a player if we are in fact an observer. We'll get the real faction afterwards
+                    // in a `LobbyUpdated` event.
+                    let my_faction = Faction::Observer;
+                    self.match_state = MatchState::Connected(Match {
+                        match_id,
+                        my_name,
+                        my_faction,
+                        rules,
+                        participants: Vec::new(),
+                        scores: None,
+                        is_ready: false,
+                        first_game_countdown_since: None,
+                        game_state: None,
+                    });
+                }
             }
             LobbyUpdated { participants, countdown_elapsed } => {
                 let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
@@ -492,6 +534,7 @@ impl ClientState {
                 mtch.first_game_countdown_since = countdown_elapsed.map(|t| now - t);
             }
             GameStarted {
+                game_index,
                 starting_position,
                 players,
                 time,
@@ -499,8 +542,36 @@ impl ClientState {
                 preturns,
                 scores,
             } => {
-                let time_pair = time.map(|t| WallGameTimePair::new(now, t.approximate()));
                 let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
+                if let Some(game_state) = mtch.game_state.as_mut() {
+                    if game_state.game_index == game_index {
+                        // This is a hot reconnect.
+                        for update in updates.into_iter().skip(game_state.updates_applied) {
+                            // Generate notable events. A typical use-case for hot reconnect is when
+                            // the user keeps playing, but WebSocket connection gets interrupted. In
+                            // this case the user should hear a turn sound as soon as the connection
+                            // is restored and they the opponent's turn.
+                            self.apply_game_update(update, true)?;
+                        }
+                        // Improvement potential: Could remove the reborrow if we move scores update
+                        // from `GameOver` to a separate event and move `apply_game_update` to
+                        // `GameState`.
+                        let game_state = self.game_state().unwrap();
+                        let turns = game_state
+                            .alt_game
+                            .local_turns()
+                            .iter()
+                            .map(|t| (t.envoy.board_idx, t.turn_input.clone()))
+                            .collect_vec();
+                        self.connection.send(BughouseClientEvent::SetTurns { turns });
+                        self.send_chalk_drawing_update();
+                        // No `NotableEvent::GameStarted`: it is used to reset the UI, while we want
+                        // to make reconnection experience seemless.
+                        return Ok(());
+                    }
+                }
+                // This is a new game or a cold reconnect.
+                let time_pair = time.map(|t| WallGameTimePair::new(now, t.approximate()));
                 mtch.scores = Some(scores);
                 let game = BughouseGame::new_with_starting_position(
                     mtch.rules.clone(),
@@ -515,13 +586,19 @@ impl ClientState {
                 let board_shape = alt_game.board_shape();
                 let perspective = alt_game.perspective();
                 mtch.game_state = Some(GameState {
+                    game_index,
                     alt_game,
                     time_pair,
                     chalkboard: Chalkboard::new(),
                     chalk_canvas: ChalkCanvas::new(board_shape, perspective),
+                    updates_applied: 0,
                     next_low_time_warning_idx: enum_map! { _ => 0 },
                 });
                 for update in updates {
+                    // Don't generate notable events. Cold reconnect means that the user refreshed
+                    // the web page or opened a new one and we had to rebuild the entire game state.
+                    // The user should not want to hear 50 turn sounds if 50 turns have been made so
+                    // far.
                     self.apply_game_update(update, false)?;
                 }
                 for (board_idx, preturn) in preturns.into_iter() {
@@ -569,6 +646,8 @@ impl ClientState {
     fn apply_game_update(
         &mut self, update: GameUpdate, generate_notable_events: bool,
     ) -> Result<(), EventError> {
+        let game_state = self.game_state_mut().ok_or_else(|| internal_error!())?;
+        game_state.updates_applied += 1;
         match update {
             GameUpdate::TurnMade { turn_record } => {
                 self.apply_remote_turn(turn_record, generate_notable_events)
@@ -682,9 +761,15 @@ impl ClientState {
     }
 
     fn send_chalk_drawing_update(&mut self) {
-        // Caller must ensure that match and game exist.
-        let mtch = self.mtch().unwrap();
-        let game_state = mtch.game_state.as_ref().unwrap();
+        let Some(mtch) = self.mtch_mut() else {
+            return;
+        };
+        let Some(ref mut game_state) = mtch.game_state else {
+            return;
+        };
+        if game_state.alt_game.is_active() {
+            return;
+        }
         let drawing = game_state.chalkboard.drawings_by(&mtch.my_name).cloned().unwrap_or_default();
         self.connection.send(BughouseClientEvent::UpdateChalkDrawing { drawing })
     }

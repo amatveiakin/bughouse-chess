@@ -6,7 +6,7 @@
 
 mod common;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{mpsc, Arc, Mutex};
 use std::{iter, ops};
 
@@ -97,19 +97,23 @@ impl Server {
 
 
 struct Client {
-    id: server::ClientId,
-    incoming_rx: mpsc::Receiver<BughouseServerEvent>,
+    id: Option<server::ClientId>,
+    incoming_rx: Option<mpsc::Receiver<BughouseServerEvent>>,
     state: client::ClientState,
 }
 
 impl Client {
-    pub fn new(server: &mut Server) -> Self {
-        let (incoming_tx, incoming_rx) = mpsc::channel();
-        let id = server.add_client(incoming_tx);
+    pub fn new() -> Self {
         let user_agent = "Test".to_owned();
         let time_zone = "?".to_owned();
         let state = client::ClientState::new(user_agent, time_zone);
-        Client { id, incoming_rx, state }
+        Client { id: None, incoming_rx: None, state }
+    }
+
+    fn connect(&mut self, server: &mut Server) {
+        let (incoming_tx, incoming_rx) = mpsc::channel();
+        self.id = Some(server.add_client(incoming_tx));
+        self.incoming_rx = Some(incoming_rx);
     }
 
     fn join(&mut self, match_id: &str, my_name: &str) {
@@ -148,16 +152,16 @@ impl Client {
         let mut something_changed = false;
         while let Some(event) = self.state.next_outgoing_event() {
             something_changed = true;
-            println!("{:?} >>> {:?}", self.id, event);
-            server.send_network_event(self.id, event);
+            println!("{:?} >>> {:?}", self.id.unwrap(), event);
+            server.send_network_event(self.id.unwrap(), event);
         }
         something_changed
     }
     fn process_incoming_events(&mut self) -> (bool, Result<(), client::EventError>) {
         let mut something_changed = false;
-        for event in self.incoming_rx.try_iter() {
+        for event in self.incoming_rx.as_mut().unwrap().try_iter() {
             something_changed = true;
-            println!("{:?} <<< {:?}", self.id, event);
+            println!("{:?} <<< {:?}", self.id.unwrap(), event);
             let result = self.state.process_server_event(event);
             if let Err(err) = result {
                 return (something_changed, Err(err));
@@ -208,7 +212,8 @@ impl World {
 
     fn new_client(&mut self) -> TestClientId {
         let idx = TestClientId(self.clients.len());
-        let client = Client::new(&mut self.server);
+        let mut client = Client::new();
+        client.connect(&mut self.server);
         self.clients.push(client);
         idx
     }
@@ -218,6 +223,11 @@ impl World {
             .collect_vec()
             .try_into()
             .unwrap()
+    }
+    fn reconnect_client(&mut self, client_id: TestClientId) {
+        let client = &mut self.clients[client_id.0];
+        self.server.clients.lock().unwrap().remove_client(client.id.unwrap());
+        client.connect(&mut self.server);
     }
 
     fn default_clients(
@@ -265,18 +275,24 @@ impl World {
         self.process_outgoing_events_for(client_id);
         self.process_incoming_events_for(client_id).1
     }
-    fn process_events_from_clients(&mut self) -> bool {
+    fn process_events_from_clients(&mut self, ban_list: &HashSet<TestClientId>) -> bool {
         let mut something_changed = false;
-        for client in &mut self.clients {
+        for (id, client) in self.clients.iter_mut().enumerate() {
+            if ban_list.contains(&TestClientId(id)) {
+                continue;
+            }
             if client.process_outgoing_events(&mut self.server) {
                 something_changed = true;
             }
         }
         something_changed
     }
-    fn process_events_to_clients(&mut self) -> bool {
+    fn process_events_to_clients(&mut self, ban_list: &HashSet<TestClientId>) -> bool {
         let mut something_changed = false;
-        for client in &mut self.clients {
+        for (id, client) in self.clients.iter_mut().enumerate() {
+            if ban_list.contains(&TestClientId(id)) {
+                continue;
+            }
             let (change, reaction) = client.process_incoming_events();
             reaction.unwrap();
             if change {
@@ -287,18 +303,22 @@ impl World {
     }
     // Improvement potential: Randomize order to simulate network better.
     // Improvement potential: Consider if this need to auto-tick (maybe randomly).
-    fn process_all_events(&mut self) {
+    fn process_all_events_except_clients(
+        &mut self, ban_list: impl IntoIterator<Item = TestClientId>,
+    ) {
+        let ban_list = ban_list.into_iter().collect();
         let mut something_changed = true;
         while something_changed {
             something_changed = false;
-            if self.process_events_from_clients() {
+            if self.process_events_from_clients(&ban_list) {
                 something_changed = true;
             }
-            if self.process_events_to_clients() {
+            if self.process_events_to_clients(&ban_list) {
                 something_changed = true;
             }
         }
     }
+    fn process_all_events(&mut self) { self.process_all_events_except_clients(iter::empty()); }
 
     fn replay_white_checkmates_black(&mut self, white_id: TestClientId, black_id: TestClientId) {
         self[white_id].make_turn("Nf3").unwrap();
@@ -584,7 +604,7 @@ fn two_local_turns_keep_preturn() {
 }
 
 #[test]
-fn reconnect_lobby() {
+fn cold_reconnect_lobby() {
     let mut world = World::new();
     let [cl1, cl2, cl3] = world.new_clients();
 
@@ -637,7 +657,7 @@ fn reconnect_lobby() {
 }
 
 #[test]
-fn reconnect_game_active() {
+fn cold_reconnect_game_active() {
     let mut world = World::new();
     let (mtch, cl1, _cl2, cl3, _cl4) = world.default_clients();
     assert!(world[cl1].state.game_state().is_some());
@@ -689,7 +709,7 @@ fn reconnect_game_active() {
 }
 
 #[test]
-fn reconnect_game_over_checkmate() {
+fn cold_reconnect_game_over_checkmate() {
     let mut world = World::new();
     let (mtch, cl1, _cl2, cl3, cl4) = world.default_clients();
 
@@ -710,7 +730,7 @@ fn reconnect_game_over_checkmate() {
 }
 
 #[test]
-fn reconnect_game_over_resignation() {
+fn cold_reconnect_game_over_resignation() {
     let mut world = World::new();
     let (mtch, cl1, _cl2, _cl3, cl4) = world.default_clients();
 
@@ -727,6 +747,156 @@ fn reconnect_game_over_resignation() {
     assert!(world[cl4_new].my_board().grid()[Coord::E4].is(piece!(White Pawn)));
     assert_eq!(
         world[cl4_new].alt_game().status(),
+        BughouseGameStatus::Victory(Team::Blue, VictoryReason::Resignation)
+    );
+}
+
+#[test]
+fn hot_reconnect_lobby() {
+    let mut world = World::new();
+    let [cl1, cl2, cl3] = world.new_clients();
+
+    let mtch = world.new_match(cl1, "p1");
+    world[cl1].state.set_faction(Faction::Fixed(Team::Red));
+    world.join_and_set_team(cl2, &mtch, "p2", Team::Red);
+    world.join_and_set_team(cl3, &mtch, "p3", Team::Blue);
+    world.process_all_events();
+    assert_eq!(world[cl1].state.mtch().unwrap().participants.len(), 3);
+
+    world.reconnect_client(cl2);
+    world[cl2].state.set_faction(Faction::Fixed(Team::Blue));
+    world[cl2].state.set_ready(true);
+
+    {
+        let p = world[cl1]
+            .state
+            .mtch()
+            .unwrap()
+            .participants
+            .iter()
+            .find(|p| p.name == "p2")
+            .unwrap();
+        assert_eq!(p.faction, Faction::Fixed(Team::Red));
+        assert_eq!(p.is_ready, false);
+    }
+
+    world[cl2].state.hot_reconnect(mtch);
+    world.process_all_events();
+
+    // TODO:
+    // {
+    //     let p = world[cl1]
+    //         .state
+    //         .mtch()
+    //         .unwrap()
+    //         .participants
+    //         .iter()
+    //         .find(|p| p.name == "p2")
+    //         .unwrap();
+    //     assert_eq!(p.faction, Faction::Fixed(Team::Blue));
+    //     assert_eq!(p.is_ready, true);
+    // }
+}
+
+// Test a situation when WebSocket connection was lost due to a network issue, but the client is
+// still running. The client should be able to continue making and cancelling turns in the meantime.
+#[test]
+fn hot_reconnect_game_active() {
+    let mut world = World::new();
+    let (mtch, cl1, cl2, cl3, cl4) = world.default_clients();
+    assert!(world[cl1].state.game_state().is_some());
+
+    world[cl1].make_turn("e4").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("e5").unwrap();
+    world.process_all_events();
+
+    world[cl3].make_turn("Nc6").unwrap();
+    world.process_all_events();
+
+    // TODO: Test a scenario when server doesn't realize the connect was lost until the last moment.
+    world.reconnect_client(cl3);
+    world[cl3].cancel_preturn();
+    world[cl3].make_turn("Nf6").unwrap();
+
+    world[cl2].make_turn("d5").unwrap();
+    world.process_all_events_except_clients([cl3]);
+    world[cl4].make_turn("d4").unwrap();
+    world.process_all_events_except_clients([cl3]);
+
+    world[cl3].state.hot_reconnect(mtch);
+    world.process_all_events();
+
+    world[cl1].make_turn("f4").unwrap();
+    world.process_all_events();
+
+    // Make sure turns were re-applied properly, including the turn cl1 made after disconnection:
+    for cl in [cl1, cl2, cl3, cl4] {
+        let game = world[cl].local_game();
+        let grid_a = game.board(A).grid();
+        let grid_b = game.board(B).grid();
+        assert!(grid_a[Coord::E4].is(piece!(White Pawn)));
+        assert!(grid_a[Coord::E5].is(piece!(Black Pawn)));
+        assert!(grid_a[Coord::F4].is(piece!(White Pawn)));
+        assert!(grid_a[Coord::C6].is_none());
+        assert!(grid_a[Coord::F6].is(piece!(Black Knight)));
+        assert!(grid_b[Coord::D4].is(piece!(White Pawn)));
+        assert!(grid_b[Coord::D4].is(piece!(White Pawn)));
+    }
+}
+
+// Similar to `preturn_cancellation_late`, but simulates a sutiation when we tried to cancel a
+// preturn and make a new one while WebSocket connection was interrupted. Note that the new local
+// preturn should be cancelled after restoring the connection.
+#[test]
+fn hot_reconnect_preturn_cancellation_late() {
+    let mut world = World::new();
+    let (mtch, cl1, cl2, cl3, cl4) = world.default_clients();
+    assert!(world[cl1].state.game_state().is_some());
+
+    world[cl1].make_turn("e4").unwrap();
+    world.process_all_events();
+    world[cl3].make_turn("e5").unwrap();
+    world.process_all_events();
+
+    world[cl3].make_turn("Nc6").unwrap();
+    world.process_all_events();
+
+    world.reconnect_client(cl3);
+    world[cl3].cancel_preturn();
+    world[cl3].make_turn("Nf6").unwrap();
+
+    world[cl1].make_turn("f4").unwrap();
+    world.process_all_events_except_clients([cl3]);
+
+    {
+        let grid = world[cl3].local_game().board(A).grid().clone();
+        assert!(grid[Coord::C6].is_none());
+        assert!(grid[Coord::F6].is(piece!(Black Knight)));
+    }
+
+    world[cl3].state.hot_reconnect(mtch);
+    world.process_all_events();
+
+    for cl in [cl1, cl2, cl3, cl4] {
+        let grid = world[cl].local_game().board(A).grid().clone();
+        assert!(grid[Coord::C6].is(piece!(Black Knight)));
+        assert!(grid[Coord::F6].is_none());
+    }
+}
+
+#[test]
+fn hot_reconnect_game_over() {
+    let mut world = World::new();
+    let (mtch, cl1, _cl2, _cl3, cl4) = world.default_clients();
+
+    world.reconnect_client(cl4);
+    world[cl1].state.resign();
+    world.process_all_events_except_clients([cl4]);
+    world[cl4].state.hot_reconnect(mtch);
+    world.process_all_events();
+    assert_eq!(
+        world[cl4].alt_game().status(),
         BughouseGameStatus::Victory(Team::Blue, VictoryReason::Resignation)
     );
 }
