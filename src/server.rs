@@ -55,7 +55,7 @@ lazy_static! {
 
 macro_rules! unknown_error {
     ($($arg:tt)*) => {
-        BughouseServerRejection::UnknownError{ message: format!($($arg)*) }
+        BughouseServerRejection::UnknownError{ message: $crate::internal_error_message!($($arg)*) }
     }
 }
 
@@ -512,8 +512,7 @@ impl CoreServerState {
 
         let Some(match_id) = match_id else {
             // We've already processed all events that do not depend on a match.
-            ctx.clients[client_id]
-                .send_rejection(unknown_error!("Cannot process event: no match in progress"));
+            ctx.clients[client_id].send_rejection(unknown_error!());
             return;
         };
 
@@ -901,11 +900,10 @@ impl Match {
     fn process_set_faction(
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, faction: Faction,
     ) -> EventResult {
-        let Some(participant_id) = ctx.clients[client_id].participant_id else {
-            return Err(unknown_error!("Cannot set faction: not joined"));
-        };
+        let participant_id =
+            ctx.clients[client_id].participant_id.ok_or_else(|| unknown_error!())?;
         if self.game_state.is_some() {
-            return Err(unknown_error!("Cannot set faction: match already started"));
+            return Err(unknown_error!());
         }
         self.participants[participant_id].faction = faction;
         self.send_lobby_updated(ctx, now);
@@ -917,15 +915,13 @@ impl Match {
         turns: Vec<(BughouseBoard, TurnInput)>,
     ) -> EventResult {
         let Some(GameState { ref game, ref mut turn_requests, .. }) = self.game_state else {
-            return Err(unknown_error!("Cannot set turns: no game in progress"));
+            return Err(unknown_error!());
         };
-        let Some(participant_id) = ctx.clients[client_id].participant_id else {
-            return Err(unknown_error!("Cannot set turns: not joined"));
-        };
-        let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name)
-        else {
-            return Err(unknown_error!("Cannot set turns: player does not participate"));
-        };
+        let participant_id =
+            ctx.clients[client_id].participant_id.ok_or_else(|| unknown_error!())?;
+        let player_bughouse_id = game
+            .find_player(&self.participants[participant_id].name)
+            .ok_or_else(|| unknown_error!())?;
         turn_requests.retain(|r| !player_bughouse_id.plays_for(r.envoy));
         for (board_idx, turn_input) in turns {
             self.process_make_turn(ctx, client_id, now, board_idx, turn_input)?;
@@ -946,25 +942,21 @@ impl Match {
             ..
         }) = self.game_state
         else {
-            return Err(unknown_error!("Cannot make turn: no game in progress"));
+            return Err(unknown_error!());
         };
-        let Some(participant_id) = ctx.clients[client_id].participant_id else {
-            return Err(unknown_error!("Cannot make turn: not joined"));
-        };
-        let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name)
-        else {
-            return Err(unknown_error!("Cannot make turn: player does not participate"));
-        };
-        let Some(envoy) = player_bughouse_id.envoy_for(board_idx) else {
-            return Err(unknown_error!("Cannot make turn: player does not play on this board"));
-        };
+        let participant_id =
+            ctx.clients[client_id].participant_id.ok_or_else(|| unknown_error!())?;
+        let player_bughouse_id = game
+            .find_player(&self.participants[participant_id].name)
+            .ok_or_else(|| unknown_error!())?;
+        let envoy = player_bughouse_id.envoy_for(board_idx).ok_or_else(|| unknown_error!())?;
         let scores = self.scores.as_mut().unwrap();
         let participants = &mut self.participants;
 
         if turn_requests.iter().filter(|r| r.envoy == envoy).count()
             > self.rules.chess_rules.max_preturns_per_board()
         {
-            return Err(unknown_error!("Only one premove is supported"));
+            return Err(unknown_error!("Premove limit reached"));
         }
         let request = TurnRequest { envoy, turn_input };
         turn_requests.push(request);
@@ -1014,20 +1006,14 @@ impl Match {
         &mut self, ctx: &mut Context, client_id: ClientId, board_idx: BughouseBoard,
     ) -> EventResult {
         let Some(GameState { ref game, ref mut turn_requests, .. }) = self.game_state else {
-            return Err(unknown_error!("Cannot cancel pre-turn: no game in progress"));
+            return Err(unknown_error!());
         };
-        let Some(participant_id) = ctx.clients[client_id].participant_id else {
-            return Err(unknown_error!("Cannot cancel pre-turn: not joined"));
-        };
-        let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name)
-        else {
-            return Err(unknown_error!("Cannot cancel pre-turn: player does not participate"));
-        };
-        let Some(envoy) = player_bughouse_id.envoy_for(board_idx) else {
-            return Err(unknown_error!(
-                "Cannot cancel pre-turn: player does not play on this board"
-            ));
-        };
+        let participant_id =
+            ctx.clients[client_id].participant_id.ok_or_else(|| unknown_error!())?;
+        let player_bughouse_id = game
+            .find_player(&self.participants[participant_id].name)
+            .ok_or_else(|| unknown_error!())?;
+        let envoy = player_bughouse_id.envoy_for(board_idx).ok_or_else(|| unknown_error!())?;
         for (idx, r) in turn_requests.iter().enumerate().rev() {
             if r.envoy == envoy {
                 turn_requests.remove(idx);
@@ -1049,18 +1035,16 @@ impl Match {
             ..
         }) = self.game_state
         else {
-            return Err(unknown_error!("Cannot resign: no game in progress"));
+            return Err(unknown_error!());
         };
         if !game.is_active() {
-            return Err(unknown_error!("Cannot resign: game already over"));
+            return Err(unknown_error!());
         }
-        let Some(participant_id) = ctx.clients[client_id].participant_id else {
-            return Err(unknown_error!("Cannot resign: not joined"));
-        };
-        let Some(player_bughouse_id) = game.find_player(&self.participants[participant_id].name)
-        else {
-            return Err(unknown_error!("Cannot resign: player does not participate"));
-        };
+        let participant_id =
+            ctx.clients[client_id].participant_id.ok_or_else(|| unknown_error!())?;
+        let player_bughouse_id = game
+            .find_player(&self.participants[participant_id].name)
+            .ok_or_else(|| unknown_error!())?;
         let status = BughouseGameStatus::Victory(
             player_bughouse_id.team().opponent(),
             VictoryReason::Resignation,
@@ -1089,9 +1073,8 @@ impl Match {
     fn process_set_ready(
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, is_ready: bool,
     ) -> EventResult {
-        let Some(participant_id) = ctx.clients[client_id].participant_id else {
-            return Err(unknown_error!("Cannot update readiness: not joined"));
-        };
+        let participant_id =
+            ctx.clients[client_id].participant_id.ok_or_else(|| unknown_error!())?;
         if let Some(GameState { ref game, .. }) = self.game_state {
             if game.is_active() {
                 // No error: somebody could've tried to unset ready flag while the game has started.
@@ -1118,15 +1101,12 @@ impl Match {
         &mut self, ctx: &mut Context, client_id: ClientId, drawing: ChalkDrawing,
     ) -> EventResult {
         let Some(GameState { ref mut chalkboard, ref game, .. }) = self.game_state else {
-            return Err(unknown_error!("Cannot update chalk drawing: no game in progress"));
+            return Err(unknown_error!());
         };
-        let Some(participant_id) = ctx.clients[client_id].participant_id else {
-            return Err(unknown_error!("Cannot update chalk drawing: not joined"));
-        };
+        let participant_id =
+            ctx.clients[client_id].participant_id.ok_or_else(|| unknown_error!())?;
         if game.is_active() {
-            return Err(unknown_error!(
-                "Cannot update chalk drawing: can draw only after game is over"
-            ));
+            return Err(unknown_error!());
         }
         chalkboard.set_drawing(self.participants[participant_id].name.clone(), drawing);
         let chalkboard = chalkboard.clone();
@@ -1138,7 +1118,7 @@ impl Match {
         &self, ctx: &mut Context, client_id: ClientId, format: BughouseExportFormat,
     ) -> EventResult {
         let Some(GameState { ref game, .. }) = self.game_state else {
-            return Err(unknown_error!("Cannot export: no game in progress"));
+            return Err(unknown_error!());
         };
         let all_games = self.match_history.iter().chain(iter::once(game));
         let content = all_games

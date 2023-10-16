@@ -151,19 +151,9 @@ const LOW_TIME_WARNING_THRESHOLDS: &[Duration] = &[
     Duration::from_secs(1),
 ];
 
-#[macro_export]
-macro_rules! internal_error_message {
-    () => {
-        format!("Internal error at {}:{}.", file!(), line!())
-    };
-    ($($arg:tt)+) => {
-        format!("Internal error at {}:{}: {}.", file!(), line!(), format!($($arg)*))
-    };
-}
-
 macro_rules! internal_error {
     ($($arg:tt)*) => {
-        EventError::InternalEvent(internal_error_message!($($arg)*))
+        EventError::InternalEvent($crate::internal_error_message!($($arg)*))
     };
 }
 
@@ -472,7 +462,7 @@ impl ClientState {
                         ".to_owned())
                     },
                     BughouseServerRejection::UnknownError{ message } => {
-                        internal_error!("Got error from server: {}", message)
+                        EventError::InternalEvent(message)
                     },
                 };
                 if matches!(error, EventError::KickedFromMatch(_)) {

@@ -23,6 +23,7 @@ pub mod client;
 pub mod clock;
 pub mod coord;
 pub mod display;
+pub mod error;
 pub mod event;
 pub mod fen;
 pub mod force;
