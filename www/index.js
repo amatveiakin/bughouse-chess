@@ -241,6 +241,8 @@ set_up_log_navigation();
 let wasm_client_object = make_wasm_client();
 let wasm_client_panicked = false;
 
+let fatal_error_shown = false;
+
 let last_socket_connection_attempt = null;
 let consecutive_socket_connection_attempts = 0;
 let socket = null;
@@ -1137,6 +1139,9 @@ function init_menu() {
 // also return `MyButton.HIDE`. If there are no buttons with `MyButton.HIDE` action, then
 // `Escape` key will be ignored.
 function html_dialog(body, buttons) {
+    if (fatal_error_shown) {
+        return;
+    }
     return new Promise(resolve => {
         const dialog = document.createElement('dialog');
         document.body.appendChild(dialog);
@@ -1188,7 +1193,8 @@ function ignorable_error_dialog(message) {
 }
 
 function fatal_error_dialog(message) {
-    return text_dialog(message);
+    text_dialog(message);
+    fatal_error_shown = true;
 }
 
 function make_svg_image(symbol_id, size) {
