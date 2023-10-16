@@ -712,6 +712,7 @@ dialog ::-webkit-scrollbar-thumb {
   height: 1em;
   scale: 120%;
   margin-right: -0.3em;
+  transform: translateY(0.06em);
 }
 .log-record-l .log-piece {
   scale: 120%;
