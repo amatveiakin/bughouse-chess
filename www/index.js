@@ -449,7 +449,7 @@ function page_redirect(href) {
 
 function on_server_event(event) {
     with_error_handling(function() {
-        // console.log(log_time(), 'server: ', event);
+        console.log(log_time(), 'server: ', event);
         const update_needed = wasm_client().process_server_event(event);
         if (update_needed) {
             update();
@@ -604,7 +604,7 @@ function process_outgoing_events() {
     }
     let event;
     while ((event = wasm_client().next_outgoing_event())) {
-        // console.log(log_time(), 'sending: ', event);
+        console.log(log_time(), 'sending: ', event);
         socket.send(event);
     }
 }
