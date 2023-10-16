@@ -36,7 +36,7 @@ use strum::IntoEnumIterator;
 use table::{td, td_safe, HtmlTable};
 use wasm_bindgen::prelude::*;
 use web_document::{web_document, WebDocument};
-use web_error_handling::JsResult;
+use web_error_handling::{JsResult, RustError};
 use web_sys::{ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
 
 use crate::bughouse_prelude::*;
@@ -406,9 +406,7 @@ impl WebClient {
     }
 
     pub fn start_drag_piece(&mut self, source: &str) -> JsResult<String> {
-        let Some(alt_game) = self.state.alt_game_mut() else {
-            return Err(rust_error!("Cannot drag: no game in progress"));
-        };
+        let alt_game = self.state.alt_game_mut().ok_or_else(|| rust_error!())?;
         let board_shape = alt_game.board_shape();
         let (display_board_idx, source) = if let Some((display_board_idx, piece)) =
             parse_reserve_piece_id(source)
@@ -461,7 +459,7 @@ impl WebClient {
 
     pub fn drag_piece(&mut self, board_id: &str, x: f64, y: f64) -> JsResult<()> {
         let Some(GameState { alt_game, .. }) = self.state.game_state() else {
-            return Err(rust_error!("Cannot drag: no game in progress"));
+            return Err(rust_error!());
         };
         let board_shape = alt_game.board_shape();
         let display_board_idx = parse_board_id(board_id)?;
@@ -648,11 +646,13 @@ impl WebClient {
     pub fn process_server_event(&mut self, event: &str) -> JsResult<bool> {
         let server_event = serde_json::from_str(event).unwrap();
         let updated_needed = !matches!(server_event, BughouseServerEvent::Pong);
-        self.state.process_server_event(server_event).map_err(|err| match err {
-            EventError::IgnorableError(message) => IgnorableError { message }.into(),
-            EventError::KickedFromMatch(message) => KickedFromMatch { message }.into(),
-            EventError::FatalError(message) => FatalError { message }.into(),
-            EventError::InternalEvent(message) => rust_error!("{message}"),
+        self.state.process_server_event(server_event).map_err(|err| -> JsValue {
+            match err {
+                EventError::IgnorableError(message) => IgnorableError { message }.into(),
+                EventError::KickedFromMatch(message) => KickedFromMatch { message }.into(),
+                EventError::FatalError(message) => FatalError { message }.into(),
+                EventError::InternalEvent(message) => RustError { message }.into(),
+            }
         })?;
         Ok(updated_needed)
     }
@@ -666,7 +666,7 @@ impl WebClient {
             }
             Some(NotableEvent::GameStarted) => {
                 let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
-                    return Err(rust_error!("No game in progress"));
+                    return Err(rust_error!());
                 };
                 let game_message = web_document().get_existing_element_by_id("game-message")?;
                 game_message.set_text_content(None);
@@ -689,7 +689,7 @@ impl WebClient {
             }
             Some(NotableEvent::TurnMade(envoy)) => {
                 let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
-                    return Err(rust_error!("No game in progress"));
+                    return Err(rust_error!());
                 };
                 let display_board_idx =
                     get_display_board_index(envoy.board_idx, alt_game.perspective());
@@ -1109,7 +1109,7 @@ impl WebClient {
 
     fn get_game_audio_pan(&self, board_idx: BughouseBoard) -> JsResult<f64> {
         let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
-            return Err(rust_error!("No game in progress"));
+            return Err(rust_error!());
         };
         let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
         get_audio_pan(alt_game.my_id(), display_board_idx)
@@ -2277,9 +2277,7 @@ fn get_audio_pan(my_id: BughouseParticipant, display_board_idx: DisplayBoard) ->
     use BughousePlayer::*;
     match (my_id, display_board_idx) {
         (Player(SinglePlayer(_)), DisplayBoard::Primary) => Ok(0.),
-        (Player(SinglePlayer(_)), DisplayBoard::Secondary) => {
-            Err(rust_error!("Unexpected secondary board sound for a single-board player"))
-        }
+        (Player(SinglePlayer(_)), DisplayBoard::Secondary) => Err(rust_error!()),
         (Player(DoublePlayer(_)) | Observer, DisplayBoard::Primary) => Ok(-1.),
         (Player(DoublePlayer(_)) | Observer, DisplayBoard::Secondary) => Ok(1.),
     }

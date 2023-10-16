@@ -151,14 +151,19 @@ const LOW_TIME_WARNING_THRESHOLDS: &[Duration] = &[
     Duration::from_secs(1),
 ];
 
-macro_rules! internal_error {
+#[macro_export]
+macro_rules! internal_error_message {
     () => {
-        EventError::InternalEvent(format!("Internal error at {}:{}.", file!(), line!()))
+        format!("Internal error at {}:{}.", file!(), line!())
     };
     ($($arg:tt)+) => {
-        EventError::InternalEvent(format!(
-            "Internal error at {}:{}: {}.", file!(), line!(), format!($($arg)*)
-        ))
+        format!("Internal error at {}:{}: {}.", file!(), line!(), format!($($arg)*))
+    };
+}
+
+macro_rules! internal_error {
+    ($($arg:tt)*) => {
+        EventError::InternalEvent(internal_error_message!($($arg)*))
     };
 }
 

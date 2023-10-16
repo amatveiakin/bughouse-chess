@@ -58,7 +58,9 @@ pub struct RustError {
 macro_rules! rust_error {
     ($($arg:tt)*) => {
         wasm_bindgen::JsValue::from(
-            $crate::web_error_handling::RustError{ message: format!($($arg)*) }
+            $crate::web_error_handling::RustError {
+                message: bughouse_chess::internal_error_message!($($arg)*)
+            }
         )
     };
 }
