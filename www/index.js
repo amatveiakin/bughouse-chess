@@ -346,7 +346,7 @@ function with_error_handling(f) {
         } else if (e?.constructor?.name == 'FatalError') {
             fatal_error_dialog(e.message);
         } else if (e?.constructor?.name == 'RustError') {
-            ignorable_error_dialog(`Internal Rust error: ${e.message}`);
+            ignorable_error_dialog(`Internal error: ${e.message}`);
             if (socket.readyState == WebSocket.OPEN) {
                 socket.send(wasm.make_rust_error_event(e));
             }
@@ -355,20 +355,16 @@ function with_error_handling(f) {
             const rust_panic = wasm.last_panic();
             if (rust_panic) {
                 wasm_client_panicked = true;
-                let reported = '';
+                let report = '';
                 if (socket.readyState == WebSocket.OPEN) {
                     socket.send(rust_panic);
-                    reported = 'The error has been reported (unless that failed too).';
                 } else {
-                    reported =
-                        'The error has NOT been reported: not connected to server. ' +
-                        'Please consider reporting it to contact.bughousepro@gmail.com'
-                    ;
+                    report = 'Please consider reporting the error to contact.bughousepro@gmail.com';
                 }
                 fatal_error_dialog(
                     'Internal error! This client is now dead 💀 ' +
                     'Only refreshing the page may help you. We are very sorry. ' +
-                    reported
+                    report
                 );
             } else {
                 console.log(log_time(), 'Unknown error: ', e);
