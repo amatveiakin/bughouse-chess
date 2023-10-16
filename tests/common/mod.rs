@@ -123,11 +123,11 @@ macro_rules! envoy {
 }
 
 pub trait ReserveAsHashMap {
-    fn as_map(self) -> HashMap<PieceKind, u8>;
+    fn to_map(self) -> HashMap<PieceKind, u8>;
 }
 
 impl ReserveAsHashMap for Reserve {
-    fn as_map(self) -> HashMap<PieceKind, u8> { self.into_iter().filter(|&(_, n)| n > 0).collect() }
+    fn to_map(self) -> HashMap<PieceKind, u8> { self.into_iter().filter(|&(_, n)| n > 0).collect() }
 }
 
 fn parse_ascii_setup<'a>(

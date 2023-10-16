@@ -618,7 +618,8 @@ mod tests {
             assert_close!(st.played_for_single_force[Force::White], 500, "{stats:?}");
             assert_close!(st.played_for_single_force[Force::Black], 500, "{stats:?}");
         }
-        for name in ["p3"] {
+        {
+            let name = "p3";
             let p = &participants[name];
             let st = &stats[name];
             assert_eq!(p.double_games_played, 0, "{participants:?}");

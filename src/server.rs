@@ -84,12 +84,13 @@ pub enum IncomingEvent {
 }
 
 // TODO: Use Prometheus instead.
+#[derive(Clone, Debug, Default)]
 pub struct ServerInfo {
     pub num_active_matches: usize,
 }
 
 impl ServerInfo {
-    pub fn new() -> Self { ServerInfo { num_active_matches: 0 } }
+    pub fn new() -> Self { ServerInfo::default() }
 }
 
 #[derive(Clone, Debug)]

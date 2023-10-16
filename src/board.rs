@@ -106,11 +106,11 @@ fn should_promote(board_shape: BoardShape, force: Force, piece_kind: PieceKind, 
 fn can_capture(attacker_force: PieceForce, target_force: PieceForce) -> bool {
     use PieceForce::*;
     match (attacker_force, target_force) {
-        (White, Black) | (Black, White) => return true,
-        (White, White) | (Black, Black) => return false,
+        (White, Black) | (Black, White) => true,
+        (White, White) | (Black, Black) => false,
         // Duck cannot be captured. Could require checking piece kind if other neutral pieces
         // are introduced.
-        (_, Neutral) | (Neutral, _) => return false,
+        (_, Neutral) | (Neutral, _) => false,
     }
 }
 

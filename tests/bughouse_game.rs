@@ -310,7 +310,7 @@ fn combined_piece_falls_apart_on_capture() {
     game.try_turn(BughouseBoard::A, &alg("Na1"), TurnMode::Normal, T0).unwrap();
     game.try_turn(BughouseBoard::A, &alg("Bxa1"), TurnMode::Normal, T0).unwrap();
     assert_eq!(
-        game.board(BughouseBoard::B).reserve(Force::White).as_map(),
+        game.board(BughouseBoard::B).reserve(Force::White).to_map(),
         [(PieceKind::Knight, 1), (PieceKind::Rook, 1)].into_iter().collect()
     );
 }
@@ -335,7 +335,7 @@ fn steal_promotion_preserves_piece_composition() {
     game.try_turn(BughouseBoard::B, &alg("Pa8=Ea1"), TurnMode::Normal, T0).unwrap();
     game.try_turn(BughouseBoard::B, &alg("Bxa8"), TurnMode::Normal, T0).unwrap();
     assert_eq!(
-        game.board(BughouseBoard::A).reserve(Force::White).as_map(),
+        game.board(BughouseBoard::A).reserve(Force::White).to_map(),
         [
             (PieceKind::Pawn, 1),
             (PieceKind::Knight, 1),

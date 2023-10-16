@@ -777,7 +777,7 @@ fn hot_reconnect_lobby() {
             .find(|p| p.name == "p2")
             .unwrap();
         assert_eq!(p.faction, Faction::Fixed(Team::Red));
-        assert_eq!(p.is_ready, false);
+        assert!(!p.is_ready);
     }
 
     world[cl2].state.hot_reconnect(mtch);
@@ -794,7 +794,7 @@ fn hot_reconnect_lobby() {
     //         .find(|p| p.name == "p2")
     //         .unwrap();
     //     assert_eq!(p.faction, Faction::Fixed(Team::Blue));
-    //     assert_eq!(p.is_ready, true);
+    //     assert!(p.is_ready);
     // }
 }
 

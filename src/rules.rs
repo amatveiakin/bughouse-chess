@@ -261,7 +261,7 @@ impl ChessRules {
             let num_ranks = self.board_shape().num_rows as i8;
             let min_pawn_drop_rank = bughouse_rules.min_pawn_drop_rank.to_one_based();
             let max_pawn_drop_rank = bughouse_rules.max_pawn_drop_rank.to_one_based();
-            if !chmp!(1 <= min_pawn_drop_rank <= max_pawn_drop_rank <= num_ranks - 1) {
+            if !chmp!(1 <= min_pawn_drop_rank <= max_pawn_drop_rank < num_ranks) {
                 return Err(format!(
                     "Invalid pawn drop ranks: {min_pawn_drop_rank}-{max_pawn_drop_rank}"
                 ));
