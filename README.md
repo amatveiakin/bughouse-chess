@@ -123,15 +123,18 @@ https://certbot.eff.org/instructions?ws=apache&os=ubuntufocal
 Install Apache modules:
 
 ```
-a2enmod proxy proxy_http proxy_wstunnel headers deflate
+a2enmod proxy proxy_http proxy_wstunnel headers brotli
 systemctl restart apache2
 ```
 
 Configure Apache:
 - Enable request redirection to make game server available.
-- Set `Cache-Control` to `no-cache` to make sure that the clients are always
-  up-to-date.
-- (Optional) Enable GZIP compression.
+- Set `Cache-Control` to `no-cache` and enable ETag to make sure that the
+  clients are always up-to-date.
+- Enable Brotli compression. It's more efficient that Gzip and it's supported by
+  all browsers that support WASM. Note that compression breaks ETags in Apache,
+  so we need to work this around:
+  https://bz.apache.org/bugzilla/show_bug.cgi?id=45023#c30.
 
 Add this to `/etc/apache2/sites-available/<site>`:
 
@@ -146,23 +149,31 @@ Add this to `/etc/apache2/sites-available/<site>`:
     ProxyPass /ws ws://localhost:14361 keepalive=On
     ProxyPassReverse /ws ws://localhost:14361
 
-    Header Set Cache-Control "no-cache"
+    Header set Cache-Control "public, no-cache, must-revalidate"
+    FileETag All
 
-    AddOutputFilterByType DEFLATE application/javascript
-    AddOutputFilterByType DEFLATE application/wasm
-    AddOutputFilterByType DEFLATE application/xhtml+xml
-    AddOutputFilterByType DEFLATE application/xml
-    AddOutputFilterByType DEFLATE font/opentype
-    AddOutputFilterByType DEFLATE font/otf
-    AddOutputFilterByType DEFLATE font/ttf
-    AddOutputFilterByType DEFLATE font/woff
-    AddOutputFilterByType DEFLATE font/woff2
-    AddOutputFilterByType DEFLATE image/svg+xml
-    AddOutputFilterByType DEFLATE text/css
-    AddOutputFilterByType DEFLATE text/html
-    AddOutputFilterByType DEFLATE text/xml
-    AddOutputFilterByType DEFLATE text/javascript
-    AddOutputFilterByType DEFLATE text/plain
+    SetEnvIf If-None-Match '^"((.*)-(gzip))"$' gzip
+    SetEnvIf If-None-Match '^"((.*)-(br))"$' br
+    RequestHeader edit "If-None-Match" '^"((.*)-(gzip|br))"$' '"$1", "$2"'
+    Header edit "ETag" '^"(.*)"$' '"$1-gzip"' env=gzip
+    Header edit "ETag" '^"(.*)"$' '"$1-br"' env=br
+
+    SetEnv no-gzip 1
+    AddOutputFilterByType BROTLI_COMPRESS application/javascript
+    AddOutputFilterByType BROTLI_COMPRESS application/wasm
+    AddOutputFilterByType BROTLI_COMPRESS application/xhtml+xml
+    AddOutputFilterByType BROTLI_COMPRESS application/xml
+    AddOutputFilterByType BROTLI_COMPRESS font/opentype
+    AddOutputFilterByType BROTLI_COMPRESS font/otf
+    AddOutputFilterByType BROTLI_COMPRESS font/ttf
+    AddOutputFilterByType BROTLI_COMPRESS font/woff
+    AddOutputFilterByType BROTLI_COMPRESS font/woff2
+    AddOutputFilterByType BROTLI_COMPRESS image/svg+xml
+    AddOutputFilterByType BROTLI_COMPRESS text/css
+    AddOutputFilterByType BROTLI_COMPRESS text/html
+    AddOutputFilterByType BROTLI_COMPRESS text/xml
+    AddOutputFilterByType BROTLI_COMPRESS text/javascript
+    AddOutputFilterByType BROTLI_COMPRESS text/plain
 </VirtualHost>
 ```
 
