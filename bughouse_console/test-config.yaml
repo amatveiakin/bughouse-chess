@@ -1,0 +1,10 @@
+database_options: !Sqlite bughouse.db
+secret_database_options: !Sqlite bughouse-secret.db
+auth_options: !NoAuth
+session_options: !WithSessions
+  secret: !Literal "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  expire_in:
+    secs: 2592000  # 30 days
+    nanos: 0
+static_content_url_prefix: http://localhost:8080
+allowed_origin: Any

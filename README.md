@@ -70,7 +70,7 @@ cd www && npm install
 Build & run game server:
 
 ```
-cargo run --package bughouse_console -- server --sqlite-db ~/bughouse.db
+cargo run --package bughouse_console -- server bughouse_console/test-config.yaml
 ```
 
 Run once in the beginning and every time after changing Rust code:
@@ -230,7 +230,7 @@ bh_run_server
 Build & run server:
 
 ```
-cargo run --package bughouse_console -- server
+cargo run --package bughouse_console -- server bughouse_console/test-config.yaml
 ```
 
 Build & run client:
