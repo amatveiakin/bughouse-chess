@@ -6,8 +6,6 @@ auth_options: !Google
   client_secret_source: !EnvVar GOOGLE_CLIENT_SECRET
 session_options: !WithSessions
   secret: !Literal "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-  expire_in:
-    secs: 2592000  # 30 days
-    nanos: 0
+  expire_in: 30d
 static_content_url_prefix: http://localhost:8080
 allowed_origin: Any

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::Context;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -55,7 +57,8 @@ pub enum SessionOptions {
         // restarts. When Random is used, or the secret changes,
         // the sessions are terminated.
         secret: StringSource,
-        expire_in: std::time::Duration,
+        #[serde(with = "humantime_serde")]
+        expire_in: Duration,
     },
 }
 

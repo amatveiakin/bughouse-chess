@@ -27,6 +27,7 @@ futures-util = "0.3.28"
 http = "0.2.9"
 http-types = { version = "2.12.0", features = ["hyperium_http"] }
 humantime = "2.1.0"
+humantime-serde = "1.1.1"
 instant = "0.1.12"
 itertools = "0.11.0"
 lazy_static = "1.4.0"

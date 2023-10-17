@@ -6,8 +6,6 @@ auth_options: !Google
   client_secret_source: !File <SECRET-PATH>/google-client-secret
 session_options: !WithSessions
   secret: !File <SECRET-PATH>/session-secret
-  expire_in:
-    secs: 2592000  # 30 days
-    nanos: 0
+  expire_in: 30d
 static_content_url_prefix: ""
 allowed_origin: !ThisSite https://bughouse.pro
