@@ -26,7 +26,6 @@ extern crate bughouse_chess;
 pub mod network;
 pub mod tui;
 
-mod async_server_main;
 mod auth;
 mod auth_handlers_tide;
 mod bughouse_prelude;
@@ -42,6 +41,7 @@ mod prod_server_helpers;
 mod secret_database;
 mod secret_persistence;
 mod server_config;
+mod server_main;
 mod stats_handlers_tide;
 mod stress_test;
 
@@ -95,7 +95,7 @@ fn main() -> io::Result<()> {
 
     match matches.subcommand() {
         Some(("server", sub_matches)) => {
-            async_server_main::run(server_config_from_args(sub_matches));
+            server_main::run(server_config_from_args(sub_matches));
             Ok(())
         }
         Some(("client", sub_matches)) => client_main::run(client_main::ClientConfig {
