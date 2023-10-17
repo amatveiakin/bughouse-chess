@@ -496,6 +496,7 @@ body.observer .player-name {
   padding: 0.5em 0;
 }
 #observers {
+  height: 0;
   font-size: 75%;
 }
 .score-player-name {
