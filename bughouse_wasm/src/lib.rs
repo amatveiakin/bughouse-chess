@@ -167,6 +167,7 @@ impl WebClient {
 
     pub fn meter(&mut self, name: String) -> JsMeter { JsMeter::new(self.state.meter(name)) }
 
+    pub fn got_server_welcome(&self) -> bool { self.state.got_server_welcome() }
     pub fn hot_reconnect(&mut self) { self.state.hot_reconnect(); }
     pub fn current_turnaround_time(&self) -> f64 {
         self.state.current_turnaround_time().as_secs_f64()
@@ -229,6 +230,17 @@ impl WebClient {
     }
     pub fn lobby_countdown_seconds_left(&self) -> Option<u32> {
         self.state.first_game_countdown_left().map(|d| d.as_secs_f64().ceil() as u32)
+    }
+
+    pub fn init_new_match_rules_body(&self) -> JsResult<()> {
+        let server_options = self.state.server_options().ok_or_else(|| rust_error!())?;
+        let (variants, details) = rules_ui::make_new_match_rules_body(server_options);
+        let variants_node = web_document().get_existing_element_by_id("cc-rule-variants")?;
+        let details_node = web_document().get_existing_element_by_id("cc-rule-details")?;
+        variants_node.set_inner_html(&variants);
+        details_node.set_inner_html(&details);
+        update_new_match_rules_body()?;
+        Ok(())
     }
 
     pub fn set_guest_player_name(&mut self, player_name: Option<String>) -> JsResult<()> {
@@ -1150,17 +1162,6 @@ fn scroll_log_to_bottom(board_idx: DisplayBoard) -> JsResult<()> {
 pub fn init_page() -> JsResult<()> {
     generate_svg_markers()?;
     render_starting()?;
-    Ok(())
-}
-
-#[wasm_bindgen]
-pub fn init_new_match_rules_body() -> JsResult<()> {
-    let (variants, details) = rules_ui::make_new_match_rules_body();
-    let variants_node = web_document().get_existing_element_by_id("cc-rule-variants")?;
-    let details_node = web_document().get_existing_element_by_id("cc-rule-details")?;
-    variants_node.set_inner_html(&variants);
-    details_node.set_inner_html(&details);
-    update_new_match_rules_body()?;
     Ok(())
 }
 

@@ -1274,78 +1274,81 @@ function go_to_suburl(event) {
 }
 
 function update_session() {
-    reset_menu();
-    const session = wasm_client().session();
-    const using_password_auth = session.registration_method == 'Password';
-    let is_guest = null;
-    let user_name = null;
-    switch (session.status) {
-        case 'unknown':
-        case 'google_oauth_registering': {
-            is_registered_user = false;
-            is_guest = false;
-            user_name = null;
-            break;
+    with_error_handling(function() {
+        reset_menu();
+        const session = wasm_client().session();
+        const using_password_auth = session.registration_method == 'Password';
+        let is_guest = null;
+        let user_name = null;
+        switch (session.status) {
+            case 'unknown':
+            case 'google_oauth_registering': {
+                is_registered_user = false;
+                is_guest = false;
+                user_name = null;
+                break;
+            }
+            case 'logged_out': {
+                is_registered_user = false;
+                is_guest = true;
+                user_name = 'Guest';
+                break;
+            }
+            case 'logged_in': {
+                is_registered_user = true;
+                is_guest = false;
+                user_name = session.user_name;
+                break;
+            }
         }
-        case 'logged_out': {
-            is_registered_user = false;
-            is_guest = true;
-            user_name = 'Guest';
-            break;
-        }
-        case 'logged_in': {
-            is_registered_user = true;
-            is_guest = false;
-            user_name = session.user_name;
-            break;
-        }
-    }
-    const session_info_loaded = is_registered_user || is_guest;
-    registered_user_bar.style.display = is_registered_user ? null : 'None';
-    guest_user_bar.style.display = !is_registered_user ? null : 'None';
-    guest_user_tooltip.style.display = is_guest ? null : 'None';
-    if (session_info_loaded) {
-        if (is_registered_user) {
-            create_rated_match_button.disabled = false;
-            set_tooltip(create_rated_match_button, null);
+        const session_info_loaded = is_registered_user || is_guest;
+        const ready_to_play = session_info_loaded && wasm_client().got_server_welcome();
+        registered_user_bar.style.display = is_registered_user ? null : 'None';
+        guest_user_bar.style.display = !is_registered_user ? null : 'None';
+        guest_user_tooltip.style.display = is_guest ? null : 'None';
+        if (ready_to_play) {
+            if (is_registered_user) {
+                create_rated_match_button.disabled = false;
+                set_tooltip(create_rated_match_button, null);
+            } else {
+                create_rated_match_button.disabled = true;
+                set_tooltip(create_rated_match_button, 'Please sign in to play rated games');
+            }
+            create_unrated_match_button.disabled = false;
+            join_match_button.disabled = false;
+            authorization_button.disabled = false;
         } else {
             create_rated_match_button.disabled = true;
-            set_tooltip(create_rated_match_button, 'Please sign in to play rated games');
+            create_unrated_match_button.disabled = true;
+            join_match_button.disabled = true;
+            authorization_button.disabled = true;
         }
-        create_unrated_match_button.disabled = false;
-        join_match_button.disabled = false;
-        authorization_button.disabled = false;
-    } else {
-        create_rated_match_button.disabled = true;
-        create_unrated_match_button.disabled = true;
-        join_match_button.disabled = true;
-        authorization_button.disabled = true;
-    }
-    for (const node of document.querySelectorAll('.logged-in-as-account')) {
-        node.classList.toggle('account-user', is_registered_user);
-        node.classList.toggle('account-guest', is_guest);
-        if (user_name === null) {
-            node.textContent = '';
-            node.appendChild(make_animated_dots());
-        } else {
-            node.textContent = user_name;
+        for (const node of document.querySelectorAll('.logged-in-as-account')) {
+            node.classList.toggle('account-user', is_registered_user);
+            node.classList.toggle('account-guest', is_guest);
+            if (user_name === null) {
+                node.textContent = '';
+                node.appendChild(make_animated_dots());
+            } else {
+                node.textContent = user_name;
+            }
         }
-    }
-    change_account_email.value = session.email;
-    for (const node of document.querySelectorAll('.logged-in-as-email')) {
-        node.textContent = session.email || '—';
-    }
-    for (const node of document.querySelectorAll('.logged-in-with-password')) {
-        node.style.display = using_password_auth ? null : 'None';
-        node.disabled = !using_password_auth;
-    }
-    for (const node of document.querySelectorAll('.guest-player-name')) {
-        node.style.display = is_guest ? null : 'None';
-        node.disabled = !is_guest;
-    }
-    if (session.status == 'google_oauth_registering') {
-        push_menu_page(menu_signup_with_google_page);
-    }
+        change_account_email.value = session.email;
+        for (const node of document.querySelectorAll('.logged-in-as-email')) {
+            node.textContent = session.email || '—';
+        }
+        for (const node of document.querySelectorAll('.logged-in-with-password')) {
+            node.style.display = using_password_auth ? null : 'None';
+            node.disabled = !using_password_auth;
+        }
+        for (const node of document.querySelectorAll('.guest-player-name')) {
+            node.style.display = is_guest ? null : 'None';
+            node.disabled = !is_guest;
+        }
+        if (session.status == 'google_oauth_registering') {
+            push_menu_page(menu_signup_with_google_page);
+        }
+    });
 }
 
 // Encodes `FormData` as application/x-www-form-urlencoded (the default is multipart/form-data).
@@ -1450,7 +1453,7 @@ async function delete_account(event) {
 
 function show_create_match_page() {
     with_error_handling(function() {
-        wasm.init_new_match_rules_body();
+        wasm_client().init_new_match_rules_body();
     });
     let rules_variants = document.getElementById('cc-rule-variants');
     for (const node of rules_variants.querySelectorAll('button')) {

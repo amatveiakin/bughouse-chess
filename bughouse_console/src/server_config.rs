@@ -76,4 +76,7 @@ pub struct ServerConfig {
     pub session_options: SessionOptions,
     pub static_content_url_prefix: String,
     pub allowed_origin: AllowedOrigin,
+    pub check_git_version: bool,
+    #[serde(with = "humantime_serde")]
+    pub max_starting_time: Option<Duration>,
 }

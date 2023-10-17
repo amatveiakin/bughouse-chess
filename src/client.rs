@@ -9,7 +9,7 @@ use strum::IntoEnumIterator;
 use crate::altered_game::AlteredGame;
 use crate::board::{TurnError, TurnInput, TurnMode};
 use crate::chalk::{ChalkCanvas, ChalkMark, Chalkboard};
-use crate::clock::{GameInstant, WallGameTimePair};
+use crate::clock::{duration_to_mss, GameInstant, WallGameTimePair};
 use crate::display::{get_board_index, DisplayBoard};
 use crate::event::{
     BughouseClientEvent, BughouseClientPerformance, BughouseServerEvent, BughouseServerRejection,
@@ -20,6 +20,7 @@ use crate::game::{
     BughousePlayer, PlayerRelation, TurnRecord, TurnRecordExpanded,
 };
 use crate::meter::{Meter, MeterBox, MeterStats};
+use crate::my_git_version;
 use crate::pgn::BughouseExportFormat;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Faction, Participant};
@@ -59,6 +60,11 @@ pub enum EventError {
     // Internal logic error. Should be debugged (or demoted). Could be ignored for now.
     // For non-ignorable internal errors the client would just panic.
     InternalEvent(String),
+}
+
+#[derive(Debug)]
+pub struct ServerOptions {
+    pub max_starting_time: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -134,6 +140,7 @@ pub struct ClientState {
     user_agent: String,
     time_zone: String,
     connection: Connection,
+    server_options: Option<ServerOptions>,
     match_state: MatchState,
     notable_event_queue: VecDeque<NotableEvent>,
     meter_box: MeterBox,
@@ -166,6 +173,7 @@ impl ClientState {
             user_agent,
             time_zone,
             connection: Connection::new(now),
+            server_options: None,
             match_state: MatchState::NotConnected,
             notable_event_queue: VecDeque::new(),
             meter_box,
@@ -176,6 +184,7 @@ impl ClientState {
     }
 
     pub fn session(&self) -> &Session { &self.session }
+    pub fn server_options(&self) -> Option<&ServerOptions> { self.server_options.as_ref() }
     pub fn mtch(&self) -> Option<&Match> {
         if let MatchState::Connected(ref m) = self.match_state {
             Some(m)
@@ -252,6 +261,8 @@ impl ClientState {
         self.meter_box.consume_stats()
     }
 
+    pub fn got_server_welcome(&self) -> bool { self.server_options.is_some() }
+
     pub fn current_turnaround_time(&self) -> Duration {
         let now = Instant::now();
         self.connection.health_monitor.current_turnaround_time(now)
@@ -298,6 +309,7 @@ impl ClientState {
     // experience to the user. For example, it's possible to continue making and cancelling turns
     // while the connection is being restored.
     pub fn hot_reconnect(&mut self) {
+        self.server_options = None;
         self.notable_event_queue.clear();
         self.connection.reset();
         if let Some(match_id) = self.match_id() {
@@ -421,6 +433,14 @@ impl ClientState {
         match event {
             Rejection(rejection) => {
                 let error = match rejection {
+                    BughouseServerRejection::MaxStartingTimeExceeded { allowed, .. } => {
+                        EventError::IgnorableError(format!(
+                            "Maximum allowed starting time is {}. \
+                            This is a technical limitation that we hope to relax in the future. \
+                            But for now it is what it is.",
+                            duration_to_mss(allowed)
+                        ))
+                    }
                     BughouseServerRejection::NoSuchMatch{ match_id } => {
                         EventError::IgnorableError(format!(
                             "Match {match_id} does not exist."
@@ -471,6 +491,24 @@ impl ClientState {
                     self.match_state = MatchState::NotConnected;
                 }
                 return Err(error);
+            }
+            ServerWelcome { expected_git_version, max_starting_time } => {
+                if let Some(expected_git_version) = expected_git_version {
+                    let my_version = my_git_version!();
+                    if expected_git_version != my_version {
+                        // TODO: Send to server for logging.
+                        return Err(EventError::FatalError(format!(
+                            "Client version ({my_version}) does not match \
+                            server version ({expected_git_version}). Please refresh the page. \
+                            If the problem persists, try to do a hard refresh \
+                            (Ctrl+Shift+R in most browsers on Windows and Linux; \
+                            Option+Cmd+E in Safari, Cmd+Shift+R in other browsers on Mac).",
+                        )));
+                    }
+                }
+                self.server_options = Some(ServerOptions { max_starting_time });
+                // Trigger `update_session` in JS: it checks both server options and session.
+                self.notable_event_queue.push_back(NotableEvent::SessionUpdated);
             }
             UpdateSession { session } => {
                 self.session = session;

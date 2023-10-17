@@ -9,3 +9,5 @@ session_options: !WithSessions
   expire_in: 30d
 static_content_url_prefix: ""
 allowed_origin: !ThisSite https://bughouse.pro
+check_git_version: true
+max_starting_time: 1h

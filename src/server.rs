@@ -28,6 +28,7 @@ use crate::game::{
     TurnRecord,
 };
 use crate::lobby::{assign_boards, fix_teams_if_needed, verify_participants, Teaming};
+use crate::my_git_version;
 use crate::pgn::{self, BughouseExportFormat};
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Faction, Participant};
@@ -57,6 +58,12 @@ macro_rules! unknown_error {
     ($($arg:tt)*) => {
         BughouseServerRejection::UnknownError{ message: $crate::internal_error_message!($($arg)*) }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct ServerOptions {
+    pub check_git_version: bool,
+    pub max_starting_time: Option<Duration>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -176,6 +183,7 @@ pub struct ClientId(usize);
 
 pub struct Client {
     events_tx: mpsc::Sender<BughouseServerEvent>,
+    new_client: bool,
     match_id: Option<MatchId>,
     participant_id: Option<ParticipantId>,
     session_id: Option<SessionId>,
@@ -205,6 +213,7 @@ impl Clients {
         let now = Instant::now();
         let client = Client {
             events_tx,
+            new_client: true,
             match_id: None,
             participant_id: None,
             session_id,
@@ -243,6 +252,15 @@ impl Clients {
         }
     }
 
+    fn welcome_new_clients(&mut self, event: &BughouseServerEvent) {
+        for client in self.map.values_mut() {
+            if client.new_client {
+                client.send(event.clone());
+                client.new_client = false;
+            }
+        }
+    }
+
     fn find_participant(&self, participant_id: ParticipantId) -> Option<ClientId> {
         self.map
             .iter()
@@ -250,9 +268,6 @@ impl Clients {
     }
 }
 
-impl Default for Clients {
-    fn default() -> Self { Self::new() }
-}
 impl ops::Index<ClientId> for Clients {
     type Output = Client;
     fn index(&self, id: ClientId) -> &Self::Output { &self.map[&id] }
@@ -291,6 +306,8 @@ struct Context<'a, 'b> {
 }
 
 struct CoreServerState {
+    server_options: ServerOptions,
+    welcome_event: BughouseServerEvent,
     execution: Execution,
     matches: HashMap<MatchId, Match>,
 }
@@ -317,9 +334,9 @@ pub struct ServerState {
 
 impl ServerState {
     pub fn new(
-        clients: Arc<Mutex<Clients>>, session_store: Arc<Mutex<SessionStore>>,
-        info: Arc<Mutex<ServerInfo>>, helpers: Box<dyn ServerHelpers>,
-        hooks: Option<Box<dyn ServerHooks>>,
+        server_options: ServerOptions, clients: Arc<Mutex<Clients>>,
+        session_store: Arc<Mutex<SessionStore>>, info: Arc<Mutex<ServerInfo>>,
+        helpers: Box<dyn ServerHelpers>, hooks: Option<Box<dyn ServerHooks>>,
     ) -> Self {
         ServerState {
             clients,
@@ -328,7 +345,7 @@ impl ServerState {
             helpers,
             hooks: hooks.unwrap_or_else(|| Box::new(NoopServerHooks {})),
             disable_countdown: false,
-            core: CoreServerState::new(),
+            core: CoreServerState::new(server_options),
         }
     }
 
@@ -371,15 +388,38 @@ impl ServerState {
 }
 
 impl CoreServerState {
-    fn new() -> Self {
+    fn new(server_options: ServerOptions) -> Self {
+        let welcome_event = BughouseServerEvent::ServerWelcome {
+            expected_git_version: server_options
+                .check_git_version
+                .then(|| my_git_version!().to_owned()),
+            max_starting_time: server_options.max_starting_time,
+        };
         CoreServerState {
+            server_options,
+            welcome_event,
             execution: Execution::Running,
             matches: HashMap::new(),
         }
     }
 
-    fn make_match(&mut self, now: Instant, rules: Rules) -> Result<MatchId, String> {
-        rules.verify().map_err(|err| format!("Invalid match rules: {err}"))?;
+    fn make_match(
+        &mut self, now: Instant, rules: Rules,
+    ) -> Result<MatchId, BughouseServerRejection> {
+        // Client should verify rules according to the very same logic, so this shouldn't happen:
+        rules.verify().map_err(|err| unknown_error!("Invalid match rules: {err}"))?;
+
+        if let Some(max_starting_time) = self.server_options.max_starting_time {
+            let starting_time = rules.chess_rules.time_control.starting_time;
+            if starting_time > max_starting_time {
+                // TODO: Log to see if this is a popular request.
+                return Err(BughouseServerRejection::MaxStartingTimeExceeded {
+                    requested: rules.chess_rules.time_control.starting_time,
+                    allowed: max_starting_time,
+                });
+            }
+        }
+
         // Exclude confusing characters:
         //   - 'O' and '0' (easy to confuse);
         //   - 'I' (looks like '1'; keep '1' because confusion in the other direction seems less likely).
@@ -436,6 +476,8 @@ impl CoreServerState {
         // is over.
         let now = Instant::now();
 
+        ctx.clients.welcome_new_clients(&self.welcome_event);
+
         match event {
             IncomingEvent::Network(client_id, event) => {
                 self.on_client_event(ctx, client_id, now, event)
@@ -489,9 +531,8 @@ impl CoreServerState {
                 ctx.clients[client_id].participant_id = None;
                 let match_id = match self.make_match(now, rules.clone()) {
                     Ok(id) => id,
-                    Err(message) => {
-                        ctx.clients[client_id]
-                            .send_rejection(BughouseServerRejection::UnknownError { message });
+                    Err(err) => {
+                        ctx.clients[client_id].send_rejection(err);
                         return;
                     }
                 };

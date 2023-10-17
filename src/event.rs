@@ -18,6 +18,7 @@ use crate::starter::EffectiveStartingPosition;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseServerRejection {
+    MaxStartingTimeExceeded { requested: Duration, allowed: Duration },
     // Cannot join: a match with given ID does not exist.
     NoSuchMatch { match_id: String },
     // Cannot join match: there already is a player with this name and an active client.
@@ -62,6 +63,10 @@ pub enum GameUpdate {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BughouseServerEvent {
     Rejection(BughouseServerRejection),
+    ServerWelcome {
+        expected_git_version: Option<String>,
+        max_starting_time: Option<Duration>,
+    },
     UpdateSession {
         session: Session,
     },

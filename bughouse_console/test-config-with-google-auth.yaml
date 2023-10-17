@@ -9,3 +9,5 @@ session_options: !WithSessions
   expire_in: 30d
 static_content_url_prefix: http://localhost:8080
 allowed_origin: Any
+check_git_version: false
+max_starting_time: null

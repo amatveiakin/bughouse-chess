@@ -11,6 +11,8 @@ use crate::force::Force;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct TimeControl {
+    // Must be a whole number of seconds.
+    // Improvement potential. A Duration type that statically guarantees this.
     pub starting_time: Duration,
     // Improvement potential. Support increment, delay, etc.
     //   Note that `Clock::total_time_elapsed` should be adjusted in this case.
@@ -18,11 +20,22 @@ pub struct TimeControl {
 
 impl fmt::Display for TimeControl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = self.starting_time.as_secs();
-        let minutes = s / 60;
-        let seconds = s % 60;
-        write!(f, "{minutes}:{seconds:02}")
+        format_duration_to_mss(self.starting_time, f)
     }
+}
+
+pub fn duration_to_mss(d: Duration) -> String {
+    let mut ret = String::new();
+    format_duration_to_mss(d, &mut ret).unwrap();
+    ret
+}
+
+fn format_duration_to_mss(d: Duration, f: &mut impl fmt::Write) -> fmt::Result {
+    assert!(d.subsec_nanos() == 0, "{d:?}");
+    let s = d.as_secs();
+    let minutes = s / 60;
+    let seconds = s % 60;
+    write!(f, "{minutes}:{seconds:02}")
 }
 
 

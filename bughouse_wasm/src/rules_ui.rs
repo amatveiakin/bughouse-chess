@@ -1,8 +1,10 @@
 // Improvement potential. Factor out SVG images.
 // Improvement potential. Should we use web_sys intead of writing HTML by hand?
 
+use std::time::Duration;
 use std::{fmt, iter};
 
+use bughouse_chess::client::ServerOptions;
 use itertools::Itertools;
 
 use crate::bughouse_prelude::*;
@@ -391,8 +393,13 @@ pub fn koedem_tooltip() -> &'static str {
     one first team accumulates all four kings or when time runs out on any board."
 }
 
-pub fn stating_time_tooltip() -> &'static str {
-    "Starting time in “m:ss” format. There are no increments or delays."
+pub fn stating_time_tooltip(max_starting_time: Option<Duration>) -> Vec<String> {
+    let mut result =
+        vec!["Starting time in “m:ss” format. There are no increments or delays.".to_owned()];
+    if let Some(max_starting_time) = max_starting_time {
+        result.push(format!("Must not exceed {}.", duration_to_mss(max_starting_time)));
+    }
+    result
 }
 
 pub fn promotion_upgrade_tooltip() -> &'static str {
@@ -475,7 +482,7 @@ pub fn regicide_tooltip() -> &'static [&'static str] {
     ]
 }
 
-pub fn make_new_match_rules_body() -> (String, String) {
+pub fn make_new_match_rules_body(server_options: &ServerOptions) -> (String, String) {
     let variants = [
         VariantButton::new(FAIRY_PIECES, vec![
             VariantButtonState::new("off", "Standard pieces", ACCOLADE_OFF_ICON),
@@ -509,7 +516,7 @@ pub fn make_new_match_rules_body() -> (String, String) {
     let mut details = [
         RuleNode::new(STARTING_TIME, "Starting time")
             .with_input_text("[0-9]+:[0-5][0-9]", "m:ss", "5:00")
-            .with_tooltip([stating_time_tooltip()]),
+            .with_tooltip(stating_time_tooltip(server_options.max_starting_time)),
         RuleNode::new(PROMOTION, "Promotion")
             .with_input_select([
                 ("upgrade", "Upgrade", true),
@@ -606,7 +613,7 @@ pub fn make_readonly_rules_body(rules: &Rules) -> String {
     rule_rows.push((
         "Time control",
         rules.chess_rules.time_control.to_string(),
-        Some(paragraphs_to_html([stating_time_tooltip()])),
+        Some(paragraphs_to_html(stating_time_tooltip(None))),
     ));
     if let Some(bughouse_rules) = rules.bughouse_rules() {
         let promotion_tooltip = match bughouse_rules.promotion {

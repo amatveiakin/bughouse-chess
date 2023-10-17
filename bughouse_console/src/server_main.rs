@@ -277,6 +277,11 @@ pub fn run(config: ServerConfig) {
         "Authentication is enabled while sessions are not."
     );
 
+    let options = ServerOptions {
+        check_git_version: config.check_git_version,
+        max_starting_time: config.max_starting_time,
+    };
+
     // Limited buffer for data streaming from clients into the server.
     // When this is full because ServerState::apply_event isn't coping with
     // the load, we start putting back pressure on client websockets.
@@ -355,6 +360,7 @@ pub fn run(config: ServerConfig) {
     let session_store_copy = Arc::clone(&session_store);
     thread::spawn(move || {
         let mut server_state = ServerState::new(
+            options,
             clients_copy,
             session_store_copy,
             server_info_copy,
