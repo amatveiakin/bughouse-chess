@@ -517,6 +517,15 @@ body.observer .player-name {
   font-size: 105%;
   line-height: 110%;
 }
+body.symmetric #score-body {
+    padding: 0.4em 0;
+}
+body.symmetric .score-player-name {
+    line-height: 100%;
+}
+body.symmetric .individual-score-value {
+    line-height: 100%;
+}
 
 .clock {
   font-family: Monaco, monospace;
