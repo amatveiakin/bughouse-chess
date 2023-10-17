@@ -342,7 +342,7 @@ function with_error_handling(f) {
             // If this turns out to be buggy, could do
             //   ignorable_error_dialog(e.message).then(() => location.reload());
             // instead.
-            open_socket();
+            open_socket('kicked');
             open_menu();
             push_menu_page(menu_join_match_page);
         } else if (e?.constructor?.name == 'FatalError') {
@@ -409,11 +409,10 @@ function make_meters() {
 }
 
 function on_socket_close(event) {
-    console.warn(log_time(), 'WebSocket closed: ', event);
-    open_socket();
+    open_socket('closed');
 }
 
-function open_socket() {
+function open_socket(reason) {
     let now = performance.now();
     if (last_socket_connection_attempt !== null && now - last_socket_connection_attempt <= 7000) {
         return;
@@ -422,6 +421,13 @@ function open_socket() {
     consecutive_socket_connection_attempts += 1;
     if (consecutive_socket_connection_attempts > 3) {
         fatal_error_dialog('Cannot connect to the server. Sorry! Please come again later.');
+    }
+    if (reason) {
+        console.warn(log_time(), `WebSocket: ${reason}. Reconnecting...`);
+    }
+    if (socket !== null) {
+        socket.removeEventListener('close', on_socket_close);
+        socket.close();
     }
     socket = new WebSocket(server_websocket_address());
     socket.addEventListener('message', function(event) {
@@ -685,7 +691,7 @@ function update_connection_status() {
             connection_info.appendChild(make_animated_dots());
             connection_info.classList.toggle('bad-connection', true);
         }
-        open_socket();
+        open_socket('irresponsive');
     }
 }
 
