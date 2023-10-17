@@ -821,7 +821,12 @@ impl Match {
                     }
                 }
             }
-            let participant_id = existing_participant_id.unwrap_or_else(|| {
+            let participant_id = if let Some(id) = existing_participant_id {
+                id
+            } else {
+                if let Err(reason) = ctx.helpers.validate_player_name(&player_name) {
+                    return Err(BughouseServerRejection::InvalidPlayerName { player_name, reason });
+                }
                 // Improvement potential. Allow joining mid-game in individual mode.
                 //   Q. How to balance score in this case?
                 self.participants.add_participant(Participant {
@@ -833,7 +838,7 @@ impl Match {
                     is_online: true,
                     is_ready: false,
                 })
-            });
+            };
             ctx.clients[client_id].match_id = Some(self.match_id.clone());
             ctx.clients[client_id].participant_id = Some(participant_id);
             ctx.clients[client_id].send(self.make_match_welcome_event());
