@@ -297,14 +297,16 @@ impl ClientState {
     // the client object is still alive. Re-establishes connection while giving un uninterrupted
     // experience to the user. For example, it's possible to continue making and cancelling turns
     // while the connection is being restored.
-    pub fn hot_reconnect(&mut self, match_id: String) {
-        let my_name = self.my_name().unwrap().to_owned();
+    pub fn hot_reconnect(&mut self) {
         self.notable_event_queue.clear();
         self.connection.reset();
-        self.connection.send(BughouseClientEvent::Join {
-            match_id: match_id.clone(),
-            player_name: my_name,
-        });
+        if let Some(match_id) = self.match_id() {
+            let my_name = self.my_name().unwrap().to_owned();
+            self.connection.send(BughouseClientEvent::Join {
+                match_id: match_id.clone(),
+                player_name: my_name,
+            });
+        }
     }
     pub fn set_faction(&mut self, faction: Faction) {
         if let Some(mtch) = self.mtch_mut() {

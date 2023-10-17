@@ -780,7 +780,7 @@ fn hot_reconnect_lobby() {
         assert!(!p.is_ready);
     }
 
-    world[cl2].state.hot_reconnect(mtch);
+    world[cl2].state.hot_reconnect();
     world.process_all_events();
 
     // TODO:
@@ -803,7 +803,7 @@ fn hot_reconnect_lobby() {
 #[test]
 fn hot_reconnect_game_active() {
     let mut world = World::new();
-    let (mtch, cl1, cl2, cl3, cl4) = world.default_clients();
+    let (_, cl1, cl2, cl3, cl4) = world.default_clients();
     assert!(world[cl1].state.game_state().is_some());
 
     world[cl1].make_turn("e4").unwrap();
@@ -824,7 +824,7 @@ fn hot_reconnect_game_active() {
     world[cl4].make_turn("d4").unwrap();
     world.process_all_events_except_clients([cl3]);
 
-    world[cl3].state.hot_reconnect(mtch);
+    world[cl3].state.hot_reconnect();
     world.process_all_events();
 
     world[cl1].make_turn("f4").unwrap();
@@ -851,7 +851,7 @@ fn hot_reconnect_game_active() {
 #[test]
 fn hot_reconnect_preturn_cancellation_late() {
     let mut world = World::new();
-    let (mtch, cl1, cl2, cl3, cl4) = world.default_clients();
+    let (_, cl1, cl2, cl3, cl4) = world.default_clients();
     assert!(world[cl1].state.game_state().is_some());
 
     world[cl1].make_turn("e4").unwrap();
@@ -875,7 +875,7 @@ fn hot_reconnect_preturn_cancellation_late() {
         assert!(grid[Coord::F6].is(piece!(Black Knight)));
     }
 
-    world[cl3].state.hot_reconnect(mtch);
+    world[cl3].state.hot_reconnect();
     world.process_all_events();
 
     for cl in [cl1, cl2, cl3, cl4] {
@@ -888,12 +888,12 @@ fn hot_reconnect_preturn_cancellation_late() {
 #[test]
 fn hot_reconnect_game_over() {
     let mut world = World::new();
-    let (mtch, cl1, _cl2, _cl3, cl4) = world.default_clients();
+    let (_, cl1, _cl2, _cl3, cl4) = world.default_clients();
 
     world.reconnect_client(cl4);
     world[cl1].state.resign();
     world.process_all_events_except_clients([cl4]);
-    world[cl4].state.hot_reconnect(mtch);
+    world[cl4].state.hot_reconnect();
     world.process_all_events();
     assert_eq!(
         world[cl4].alt_game().status(),

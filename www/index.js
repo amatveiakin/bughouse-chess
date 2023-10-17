@@ -432,7 +432,7 @@ function open_socket() {
             console.info(log_time(), 'WebSocket connection opened');
             consecutive_socket_connection_attempts = 0;
             loading_tracker.connected();
-            wasm_client().on_socket_connected();
+            wasm_client().hot_reconnect();
         });
     });
     socket.addEventListener('error', function(event) {
