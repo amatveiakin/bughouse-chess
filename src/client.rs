@@ -554,13 +554,15 @@ impl ClientState {
                         // from `GameOver` to a separate event and move `apply_game_update` to
                         // `GameState`.
                         let game_state = self.game_state().unwrap();
-                        let turns = game_state
-                            .alt_game
-                            .local_turns()
-                            .iter()
-                            .map(|t| (t.envoy.board_idx, t.turn_input.clone()))
-                            .collect_vec();
-                        self.connection.send(BughouseClientEvent::SetTurns { turns });
+                        if game_state.alt_game.my_id().is_player() {
+                            let turns = game_state
+                                .alt_game
+                                .local_turns()
+                                .iter()
+                                .map(|t| (t.envoy.board_idx, t.turn_input.clone()))
+                                .collect_vec();
+                            self.connection.send(BughouseClientEvent::SetTurns { turns });
+                        }
                         self.send_chalk_drawing_update();
                         // No `NotableEvent::GameStarted`: it is used to reset the UI, while we want
                         // to make reconnection experience seemless.

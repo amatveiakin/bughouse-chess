@@ -804,7 +804,6 @@ fn hot_reconnect_lobby() {
 fn hot_reconnect_game_active() {
     let mut world = World::new();
     let (_, cl1, cl2, cl3, cl4) = world.default_clients();
-    assert!(world[cl1].state.game_state().is_some());
 
     world[cl1].make_turn("e4").unwrap();
     world.process_all_events();
@@ -852,7 +851,6 @@ fn hot_reconnect_game_active() {
 fn hot_reconnect_preturn_cancellation_late() {
     let mut world = World::new();
     let (_, cl1, cl2, cl3, cl4) = world.default_clients();
-    assert!(world[cl1].state.game_state().is_some());
 
     world[cl1].make_turn("e4").unwrap();
     world.process_all_events();
@@ -883,6 +881,25 @@ fn hot_reconnect_preturn_cancellation_late() {
         assert!(grid[Coord::C6].is(piece!(Black Knight)));
         assert!(grid[Coord::F6].is_none());
     }
+}
+
+#[test]
+fn hot_reconnect_observer() {
+    let mut world = World::new();
+    let (mtch, cl1, _cl2, _cl3, _cl4) = world.default_clients();
+
+    let cl5 = world.new_client();
+    world[cl5].join(&mtch, "p5");
+    world.process_all_events();
+
+    world.reconnect_client(cl5);
+
+    world[cl1].make_turn("e4").unwrap();
+    world.process_all_events_except_clients([cl5]);
+
+    world[cl5].state.hot_reconnect();
+    world.process_all_events();
+    assert!(world[cl5].local_game().board(A).grid()[Coord::E4].is(piece!(White Pawn)));
 }
 
 #[test]
