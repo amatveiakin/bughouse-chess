@@ -78,6 +78,9 @@ pub enum BughouseServerEvent {
         participants: Vec<Participant>,
         countdown_elapsed: Option<Duration>,
     },
+    OutcomeHistory {
+        outcome_history: Vec<String>, // for re-connection
+    },
     // Improvement potential: Rename `GameStarted` to take reconnection into account.
     GameStarted {
         game_index: usize,

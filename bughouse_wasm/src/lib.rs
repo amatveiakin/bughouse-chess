@@ -12,12 +12,14 @@ extern crate wasm_bindgen;
 extern crate bughouse_chess;
 
 mod bughouse_prelude;
+mod chat;
 mod html_collection_iterator;
 mod rules_ui;
 mod svg;
 mod table;
 mod web_document;
 mod web_error_handling;
+mod web_util;
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
@@ -28,6 +30,7 @@ use bughouse_chess::client::*;
 use bughouse_chess::lobby::*;
 use bughouse_chess::meter::*;
 use bughouse_chess::session::*;
+use chat::ChatMessage;
 use enum_map::enum_map;
 use html_collection_iterator::IntoHtmlCollectionIterator;
 use instant::Instant;
@@ -38,6 +41,7 @@ use wasm_bindgen::prelude::*;
 use web_document::{web_document, WebDocument};
 use web_error_handling::{JsResult, RustError};
 use web_sys::{ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
+use web_util::{remove_all_children, scroll_to_bottom};
 
 use crate::bughouse_prelude::*;
 
@@ -672,12 +676,22 @@ impl WebClient {
                 init_lobby(&self.state.mtch().unwrap().rules)?;
                 Ok(JsEventMatchStarted { match_id }.into())
             }
+            Some(NotableEvent::NewOutcomes(outcomes)) => {
+                for outcome in outcomes {
+                    self.add_chat_message(
+                        ChatMessage::new(format!("Game over: {}", outcome))
+                            .with_sender("System", "chat-sender-game-over")
+                            .with_prominent()
+                            .with_flash(),
+                    )?;
+                }
+                Ok(JsEventNoop {}.into())
+            }
             Some(NotableEvent::GameStarted) => {
                 let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
                     return Err(rust_error!());
                 };
-                let game_message = web_document().get_existing_element_by_id("game-message")?;
-                game_message.set_text_content(None);
+                // Improvement potential. Add an <hr> style separator between games in chat.
                 let my_id = alt_game.my_id();
                 render_boards(alt_game.board_shape(), alt_game.perspective())?;
                 setup_participation_mode(my_id)?;
@@ -743,7 +757,6 @@ impl WebClient {
 
     pub fn update_state(&self) -> JsResult<()> {
         let document = web_document();
-        let game_message = document.get_existing_element_by_id("game-message")?;
         self.update_clock()?;
         let Some(mtch) = self.state.mtch() else {
             return Ok(());
@@ -902,11 +915,6 @@ impl WebClient {
             .class_list()
             .toggle_with_force("active-player", is_clock_ticking(&game, my_id))?;
         self.repaint_chalk()?;
-        if !alt_game.is_active() {
-            // Safe to use `game_confirmed` here, because there could be no local status
-            // changes after game over.
-            game_message.set_text_content(Some(&alt_game.game_confirmed().outcome()));
-        }
         Ok(())
     }
 
@@ -939,6 +947,37 @@ impl WebClient {
             .sorted_by_key(|(metric, _)| metric.as_str())
             .map(|(metric, stats)| format!("{metric}: {stats}"))
             .join("\n")
+    }
+
+    pub fn clear_ephemeral_chat_messages(&self) -> JsResult<()> {
+        let chat_node = web_document().get_existing_element_by_id("chat-text-area")?;
+        chat::clear_ephemeral_chat_messages(&chat_node)
+    }
+    // TODO: Add time. Option questions:
+    //   - Should it be on the left (before the sender name) or in the bottom right corner like in
+    //     most chat app? The latter would probably require separating messages visually with some
+    //     kind of bubbles.
+    //   - Should we show absolute time or relative time (e.g. "5m ago")? The latter would creating
+    //     visual noise from updating times. The former may not be very useful without introducing
+    //     clocks into the app if there are a lot of people who play in full screen (like I do).
+    fn add_chat_message(&self, message: ChatMessage) -> JsResult<()> {
+        let chat_node = web_document().get_existing_element_by_id("chat-text-area")?;
+        chat::add_chat_message(&chat_node, message)
+    }
+    pub fn add_command_result(&self, text: &str) -> JsResult<()> {
+        self.add_chat_message(
+            ChatMessage::new(text)
+                .with_sender("System", "chat-sender-command-result")
+                .with_ephemeral(),
+        )
+    }
+    pub fn add_command_error(&self, text: &str) -> JsResult<()> {
+        self.add_chat_message(
+            ChatMessage::new(text)
+                .with_sender("System", "chat-sender-command-error")
+                .with_ephemeral()
+                .with_flash(),
+        )
     }
 
     pub fn wayback_to_turn(&mut self, board_id: &str, turn_idx: Option<String>) -> JsResult<()> {
@@ -994,11 +1033,15 @@ impl WebClient {
         // Improvement potential: Human-readable error messages (and/or visual hints).
         //   Ideally also include rule-dependent context, e.g. "Illegal drop position:
         //   pawns can be dropped onto ranks 2–6 counting from the player".
-        let game_message = web_document().get_existing_element_by_id("game-message")?;
-        game_message.set_text_content(
-            turn_result.as_ref().err().map(|err| format!("{:?}", err)).as_deref(),
-        );
-        Ok(())
+        match turn_result {
+            Ok(()) => self.clear_ephemeral_chat_messages(),
+            Err(err) => self.add_chat_message(
+                ChatMessage::new(format!("Illegal turn: {:?}", err))
+                    .with_sender("System", "chat-sender-turn-error")
+                    .with_ephemeral()
+                    .with_flash(),
+            ),
+        }
     }
 
     fn change_faction(&mut self, faction_modifier: impl Fn(i32) -> i32) {
@@ -1135,20 +1178,6 @@ enum SquareHighlightLayer {
     Turn,      // last turn, preturn
     TurnAbove, // like `Turn`, but above the fog of war
     Drag,      // drag start, drag hover, legal moves
-}
-
-fn remove_all_children(node: &web_sys::Node) -> JsResult<()> {
-    // TODO: Consider: replace_children_with_node_0.
-    while let Some(child) = node.last_child() {
-        node.remove_child(&child)?;
-    }
-    Ok(())
-}
-
-fn scroll_to_bottom(e: &web_sys::Element) {
-    // Do not try to compute the real scroll position, as it is very slow!
-    // See the comment in `update_turn_log`.
-    e.set_scroll_top(1_000_000_000);
 }
 
 fn scroll_log_to_bottom(board_idx: DisplayBoard) -> JsResult<()> {

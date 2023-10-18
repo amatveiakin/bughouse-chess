@@ -41,6 +41,7 @@ pub enum SubjectiveGameResult {
 pub enum NotableEvent {
     SessionUpdated,
     MatchStarted(String), // contains MatchID
+    NewOutcomes(Vec<String>),
     GameStarted,
     GameOver(SubjectiveGameResult),
     TurnMade(BughouseEnvoy),
@@ -98,6 +99,8 @@ pub struct Match {
     pub rules: Rules,
     // All players including those not participating in the current game.
     pub participants: Vec<Participant>,
+    // Statuses from all finished games in the match, in order.
+    pub outcome_history: Vec<String>,
     // Scores from the past matches.
     pub scores: Option<Scores>,
     // Whether this client is ready to start a new game.
@@ -438,6 +441,7 @@ impl ClientState {
             LobbyUpdated { participants, countdown_elapsed } => {
                 self.process_lobby_updated(participants, countdown_elapsed)
             }
+            OutcomeHistory { outcome_history } => self.process_outcome_history(outcome_history),
             GameStarted {
                 game_index,
                 starting_position,
@@ -579,6 +583,7 @@ impl ClientState {
                 my_faction,
                 rules,
                 participants: Vec::new(),
+                outcome_history: Vec::new(),
                 scores: None,
                 is_ready: false,
                 first_game_countdown_since: None,
@@ -600,6 +605,17 @@ impl ClientState {
         mtch.my_faction = me.faction;
         mtch.participants = participants;
         mtch.first_game_countdown_since = countdown_elapsed.map(|t| now - t);
+        Ok(())
+    }
+    fn process_outcome_history(&mut self, outcome_history: Vec<String>) -> Result<(), EventError> {
+        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
+        if mtch.outcome_history.len() > outcome_history.len() {
+            return Err(internal_error!());
+        }
+        let new_outcomes = &outcome_history[mtch.outcome_history.len()..];
+        mtch.outcome_history.extend_from_slice(new_outcomes);
+        self.notable_event_queue
+            .push_back(NotableEvent::NewOutcomes(new_outcomes.to_vec()));
         Ok(())
     }
     fn process_game_started(
@@ -783,6 +799,9 @@ impl ClientState {
             }
         }
 
+        let outcome = alt_game.game_confirmed().outcome();
+        mtch.outcome_history.push(outcome.clone());
+
         if generate_notable_events {
             if let BughouseParticipant::Player(my_player_id) = alt_game.my_id() {
                 let game_status = match alt_game.status() {
@@ -797,6 +816,7 @@ impl ClientState {
                     BughouseGameStatus::Draw(_) => SubjectiveGameResult::Draw,
                 };
                 self.notable_event_queue.push_back(NotableEvent::GameOver(game_status));
+                self.notable_event_queue.push_back(NotableEvent::NewOutcomes(vec![outcome]));
                 // Note. It would make more sense to send performanse stats on leave, but there doesn't
                 // seem to be a way to do this reliably, especially on mobile.
                 self.report_performance();

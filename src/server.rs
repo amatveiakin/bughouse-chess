@@ -290,7 +290,7 @@ struct Match {
     rules: Rules,
     participants: Participants,
     scores: Option<Scores>,
-    match_history: Vec<BughouseGame>, // final game states
+    match_history: Vec<BughouseGame>, // final game states; TODO: rename to `game history`
     first_game_countdown_since: Option<Instant>,
     game_state: Option<GameState>, // active game or latest game
     board_assignment_override: Option<Vec<PlayerInGame>>, // for tests
@@ -893,6 +893,12 @@ impl Match {
             // LobbyUpdated should precede GameStarted, because this is how the client gets their
             // team in FixedTeam mode.
             self.send_lobby_updated(ctx, now);
+            let mut outcome_history =
+                self.match_history.iter().map(|game| game.outcome()).collect_vec();
+            if !game_state.game.is_active() {
+                outcome_history.push(game_state.game.outcome());
+            }
+            ctx.clients[client_id].send(BughouseServerEvent::OutcomeHistory { outcome_history });
             ctx.clients[client_id].send(self.make_game_start_event(now, Some(participant_id)));
             let chalkboard = game_state.chalkboard.clone();
             ctx.clients[client_id].send(BughouseServerEvent::ChalkboardUpdated { chalkboard });

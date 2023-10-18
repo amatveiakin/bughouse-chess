@@ -242,6 +242,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                 NotableEvent::MatchStarted(..) => {
                     // TODO: Display match ID to the user.
                 }
+                NotableEvent::NewOutcomes(..) => {}
                 NotableEvent::GameStarted => {
                     execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
                 }

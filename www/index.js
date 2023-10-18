@@ -90,9 +90,7 @@ const SearchParams = {
 };
 
 const page_element = document.getElementById('page');
-const command_input = document.getElementById('command');
-const command_result = document.getElementById('command-result');
-const loading_status = document.getElementById('loading-status');
+const chat_input = document.getElementById('chat-input');
 const connection_info = document.getElementById('connection-info');
 
 const menu_backdrop = document.getElementById('menu-backdrop');
@@ -148,7 +146,6 @@ const menu_page_stack = [];
 const loading_tracker = new class {
     #resources_required = 0;
     #resources_loaded = 0;
-    #connected = false;
 
     constructor() {
         this.#update();
@@ -161,22 +158,12 @@ const loading_tracker = new class {
         this.#resources_loaded += 1;
         this.#update();
     }
-    connected() {
-        this.#connected = true;
-        this.#update();
-    }
     #update() {
-        // TODO: Don't start the game until everything is ready.
+        // TODO: Don't start the game until `ready`.
         console.assert(this.#resources_loaded <= this.#resources_required);
-        const resources_ready = this.#resources_loaded == this.#resources_required;
-        if (resources_ready && this.#connected) {
-            loading_status.innerText = '';
-        } else {
-            const connection_string = this.#connected ? 'Connected' : 'Connecting...';
-            const resource_string = resources_ready
-                ? 'Resources loaded'
-                : `Loading resources... ${this.#resources_loaded} / ${this.#resources_required}`;
-            loading_status.innerText = `${connection_string}\n${resource_string}`;
+        const ready = this.#resources_loaded == this.#resources_required;
+        if (ready) {
+            console.log(`All resources loaded ${this.#resources_loaded}`);
         }
     }
 };
@@ -278,7 +265,7 @@ update_session();
 document.addEventListener('keydown', on_document_keydown);
 document.addEventListener('paste', on_paste);
 
-command_input.addEventListener('keydown', on_command_keydown);
+chat_input.addEventListener('keydown', on_command_keydown);
 
 ready_button.addEventListener('click', () => execute_command('/ready'));
 resign_button.addEventListener('click', request_resign);
@@ -333,7 +320,7 @@ function with_error_handling(f) {
         } else if (e instanceof WasmClientPanicked) {
             // Error dialog should already be shown.
         } else if (e instanceof InvalidCommand) {
-            command_result.innerText = e.msg;
+            wasm_client().add_command_error(e.msg);
         } else if (e?.constructor?.name == 'IgnorableError') {
             ignorable_error_dialog(e.message);
         } else if (e?.constructor?.name == 'KickedFromMatch') {
@@ -421,7 +408,6 @@ function on_socket_open(event) {
     with_error_handling(function() {
         console.info(log_time(), 'WebSocket connection opened');
         consecutive_socket_connection_attempts = 0;
-        loading_tracker.connected();
         wasm_client().hot_reconnect();
     });
 }
@@ -497,7 +483,7 @@ function on_document_keydown(event) {
         } else {
             let isPrintableKey = event.key.length === 1;  // https://stackoverflow.com/a/38802011/3092679
             if (isPrintableKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
-                command_input.focus();
+                chat_input.focus();
             } else if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
                 // Make sure log is not scrolled by arrow keys: we are scrolling it
                 // programmatically to make sure the current turn is visible.
@@ -511,14 +497,14 @@ function on_document_keydown(event) {
 
 function on_paste(event) {
     if (!menu_dialog.open) {
-        command_input.focus();
+        chat_input.focus();
     }
 }
 
 function on_command_keydown(event) {
     if (!event.repeat && event.key == 'Enter') {
-        const input = String(command_input.value);
-        command_input.value = '';
+        const input = String(chat_input.value);
+        chat_input.value = '';
         execute_command(input);
     }
 }
@@ -575,7 +561,9 @@ function execute_command(input) {
             wasm_client().execute_turn_command(input);
         }
         update();
-        command_result.innerText = command_result_message;
+        if (command_result_message) {
+            wasm_client().add_command_result(command_result_message);
+        }
     });
 }
 
@@ -611,7 +599,6 @@ function update() {
         update_lobby_countdown();
         update_connection_status();
         update_buttons();
-        command_result.innerText = '';
     });
 }
 

@@ -4,6 +4,8 @@ body {
   --board-size-primary: calc(var(--sq-size-primary) * 8);
   --board-size-secondary: calc(var(--sq-size-secondary) * 8);
   --reserve-height-in-squares: 1.5;
+  --reserve-height-primary: calc(var(--sq-size-primary) * var(--reserve-height-in-squares));
+  --reserve-height-secondary: calc(var(--sq-size-secondary) * var(--reserve-height-in-squares));
 
   --rem: max(calc(var(--sq-size-primary) * 0.25), 6pt);
   --dialog-rem: clamp(6pt, min(3vw, 2.5vh), 12pt);
@@ -77,9 +79,8 @@ svg {
     ".     prim-log     .   prim-board       .       scnd-board    .  scnd-clock-bot  ."
     ".     prim-log     .   prim-board       .      scnd-rsrv-bot  .   scnd-name-bot  ."
     ".     prim-log     .   prim-board       .      scnd-rsrv-bot  .  scr-individual  ."
-    ".     prim-log     .   prim-board       .          info       .  scr-individual  ."
-    ".  prim-clock-bot  .   prim-board       .          info       .  scr-individual  ."
-    ".  prim-clock-bot  .   prim-board       .         command     .  scr-individual  ."
+    ".     prim-log     .   prim-board       .          chat       .  scr-individual  ."
+    ".  prim-clock-bot  .   prim-board       .          chat       .  scr-individual  ."
     ".  prim-name-bot   .  prim-rsrv-bot     .      button-panel   .  scr-individual  ."
     ".        .         .  prim-rsrv-bot     .      button-panel   .  scr-individual  ."
   ;
@@ -99,9 +100,7 @@ svg {
     4.8em
     repeat(3, auto)
     4.5em
-    auto
-    1fr
-    repeat(4, auto)
+    repeat(6, auto)
   ;
 }
 
@@ -117,9 +116,7 @@ body.symmetric #page {
     ".  prim-clock-bot  .   prim-board       .       scnd-board    .  scnd-clock-bot  ."
     ".  prim-name-bot   .  prim-rsrv-bot     .      scnd-rsrv-bot  .   scnd-name-bot  ."
     ".        .         .  prim-rsrv-bot     .      scnd-rsrv-bot  .  scr-individual  ."
-    ".        .         .      info          .        command      .  scr-individual  ."
-    ".        .         .        .           .      button-panel   .  scr-individual  ."
-    ".        .         .        .           .           .         .  scr-individual  ."
+    ".        .         .   button-panel     .          chat       .  scr-individual  ."
   ;
   grid-template-columns:
     1fr
@@ -138,7 +135,6 @@ body.symmetric #page {
     repeat(3, auto)
     4.5em
     repeat(3, auto)
-    1fr
   ;
 }
 
@@ -162,8 +158,7 @@ body.symmetric #page {
 #clock-container-secondary-bottom { grid-area: scnd-clock-bot; }
 #turn-log-container-secondary { grid-area: scnd-log; }
 
-#info-container { grid-area: info; }
-#command { grid-area: command; }
+#chat-container { grid-area: chat; }
 #button-panel { grid-area: button-panel; }
 
 .display-none {
@@ -386,30 +381,30 @@ body.symmetric #page {
 #arrowhead-other { fill: var(--color-chalk-other); }
 
 #board-primary {
-  width: calc(var(--sq-size-primary) * 8);
-  height: calc(var(--sq-size-primary) * 8);
+  width: var(--board-size-primary);
+  height: var(--board-size-primary);
   user-select: none;
   touch-action: none;
   z-index: 10;  /* show dragged pieces above other UI elements */
 }
 #board-secondary {
-  width: calc(var(--sq-size-secondary) * 8);
-  height: calc(var(--sq-size-secondary) * 8);
+  width: var(--board-size-secondary);
+  height: var(--board-size-secondary);
   user-select: none;
   touch-action: none;
   z-index: 9;  /* show dragged pieces above other UI elements */
 }
 #reserve-primary-top,
 #reserve-primary-bottom {
-  width: calc(var(--sq-size-primary) * 8);
-  height: calc(var(--sq-size-primary) * 1.5);
+  width: var(--board-size-primary);
+  height: var(--reserve-height-primary);
   user-select: none;
   touch-action: none;
 }
 #reserve-secondary-top,
 #reserve-secondary-bottom {
-  width: calc(var(--sq-size-secondary) * 8);
-  height: calc(var(--sq-size-secondary) * 1.5);
+  width: var(--board-size-secondary);
+  height: var(--reserve-height-secondary);
   user-select: none;
   touch-action: none;
 }
@@ -586,35 +581,74 @@ body.observer .clock-active.clock-low-time {
   padding: calc(var(--sq-size-primary) * 0.1) 0;
 }
 
-#info-container {
-  margin-bottom: 0.5em;
-  position: relative;
-}
-#info-subcontainer {
-  font-size: 90%;
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  /* Note: `z-index` and `background-color` are a "solution" to text overflow. It has to be above
-     the primary board for the sake of observers. Thus dragged pieces will be below info text.
-     TODO: Find a better solution. */
-  z-index: 20;
-  background-color: #1c3a0c80;
-}
-body.observer #info-subcontainer {
-  background-color: #33333380;
-}
-#info-subcontainer > div {
-  white-space: pre-wrap;
-}
-#command {
-  flex-grow: 1;
+#chat-container {
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
-  background-color: #8ea36e;
-  font-size: 1em;
+  position: relative;
+  border-radius: 0.3em;
+  border: 0.1em solid #00000040;
+  width: var(--board-size-secondary);
+  height: calc(var(--board-size-primary) - var(--board-size-secondary) - var(--reserve-height-secondary));
+  font-size: 70%;
+  color: #d0d0d0;
+  overflow: hidden;
 }
-body.observer #command {
-  background-color: #9a9a9a;
+body.symmetric #chat-container {
+  height: calc(var(--sq-size-primary) * 1.3);
+}
+#chat-text-area {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  overflow-y: scroll;
+  padding: 0.2em 0.4em 0.6em 0.4em;
+  background-color: #00000020;
+}
+#chat-input {
+  box-sizing: border-box;
+  background-color: #00000040;
+  border: none;
+  box-shadow: 0 -0.1em 0.3em #00000080;
+  color: inherit;
+  font: inherit;
+  padding: 0.3em;
+  outline: none;
+}
+#chat-input:focus {
+  box-shadow: 0 -0.15em 0.35em #000000a0, inset 0 0 0.2em #66aa4180;
+  background-image: linear-gradient(to top left,
+                                    #ffffff0c,
+                                    #ffffff00 30%,
+                                    #ffffff00);
+}
+.chat-sender {
+  font-size: 80%;
+  color: #d0d0d0c0;
+  margin-right: 0.8em;
+}
+.chat-sender.chat-sender-command-error,
+.chat-sender.chat-sender-turn-error {
+  color: #ce8080c0;
+}
+.chat-sender.chat-sender-game-over {
+  color: #5ac521c0;
+}
+.chat-message {
+  padding-left: 2em;
+  text-indent: -2em;
+}
+.chat-message-prominent {
+  font-weight: bold;
+  color: #e0e0e0;
+}
+.chat-message-flash {
+  animation: chat-message-flash-animation 0.3s linear;
+}
+@keyframes chat-message-flash-animation {
+	from { background-color: #ffffff20; }
+	to { background-color: #ffffff00; }
 }
 
 dialog {
@@ -744,15 +778,15 @@ dialog ::-webkit-scrollbar-thumb {
   margin-right: 0.1em;
 }
 
-#command {
-  width: max(var(--board-size-secondary), 6em);
-}
 #button-panel {
   margin-top: 1em;
   display: flex;
   flex-direction: row;
   gap: 0.2em;
   justify-content: space-between;
+}
+body.symmetric #button-panel {
+  align-items: center;
 }
 .button-subpanel {
   display: flex;
