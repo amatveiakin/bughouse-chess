@@ -17,7 +17,7 @@ use crate::event::{
 };
 use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
-    BughousePlayer, PlayerRelation, TurnRecord, TurnRecordExpanded,
+    BughousePlayer, PlayerInGame, PlayerRelation, TurnRecord, TurnRecordExpanded,
 };
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::my_git_version;
@@ -27,6 +27,7 @@ use crate::player::{Faction, Participant};
 use crate::rules::{Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
 use crate::session::Session;
+use crate::starter::EffectiveStartingPosition;
 
 
 #[derive(Clone, Copy, Debug)]
@@ -425,148 +426,17 @@ impl ClientState {
         });
     }
 
-    // Improvement potential: Split into functions like `CoreServerState.on_client_event` does.
     pub fn process_server_event(&mut self, event: BughouseServerEvent) -> Result<(), EventError> {
-        // TODO: Fix the messages containing "browser tab" for the console client.
         use BughouseServerEvent::*;
-        let now = Instant::now();
         match event {
-            Rejection(rejection) => {
-                let error = match rejection {
-                    BughouseServerRejection::MaxStartingTimeExceeded { allowed, .. } => {
-                        EventError::IgnorableError(format!(
-                            "Maximum allowed starting time is {}. \
-                            This is a technical limitation that we hope to relax in the future. \
-                            But for now it is what it is.",
-                            duration_to_mss(allowed)
-                        ))
-                    }
-                    BughouseServerRejection::NoSuchMatch{ match_id } => {
-                        EventError::IgnorableError(format!(
-                            "Match {match_id} does not exist."
-                        ))
-                    },
-                    BughouseServerRejection::PlayerAlreadyExists{ player_name } => {
-                        EventError::IgnorableError(format!("\
-                            Cannot join: player {player_name} already exists. If this is you, \
-                            make sure you are not connected to the same game in another browser tab. \
-                            If you still can't connect, please try again in a few seconds.\
-                        "))
-                    },
-                    BughouseServerRejection::InvalidPlayerName{ player_name, reason } => {
-                        EventError::IgnorableError(format!(
-                            "Name {player_name} is invalid: {reason}"
-                        ))
-                    },
-                    BughouseServerRejection::JoinedInAnotherClient => {
-                        EventError::KickedFromMatch("\
-                            You have joined the match in another browser tab. Only one tab per \
-                            match can be active at a time.
-                        ".to_owned())
-                    },
-                    BughouseServerRejection::NameClashWithRegisteredUser => {
-                        EventError::KickedFromMatch("\
-                            A registered user with the same name has joined. Registered users have \
-                            priority over name selection. Please choose another name and join again.
-                        ".to_owned())
-                    },
-                    BughouseServerRejection::GuestInRatedMatch => {
-                        EventError::IgnorableError("\
-                            Guests cannot join rated matches. Please register an account and join \
-                            again.
-                        ".to_owned())
-                    },
-                    BughouseServerRejection::ShuttingDown => {
-                        EventError::FatalError("\
-                            The server is shutting down for maintenance. \
-                            We'll be back soon (usually within 15 minutes). \
-                            Please come back later!\
-                        ".to_owned())
-                    },
-                    BughouseServerRejection::UnknownError{ message } => {
-                        EventError::InternalEvent(message)
-                    },
-                };
-                if matches!(error, EventError::KickedFromMatch(_)) {
-                    self.match_state = MatchState::NotConnected;
-                }
-                return Err(error);
-            }
+            Rejection(rejection) => self.process_rejection(rejection),
             ServerWelcome { expected_git_version, max_starting_time } => {
-                if let Some(expected_git_version) = expected_git_version {
-                    let my_version = my_git_version!();
-                    if expected_git_version != my_version {
-                        // TODO: Send to server for logging.
-                        return Err(EventError::FatalError(format!(
-                            "Client version ({my_version}) does not match \
-                            server version ({expected_git_version}). Please refresh the page. \
-                            If the problem persists, try to do a hard refresh \
-                            (Ctrl+Shift+R in most browsers on Windows and Linux; \
-                            Option+Cmd+E in Safari, Cmd+Shift+R in other browsers on Mac).",
-                        )));
-                    }
-                }
-                self.server_options = Some(ServerOptions { max_starting_time });
-                // Trigger `update_session` in JS: it checks both server options and session.
-                self.notable_event_queue.push_back(NotableEvent::SessionUpdated);
+                self.process_server_welcome(expected_git_version, max_starting_time)
             }
-            UpdateSession { session } => {
-                self.session = session;
-                self.notable_event_queue.push_back(NotableEvent::SessionUpdated);
-            }
-            MatchWelcome { match_id, rules } => {
-                if let Some(mtch) = self.mtch_mut() {
-                    if mtch.match_id != match_id {
-                        return Err(internal_error!(
-                            "Expected match {}, but got {match_id}",
-                            mtch.match_id
-                        ));
-                    }
-                    assert_eq!(mtch.rules, rules);
-                    // TODO: Send faction and ready status if they changed while we were
-                    // disconnected from the server.
-                } else {
-                    let my_name = match &self.match_state {
-                        MatchState::Creating { my_name } => my_name.clone(),
-                        MatchState::Joining { match_id: id, my_name } => {
-                            if match_id != *id {
-                                return Err(internal_error!(
-                                    "Expected match {id}, but got {match_id}"
-                                ));
-                            }
-                            my_name.clone()
-                        }
-                        _ => return Err(internal_error!()),
-                    };
-                    self.notable_event_queue
-                        .push_back(NotableEvent::MatchStarted(match_id.clone()));
-                    // `Observer` is a safe faction default that wouldn't allow us to try acting as
-                    // a player if we are in fact an observer. We'll get the real faction afterwards
-                    // in a `LobbyUpdated` event.
-                    let my_faction = Faction::Observer;
-                    self.match_state = MatchState::Connected(Match {
-                        match_id,
-                        my_name,
-                        my_faction,
-                        rules,
-                        participants: Vec::new(),
-                        scores: None,
-                        is_ready: false,
-                        first_game_countdown_since: None,
-                        game_state: None,
-                    });
-                }
-            }
+            UpdateSession { session } => self.process_update_session(session),
+            MatchWelcome { match_id, rules } => self.process_match_welcome(match_id, rules),
             LobbyUpdated { participants, countdown_elapsed } => {
-                let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
-                // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
-                //   (e.g. is_ready from another player) arrived before is_ready update from this
-                //   client reached the server. Same for `my_team`.
-                let me = participants.iter().find(|p| p.name == mtch.my_name).unwrap();
-                mtch.is_ready = me.is_ready;
-                mtch.my_faction = me.faction;
-                mtch.participants = participants;
-                mtch.first_game_countdown_since = countdown_elapsed.map(|t| now - t);
+                self.process_lobby_updated(participants, countdown_elapsed)
             }
             GameStarted {
                 game_index,
@@ -576,101 +446,20 @@ impl ClientState {
                 updates,
                 preturns,
                 scores,
-            } => {
-                let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
-                if let Some(game_state) = mtch.game_state.as_mut() {
-                    if game_state.game_index == game_index {
-                        // This is a hot reconnect.
-                        for update in updates.into_iter().skip(game_state.updates_applied) {
-                            // Generate notable events. A typical use-case for hot reconnect is when
-                            // the user keeps playing, but WebSocket connection gets interrupted. In
-                            // this case the user should hear a turn sound as soon as the connection
-                            // is restored and they the opponent's turn.
-                            self.apply_game_update(update, true)?;
-                        }
-                        // Improvement potential: Could remove the reborrow if we move scores update
-                        // from `GameOver` to a separate event and move `apply_game_update` to
-                        // `GameState`.
-                        let game_state = self.game_state().unwrap();
-                        if game_state.alt_game.my_id().is_player() {
-                            let turns = game_state
-                                .alt_game
-                                .local_turns()
-                                .iter()
-                                .map(|t| (t.envoy.board_idx, t.turn_input.clone()))
-                                .collect_vec();
-                            self.connection.send(BughouseClientEvent::SetTurns { turns });
-                        }
-                        self.send_chalk_drawing_update();
-                        // No `NotableEvent::GameStarted`: it is used to reset the UI, while we want
-                        // to make reconnection experience seemless.
-                        return Ok(());
-                    }
-                }
-                // This is a new game or a cold reconnect.
-                let time_pair = time.map(|t| WallGameTimePair::new(now, t.approximate()));
-                mtch.scores = Some(scores);
-                let game = BughouseGame::new_with_starting_position(
-                    mtch.rules.clone(),
-                    starting_position,
-                    &players,
-                );
-                let my_id = match game.find_player(&mtch.my_name) {
-                    Some(id) => BughouseParticipant::Player(id),
-                    None => BughouseParticipant::Observer,
-                };
-                let alt_game = AlteredGame::new(my_id, game);
-                let board_shape = alt_game.board_shape();
-                let perspective = alt_game.perspective();
-                mtch.game_state = Some(GameState {
-                    game_index,
-                    alt_game,
-                    time_pair,
-                    chalkboard: Chalkboard::new(),
-                    chalk_canvas: ChalkCanvas::new(board_shape, perspective),
-                    updates_applied: 0,
-                    next_low_time_warning_idx: enum_map! { _ => 0 },
-                });
-                for update in updates {
-                    // Don't generate notable events. Cold reconnect means that the user refreshed
-                    // the web page or opened a new one and we had to rebuild the entire game state.
-                    // The user should not want to hear 50 turn sounds if 50 turns have been made so
-                    // far.
-                    self.apply_game_update(update, false)?;
-                }
-                for (board_idx, preturn) in preturns.into_iter() {
-                    let now = Instant::now();
-                    let game_now =
-                        GameInstant::from_pair_game_maybe_active(time_pair, now).approximate();
-                    // Unwrap ok: we just created the `game_state`.
-                    let alt_game = self.alt_game_mut().unwrap();
-                    // Unwrap ok: this is a preturn made by this very client before reconnection.
-                    let mode = alt_game.try_local_turn(board_idx, preturn, game_now).unwrap();
-                    assert_eq!(mode, TurnMode::Preturn);
-                }
-                self.notable_event_queue.push_back(NotableEvent::GameStarted);
-                self.update_low_time_warnings(false);
-            }
-            GameUpdated { updates } => {
-                for update in updates {
-                    self.apply_game_update(update, true)?;
-                }
-            }
-            ChalkboardUpdated { chalkboard } => {
-                let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
-                let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
-                game_state.chalkboard = chalkboard;
-            }
-            GameExportReady { content } => {
-                self.notable_event_queue.push_back(NotableEvent::GameExportReady(content));
-            }
-            Pong => {
-                if let Some(ping_duration) = self.connection.health_monitor.register_pong(now) {
-                    self.ping_meter.record_duration(ping_duration);
-                }
-            }
+            } => self.process_game_started(
+                game_index,
+                starting_position,
+                players,
+                time,
+                updates,
+                preturns,
+                scores,
+            ),
+            GameUpdated { updates } => self.process_game_updated(updates),
+            ChalkboardUpdated { chalkboard } => self.process_chalkboard_updated(chalkboard),
+            GameExportReady { content } => self.process_game_export_ready(content),
+            Pong => self.process_pong(),
         }
-        Ok(())
     }
 
     pub fn next_outgoing_event(&mut self) -> Option<BughouseClientEvent> {
@@ -678,6 +467,243 @@ impl ClientState {
     }
     pub fn next_notable_event(&mut self) -> Option<NotableEvent> {
         self.notable_event_queue.pop_front()
+    }
+
+    fn process_rejection(&mut self, rejection: BughouseServerRejection) -> Result<(), EventError> {
+        // TODO: Fix the messages containing "browser tab" for the console client.
+        let error = match rejection {
+            BughouseServerRejection::MaxStartingTimeExceeded { allowed, .. } => {
+                EventError::IgnorableError(format!(
+                    "Maximum allowed starting time is {}. \
+                    This is a technical limitation that we hope to relax in the future. \
+                    But for now it is what it is.",
+                    duration_to_mss(allowed)
+                ))
+            }
+            BughouseServerRejection::NoSuchMatch { match_id } => {
+                EventError::IgnorableError(format!("Match {match_id} does not exist."))
+            }
+            BughouseServerRejection::PlayerAlreadyExists { player_name } => {
+                EventError::IgnorableError(format!(
+                    "Cannot join: player {player_name} already exists. If this is you, \
+                    make sure you are not connected to the same game in another browser tab. \
+                    If you still can't connect, please try again in a few seconds."
+                ))
+            }
+            BughouseServerRejection::InvalidPlayerName { player_name, reason } => {
+                EventError::IgnorableError(format!("Name {player_name} is invalid: {reason}"))
+            }
+            BughouseServerRejection::JoinedInAnotherClient => EventError::KickedFromMatch(
+                "You have joined the match in another browser tab. Only one tab per \
+                match can be active at a time."
+                    .to_owned(),
+            ),
+            BughouseServerRejection::NameClashWithRegisteredUser => EventError::KickedFromMatch(
+                "A registered user with the same name has joined. Registered users have \
+                priority over name selection. Please choose another name and join again."
+                    .to_owned(),
+            ),
+            BughouseServerRejection::GuestInRatedMatch => EventError::IgnorableError(
+                "Guests cannot join rated matches. Please register an account and join again."
+                    .to_owned(),
+            ),
+            BughouseServerRejection::ShuttingDown => EventError::FatalError(
+                "The server is shutting down for maintenance. \
+                We'll be back soon (usually within 15 minutes). \
+                Please come back later!"
+                    .to_owned(),
+            ),
+            BughouseServerRejection::UnknownError { message } => EventError::InternalEvent(message),
+        };
+        if matches!(error, EventError::KickedFromMatch(_)) {
+            self.match_state = MatchState::NotConnected;
+        }
+        Err(error)
+    }
+    fn process_server_welcome(
+        &mut self, expected_git_version: Option<String>, max_starting_time: Option<Duration>,
+    ) -> Result<(), EventError> {
+        if let Some(expected_git_version) = expected_git_version {
+            let my_version = my_git_version!();
+            if expected_git_version != my_version {
+                // TODO: Send to server for logging.
+                return Err(EventError::FatalError(format!(
+                    "Client version ({my_version}) does not match \
+                    server version ({expected_git_version}). Please refresh the page. \
+                    If the problem persists, try to do a hard refresh \
+                    (Ctrl+Shift+R in most browsers on Windows and Linux; \
+                    Option+Cmd+E in Safari, Cmd+Shift+R in other browsers on Mac).",
+                )));
+            }
+        }
+        self.server_options = Some(ServerOptions { max_starting_time });
+        // Trigger `update_session` in JS: it checks both server options and session.
+        self.notable_event_queue.push_back(NotableEvent::SessionUpdated);
+        Ok(())
+    }
+    fn process_update_session(&mut self, session: Session) -> Result<(), EventError> {
+        self.session = session;
+        self.notable_event_queue.push_back(NotableEvent::SessionUpdated);
+        Ok(())
+    }
+    fn process_match_welcome(&mut self, match_id: String, rules: Rules) -> Result<(), EventError> {
+        if let Some(mtch) = self.mtch_mut() {
+            if mtch.match_id != match_id {
+                return Err(internal_error!(
+                    "Expected match {}, but got {match_id}",
+                    mtch.match_id
+                ));
+            }
+            assert_eq!(mtch.rules, rules);
+            // TODO: Send faction and ready status if they changed while we were
+            // disconnected from the server.
+        } else {
+            let my_name = match &self.match_state {
+                MatchState::Creating { my_name } => my_name.clone(),
+                MatchState::Joining { match_id: id, my_name } => {
+                    if match_id != *id {
+                        return Err(internal_error!("Expected match {id}, but got {match_id}"));
+                    }
+                    my_name.clone()
+                }
+                _ => return Err(internal_error!()),
+            };
+            self.notable_event_queue.push_back(NotableEvent::MatchStarted(match_id.clone()));
+            // `Observer` is a safe faction default that wouldn't allow us to try acting as
+            // a player if we are in fact an observer. We'll get the real faction afterwards
+            // in a `LobbyUpdated` event.
+            let my_faction = Faction::Observer;
+            self.match_state = MatchState::Connected(Match {
+                match_id,
+                my_name,
+                my_faction,
+                rules,
+                participants: Vec::new(),
+                scores: None,
+                is_ready: false,
+                first_game_countdown_since: None,
+                game_state: None,
+            });
+        }
+        Ok(())
+    }
+    fn process_lobby_updated(
+        &mut self, participants: Vec<Participant>, countdown_elapsed: Option<Duration>,
+    ) -> Result<(), EventError> {
+        let now = Instant::now();
+        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
+        // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
+        //   (e.g. is_ready from another player) arrived before is_ready update from this
+        //   client reached the server. Same for `my_team`.
+        let me = participants.iter().find(|p| p.name == mtch.my_name).unwrap();
+        mtch.is_ready = me.is_ready;
+        mtch.my_faction = me.faction;
+        mtch.participants = participants;
+        mtch.first_game_countdown_since = countdown_elapsed.map(|t| now - t);
+        Ok(())
+    }
+    fn process_game_started(
+        &mut self, game_index: usize, starting_position: EffectiveStartingPosition,
+        players: Vec<PlayerInGame>, time: Option<GameInstant>, updates: Vec<GameUpdate>,
+        preturns: Vec<(BughouseBoard, TurnInput)>, scores: Scores,
+    ) -> Result<(), EventError> {
+        let now = Instant::now();
+        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
+        if let Some(game_state) = mtch.game_state.as_mut() {
+            if game_state.game_index == game_index {
+                // This is a hot reconnect.
+                for update in updates.into_iter().skip(game_state.updates_applied) {
+                    // Generate notable events. A typical use-case for hot reconnect is when
+                    // the user keeps playing, but WebSocket connection gets interrupted. In
+                    // this case the user should hear a turn sound as soon as the connection
+                    // is restored and they the opponent's turn.
+                    self.apply_game_update(update, true)?;
+                }
+                // Improvement potential: Could remove the reborrow if we move scores update
+                // from `GameOver` to a separate event and move `apply_game_update` to
+                // `GameState`.
+                let game_state = self.game_state().unwrap();
+                if game_state.alt_game.my_id().is_player() {
+                    let turns = game_state
+                        .alt_game
+                        .local_turns()
+                        .iter()
+                        .map(|t| (t.envoy.board_idx, t.turn_input.clone()))
+                        .collect_vec();
+                    self.connection.send(BughouseClientEvent::SetTurns { turns });
+                }
+                self.send_chalk_drawing_update();
+                // No `NotableEvent::GameStarted`: it is used to reset the UI, while we want
+                // to make reconnection experience seemless.
+                return Ok(());
+            }
+        }
+        // This is a new game or a cold reconnect.
+        let time_pair = time.map(|t| WallGameTimePair::new(now, t.approximate()));
+        mtch.scores = Some(scores);
+        let game = BughouseGame::new_with_starting_position(
+            mtch.rules.clone(),
+            starting_position,
+            &players,
+        );
+        let my_id = match game.find_player(&mtch.my_name) {
+            Some(id) => BughouseParticipant::Player(id),
+            None => BughouseParticipant::Observer,
+        };
+        let alt_game = AlteredGame::new(my_id, game);
+        let board_shape = alt_game.board_shape();
+        let perspective = alt_game.perspective();
+        mtch.game_state = Some(GameState {
+            game_index,
+            alt_game,
+            time_pair,
+            chalkboard: Chalkboard::new(),
+            chalk_canvas: ChalkCanvas::new(board_shape, perspective),
+            updates_applied: 0,
+            next_low_time_warning_idx: enum_map! { _ => 0 },
+        });
+        for update in updates {
+            // Don't generate notable events. Cold reconnect means that the user refreshed
+            // the web page or opened a new one and we had to rebuild the entire game state.
+            // The user should not want to hear 50 turn sounds if 50 turns have been made so
+            // far.
+            self.apply_game_update(update, false)?;
+        }
+        for (board_idx, preturn) in preturns.into_iter() {
+            let now = Instant::now();
+            let game_now = GameInstant::from_pair_game_maybe_active(time_pair, now).approximate();
+            // Unwrap ok: we just created the `game_state`.
+            let alt_game = self.alt_game_mut().unwrap();
+            // Unwrap ok: this is a preturn made by this very client before reconnection.
+            let mode = alt_game.try_local_turn(board_idx, preturn, game_now).unwrap();
+            assert_eq!(mode, TurnMode::Preturn);
+        }
+        self.notable_event_queue.push_back(NotableEvent::GameStarted);
+        self.update_low_time_warnings(false);
+        Ok(())
+    }
+    fn process_game_updated(&mut self, updates: Vec<GameUpdate>) -> Result<(), EventError> {
+        for update in updates {
+            self.apply_game_update(update, true)?;
+        }
+        Ok(())
+    }
+    fn process_chalkboard_updated(&mut self, chalkboard: Chalkboard) -> Result<(), EventError> {
+        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
+        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
+        game_state.chalkboard = chalkboard;
+        Ok(())
+    }
+    fn process_game_export_ready(&mut self, content: String) -> Result<(), EventError> {
+        self.notable_event_queue.push_back(NotableEvent::GameExportReady(content));
+        Ok(())
+    }
+    fn process_pong(&mut self) -> Result<(), EventError> {
+        let now = Instant::now();
+        if let Some(ping_duration) = self.connection.health_monitor.register_pong(now) {
+            self.ping_meter.record_duration(ping_duration);
+        }
+        Ok(())
     }
 
     fn apply_game_update(
