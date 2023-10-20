@@ -147,9 +147,6 @@ const loading_tracker = new class {
     #resources_required = 0;
     #resources_loaded = 0;
 
-    constructor() {
-        this.#update();
-    }
     resource_required() {
         this.#resources_required += 1;
         this.#update();
