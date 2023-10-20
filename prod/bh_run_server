@@ -7,4 +7,4 @@ export RUST_LOG=INFO
 #export RUST_LOG_STYLE=always
 cd "$BUGHOUSE_ROOT"
 cargo build -r --package bughouse_console
-./target/release/bughouse_console server --config-file ~/bughouse-config.yaml |& tee -i ~/server_log/`date +%Y%m%d-%H%M%S`.txt
+./target/release/bughouse_console server ~/bughouse-config.yaml |& tee -i ~/server_log/`date +%Y%m%d-%H%M%S`.txt
