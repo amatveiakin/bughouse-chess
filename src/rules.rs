@@ -200,6 +200,10 @@ impl ChessRules {
 
     pub fn board_shape(&self) -> BoardShape { BoardShape { num_rows: 8, num_cols: 8 } }
 
+    pub fn promotion(&self) -> Promotion {
+        self.bughouse_rules.as_ref().map_or(Promotion::Upgrade, |r| r.promotion)
+    }
+
     // TODO: Use to improve UI tooltips.
     pub fn regicide_reason(&self) -> Vec<ChessVariant> {
         use ChessVariant::*;

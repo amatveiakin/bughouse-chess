@@ -692,7 +692,6 @@ pub enum ChessGameStatus {
 // Improvement potential: Consistent naming. Either always describe what went wrong, or always
 // describe what should have happened. The first one is used more often, but second one is also
 // used, e.g. `...Requires...` or `Must...`.
-#[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TurnError {
     NotPlayer,
@@ -708,13 +707,15 @@ pub enum TurnError {
     UnprotectedKing,
     CastlingPieceHasMoved,
     BadPromotionType,
-    BadPromotion,
-    DropFobidden,
+    MustPromoteHere,
+    CannotPromoteHere,
+    InvalidUpgradePromotionTarget,
+    InvalidStealPromotionTarget,
+    DropRequiresBughouse,
     DropPieceMissing,
-    DropPosition,
+    InvalidPawnDropRank,
     DropBlocked,
     DropAggression,
-    StealingPromotionRequiresBughouse,
     StealTargetMissing,
     StealTargetInvalid,
     ExposingKingByStealing,
@@ -1267,36 +1268,26 @@ impl Board {
                     new_grid[capture_pos] = None;
                 }
                 // Verify that requested promotion does not violate promotion rules.
-                match (mv.promote_to, self.bughouse_rules().map(|r| r.promotion)) {
+                match (mv.promote_to, self.chess_rules().promotion()) {
                     // No promotion - no problem.
                     (None, _) => {}
-                    // Promotion in bughouse, rules match.
-                    (Some(PromotionTarget::Upgrade(..)), Some(Promotion::Upgrade))
-                    | (Some(PromotionTarget::Discard), Some(Promotion::Discard))
-                    | (Some(PromotionTarget::Steal(..)), Some(Promotion::Steal)) => {}
-                    // Regular chess promotion.
-                    (Some(PromotionTarget::Upgrade(..)), None) => {}
-                    // Discard promotion isn't really supported in chess mode now (mostly because
-                    // there is no way to enable it, since promotion options are part of bughouse
-                    // settings), but these isn't any reason in principle why it shouldn't work.
-                    (Some(PromotionTarget::Discard), None) => {}
-                    // There is no way to meaningfully interpret stealing promotion in chess mode.
-                    (Some(PromotionTarget::Steal(..)), None) => {
-                        return Err(TurnError::StealingPromotionRequiresBughouse)
-                    }
+                    // Promotion rules match.
+                    (Some(PromotionTarget::Upgrade(..)), Promotion::Upgrade)
+                    | (Some(PromotionTarget::Discard), Promotion::Discard)
+                    | (Some(PromotionTarget::Steal(..)), Promotion::Steal) => {}
                     // Promotion type doesn't match game rules. The user shouldn't be able to
                     // achieve this via drag&drop, so it means eather bad algebraic notation, or an
                     // internal error.
-                    (Some(_), Some(_)) => return Err(TurnError::BadPromotionType),
+                    (Some(_), _) => return Err(TurnError::BadPromotionType),
                 };
                 if should_promote(self.shape(), force, piece.kind, mv.to) {
                     let Some(promote_to) = mv.promote_to else {
-                        return Err(TurnError::BadPromotion);
+                        return Err(TurnError::MustPromoteHere);
                     };
                     match promote_to {
                         PromotionTarget::Upgrade(promo_piece_kind) => {
                             if !promo_piece_kind.can_be_upgrade_promotion_target() {
-                                return Err(TurnError::BadPromotion);
+                                return Err(TurnError::InvalidUpgradePromotionTarget);
                             }
                             new_grid[mv.to] = Some(PieceOnBoard::new(
                                 next_piece_id.inc(),
@@ -1319,7 +1310,7 @@ impl Board {
                             promo_piece_id,
                         )) => {
                             if !promo_piece_kind.can_be_steal_promotion_target() {
-                                return Err(TurnError::BadPromotion);
+                                return Err(TurnError::InvalidStealPromotionTarget);
                             }
                             // Give the pawn to the diagonal opponent in exchange for the stolen piece.
                             captures.push(Capture {
@@ -1355,7 +1346,7 @@ impl Board {
                     }
                 } else {
                     if mv.promote_to.is_some() {
-                        return Err(TurnError::BadPromotion);
+                        return Err(TurnError::CannotPromoteHere);
                     } else if let Some(dst_piece) = new_grid[mv.to] {
                         if let Some(combined_piece) = combine_pieces(
                             self.chess_rules(),
@@ -1374,7 +1365,8 @@ impl Board {
                 }
             }
             Turn::Drop(drop) => {
-                let bughouse_rules = self.bughouse_rules().ok_or(TurnError::DropFobidden)?;
+                let bughouse_rules =
+                    self.bughouse_rules().ok_or(TurnError::DropRequiresBughouse)?;
                 if drop.piece_kind == PieceKind::Duck {
                     return Err(TurnError::DuckPlacementIsSpecialTurnKind);
                 }
@@ -1386,7 +1378,7 @@ impl Board {
                     && (to_subjective_row < bughouse_rules.min_pawn_drop_rank
                         || to_subjective_row > bughouse_rules.max_pawn_drop_rank)
                 {
-                    return Err(TurnError::DropPosition);
+                    return Err(TurnError::InvalidPawnDropRank);
                 }
                 // Improvement potential: Allow pre-turns dropping missing pieces.
                 if self.reserves[force][drop.piece_kind] < 1 {
@@ -1643,10 +1635,12 @@ impl Board {
         let force = self.turn_owner(mode);
         match algebraic {
             AlgebraicTurn::Move(mv) => {
-                if mv.promote_to.is_some()
-                    != should_promote(self.shape(), force, mv.piece_kind, mv.to)
-                {
-                    return Err(TurnError::BadPromotion);
+                let expect_promotion = should_promote(self.shape(), force, mv.piece_kind, mv.to);
+                if expect_promotion && mv.promote_to.is_none() {
+                    return Err(TurnError::MustPromoteHere);
+                }
+                if !expect_promotion && mv.promote_to.is_some() {
+                    return Err(TurnError::CannotPromoteHere);
                 }
                 if self.is_duck_turn[force] {
                     return Err(TurnError::MustPlaceDuck);
@@ -1720,8 +1714,8 @@ impl Board {
                                         Some(PromotionTarget::Discard)
                                     }
                                     Some(AlgebraicPromotionTarget::Steal((piece_kind, pos))) => {
-                                        let other_board = other_board
-                                            .ok_or(TurnError::StealingPromotionRequiresBughouse)?;
+                                        let other_board =
+                                            other_board.ok_or(TurnError::BadPromotionType)?;
                                         let Some(piece) = other_board.grid[pos] else {
                                             return Err(TurnError::StealTargetMissing);
                                         };

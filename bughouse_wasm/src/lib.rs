@@ -1033,10 +1033,15 @@ impl WebClient {
         // Improvement potential: Human-readable error messages (and/or visual hints).
         //   Ideally also include rule-dependent context, e.g. "Illegal drop position:
         //   pawns can be dropped onto ranks 2–6 counting from the player".
-        match turn_result {
-            Ok(()) => self.clear_ephemeral_chat_messages(),
-            Err(err) => self.add_chat_message(
-                ChatMessage::new(format!("Illegal turn: {:?}", err))
+        let mtch = self.state.mtch().ok_or_else(|| rust_error!())?;
+        let message = match turn_result {
+            Ok(()) => None,
+            Err(err) => turn_error_message(err, &mtch.rules.chess_rules),
+        };
+        match message {
+            None => self.clear_ephemeral_chat_messages(),
+            Some(text) => self.add_chat_message(
+                ChatMessage::new(format!("Illegal turn: {text}"))
                     .with_sender("System", "chat-sender-turn-error")
                     .with_ephemeral()
                     .with_flash(),
@@ -2295,6 +2300,80 @@ fn broken_king_path(force: PieceForce) -> &'static str {
         PieceForce::White => "#white-king-broken",
         PieceForce::Black => "#black-king-broken",
         PieceForce::Neutral => panic!("King cannot be neutral"),
+    }
+}
+
+// Improvement potential. Add TurnError payload to make error messages even more useful.
+fn turn_error_message(err: TurnError, rules: &ChessRules) -> Option<String> {
+    // We return `None` for errors that are either internal or trivial.
+    let promotion = || match rules.promotion() {
+        Promotion::Upgrade => "upgrade",
+        Promotion::Discard => "discard",
+        Promotion::Steal => "steal",
+    };
+    let pawn_drop_ranks = || rules.bughouse_rules.as_ref().unwrap().pawn_drop_ranks_string();
+    let drop_aggression = || match rules.bughouse_rules.as_ref().unwrap().drop_aggression {
+        DropAggression::NoCheck => "Cannot drop pieces with a check",
+        DropAggression::NoChessMate => {
+            "Cannot drop pieces with a checkmate (according to chess rules)"
+        }
+        DropAggression::NoBughouseMate => {
+            "Cannot drop pieces with a checkmate (according to bughouse rules)"
+        }
+        DropAggression::MateAllowed => unreachable!(),
+    };
+    match err {
+        TurnError::NotPlayer => None,
+        TurnError::AmbiguousBoard => Some(
+            "Start with “<” or “>” to make turn on left or right board respectively.".to_owned(),
+        ),
+        TurnError::InvalidNotation => Some("Invalid notation.".to_owned()),
+        TurnError::AmbiguousNotation => Some("Ambiguous notation.".to_owned()),
+        TurnError::CaptureNotationRequiresCapture => {
+            Some("Capture notation (“x”) requires capture.".to_owned())
+        }
+        TurnError::PieceMissing => Some("Piece is missing.".to_owned()),
+        TurnError::WrongTurnOrder => None,
+        TurnError::PreturnLimitReached => None,
+        TurnError::ImpossibleTrajectory => None,
+        TurnError::PathBlocked => None,
+        TurnError::UnprotectedKing => Some("King is unprotected.".to_owned()),
+        TurnError::CastlingPieceHasMoved => Some("Cannot castle: piece has moved.".to_owned()),
+        TurnError::BadPromotionType => {
+            Some(format!("Bad promotion type, expected “{}”", promotion()))
+        }
+        TurnError::MustPromoteHere => Some("Missing pawn promotion".to_owned()),
+        TurnError::CannotPromoteHere => Some("Cannot promote here".to_owned()),
+        TurnError::InvalidUpgradePromotionTarget => Some("Invalid promotion target".to_owned()),
+        TurnError::InvalidStealPromotionTarget => Some("Invalid steal target".to_owned()),
+        TurnError::DropRequiresBughouse => None,
+        TurnError::DropPieceMissing => Some("Reserve piece is missing.".to_owned()),
+        TurnError::InvalidPawnDropRank => {
+            Some(format!("Pawns must be dropped on ranks {} from the player", pawn_drop_ranks()))
+        }
+        TurnError::DropBlocked => None,
+        TurnError::DropAggression => Some(drop_aggression().to_owned()),
+        TurnError::StealTargetMissing => Some("Steal target is missing.".to_owned()),
+        TurnError::StealTargetInvalid => Some("Steal target is invalid.".to_owned()),
+        TurnError::ExposingKingByStealing => Some("Cannot expose king by stealing.".to_owned()),
+        TurnError::ExposingPartnerKingByStealing => {
+            Some("Cannot expose partner king by stealing.".to_owned())
+        }
+        TurnError::NotDuckChess => Some("Not duck chess.".to_owned()),
+        TurnError::DuckPlacementIsSpecialTurnKind => None,
+        TurnError::MustMovePieceBeforeDuck => {
+            Some("Must move your own piece before the duck.".to_owned())
+        }
+        TurnError::MustPlaceDuck => Some("Must place the duck.".to_owned()),
+        TurnError::MustChangeDuckPosition => {
+            Some("Must move duck to a different position".to_owned())
+        }
+        TurnError::MustDropKingIfPossible => {
+            Some("Must drop a king when you have one in reserve".to_owned())
+        }
+        TurnError::NoGameInProgress => None,
+        TurnError::GameOver => None,
+        TurnError::WaybackIsActive => None,
     }
 }
 
