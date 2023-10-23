@@ -132,6 +132,10 @@ pub enum BughouseClientEvent {
         match_id: String,
         player_name: String,
     },
+    HotReconnect {
+        match_id: String,
+        player_name: String,
+    },
     SetFaction {
         faction: Faction,
     },

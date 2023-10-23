@@ -315,7 +315,7 @@ impl ClientState {
         self.connection.reset();
         if let Some(match_id) = self.match_id() {
             let my_name = self.my_name().unwrap().to_owned();
-            self.connection.send(BughouseClientEvent::Join {
+            self.connection.send(BughouseClientEvent::HotReconnect {
                 match_id: match_id.clone(),
                 player_name: my_name,
             });

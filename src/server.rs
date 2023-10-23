@@ -542,7 +542,8 @@ impl CoreServerState {
                 );
                 Some(match_id)
             }
-            BughouseClientEvent::Join { match_id, .. } => {
+            BughouseClientEvent::Join { match_id, .. }
+            | BughouseClientEvent::HotReconnect { match_id, .. } => {
                 // Improvement potential: Log cases when a client reconnects to their current
                 //   match. This likely indicates a client error.
                 ctx.clients[client_id].match_id = None;
@@ -562,7 +563,10 @@ impl CoreServerState {
             // The only way to have a match_id with no match is when a client is trying
             // to join with a bad match_id. In other cases we are getting match_id from
             // trusted internal sources, so the match must exist as well.
-            assert!(matches!(event, BughouseClientEvent::Join { .. }));
+            assert!(
+                matches!(event, BughouseClientEvent::Join { .. })
+                    || matches!(event, BughouseClientEvent::HotReconnect { .. })
+            );
             ctx.clients[client_id]
                 .send_rejection(BughouseServerRejection::NoSuchMatch { match_id: match_id.0 });
             return;
@@ -760,10 +764,13 @@ impl Match {
         let result = match event {
             BughouseClientEvent::NewMatch { player_name, .. } => {
                 // The match was created earlier.
-                self.join_participant(ctx, client_id, execution, now, player_name)
+                self.join_participant(ctx, client_id, execution, now, player_name, false)
             }
             BughouseClientEvent::Join { match_id: _, player_name } => {
-                self.join_participant(ctx, client_id, execution, now, player_name)
+                self.join_participant(ctx, client_id, execution, now, player_name, false)
+            }
+            BughouseClientEvent::HotReconnect { match_id: _, player_name } => {
+                self.join_participant(ctx, client_id, execution, now, player_name, true)
             }
             BughouseClientEvent::SetFaction { faction } => {
                 self.process_set_faction(ctx, client_id, now, faction)
@@ -805,7 +812,7 @@ impl Match {
 
     fn join_participant(
         &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution, now: Instant,
-        player_name: String,
+        player_name: String, hot_reconnect: bool,
     ) -> EventResult {
         assert!(ctx.clients[client_id].match_id.is_none());
         assert!(ctx.clients[client_id].participant_id.is_none());
@@ -829,6 +836,16 @@ impl Match {
             return Err(BughouseServerRejection::GuestInRatedMatch);
         }
 
+        // On kicking existing user vs rejecting the new one:
+        //   - If both accounts are registered, we can be certain this is the same user. Thus we are
+        //     free to remove old connections.
+        //   - If one account is registered and another one is a guest, then these are definitely
+        //     different users.
+        //   - If both are guests, we can only guess. On the one hand, we would like to allow
+        //     reconnecting as soon as possible after a network failure. On the other hand, always
+        //     preferring the new connection would allow trolls to kick out other players. Decision:
+        //     we allow to kick another guest account if their connection is unhealthy (which means
+        //     this is likely the same user trying to reconnect) or in case of a hot reconnect.
         if let Some(ref game_state) = self.game_state {
             let existing_participant_id = self.participants.find_by_name(&player_name);
             if let Some(existing_participant_id) = existing_participant_id {
@@ -837,21 +854,15 @@ impl Match {
                 {
                     let is_existing_user_registered =
                         self.participants[existing_participant_id].is_registered_user;
-                    // If both users are registered and have the same user name, then we know for sure
-                    // this is the same user. If both are guests, we can only guess. There is no way to
-                    // be certain, because guest accounts are inherently non-exclusive.
+                    let is_existing_user_connection_healthy =
+                        ctx.clients[existing_client_id].connection_monitor.status(now).is_healthy();
                     let both_registered = is_registered_user && is_existing_user_registered;
                     let both_guests = !is_registered_user && !is_existing_user_registered;
-                    if both_registered {
+                    if both_registered
+                        || (both_guests && (hot_reconnect || !is_existing_user_connection_healthy))
+                    {
                         ctx.clients[existing_client_id]
                             .send_rejection(BughouseServerRejection::JoinedInAnotherClient);
-                        ctx.clients.remove_client(existing_client_id);
-                    } else if both_guests
-                        && !ctx.clients[existing_client_id]
-                            .connection_monitor
-                            .status(now)
-                            .is_healthy()
-                    {
                         ctx.clients.remove_client(existing_client_id);
                     } else {
                         return Err(BughouseServerRejection::PlayerAlreadyExists { player_name });
@@ -892,9 +903,11 @@ impl Match {
                 if let Some(existing_client_id) =
                     ctx.clients.find_participant(existing_participant_id)
                 {
+                    let is_existing_user_registered =
+                        self.participants[existing_participant_id].is_registered_user;
+                    let is_existing_user_connection_healthy =
+                        ctx.clients[existing_client_id].connection_monitor.status(now).is_healthy();
                     if is_registered_user {
-                        let is_existing_user_registered =
-                            self.participants[existing_participant_id].is_registered_user;
                         let rejection = if is_existing_user_registered {
                             BughouseServerRejection::JoinedInAnotherClient // this is us
                         } else {
@@ -902,11 +915,11 @@ impl Match {
                         };
                         ctx.clients[existing_client_id].send_rejection(rejection);
                         ctx.clients.remove_client(existing_client_id);
-                    } else if !ctx.clients[existing_client_id]
-                        .connection_monitor
-                        .status(now)
-                        .is_healthy()
+                    } else if !is_existing_user_registered
+                        && (hot_reconnect || !is_existing_user_connection_healthy)
                     {
+                        ctx.clients[existing_client_id]
+                            .send_rejection(BughouseServerRejection::JoinedInAnotherClient);
                         ctx.clients.remove_client(existing_client_id);
                     } else {
                         return Err(BughouseServerRejection::PlayerAlreadyExists { player_name });
@@ -1505,6 +1518,7 @@ fn event_name(event: &IncomingEvent) -> &'static str {
         IncomingEvent::Network(_, event) => match event {
             BughouseClientEvent::NewMatch { .. } => "Client_NewMatch",
             BughouseClientEvent::Join { .. } => "Client_Join",
+            BughouseClientEvent::HotReconnect { .. } => "Client_HotReconnect",
             BughouseClientEvent::SetFaction { .. } => "Client_SetFaction",
             BughouseClientEvent::SetTurns { .. } => "Client_SetTurns",
             BughouseClientEvent::MakeTurn { .. } => "Client_MakeTurn",
