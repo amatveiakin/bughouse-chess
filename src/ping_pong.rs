@@ -73,13 +73,10 @@ impl PassiveConnectionMonitor {
     }
 
     pub fn status(&mut self, now: Instant) -> PassiveConnectionStatus {
-        if now.saturating_duration_since(self.latest_incoming)
-            >= OTHER_PARTY_PERMANENTLY_LOST_THRESHOLD
-        {
+        let d = now.saturating_duration_since(self.latest_incoming);
+        if d >= OTHER_PARTY_PERMANENTLY_LOST_THRESHOLD {
             PassiveConnectionStatus::PermanentlyLost
-        } else if now.saturating_duration_since(self.latest_incoming)
-            >= OTHER_PARTY_TEMPORARY_LOST_THRESHOLD
-        {
+        } else if d >= OTHER_PARTY_TEMPORARY_LOST_THRESHOLD {
             PassiveConnectionStatus::TemporaryLost
         } else {
             PassiveConnectionStatus::Healthy
