@@ -408,8 +408,40 @@ function make_meters() {
     };
 }
 
+function on_socket_message(event) {
+    with_error_handling(function() {
+        console.log(log_time(), 'server: ', event.data);
+        const update_needed = wasm_client().process_server_event(event.data);
+        if (update_needed) {
+            update();
+        }
+    });
+}
+function on_socket_open(event) {
+    with_error_handling(function() {
+        console.info(log_time(), 'WebSocket connection opened');
+        consecutive_socket_connection_attempts = 0;
+        loading_tracker.connected();
+        wasm_client().hot_reconnect();
+    });
+}
 function on_socket_close(event) {
     open_socket('closed');
+}
+function on_socker_error(event) {
+    // TODO: Report socket errors.
+    console.warn(log_time(), 'WebSocket error: ', event);
+}
+
+// Closes WebSocket and ignores all further messages and other events.
+function cut_off_socket() {
+    if (socket !== null) {
+        socket.removeEventListener('message', on_socket_message);
+        socket.removeEventListener('open', on_socket_open);
+        socket.removeEventListener('error', on_socker_error);
+        socket.removeEventListener('close', on_socket_close);
+        socket.close();
+    }
 }
 
 function open_socket(reason) {
@@ -425,42 +457,22 @@ function open_socket(reason) {
     if (reason) {
         console.warn(log_time(), `WebSocket: ${reason}. Reconnecting...`);
     }
-    if (socket !== null) {
-        socket.removeEventListener('close', on_socket_close);
-        socket.close();
-    }
+
+    // Ignore all further events from WebSocket. They could mess up with the client state
+    // if they arrive in parallel with the events in the new socket. Plus, we don't want
+    // to receive `JoinedInAnotherClient` error on reconnect.
+    cut_off_socket();
+
     socket = new WebSocket(server_websocket_address());
-    socket.addEventListener('message', function(event) {
-        on_server_event(event.data);
-    });
-    socket.addEventListener('open', function(event) {
-        with_error_handling(function() {
-            console.info(log_time(), 'WebSocket connection opened');
-            consecutive_socket_connection_attempts = 0;
-            loading_tracker.connected();
-            wasm_client().hot_reconnect();
-        });
-    });
-    socket.addEventListener('error', function(event) {
-        // TODO: Report socket errors.
-        console.warn(log_time(), 'WebSocket error: ', event);
-    });
+    socket.addEventListener('message', on_socket_message);
+    socket.addEventListener('open', on_socket_open);
+    socket.addEventListener('error', on_socker_error);
     socket.addEventListener('close', on_socket_close);
 }
 
 function page_redirect(href) {
-    socket.removeEventListener('close', on_socket_close);
+    cut_off_socket();
     location.href = href;
-}
-
-function on_server_event(event) {
-    with_error_handling(function() {
-        console.log(log_time(), 'server: ', event);
-        const update_needed = wasm_client().process_server_event(event);
-        if (update_needed) {
-            update();
-        }
-    });
 }
 
 function usage_error(args_array, expected_args) {
