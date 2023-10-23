@@ -608,15 +608,15 @@ impl CoreServerState {
                         last_termination_request: now,
                     };
                     self.matches.values().for_each(|mtch| {
-                        // Immediately notify clients who ate still in the lobby: they wouldn't be able
-                        // to do anything meaningful. Let other players finish their games.
+                        // Immediately notify clients who are still in the lobby: they wouldn't be
+                        // able to do anything meaningful. Let other players finish their games.
                         //
-                        // Improvement potential: Notify everybody immediately, let the clients decide
-                        // when it's appropriate to show the message to the user. Pros:
+                        // Improvement potential: Notify everybody immediately, let the clients
+                        // decide when it's appropriate to show the message to the user. Pros:
                         //   - Server code will be simpler. There will be exactly two points when a
-                        //     shutdown notice should be sent: to all existing clients when termination
-                        //     is requested and to new clients as soon as they are connected (to the
-                        //     server, not to the match).
+                        //     shutdown notice should be sent: to all existing clients when
+                        //     termination is requested and to new clients as soon as they are
+                        //     connected (to the server, not to the match).
                         //   - Clients will get the relevant information sooner.
                         if mtch.game_state.is_none() {
                             mtch.broadcast(
@@ -855,10 +855,6 @@ impl Match {
                         ctx.clients.remove_client(existing_client_id);
                     } else {
                         return Err(BughouseServerRejection::PlayerAlreadyExists { player_name });
-                    }
-                } else {
-                    if !matches!(execution, Execution::Running) {
-                        return Err(BughouseServerRejection::ShuttingDown);
                     }
                 }
             }
