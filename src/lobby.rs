@@ -1,7 +1,6 @@
 // TODO: Rename this module.
 
 use std::cmp;
-use std::collections::BTreeMap;
 
 use enum_map::{enum_map, EnumMap};
 use itertools::Itertools;
@@ -12,6 +11,7 @@ use crate::game::{
     get_bughouse_force, BughouseBoard, BughouseEnvoy, BughousePlayer, PlayerInGame, MIN_PLAYERS,
     TOTAL_ENVOYS, TOTAL_ENVOYS_PER_TEAM, TOTAL_TEAMS,
 };
+use crate::iterable_mut::IterableMut;
 use crate::player::{Faction, Participant, Team};
 use crate::rules::Rules;
 
@@ -111,17 +111,13 @@ pub fn verify_participants<'a>(
 // Faction::Random and returns Teaming::FixedTeams. Otherwise, returns Teaming::DynamicTeams.
 //
 // Assumes `verify_participants` returns no error.
-//
-// TODO: Try to accept something like `participants: impl Iterator<Item = &'a mut Participant>`
-// instead of concrete container type. The problem is: Rust iterators are not rewindable and mutable
-// iterators are not clonable.
-pub fn fix_teams_if_needed<T>(participants: &mut BTreeMap<T, Participant>) -> Teaming {
-    let total_players = participants.len();
-    let random_players = participants.values().filter(|p| p.faction == Faction::Random).count();
+pub fn fix_teams_if_needed(participants: &mut impl IterableMut<Participant>) -> Teaming {
+    let total_players = participants.get_iter().count();
+    let random_players = participants.get_iter().filter(|p| p.faction == Faction::Random).count();
     if random_players == 0 {
         return Teaming::FixedTeams;
     }
-    let players_per_team = num_fixed_players_per_team(participants.values());
+    let players_per_team = num_fixed_players_per_team(participants.get_iter());
 
     // Teams are always the same iff all random players must go into the same team.
     let mut random_players_team = None;
@@ -141,7 +137,7 @@ pub fn fix_teams_if_needed<T>(participants: &mut BTreeMap<T, Participant>) -> Te
     }
 
     if let Some(random_players_team) = random_players_team {
-        for p in participants.values_mut() {
+        for p in participants.get_iter_mut() {
             if p.faction == Faction::Random {
                 p.faction = Faction::Fixed(random_players_team);
             }
@@ -151,7 +147,6 @@ pub fn fix_teams_if_needed<T>(participants: &mut BTreeMap<T, Participant>) -> Te
         Teaming::DynamicTeams
     }
 }
-
 
 // Assigns boards to players. Also assigns teams to players without a fixed team.
 //
@@ -278,7 +273,14 @@ mod tests {
     // the seed to avoid sporadic failures.
     fn deterministic_rng() -> impl Rng { rand::rngs::StdRng::from_seed([0; 32]) }
 
-    type Participants = BTreeMap<String, Participant>;
+    type Participants = HashMap<String, Participant>;
+
+    impl IterableMut<Participant> for Participants {
+        fn get_iter<'a>(&'a self) -> impl Iterator<Item = &'a Participant> { self.values() }
+        fn get_iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut Participant> {
+            self.values_mut()
+        }
+    }
 
     trait ParticipantsExt {
         fn add(&mut self, name: &str, faction: Faction);
@@ -317,7 +319,7 @@ mod tests {
         played_for_team: EnumMap<Team, usize>,
     }
 
-    type ParticipantStatsMap = BTreeMap<String, ParticipantStats>;
+    type ParticipantStatsMap = HashMap<String, ParticipantStats>;
 
     fn players_to_map(players: Vec<PlayerInGame>) -> HashMap<String, BughousePlayer> {
         players.into_iter().map(|p| (p.name, p.id)).collect()

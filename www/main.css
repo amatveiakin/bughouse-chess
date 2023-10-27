@@ -623,23 +623,62 @@ body.symmetric #chat-container {
                                     #ffffff00 30%,
                                     #ffffff00);
 }
-.chat-sender {
+.chat-prefix {
   font-size: 80%;
-  color: #d0d0d0c0;
+  color: #d0d0d0e0;
   margin-right: 0.8em;
 }
-.chat-sender.chat-sender-command-error,
-.chat-sender.chat-sender-turn-error {
+.chat-arrow {
+  margin: 0 0.2em;
+}
+.chat-sender-myself,
+.chat-recipient-myself {
+  color: #5ac521c0;
+  font-style: italic;
+}
+.chat-sender-all,
+.chat-recipient-all {
+  color: #c1cd1dc0;
+  font-style: italic;
+}
+.chat-sender-system-error {
   color: #ce8080c0;
 }
-.chat-sender.chat-sender-game-over {
-  color: #5ac521c0;
+.chat-sender-system-game-over {
+  color: #54d0d2c0;
 }
 .chat-message {
+  position: relative;
   padding-left: 2em;
   text-indent: -2em;
 }
-.chat-message-prominent {
+.chat-message-unconfirmed::after {
+  font-size: 80%;
+  content: "🕐";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  animation: clock-animation 1s linear infinite;
+}
+@keyframes clock-animation {
+  0%  { content: "🕐"; }
+  8%  { content: "🕑"; }
+  17% { content: "🕒"; }
+  25% { content: "🕓"; }
+  33% { content: "🕔"; }
+  42% { content: "🕕"; }
+  50% { content: "🕖"; }
+  58% { content: "🕗"; }
+  67% { content: "🕘"; }
+  75% { content: "🕙"; }
+  83% { content: "🕚"; }
+  92% { content: "🕛"; }
+}
+
+.chat-message-dimmed .chat-message-text {
+  color: #d0d0d0c0;
+}
+.chat-message-prominent .chat-message-text {
   font-weight: bold;
   color: #e0e0e0;
 }

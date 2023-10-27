@@ -153,8 +153,13 @@ pub enum BughouseGameStatus {
     Draw(DrawReason),
 }
 
-impl BughouseGameStatus {
-    pub fn is_active(&self) -> bool { *self == BughouseGameStatus::Active }
+// `winner` and `losers` arrays are non-empty iff `status` is `Victory`.
+// `winner` and `losers` are ordered by the board, not by name.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GameOutcome {
+    pub status: BughouseGameStatus,
+    pub winners: Vec<String>,
+    pub losers: Vec<String>,
 }
 
 impl BughouseBoard {
@@ -162,6 +167,29 @@ impl BughouseBoard {
         match self {
             BughouseBoard::A => BughouseBoard::B,
             BughouseBoard::B => BughouseBoard::A,
+        }
+    }
+}
+
+impl BughouseGameStatus {
+    pub fn is_active(&self) -> bool { *self == BughouseGameStatus::Active }
+}
+
+impl GameOutcome {
+    // Note. Not using `Display` or `ToString` because we'll need localization at some point.
+    pub fn to_readable_string(&self) -> String {
+        use BughouseGameStatus::*;
+        use DrawReason::*;
+        use VictoryReason::*;
+        let winners = self.winners.join(" & ");
+        let losers = self.losers.join(" & ");
+        match self.status {
+            Active => "Unterminated".to_owned(),
+            Victory(_, Checkmate) => format!("{winners} won: {losers} checkmated"),
+            Victory(_, Flag) => format!("{winners} won: {losers} timed out"),
+            Victory(_, Resignation) => format!("{winners} won: {losers} resigned"),
+            Draw(SimultaneousFlag) => "Draw by simultaneous flags".to_owned(),
+            Draw(ThreefoldRepetition) => "Draw by threefold repetition".to_owned(),
         }
     }
 }
@@ -609,26 +637,25 @@ impl BughouseGame {
         }
     }
 
-    pub fn outcome(&self) -> String {
+    pub fn outcome(&self) -> GameOutcome {
         use BughouseGameStatus::*;
-        use DrawReason::*;
-        use VictoryReason::*;
-        let make_team_string = |team| {
+        let team_players = |team| {
             // Note. Not using `self.players()` because the order there is not specified.
             BughouseBoard::iter()
                 .map(|board_idx| {
-                    self.board(board_idx).player_name(get_bughouse_force(team, board_idx))
+                    self.board(board_idx)
+                        .player_name(get_bughouse_force(team, board_idx))
+                        .to_owned()
                 })
-                .join(" & ")
+                .collect_vec()
         };
-        match self.status() {
-            Active => "Unterminated".to_owned(),
-            Victory(team, Checkmate) => format!("{} won by checkmate", make_team_string(team)),
-            Victory(team, Flag) => format!("{} won by flag", make_team_string(team)),
-            Victory(team, Resignation) => format!("{} won by resignation", make_team_string(team)),
-            Draw(SimultaneousFlag) => "Draw by simultaneous flags".to_owned(),
-            Draw(ThreefoldRepetition) => "Draw by threefold repetition".to_owned(),
-        }
+        let status = self.status();
+        let (winners, losers) = match status {
+            Active => (vec![], vec![]),
+            Victory(team, _) => (team_players(team), (team_players(team.opponent()))),
+            Draw(_) => (vec![], vec![]),
+        };
+        GameOutcome { status, winners, losers }
     }
 
     fn game_status_for_board(&self, board_idx: BughouseBoard) -> BughouseGameStatus {

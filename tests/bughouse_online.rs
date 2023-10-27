@@ -12,6 +12,7 @@ use std::{iter, ops};
 
 use bughouse_chess::altered_game::AlteredGame;
 use bughouse_chess::board::{Board, TurnError, TurnInput, VictoryReason};
+use bughouse_chess::chat::ChatRecipient;
 use bughouse_chess::coord::{Coord, SubjectiveRow};
 use bughouse_chess::display::{get_display_board_index, DisplayBoard, Perspective};
 use bughouse_chess::event::{BughouseClientEvent, BughouseServerEvent};
@@ -131,6 +132,19 @@ impl Client {
     fn my_id(&self) -> BughouseParticipant { self.alt_game().my_id() }
     fn local_game(&self) -> BughouseGame { self.alt_game().local_game() }
 
+    fn chat_item_text(&self) -> Vec<String> {
+        let my_name = self.state.my_name().unwrap();
+        let game_index = self.state.game_state().map(|state| state.game_index);
+        self.state
+            .mtch()
+            .unwrap()
+            .chat
+            .items(my_name, game_index)
+            .into_iter()
+            .map(|item| item.text)
+            .collect_vec()
+    }
+
     // Only if player:
     fn my_player_id(&self) -> BughousePlayer { self.my_id().as_player().unwrap() }
 
@@ -180,6 +194,30 @@ impl Client {
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 struct TestClientId(usize);
+
+enum ClientFilter {
+    All,
+    Only(HashSet<TestClientId>),
+    Except(HashSet<TestClientId>),
+}
+
+impl ClientFilter {
+    fn all() -> Self { ClientFilter::All }
+    fn only(ids: impl IntoIterator<Item = TestClientId>) -> Self {
+        ClientFilter::Only(ids.into_iter().collect())
+    }
+    fn except(ids: impl IntoIterator<Item = TestClientId>) -> Self {
+        ClientFilter::Except(ids.into_iter().collect())
+    }
+
+    fn contains(&self, id: TestClientId) -> bool {
+        match self {
+            ClientFilter::All => true,
+            ClientFilter::Only(set) => set.contains(&id),
+            ClientFilter::Except(set) => !set.contains(&id),
+        }
+    }
+}
 
 struct World {
     server: Server,
@@ -280,10 +318,10 @@ impl World {
         self.process_outgoing_events_for(client_id);
         self.process_incoming_events_for(client_id).1
     }
-    fn process_events_from_clients(&mut self, ban_list: &HashSet<TestClientId>) -> bool {
+    fn process_events_from_clients(&mut self, filter: &ClientFilter) -> bool {
         let mut something_changed = false;
         for (id, client) in self.clients.iter_mut().enumerate() {
-            if ban_list.contains(&TestClientId(id)) {
+            if !filter.contains(TestClientId(id)) {
                 continue;
             }
             if client.process_outgoing_events(&mut self.server) {
@@ -292,10 +330,10 @@ impl World {
         }
         something_changed
     }
-    fn process_events_to_clients(&mut self, ban_list: &HashSet<TestClientId>) -> bool {
+    fn process_events_to_clients(&mut self, filter: &ClientFilter) -> bool {
         let mut something_changed = false;
         for (id, client) in self.clients.iter_mut().enumerate() {
-            if ban_list.contains(&TestClientId(id)) {
+            if !filter.contains(TestClientId(id)) {
                 continue;
             }
             let (change, reaction) = client.process_incoming_events();
@@ -308,22 +346,19 @@ impl World {
     }
     // Improvement potential: Randomize order to simulate network better.
     // Improvement potential: Consider if this need to auto-tick (maybe randomly).
-    fn process_all_events_except_clients(
-        &mut self, ban_list: impl IntoIterator<Item = TestClientId>,
-    ) {
-        let ban_list = ban_list.into_iter().collect();
+    fn process_events_for_clients(&mut self, filter: &ClientFilter) {
         let mut something_changed = true;
         while something_changed {
             something_changed = false;
-            if self.process_events_from_clients(&ban_list) {
+            if self.process_events_from_clients(&filter) {
                 something_changed = true;
             }
-            if self.process_events_to_clients(&ban_list) {
+            if self.process_events_to_clients(&filter) {
                 something_changed = true;
             }
         }
     }
-    fn process_all_events(&mut self) { self.process_all_events_except_clients(iter::empty()); }
+    fn process_all_events(&mut self) { self.process_events_for_clients(&ClientFilter::all()); }
 
     fn replay_white_checkmates_black(&mut self, white_id: TestClientId, black_id: TestClientId) {
         self[white_id].make_turn("Nf3").unwrap();
@@ -641,7 +676,7 @@ fn cold_reconnect_lobby() {
     world[cl1_new].join(&mtch, "p1");
     assert!(matches!(
         world.process_events_for(cl1_new),
-        Err(client::EventError::IgnorableError(_))
+        Err(client::EventError::Ignorable(_))
     ));
     world.process_all_events();
 
@@ -692,7 +727,7 @@ fn cold_reconnect_game_active() {
     world[cl2_new].join(&mtch, "p2");
     assert!(matches!(
         world.process_events_for(cl2_new),
-        Err(client::EventError::IgnorableError(_))
+        Err(client::EventError::Ignorable(_))
     ));
     world.process_all_events();
 
@@ -824,9 +859,9 @@ fn hot_reconnect_game_active() {
     world[cl3].make_turn("Nf6").unwrap();
 
     world[cl2].make_turn("d5").unwrap();
-    world.process_all_events_except_clients([cl3]);
+    world.process_events_for_clients(&ClientFilter::except([cl3]));
     world[cl4].make_turn("d4").unwrap();
-    world.process_all_events_except_clients([cl3]);
+    world.process_events_for_clients(&ClientFilter::except([cl3]));
 
     world[cl3].state.hot_reconnect();
     world.process_all_events();
@@ -870,7 +905,7 @@ fn hot_reconnect_preturn_cancellation_late() {
     world[cl3].make_turn("Nf6").unwrap();
 
     world[cl1].make_turn("f4").unwrap();
-    world.process_all_events_except_clients([cl3]);
+    world.process_events_for_clients(&ClientFilter::except([cl3]));
 
     {
         let grid = world[cl3].local_game().board(A).grid().clone();
@@ -900,7 +935,7 @@ fn hot_reconnect_observer() {
     world.reconnect_client(cl5);
 
     world[cl1].make_turn("e4").unwrap();
-    world.process_all_events_except_clients([cl5]);
+    world.process_events_for_clients(&ClientFilter::except([cl5]));
 
     world[cl5].state.hot_reconnect();
     world.process_all_events();
@@ -914,7 +949,7 @@ fn hot_reconnect_game_over() {
 
     world.reconnect_client(cl4);
     world[cl1].state.resign();
-    world.process_all_events_except_clients([cl4]);
+    world.process_events_for_clients(&ClientFilter::except([cl4]));
     world[cl4].state.hot_reconnect();
     world.process_all_events();
     assert_eq!(
@@ -1196,4 +1231,234 @@ fn pgn_standard() {
         }
     }
     panic!("Did not get the PGN");
+}
+
+#[test]
+fn chat_basic() {
+    let mut world = World::new();
+    let (_, cl1, cl2, cl3, _cl4) = world.default_clients();
+
+    world[cl1].state.send_chat_message("hi all".to_owned(), ChatRecipient::All);
+    world.process_all_events();
+    world[cl2].state.send_chat_message("hi team".to_owned(), ChatRecipient::Team);
+    world.process_all_events();
+    world[cl3]
+        .state
+        .send_chat_message("hi p1".to_owned(), ChatRecipient::Participant("p1".to_owned()));
+    world.process_all_events();
+    world.replay_white_checkmates_black(cl1, cl3);
+    world[cl1].state.send_chat_message("gg".to_owned(), ChatRecipient::All);
+    world.process_all_events();
+
+    let over = "Game over! p1 & p2 won: p3 & p4 checkmated";
+    assert_eq!(world[cl1].chat_item_text(), ["hi all", "hi team", "hi p1", over, "gg"]);
+    assert_eq!(world[cl2].chat_item_text(), ["hi all", "hi team", over, "gg"]);
+    assert_eq!(world[cl3].chat_item_text(), ["hi all", "hi p1", over, "gg"]);
+}
+
+#[test]
+fn chat_ephemeral_message() {
+    let mut world = World::new();
+    let (_, cl1, _cl2, _cl3, _cl4) = world.default_clients();
+
+    world[cl1].state.send_chat_message("hi".to_owned(), ChatRecipient::Team);
+    world[cl1].state.execute_input("<Release the Kraken!");
+    assert_eq!(world[cl1].chat_item_text(), ["hi", "Invalid notation."]);
+    world[cl1].state.execute_input("<e4");
+    assert_eq!(world[cl1].chat_item_text(), ["hi"]);
+}
+
+// All clients should eventually see chat messages in the same order determined by the server.
+#[test]
+fn chat_message_order() {
+    let mut world = World::new();
+    let (_, cl1, cl2, _cl3, _cl4) = world.default_clients();
+
+    world[cl1].state.send_chat_message("1-a".to_owned(), ChatRecipient::Team);
+    world.process_all_events();
+    world[cl2].state.send_chat_message("2-a".to_owned(), ChatRecipient::Team);
+    world.process_all_events();
+    world[cl1].state.send_chat_message("1-b".to_owned(), ChatRecipient::Team);
+    world.process_all_events();
+
+    world[cl1].state.send_chat_message("1-c".to_owned(), ChatRecipient::Team);
+
+    world[cl2].state.send_chat_message("2-b".to_owned(), ChatRecipient::Team);
+    world.process_events_for_clients(&ClientFilter::only([cl2]));
+
+    assert_eq!(world[cl1].chat_item_text(), ["1-a", "2-a", "1-b", "1-c"]);
+    assert_eq!(world[cl2].chat_item_text(), ["1-a", "2-a", "1-b", "2-b"]);
+
+    world.process_all_events();
+
+    assert_eq!(world[cl1].chat_item_text(), ["1-a", "2-a", "1-b", "2-b", "1-c"]);
+    assert_eq!(world[cl2].chat_item_text(), ["1-a", "2-a", "1-b", "2-b", "1-c"]);
+}
+
+#[test]
+fn chat_reconnect() {
+    let mut world = World::new();
+    let (mtch, cl1, cl2, cl3, _cl4) = world.default_clients();
+
+    world[cl1].state.send_chat_message("1-a".to_owned(), ChatRecipient::All);
+    world.process_all_events();
+    world[cl2].state.send_chat_message("2-a".to_owned(), ChatRecipient::Team);
+    world.process_all_events();
+
+    world[cl3].state.send_chat_message("3-a".to_owned(), ChatRecipient::All);
+    world.process_events_for_clients(&ClientFilter::only([cl3]));
+    world.reconnect_client(cl3);
+    world[cl3]
+        .state
+        .send_chat_message("3-b".to_owned(), ChatRecipient::Participant("p1".to_owned()));
+
+    world[cl1].state.send_chat_message("1-b".to_owned(), ChatRecipient::All);
+    world.process_events_for_clients(&ClientFilter::except([cl3]));
+    world[cl2].state.send_chat_message("2-b".to_owned(), ChatRecipient::Team);
+    world.process_events_for_clients(&ClientFilter::except([cl3]));
+
+    world[cl3].state.hot_reconnect();
+    world.process_all_events();
+
+    let cl5 = world.new_client();
+    world[cl5].join(&mtch, "p5");
+    world.process_all_events();
+
+    assert_eq!(world[cl1].chat_item_text(), ["1-a", "2-a", "3-a", "1-b", "2-b", "3-b"]);
+    assert_eq!(world[cl2].chat_item_text(), ["1-a", "2-a", "3-a", "1-b", "2-b"]);
+    assert_eq!(world[cl3].chat_item_text(), ["1-a", "3-a", "1-b", "3-b"]);
+    assert_eq!(world[cl5].chat_item_text(), ["1-a", "3-a", "1-b"]);
+}
+
+// In dynamic teams mode team chat should be visible to the players who were in sender's team at
+// the time of sending the message.
+#[test]
+fn team_chat_dynamic_teams() {
+    let mut world = World::new();
+    let [cl1, cl2, cl3, cl4, cl5] = world.new_clients();
+
+    let mtch = world.new_match(cl1, "p1");
+    world.process_all_events();
+    world[cl2].join(&mtch, "p2");
+    world[cl3].join(&mtch, "p3");
+    world[cl4].join(&mtch, "p4");
+    world[cl5].join(&mtch, "p5");
+    world.process_all_events();
+
+    world.server.state.TEST_override_board_assignment(mtch.clone(), vec![
+        single_player("p1", envoy!(White A)),
+        single_player("p2", envoy!(Black B)),
+        single_player("p4", envoy!(Black A)),
+        single_player("p5", envoy!(White B)),
+    ]);
+    for cl in [cl1, cl2, cl3, cl4, cl5].iter() {
+        world[*cl].state.set_ready(true);
+    }
+    world.process_all_events();
+
+    world[cl1].state.send_chat_message("first".to_owned(), ChatRecipient::Team);
+    world.process_all_events();
+    world[cl1].state.resign();
+    world.process_all_events();
+
+    world.server.state.TEST_override_board_assignment(mtch.clone(), vec![
+        single_player("p1", envoy!(White A)),
+        single_player("p3", envoy!(Black B)),
+        single_player("p4", envoy!(Black A)),
+        single_player("p5", envoy!(White B)),
+    ]);
+    for cl in [cl1, cl2, cl3, cl4, cl5].iter() {
+        world[*cl].state.set_ready(true);
+    }
+    world.process_all_events();
+
+    world[cl1].state.send_chat_message("second".to_owned(), ChatRecipient::Team);
+    world.process_all_events();
+
+    let over = "Game over! p4 & p5 won: p1 & p2 resigned";
+    assert_eq!(world[cl1].chat_item_text(), ["first", over, "second"]);
+    assert_eq!(world[cl2].chat_item_text(), ["first", over]);
+    assert_eq!(world[cl3].chat_item_text(), [over, "second"]);
+    assert_eq!(world[cl4].chat_item_text(), [over]);
+    assert_eq!(world[cl5].chat_item_text(), [over]);
+
+    world[cl2].state.leave();
+    world[cl3].state.leave();
+    world.process_all_events();
+
+    let cl2_new = world.new_client();
+    world[cl2_new].join(&mtch, "p2");
+    let cl3_new = world.new_client();
+    world[cl3_new].join(&mtch, "p3");
+    world.process_all_events();
+
+    assert_eq!(world[cl2_new].chat_item_text(), ["first", over]);
+    assert_eq!(world[cl3_new].chat_item_text(), [over, "second"]);
+}
+
+// In fixed teams mode the message is sent to the entire team, regardless of who is currently
+// playing.
+#[test]
+fn team_chat_fixed_teams() {
+    let mut world = World::new();
+    let [cl1, cl2, cl3, cl4, cl5] = world.new_clients();
+
+    let mtch = world.new_match(cl1, "p1");
+    world[cl1].state.set_faction(Faction::Fixed(Team::Red));
+    world.process_all_events();
+    world.join_and_set_team(cl2, &mtch, "p2", Team::Red);
+    world.join_and_set_team(cl3, &mtch, "p3", Team::Red);
+    world.join_and_set_team(cl4, &mtch, "p4", Team::Blue);
+    world.join_and_set_team(cl5, &mtch, "p5", Team::Blue);
+    world.process_all_events();
+
+    world.server.state.TEST_override_board_assignment(mtch.clone(), vec![
+        single_player("p1", envoy!(White A)),
+        single_player("p2", envoy!(Black B)),
+        single_player("p4", envoy!(Black A)),
+        single_player("p5", envoy!(White B)),
+    ]);
+    for cl in [cl1, cl2, cl3, cl4, cl5].iter() {
+        world[*cl].state.set_ready(true);
+    }
+    world.process_all_events();
+
+    world[cl1].state.send_chat_message("first".to_owned(), ChatRecipient::Team);
+    world.process_all_events();
+    world[cl1].state.resign();
+    world.process_all_events();
+
+    world.server.state.TEST_override_board_assignment(mtch.clone(), vec![
+        single_player("p1", envoy!(White A)),
+        single_player("p3", envoy!(Black B)),
+        single_player("p4", envoy!(Black A)),
+        single_player("p5", envoy!(White B)),
+    ]);
+    for cl in [cl1, cl2, cl3, cl4, cl5].iter() {
+        world[*cl].state.set_ready(true);
+    }
+    world.process_all_events();
+
+    world[cl1].state.send_chat_message("second".to_owned(), ChatRecipient::Team);
+    world.process_all_events();
+
+    let over = "Game over! p4 & p5 won: p1 & p2 resigned";
+    assert_eq!(world[cl1].chat_item_text(), ["first", over, "second"]);
+    assert_eq!(world[cl2].chat_item_text(), ["first", over, "second"]);
+    assert_eq!(world[cl3].chat_item_text(), ["first", over, "second"]);
+    assert_eq!(world[cl4].chat_item_text(), [over]);
+    assert_eq!(world[cl5].chat_item_text(), [over]);
+
+    world[cl2].state.leave();
+    world[cl3].state.leave();
+    world.process_all_events();
+
+    let cl2_new = world.new_client();
+    world[cl2_new].join(&mtch, "p2");
+    let cl3_new = world.new_client();
+    world[cl3_new].join(&mtch, "p3");
+    world.process_all_events();
+
+    assert_eq!(world[cl2_new].chat_item_text(), ["first", over, "second"]);
+    assert_eq!(world[cl3_new].chat_item_text(), ["first", over, "second"]);
 }

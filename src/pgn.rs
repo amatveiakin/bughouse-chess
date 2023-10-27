@@ -158,7 +158,7 @@ fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
         setup_tag,
         make_result_string(game),
         make_termination_string(game),
-        game.outcome(),
+        game.outcome().to_readable_string(),
     )
 }
 

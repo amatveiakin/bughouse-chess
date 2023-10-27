@@ -12,11 +12,11 @@ extern crate wasm_bindgen;
 extern crate bughouse_chess;
 
 mod bughouse_prelude;
-mod chat;
 mod html_collection_iterator;
 mod rules_ui;
 mod svg;
 mod table;
+mod web_chat;
 mod web_document;
 mod web_error_handling;
 mod web_util;
@@ -30,7 +30,6 @@ use bughouse_chess::client::*;
 use bughouse_chess::lobby::*;
 use bughouse_chess::meter::*;
 use bughouse_chess::session::*;
-use chat::ChatMessage;
 use enum_map::enum_map;
 use html_collection_iterator::IntoHtmlCollectionIterator;
 use instant::Instant;
@@ -370,13 +369,7 @@ impl WebClient {
         Ok(())
     }
 
-    pub fn execute_turn_command(&mut self, turn_command: &str) -> JsResult<()> {
-        // if turn_command == "panic" { panic!("Test panic!"); }
-        // if turn_command == "error" { return Err(rust_error!("Test Rust error")); }
-        // if turn_command == "bad" { return Err("Test unknown error".into()); }
-        let turn_result = self.state.execute_turn_command(turn_command);
-        self.show_turn_result(turn_result)
-    }
+    pub fn execute_input(&mut self, input: &str) { self.state.execute_input(input); }
 
     pub fn click_board(&mut self, board_id: &str, x: f64, y: f64) -> JsResult<()> {
         // Note: cannot use "data-bughouse-location" attribute: squares are not the click targets
@@ -396,8 +389,7 @@ impl WebClient {
         if let Some((input_board_idx, turn_input)) = alt_game.click_square(board_idx, coord) {
             let display_input_board_idx =
                 get_display_board_index(input_board_idx, alt_game.perspective());
-            let turn_result = self.state.make_turn(display_input_board_idx, turn_input);
-            self.show_turn_result(turn_result)?;
+            _ = self.state.make_turn(display_input_board_idx, turn_input);
         }
         Ok(())
     }
@@ -411,8 +403,7 @@ impl WebClient {
             .ok_or(rust_error!("Invalid piece kind: {piece_kind}"))?;
         let board_idx = get_board_index(display_board_idx, alt_game.perspective());
         if let Some(turn_input) = alt_game.choose_promotion_upgrade(board_idx, piece_kind) {
-            let turn_result = self.state.make_turn(display_board_idx, turn_input);
-            self.show_turn_result(turn_result)?;
+            _ = self.state.make_turn(display_board_idx, turn_input);
         }
         Ok(())
     }
@@ -494,7 +485,6 @@ impl WebClient {
         let pos = DisplayFCoord { x, y };
         if let Some(dest_display) = pos.to_square(board_shape) {
             use PieceDragError::*;
-            // use PieceKind::*;
             let board_idx = get_board_index(display_board_idx, alt_game.perspective());
             let board_orientation =
                 get_board_orientation(display_board_idx, alt_game.perspective());
@@ -505,11 +495,10 @@ impl WebClient {
                     // Probably a partial turn input. Awaiting completion.
                 }
                 Ok(Some(turn_input)) => {
-                    let turn_result = self.state.make_turn(display_board_idx, turn_input);
-                    self.show_turn_result(turn_result)?;
+                    _ = self.state.make_turn(display_board_idx, turn_input);
                 }
                 Err(CannotCastleDroppedKing) => {
-                    self.show_turn_result(Err(TurnError::CastlingPieceHasMoved))?;
+                    self.state.show_turn_result(Err(TurnError::CastlingPieceHasMoved));
                 }
                 Err(DragIllegal) => {
                     // Ignore: tried to make an illegal move (this is usually checked later, but
@@ -660,10 +649,10 @@ impl WebClient {
         let updated_needed = !matches!(server_event, BughouseServerEvent::Pong);
         self.state.process_server_event(server_event).map_err(|err| -> JsValue {
             match err {
-                EventError::IgnorableError(message) => IgnorableError { message }.into(),
+                EventError::Ignorable(message) => IgnorableError { message }.into(),
                 EventError::KickedFromMatch(message) => KickedFromMatch { message }.into(),
-                EventError::FatalError(message) => FatalError { message }.into(),
-                EventError::InternalEvent(message) => RustError { message }.into(),
+                EventError::Fatal(message) => FatalError { message }.into(),
+                EventError::Internal(message) => RustError { message }.into(),
             }
         })?;
         Ok(updated_needed)
@@ -675,17 +664,6 @@ impl WebClient {
             Some(NotableEvent::MatchStarted(match_id)) => {
                 init_lobby(&self.state.mtch().unwrap().rules)?;
                 Ok(JsEventMatchStarted { match_id }.into())
-            }
-            Some(NotableEvent::NewOutcomes(outcomes)) => {
-                for outcome in outcomes {
-                    self.add_chat_message(
-                        ChatMessage::new(format!("Game over: {}", outcome))
-                            .with_sender("System", "chat-sender-game-over")
-                            .with_prominent()
-                            .with_flash(),
-                    )?;
-                }
-                Ok(JsEventNoop {}.into())
             }
             Some(NotableEvent::GameStarted) => {
                 let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
@@ -762,7 +740,7 @@ impl WebClient {
             return Ok(());
         };
         update_observers(&mtch.participants)?;
-        let Some(GameState { ref alt_game, .. }) = mtch.game_state else {
+        let Some(GameState { game_index, ref alt_game, .. }) = mtch.game_state else {
             update_lobby(mtch)?;
             return Ok(());
         };
@@ -914,6 +892,8 @@ impl WebClient {
             .body()?
             .class_list()
             .toggle_with_force("active-player", is_clock_ticking(&game, my_id))?;
+        let chat_node = web_document().get_existing_element_by_id("chat-text-area")?;
+        web_chat::update_chat(&chat_node, &mtch.chat.items(&mtch.my_name, Some(game_index)))?;
         self.repaint_chalk()?;
         Ok(())
     }
@@ -947,37 +927,6 @@ impl WebClient {
             .sorted_by_key(|(metric, _)| metric.as_str())
             .map(|(metric, stats)| format!("{metric}: {stats}"))
             .join("\n")
-    }
-
-    pub fn clear_ephemeral_chat_messages(&self) -> JsResult<()> {
-        let chat_node = web_document().get_existing_element_by_id("chat-text-area")?;
-        chat::clear_ephemeral_chat_messages(&chat_node)
-    }
-    // TODO: Add time. Option questions:
-    //   - Should it be on the left (before the sender name) or in the bottom right corner like in
-    //     most chat app? The latter would probably require separating messages visually with some
-    //     kind of bubbles.
-    //   - Should we show absolute time or relative time (e.g. "5m ago")? The latter would creating
-    //     visual noise from updating times. The former may not be very useful without introducing
-    //     clocks into the app if there are a lot of people who play in full screen (like I do).
-    fn add_chat_message(&self, message: ChatMessage) -> JsResult<()> {
-        let chat_node = web_document().get_existing_element_by_id("chat-text-area")?;
-        chat::add_chat_message(&chat_node, message)
-    }
-    pub fn add_command_result(&self, text: &str) -> JsResult<()> {
-        self.add_chat_message(
-            ChatMessage::new(text)
-                .with_sender("System", "chat-sender-command-result")
-                .with_ephemeral(),
-        )
-    }
-    pub fn add_command_error(&self, text: &str) -> JsResult<()> {
-        self.add_chat_message(
-            ChatMessage::new(text)
-                .with_sender("System", "chat-sender-command-error")
-                .with_ephemeral()
-                .with_flash(),
-        )
     }
 
     pub fn wayback_to_turn(&mut self, board_id: &str, turn_idx: Option<String>) -> JsResult<()> {
@@ -1027,26 +976,6 @@ impl WebClient {
 
     pub fn readonly_rules_body(&self) -> Option<String> {
         Some(rules_ui::make_readonly_rules_body(&self.state.mtch()?.rules))
-    }
-
-    fn show_turn_result(&self, turn_result: Result<(), TurnError>) -> JsResult<()> {
-        // Improvement potential: Human-readable error messages (and/or visual hints).
-        //   Ideally also include rule-dependent context, e.g. "Illegal drop position:
-        //   pawns can be dropped onto ranks 2–6 counting from the player".
-        let mtch = self.state.mtch().ok_or_else(|| rust_error!())?;
-        let message = match turn_result {
-            Ok(()) => None,
-            Err(err) => turn_error_message(err, &mtch.rules.chess_rules),
-        };
-        match message {
-            None => self.clear_ephemeral_chat_messages(),
-            Some(text) => self.add_chat_message(
-                ChatMessage::new(format!("Illegal turn: {text}"))
-                    .with_sender("System", "chat-sender-turn-error")
-                    .with_ephemeral()
-                    .with_flash(),
-            ),
-        }
     }
 
     fn change_faction(&mut self, faction_modifier: impl Fn(i32) -> i32) {
@@ -2300,80 +2229,6 @@ fn broken_king_path(force: PieceForce) -> &'static str {
         PieceForce::White => "#white-king-broken",
         PieceForce::Black => "#black-king-broken",
         PieceForce::Neutral => panic!("King cannot be neutral"),
-    }
-}
-
-// Improvement potential. Add TurnError payload to make error messages even more useful.
-fn turn_error_message(err: TurnError, rules: &ChessRules) -> Option<String> {
-    // We return `None` for errors that are either internal or trivial.
-    let promotion = || match rules.promotion() {
-        Promotion::Upgrade => "upgrade",
-        Promotion::Discard => "discard",
-        Promotion::Steal => "steal",
-    };
-    let pawn_drop_ranks = || rules.bughouse_rules.as_ref().unwrap().pawn_drop_ranks_string();
-    let drop_aggression = || match rules.bughouse_rules.as_ref().unwrap().drop_aggression {
-        DropAggression::NoCheck => "Cannot drop pieces with a check",
-        DropAggression::NoChessMate => {
-            "Cannot drop pieces with a checkmate (according to chess rules)"
-        }
-        DropAggression::NoBughouseMate => {
-            "Cannot drop pieces with a checkmate (according to bughouse rules)"
-        }
-        DropAggression::MateAllowed => unreachable!(),
-    };
-    match err {
-        TurnError::NotPlayer => None,
-        TurnError::AmbiguousBoard => Some(
-            "Start with “<” or “>” to make turn on left or right board respectively.".to_owned(),
-        ),
-        TurnError::InvalidNotation => Some("Invalid notation.".to_owned()),
-        TurnError::AmbiguousNotation => Some("Ambiguous notation.".to_owned()),
-        TurnError::CaptureNotationRequiresCapture => {
-            Some("Capture notation (“x”) requires capture.".to_owned())
-        }
-        TurnError::PieceMissing => Some("Piece is missing.".to_owned()),
-        TurnError::WrongTurnOrder => None,
-        TurnError::PreturnLimitReached => None,
-        TurnError::ImpossibleTrajectory => None,
-        TurnError::PathBlocked => None,
-        TurnError::UnprotectedKing => Some("King is unprotected.".to_owned()),
-        TurnError::CastlingPieceHasMoved => Some("Cannot castle: piece has moved.".to_owned()),
-        TurnError::BadPromotionType => {
-            Some(format!("Bad promotion type, expected “{}”", promotion()))
-        }
-        TurnError::MustPromoteHere => Some("Missing pawn promotion".to_owned()),
-        TurnError::CannotPromoteHere => Some("Cannot promote here".to_owned()),
-        TurnError::InvalidUpgradePromotionTarget => Some("Invalid promotion target".to_owned()),
-        TurnError::InvalidStealPromotionTarget => Some("Invalid steal target".to_owned()),
-        TurnError::DropRequiresBughouse => None,
-        TurnError::DropPieceMissing => Some("Reserve piece is missing.".to_owned()),
-        TurnError::InvalidPawnDropRank => {
-            Some(format!("Pawns must be dropped on ranks {} from the player", pawn_drop_ranks()))
-        }
-        TurnError::DropBlocked => None,
-        TurnError::DropAggression => Some(drop_aggression().to_owned()),
-        TurnError::StealTargetMissing => Some("Steal target is missing.".to_owned()),
-        TurnError::StealTargetInvalid => Some("Steal target is invalid.".to_owned()),
-        TurnError::ExposingKingByStealing => Some("Cannot expose king by stealing.".to_owned()),
-        TurnError::ExposingPartnerKingByStealing => {
-            Some("Cannot expose partner king by stealing.".to_owned())
-        }
-        TurnError::NotDuckChess => Some("Not duck chess.".to_owned()),
-        TurnError::DuckPlacementIsSpecialTurnKind => None,
-        TurnError::MustMovePieceBeforeDuck => {
-            Some("Must move your own piece before the duck.".to_owned())
-        }
-        TurnError::MustPlaceDuck => Some("Must place the duck.".to_owned()),
-        TurnError::MustChangeDuckPosition => {
-            Some("Must move duck to a different position".to_owned())
-        }
-        TurnError::MustDropKingIfPossible => {
-            Some("Must drop a king when you have one in reserve".to_owned())
-        }
-        TurnError::NoGameInProgress => None,
-        TurnError::GameOver => None,
-        TurnError::WaybackIsActive => None,
     }
 }
 

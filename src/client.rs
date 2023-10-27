@@ -9,6 +9,8 @@ use strum::IntoEnumIterator;
 use crate::altered_game::AlteredGame;
 use crate::board::{TurnError, TurnInput, TurnMode};
 use crate::chalk::{ChalkCanvas, ChalkMark, Chalkboard};
+use crate::chat::{ChatMessage, ChatRecipient};
+use crate::client_chat::{ClientChat, SystemMessageClass};
 use crate::clock::{duration_to_mss, GameInstant, WallGameTimePair};
 use crate::display::{get_board_index, DisplayBoard};
 use crate::event::{
@@ -20,14 +22,14 @@ use crate::game::{
     BughousePlayer, PlayerInGame, PlayerRelation, TurnRecord, TurnRecordExpanded,
 };
 use crate::meter::{Meter, MeterBox, MeterStats};
-use crate::my_git_version;
 use crate::pgn::BughouseExportFormat;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Faction, Participant};
-use crate::rules::{Rules, FIRST_GAME_COUNTDOWN_DURATION};
+use crate::rules::{ChessRules, DropAggression, Promotion, Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
 use crate::session::Session;
 use crate::starter::EffectiveStartingPosition;
+use crate::{my_git_version, once_cell_regex};
 
 
 #[derive(Clone, Copy, Debug)]
@@ -41,7 +43,6 @@ pub enum SubjectiveGameResult {
 pub enum NotableEvent {
     SessionUpdated,
     MatchStarted(String), // contains MatchID
-    NewOutcomes(Vec<String>),
     GameStarted,
     GameOver(SubjectiveGameResult),
     TurnMade(BughouseEnvoy),
@@ -54,14 +55,14 @@ pub enum NotableEvent {
 #[derive(Clone, Debug)]
 pub enum EventError {
     // An action has failed. Inform the user and continue.
-    IgnorableError(String),
+    Ignorable(String),
     // The client has been kicked from the match, but can rejoin.
     KickedFromMatch(String),
     // The client cannot continue operating, but *not* an internal error.
-    FatalError(String),
+    Fatal(String),
     // Internal logic error. Should be debugged (or demoted). Could be ignored for now.
     // For non-ignorable internal errors the client would just panic.
-    InternalEvent(String),
+    Internal(String),
 }
 
 #[derive(Debug)]
@@ -71,6 +72,8 @@ pub struct ServerOptions {
 
 #[derive(Debug)]
 pub struct GameState {
+    // The index of this game within the match.
+    pub game_index: u64,
     // Game state including unconfirmed local changes.
     pub alt_game: AlteredGame,
     // Game start time: `None` before first move, non-`None` afterwards.
@@ -82,8 +85,6 @@ pub struct GameState {
     pub chalkboard: Chalkboard,
     // Canvas for the current client to draw on.
     pub chalk_canvas: ChalkCanvas,
-    // The index of this game within the match.
-    game_index: usize,
     // The number of `GameUpdate`s applied so far.
     updates_applied: usize,
     // Index of the next warning in `LOW_TIME_WARNING_THRESHOLDS`.
@@ -99,8 +100,6 @@ pub struct Match {
     pub rules: Rules,
     // All players including those not participating in the current game.
     pub participants: Vec<Participant>,
-    // Statuses from all finished games in the match, in order.
-    pub outcome_history: Vec<String>,
     // Scores from the past matches.
     pub scores: Option<Scores>,
     // Whether this client is ready to start a new game.
@@ -109,6 +108,8 @@ pub struct Match {
     pub first_game_countdown_since: Option<Instant>,
     // Active game or latest game.
     pub game_state: Option<GameState>,
+    // Chat box content. Includes messages from other players and system messages.
+    pub chat: ClientChat,
 }
 
 #[derive(Debug)]
@@ -162,9 +163,9 @@ const LOW_TIME_WARNING_THRESHOLDS: &[Duration] = &[
     Duration::from_secs(1),
 ];
 
-macro_rules! internal_error {
+macro_rules! internal_event_error {
     ($($arg:tt)*) => {
-        EventError::InternalEvent($crate::internal_error_message!($($arg)*))
+        EventError::Internal($crate::internal_error_message!($($arg)*))
     };
 }
 
@@ -361,34 +362,87 @@ impl ClientState {
         self.update_low_time_warnings(true);
     }
 
+    // Tries to execute as a "make turn" command. Returns `Some` if input was interpreted as a turn
+    // command, regardless of whether the command was successful.
+    //
     // Turn command consists of:
-    //   1. Board notation (usually optional; mandatory if double-playing).
+    //   1. Board notation: "<" for the left board (the only option unless double-playing), ">" for
+    //      the right board.
     //   2. Algebraic turn notation or "-" to cancel pending preturn.
-    pub fn execute_turn_command(&mut self, turn_command: &str) -> Result<(), TurnError> {
+    //
+    // Improvement potential. Add an option to treat algebraic notations as turns instead of chat
+    // messages. Note that doing so by default would be a bad idea: it does make a lot of sense to
+    // type algebraic notation into chat in order to hint your partner.
+    pub fn execute_turn_command(&mut self, turn_command: &str) -> Option<Result<(), TurnError>> {
         let (display_board, turn) = if let Some(suffix) = turn_command.strip_prefix('<') {
             (DisplayBoard::Primary, suffix)
         } else if let Some(suffix) = turn_command.strip_prefix('>') {
             (DisplayBoard::Secondary, suffix)
         } else {
-            let game_state = self.game_state().ok_or(TurnError::NoGameInProgress)?;
-            let my_player_id =
-                game_state.alt_game.my_id().as_player().ok_or(TurnError::NotPlayer)?;
-            match my_player_id {
-                BughousePlayer::SinglePlayer(_) => (DisplayBoard::Primary, turn_command),
-                BughousePlayer::DoublePlayer(_) => {
-                    return Err(TurnError::AmbiguousBoard);
-                }
-            }
+            return None;
         };
         if turn == "-" {
             self.cancel_preturn(display_board);
+            Some(Ok(()))
         } else {
-            self.make_turn(display_board, TurnInput::Algebraic(turn.to_owned()))?;
+            Some(self.make_turn(display_board, TurnInput::Algebraic(turn.to_owned())))
         }
-        Ok(())
     }
 
-    pub fn make_turn(
+    pub fn execute_input(&mut self, mut input: &str) {
+        let command_re = once_cell_regex!("^/(\\S+)(.*)$");
+        let first_word_re = once_cell_regex!("^(\\S+)(.*)$");
+
+        if self.execute_turn_command(input).is_some() {
+            return;
+        }
+
+        // TODO: Add "Send" button in UI.
+        // TODO: Show recipient in UI.
+        let mut recipient = if self.team_chat_enabled() {
+            ChatRecipient::Team
+        } else {
+            ChatRecipient::All
+        };
+        if let Some((_, [command, argument])) =
+            command_re.captures(input).map(|caps| caps.extract())
+        {
+            let argument = argument.trim_start();
+            match command {
+                "a" | "all" => {
+                    recipient = ChatRecipient::All;
+                    input = argument;
+                }
+                "dm" => {
+                    let Some((_, [recipient_name, sub_argument])) =
+                        first_word_re.captures(argument).map(|caps| caps.extract())
+                    else {
+                        // TODO: Show error.
+                        return;
+                    };
+                    let sub_argument = sub_argument.trim_start();
+                    recipient = ChatRecipient::Participant(recipient_name.to_owned());
+                    input = sub_argument;
+                }
+                _ => {
+                    self.show_command_error(format!("Unknown command: {command}"));
+                    return;
+                }
+            }
+        } else {
+            // TODO: Show error.
+        }
+        self.send_chat_message(input.to_owned(), recipient);
+    }
+
+    pub fn show_command_result(&mut self, text: String) {
+        self.add_ephemeral_system_message(SystemMessageClass::Info, text);
+    }
+    pub fn show_command_error(&mut self, text: String) {
+        self.add_ephemeral_system_message(SystemMessageClass::Error, text);
+    }
+
+    fn make_turn_impl(
         &mut self, display_board: DisplayBoard, turn_input: TurnInput,
     ) -> Result<(), TurnError> {
         let game_state = self.game_state_mut().ok_or(TurnError::NoGameInProgress)?;
@@ -403,7 +457,16 @@ impl ClientState {
         Ok(())
     }
 
+    pub fn make_turn(
+        &mut self, display_board: DisplayBoard, turn_input: TurnInput,
+    ) -> Result<(), TurnError> {
+        let turn_result = self.make_turn_impl(display_board, turn_input);
+        self.show_turn_result(turn_result);
+        turn_result
+    }
+
     pub fn cancel_preturn(&mut self, display_board: DisplayBoard) {
+        self.show_turn_result(Ok(()));
         let Some(alt_game) = self.alt_game_mut() else {
             return;
         };
@@ -411,6 +474,71 @@ impl ClientState {
         if alt_game.cancel_preturn(board_idx) {
             self.connection.send(BughouseClientEvent::CancelPreturn { board_idx });
         }
+    }
+
+    pub fn show_turn_result(&mut self, turn_result: Result<(), TurnError>) {
+        let Some(mtch) = self.mtch() else {
+            return;
+        };
+        let message = match turn_result {
+            Ok(()) => None,
+            Err(err) => turn_error_message(err, &mtch.rules.chess_rules),
+        };
+        match message {
+            None => self.clear_ephemeral_chat_items(),
+            Some(text) => self.add_ephemeral_system_message(SystemMessageClass::Error, text),
+        }
+    }
+
+    pub fn clear_ephemeral_chat_items(&mut self) {
+        let Some(mtch) = self.mtch_mut() else {
+            return;
+        };
+        mtch.chat.remove_ephemeral();
+    }
+    pub fn add_ephemeral_system_message(&mut self, class: SystemMessageClass, text: String) {
+        let Some(mtch) = self.mtch_mut() else {
+            return;
+        };
+        mtch.chat.add_ephemeral_system_message(class, text);
+    }
+
+    pub fn team_chat_enabled(&self) -> bool {
+        if let Some(GameState { ref alt_game, .. }) = self.game_state() {
+            match alt_game.my_id() {
+                BughouseParticipant::Player(BughousePlayer::SinglePlayer(_)) => true,
+                // Note. If we ever allow to double-play while having a fixed team with 2+ people,
+                // then message should also go to team chat by default in this case.
+                BughouseParticipant::Player(BughousePlayer::DoublePlayer(_)) => false,
+                BughouseParticipant::Observer => false,
+            }
+        } else {
+            false
+        }
+    }
+    pub fn send_chat_message(&mut self, text: String, recipient: ChatRecipient) {
+        let text = text.trim().to_owned();
+        if text.is_empty() {
+            return;
+        }
+        let team_chat_enabled = self.team_chat_enabled();
+        let Some(mtch) = self.mtch_mut() else {
+            return;
+        };
+        match &recipient {
+            ChatRecipient::All => {}
+            ChatRecipient::Team => {
+                assert!(team_chat_enabled);
+            }
+            ChatRecipient::Participant(name) => {
+                if !mtch.participants.iter().any(|p| p.name == *name) {
+                    self.show_command_error(format!("No such player: {name}"));
+                    return;
+                }
+            }
+        };
+        let message = mtch.chat.add_local(recipient, text).clone();
+        self.connection.send(BughouseClientEvent::SendChatMessage { message });
     }
 
     pub fn add_chalk_mark(&mut self, display_board: DisplayBoard, mark: ChalkMark) {
@@ -441,7 +569,6 @@ impl ClientState {
             LobbyUpdated { participants, countdown_elapsed } => {
                 self.process_lobby_updated(participants, countdown_elapsed)
             }
-            OutcomeHistory { outcome_history } => self.process_outcome_history(outcome_history),
             GameStarted {
                 game_index,
                 starting_position,
@@ -460,6 +587,9 @@ impl ClientState {
                 scores,
             ),
             GameUpdated { updates } => self.process_game_updated(updates),
+            ChatMessages { messages, confirmed_local_message_id } => {
+                self.process_chat_messages(messages, confirmed_local_message_id)
+            }
             ChalkboardUpdated { chalkboard } => self.process_chalkboard_updated(chalkboard),
             GameExportReady { content } => self.process_game_export_ready(content),
             Pong => self.process_pong(),
@@ -477,7 +607,7 @@ impl ClientState {
         // TODO: Fix the messages containing "browser tab" for the console client.
         let error = match rejection {
             BughouseServerRejection::MaxStartingTimeExceeded { allowed, .. } => {
-                EventError::IgnorableError(format!(
+                EventError::Ignorable(format!(
                     "Maximum allowed starting time is {}. \
                     This is a technical limitation that we hope to relax in the future. \
                     But for now it is what it is.",
@@ -485,17 +615,17 @@ impl ClientState {
                 ))
             }
             BughouseServerRejection::NoSuchMatch { match_id } => {
-                EventError::IgnorableError(format!("Match {match_id} does not exist."))
+                EventError::Ignorable(format!("Match {match_id} does not exist."))
             }
             BughouseServerRejection::PlayerAlreadyExists { player_name } => {
-                EventError::IgnorableError(format!(
+                EventError::Ignorable(format!(
                     "Cannot join: player {player_name} already exists. If this is you, \
                     make sure you are not connected to the same game in another browser tab. \
                     If you still can't connect, please try again in a few seconds."
                 ))
             }
             BughouseServerRejection::InvalidPlayerName { player_name, reason } => {
-                EventError::IgnorableError(format!("Name {player_name} is invalid: {reason}"))
+                EventError::Ignorable(format!("Name {player_name} is invalid: {reason}"))
             }
             BughouseServerRejection::JoinedInAnotherClient => EventError::KickedFromMatch(
                 "You have joined the match in another browser tab. Only one tab per \
@@ -507,17 +637,17 @@ impl ClientState {
                 priority over name selection. Please choose another name and join again."
                     .to_owned(),
             ),
-            BughouseServerRejection::GuestInRatedMatch => EventError::IgnorableError(
+            BughouseServerRejection::GuestInRatedMatch => EventError::Ignorable(
                 "Guests cannot join rated matches. Please register an account and join again."
                     .to_owned(),
             ),
-            BughouseServerRejection::ShuttingDown => EventError::FatalError(
+            BughouseServerRejection::ShuttingDown => EventError::Fatal(
                 "The server is shutting down for maintenance. \
                 We'll be back soon (usually within 15 minutes). \
                 Please come back later!"
                     .to_owned(),
             ),
-            BughouseServerRejection::UnknownError { message } => EventError::InternalEvent(message),
+            BughouseServerRejection::UnknownError { message } => EventError::Internal(message),
         };
         if matches!(error, EventError::KickedFromMatch(_)) {
             self.match_state = MatchState::NotConnected;
@@ -531,7 +661,7 @@ impl ClientState {
             let my_version = my_git_version!();
             if expected_git_version != my_version {
                 // TODO: Send to server for logging.
-                return Err(EventError::FatalError(format!(
+                return Err(EventError::Fatal(format!(
                     "Client version ({my_version}) does not match \
                     server version ({expected_git_version}). Please refresh the page. \
                     If the problem persists, try to do a hard refresh \
@@ -553,7 +683,7 @@ impl ClientState {
     fn process_match_welcome(&mut self, match_id: String, rules: Rules) -> Result<(), EventError> {
         if let Some(mtch) = self.mtch_mut() {
             if mtch.match_id != match_id {
-                return Err(internal_error!(
+                return Err(internal_event_error!(
                     "Expected match {}, but got {match_id}",
                     mtch.match_id
                 ));
@@ -566,11 +696,13 @@ impl ClientState {
                 MatchState::Creating { my_name } => my_name.clone(),
                 MatchState::Joining { match_id: id, my_name } => {
                     if match_id != *id {
-                        return Err(internal_error!("Expected match {id}, but got {match_id}"));
+                        return Err(internal_event_error!(
+                            "Expected match {id}, but got {match_id}"
+                        ));
                     }
                     my_name.clone()
                 }
-                _ => return Err(internal_error!()),
+                _ => return Err(internal_event_error!()),
             };
             self.notable_event_queue.push_back(NotableEvent::MatchStarted(match_id.clone()));
             // `Observer` is a safe faction default that wouldn't allow us to try acting as
@@ -583,11 +715,11 @@ impl ClientState {
                 my_faction,
                 rules,
                 participants: Vec::new(),
-                outcome_history: Vec::new(),
                 scores: None,
                 is_ready: false,
                 first_game_countdown_since: None,
                 game_state: None,
+                chat: ClientChat::new(),
             });
         }
         Ok(())
@@ -596,7 +728,7 @@ impl ClientState {
         &mut self, participants: Vec<Participant>, countdown_elapsed: Option<Duration>,
     ) -> Result<(), EventError> {
         let now = Instant::now();
-        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
+        let mtch = self.mtch_mut().ok_or_else(|| internal_event_error!())?;
         // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
         //   (e.g. is_ready from another player) arrived before is_ready update from this
         //   client reached the server. Same for `my_team`.
@@ -607,24 +739,13 @@ impl ClientState {
         mtch.first_game_countdown_since = countdown_elapsed.map(|t| now - t);
         Ok(())
     }
-    fn process_outcome_history(&mut self, outcome_history: Vec<String>) -> Result<(), EventError> {
-        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
-        if mtch.outcome_history.len() > outcome_history.len() {
-            return Err(internal_error!());
-        }
-        let new_outcomes = &outcome_history[mtch.outcome_history.len()..];
-        mtch.outcome_history.extend_from_slice(new_outcomes);
-        self.notable_event_queue
-            .push_back(NotableEvent::NewOutcomes(new_outcomes.to_vec()));
-        Ok(())
-    }
     fn process_game_started(
-        &mut self, game_index: usize, starting_position: EffectiveStartingPosition,
+        &mut self, game_index: u64, starting_position: EffectiveStartingPosition,
         players: Vec<PlayerInGame>, time: Option<GameInstant>, updates: Vec<GameUpdate>,
         preturns: Vec<(BughouseBoard, TurnInput)>, scores: Scores,
     ) -> Result<(), EventError> {
         let now = Instant::now();
-        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
+        let mtch = self.mtch_mut().ok_or_else(|| internal_event_error!())?;
         if let Some(game_state) = mtch.game_state.as_mut() {
             if game_state.game_index == game_index {
                 // This is a hot reconnect.
@@ -647,6 +768,11 @@ impl ClientState {
                         .map(|t| (t.envoy.board_idx, t.turn_input.clone()))
                         .collect_vec();
                     self.connection.send(BughouseClientEvent::SetTurns { turns });
+                }
+                let mtch = self.mtch_mut().unwrap();
+                let local_message = mtch.chat.local_messages().cloned().collect_vec();
+                for message in local_message {
+                    self.connection.send(BughouseClientEvent::SendChatMessage { message });
                 }
                 self.send_chalk_drawing_update();
                 // No `NotableEvent::GameStarted`: it is used to reset the UI, while we want
@@ -704,9 +830,19 @@ impl ClientState {
         }
         Ok(())
     }
+    fn process_chat_messages(
+        &mut self, messages: Vec<ChatMessage>, confirmed_local_message_id: u64,
+    ) -> Result<(), EventError> {
+        let mtch = self.mtch_mut().ok_or_else(|| internal_event_error!())?;
+        mtch.chat.remove_confirmed_local(confirmed_local_message_id);
+        for message in messages {
+            mtch.chat.add_static(message);
+        }
+        Ok(())
+    }
     fn process_chalkboard_updated(&mut self, chalkboard: Chalkboard) -> Result<(), EventError> {
-        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
-        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
+        let mtch = self.mtch_mut().ok_or_else(|| internal_event_error!())?;
+        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_event_error!())?;
         game_state.chalkboard = chalkboard;
         Ok(())
     }
@@ -725,7 +861,7 @@ impl ClientState {
     fn apply_game_update(
         &mut self, update: GameUpdate, generate_notable_events: bool,
     ) -> Result<(), EventError> {
-        let game_state = self.game_state_mut().ok_or_else(|| internal_error!())?;
+        let game_state = self.game_state_mut().ok_or_else(|| internal_event_error!())?;
         game_state.updates_applied += 1;
         match update {
             GameUpdate::TurnMade { turn_record } => {
@@ -742,12 +878,12 @@ impl ClientState {
     ) -> Result<(), EventError> {
         let TurnRecord { envoy, turn_input, time } = turn_record;
         let MatchState::Connected(mtch) = &mut self.match_state else {
-            return Err(internal_error!());
+            return Err(internal_event_error!());
         };
-        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
+        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_event_error!())?;
         let GameState { ref mut alt_game, ref mut time_pair, .. } = game_state;
         if !alt_game.is_active() {
-            return Err(internal_error!("Cannot make turn {:?}: game over", turn_input));
+            return Err(internal_event_error!("Cannot make turn {:?}: game over", turn_input));
         }
         let is_my_turn = alt_game.my_id().plays_for(envoy);
         let now = Instant::now();
@@ -757,7 +893,11 @@ impl ClientState {
             *time_pair = Some(WallGameTimePair::new(now, game_start));
         }
         let turn_record = alt_game.apply_remote_turn(envoy, &turn_input, time).map_err(|err| {
-            internal_error!("Got impossible turn from server: {:?}, error: {:?}", turn_input, err)
+            internal_event_error!(
+                "Got impossible turn from server: {:?}, error: {:?}",
+                turn_input,
+                err
+            )
         })?;
         if generate_notable_events {
             if !is_my_turn {
@@ -780,8 +920,8 @@ impl ClientState {
         &mut self, game_now: GameInstant, game_status: BughouseGameStatus, scores: Scores,
         generate_notable_events: bool,
     ) -> Result<(), EventError> {
-        let mtch = self.mtch_mut().ok_or_else(|| internal_error!())?;
-        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_error!())?;
+        let mtch = self.mtch_mut().ok_or_else(|| internal_event_error!())?;
+        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_event_error!())?;
         let GameState { ref mut alt_game, .. } = game_state;
 
         mtch.scores = Some(scores);
@@ -791,16 +931,13 @@ impl ClientState {
             alt_game.set_status(game_status, game_now);
         } else {
             if game_status != alt_game.status() {
-                return Err(internal_error!(
+                return Err(internal_event_error!(
                     "Expected game status {:?}, got {:?}",
                     game_status,
                     alt_game.status()
                 ));
             }
         }
-
-        let outcome = alt_game.game_confirmed().outcome();
-        mtch.outcome_history.push(outcome.clone());
 
         if generate_notable_events {
             if let BughouseParticipant::Player(my_player_id) = alt_game.my_id() {
@@ -816,7 +953,6 @@ impl ClientState {
                     BughouseGameStatus::Draw(_) => SubjectiveGameResult::Draw,
                 };
                 self.notable_event_queue.push_back(NotableEvent::GameOver(game_status));
-                self.notable_event_queue.push_back(NotableEvent::NewOutcomes(vec![outcome]));
                 // Note. It would make more sense to send performanse stats on leave, but there doesn't
                 // seem to be a way to do this reliably, especially on mobile.
                 self.report_performance();
@@ -932,4 +1068,75 @@ fn my_time_left(
         .my_id()
         .envoy_for(board_idx)
         .map(|e| alt_game.local_game().board(e.board_idx).clock().time_left(e.force, now))
+}
+
+// Improvement potential. Add TurnError payload to make error messages even more useful.
+fn turn_error_message(err: TurnError, rules: &ChessRules) -> Option<String> {
+    // We return `None` for errors that are either internal or trivial.
+    let promotion = || match rules.promotion() {
+        Promotion::Upgrade => "upgrade",
+        Promotion::Discard => "discard",
+        Promotion::Steal => "steal",
+    };
+    let pawn_drop_ranks = || rules.bughouse_rules.as_ref().unwrap().pawn_drop_ranks_string();
+    let drop_aggression = || match rules.bughouse_rules.as_ref().unwrap().drop_aggression {
+        DropAggression::NoCheck => "Cannot drop pieces with a check",
+        DropAggression::NoChessMate => {
+            "Cannot drop pieces with a checkmate (according to chess rules)"
+        }
+        DropAggression::NoBughouseMate => {
+            "Cannot drop pieces with a checkmate (according to bughouse rules)"
+        }
+        DropAggression::MateAllowed => unreachable!(),
+    };
+    match err {
+        TurnError::NotPlayer => None,
+        TurnError::InvalidNotation => Some("Invalid notation.".to_owned()),
+        TurnError::AmbiguousNotation => Some("Ambiguous notation.".to_owned()),
+        TurnError::CaptureNotationRequiresCapture => {
+            Some("Capture notation (“x”) requires capture.".to_owned())
+        }
+        TurnError::PieceMissing => Some("Piece is missing.".to_owned()),
+        TurnError::WrongTurnOrder => None,
+        TurnError::PreturnLimitReached => None,
+        TurnError::ImpossibleTrajectory => None,
+        TurnError::PathBlocked => None,
+        TurnError::UnprotectedKing => Some("King is unprotected.".to_owned()),
+        TurnError::CastlingPieceHasMoved => Some("Cannot castle: piece has moved.".to_owned()),
+        TurnError::BadPromotionType => {
+            Some(format!("Bad promotion type, expected “{}”", promotion()))
+        }
+        TurnError::MustPromoteHere => Some("Missing pawn promotion".to_owned()),
+        TurnError::CannotPromoteHere => Some("Cannot promote here".to_owned()),
+        TurnError::InvalidUpgradePromotionTarget => Some("Invalid promotion target".to_owned()),
+        TurnError::InvalidStealPromotionTarget => Some("Invalid steal target".to_owned()),
+        TurnError::DropRequiresBughouse => None,
+        TurnError::DropPieceMissing => Some("Reserve piece is missing.".to_owned()),
+        TurnError::InvalidPawnDropRank => {
+            Some(format!("Pawns must be dropped on ranks {} from the player", pawn_drop_ranks()))
+        }
+        TurnError::DropBlocked => None,
+        TurnError::DropAggression => Some(drop_aggression().to_owned()),
+        TurnError::StealTargetMissing => Some("Steal target is missing.".to_owned()),
+        TurnError::StealTargetInvalid => Some("Steal target is invalid.".to_owned()),
+        TurnError::ExposingKingByStealing => Some("Cannot expose king by stealing.".to_owned()),
+        TurnError::ExposingPartnerKingByStealing => {
+            Some("Cannot expose partner king by stealing.".to_owned())
+        }
+        TurnError::NotDuckChess => Some("Not duck chess.".to_owned()),
+        TurnError::DuckPlacementIsSpecialTurnKind => None,
+        TurnError::MustMovePieceBeforeDuck => {
+            Some("Must move your own piece before the duck.".to_owned())
+        }
+        TurnError::MustPlaceDuck => Some("Must place the duck.".to_owned()),
+        TurnError::MustChangeDuckPosition => {
+            Some("Must move duck to a different position".to_owned())
+        }
+        TurnError::MustDropKingIfPossible => {
+            Some("Must drop a king when you have one in reserve".to_owned())
+        }
+        TurnError::NoGameInProgress => None,
+        TurnError::GameOver => None,
+        TurnError::WaybackIsActive => None,
+    }
 }

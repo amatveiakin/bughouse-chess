@@ -262,12 +262,12 @@ update_session();
 document.addEventListener('keydown', on_document_keydown);
 document.addEventListener('paste', on_paste);
 
-chat_input.addEventListener('keydown', on_command_keydown);
+chat_input.addEventListener('keydown', on_chat_input_keydown);
 
-ready_button.addEventListener('click', () => execute_command('/ready'));
+ready_button.addEventListener('click', () => execute_input('/ready'));
 resign_button.addEventListener('click', request_resign);
-rules_button.addEventListener('click', () => execute_command('/rules'));
-export_button.addEventListener('click', () => execute_command('/save'));
+rules_button.addEventListener('click', () => execute_input('/rules'));
+export_button.addEventListener('click', () => execute_input('/save'));
 volume_button.addEventListener('click', next_volume);
 
 accept_essential_cookies_button.addEventListener('click', on_accept_essential_cookies);
@@ -498,18 +498,21 @@ function on_paste(event) {
     }
 }
 
-function on_command_keydown(event) {
+function on_chat_input_keydown(event) {
     if (!event.repeat && event.key == 'Enter') {
         const input = String(chat_input.value);
         chat_input.value = '';
-        execute_command(input);
+        execute_input(input);
     }
 }
 
-function execute_command(input) {
+function execute_input(input) {
     with_error_handling(function() {
         let command_result_message = '';
+        // TODO: Move all command handling to WASM.
+        let known_command = false;
         if (input.startsWith('/')) {
+            known_command = true;
             const args = input.slice(1).split(/\s+/);
             switch (args[0]) {
                 case 'sound': {
@@ -552,10 +555,11 @@ function execute_command(input) {
                     socket.close();
                     break;
                 default:
-                    throw new InvalidCommand(`Command does not exist: /${args[0]}`);
+                    known_command = false;
             }
-        } else {
-            wasm_client().execute_turn_command(input);
+        }
+        if (!known_command) {
+            wasm_client().execute_input(input);
         }
         update();
         if (command_result_message) {
@@ -720,7 +724,7 @@ async function request_resign() {
         new MyButton('🏳 Resign', MyButton.DO),
     ]);
     if (ret == MyButton.DO) {
-        execute_command('/resign');
+        execute_input('/resign');
     }
 }
 

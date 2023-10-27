@@ -676,6 +676,7 @@ dependencies = [
  "html-escape",
  "instant",
  "itertools 0.11.0",
+ "regex-lite",
  "serde_json",
  "strum",
  "wasm-bindgen",
@@ -3773,6 +3774,7 @@ checksum = "426f806f4089c493dcac0d24c29c01e2c38baf8e30f1b716ee37e83d200b18fe"
 dependencies = [
  "deranged",
  "itoa",
+ "js-sys",
  "serde",
  "time-core",
  "time-macros 0.2.15",

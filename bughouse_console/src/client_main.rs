@@ -204,17 +204,21 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                                     }
                                 }
                             } else {
+                                // TODO: More convenient way to make turns. This is more important
+                                // that the chat in the console client, so the default should be to
+                                // make a turn.
                                 let turn_result =
                                     client_state.execute_turn_command(&keyboard_input);
                                 command_error = match turn_result {
-                                    Ok(()) => None,
-                                    Err(
+                                    None => None,
+                                    Some(Ok(())) => None,
+                                    Some(Err(
                                         TurnError::WrongTurnOrder | TurnError::PreturnLimitReached,
-                                    ) => {
+                                    )) => {
                                         keep_input = true;
                                         None
                                     }
-                                    Err(err) => Some(format!(
+                                    Some(Err(err)) => Some(format!(
                                         "Illegal turn '{}': {:?}",
                                         keyboard_input, err
                                     )),
@@ -242,7 +246,6 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                 NotableEvent::MatchStarted(..) => {
                     // TODO: Display match ID to the user.
                 }
-                NotableEvent::NewOutcomes(..) => {}
                 NotableEvent::GameStarted => {
                     execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
                 }

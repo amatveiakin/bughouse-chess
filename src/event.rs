@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::board::TurnInput;
 use crate::chalk::{ChalkDrawing, Chalkboard};
+use crate::chat::{ChatMessage, OutgoingChatMessage};
 use crate::clock::GameInstant;
 use crate::game::{BughouseBoard, BughouseGameStatus, PlayerInGame, TurnRecord};
 use crate::meter::MeterStats;
@@ -56,8 +57,9 @@ pub enum GameUpdate {
 
 // Improvement potential. Automatically bundle all event generated during a single cycle into one
 // message. This would:
-//   - Make sure that all updates are atomic (e.g. this would remove the gap between `MatchWelcome`
-//     and getting the faction in `LobbyUpdated`)
+//   - Make sure that all updates are atomic: e.g. this would remove the gap between `MatchWelcome`
+//     and getting the faction in `LobbyUpdated`; or this prevent the user from sending a local
+//     message before getting the proper local message ID from `ChatMessages`.
 //   - Allow to stop bunding events manually, as in `GameUpdated` and `GameStarted`.
 //   - Allow to remove duplication resulting from the manual bundling.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -78,12 +80,9 @@ pub enum BughouseServerEvent {
         participants: Vec<Participant>,
         countdown_elapsed: Option<Duration>,
     },
-    OutcomeHistory {
-        outcome_history: Vec<String>, // for re-connection
-    },
     // Improvement potential: Rename `GameStarted` to take reconnection into account.
     GameStarted {
-        game_index: usize,
+        game_index: u64,
         starting_position: EffectiveStartingPosition,
         players: Vec<PlayerInGame>,
         time: Option<GameInstant>,                 // for re-connection
@@ -95,6 +94,10 @@ pub enum BughouseServerEvent {
     },
     GameUpdated {
         updates: Vec<GameUpdate>,
+    },
+    ChatMessages {
+        messages: Vec<ChatMessage>,
+        confirmed_local_message_id: u64,
     },
     ChalkboardUpdated {
         chalkboard: Chalkboard,
@@ -122,7 +125,7 @@ pub enum BughouseClientErrorReport {
 
 // TODO: Make sure server does not process events like MakeTurn sent during an older game.
 //   This hasn't been spotted in practice so far, but seems possible in theory. Solutions:
-//   - Add game_id tag to relevant events; or
+//   - Add game_index tag to relevant events; or
 //   - Implement a barrier: don't start a new game until all clients confirmed that they are
 //     ready; or don't accept events for a new game until the client confirms game start.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -157,6 +160,9 @@ pub enum BughouseClientEvent {
         is_ready: bool,
     },
     Leave,
+    SendChatMessage {
+        message: OutgoingChatMessage,
+    },
     UpdateChalkDrawing {
         drawing: ChalkDrawing,
     },

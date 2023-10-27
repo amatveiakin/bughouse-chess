@@ -18,6 +18,7 @@ use strum::IntoEnumIterator;
 
 use crate::board::{TurnInput, TurnMode, VictoryReason};
 use crate::chalk::{ChalkDrawing, Chalkboard};
+use crate::chat::{ChatMessage, ChatMessageBody, ChatRecipient, OutgoingChatMessage};
 use crate::clock::GameInstant;
 use crate::event::{
     BughouseClientErrorReport, BughouseClientEvent, BughouseServerEvent, BughouseServerRejection,
@@ -27,17 +28,23 @@ use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughousePlayer, PlayerInGame,
     TurnRecord,
 };
+use crate::iterable_mut::IterableMut;
 use crate::lobby::{assign_boards, fix_teams_if_needed, verify_participants, Teaming};
-use crate::my_git_version;
 use crate::pgn::{self, BughouseExportFormat};
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Faction, Participant};
 use crate::rules::{Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
+use crate::server_chat::{
+    ChatMessageBodyExpanded, ChatMessageExpanded, ChatRecipientExpanded, ServerChat,
+};
 use crate::server_helpers::ServerHelpers;
 use crate::server_hooks::{NoopServerHooks, ServerHooks};
 use crate::session::Session;
 use crate::session_store::{SessionId, SessionStore};
+use crate::utc_time::UtcDateTime;
+use crate::util::Relax;
+use crate::{fetch_new_chat_messages, my_git_version};
 
 
 const DOUBLE_TERMINATION_ABORT_THRESHOLD: Duration = Duration::from_secs(1);
@@ -109,7 +116,7 @@ pub struct TurnRequest {
 #[derive(Debug)]
 pub struct GameState {
     // The index of this game within the match.
-    game_index: usize,
+    game_index: u64,
     game: BughouseGame,
     // `game_creation` is the time when seating and starting position were
     // generated and presented to the users.
@@ -143,37 +150,58 @@ struct MatchId(String);
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 struct ParticipantId(usize);
 
+#[derive(Clone, Debug)]
+struct ParticipantExtra {
+    confirmed_local_message_id: u64,
+}
+
 #[derive(Debug)]
 struct Participants {
     // Use an ordered map to show lobby players in joining order.
-    map: BTreeMap<ParticipantId, Participant>,
+    map: BTreeMap<ParticipantId, (Participant, ParticipantExtra)>,
     next_id: usize,
 }
 
 impl Participants {
     fn new() -> Self { Self { map: BTreeMap::new(), next_id: 1 } }
-    fn iter(&self) -> impl Iterator<Item = &Participant> + Clone { self.map.values() }
-    fn iter_mut(&mut self) -> impl Iterator<Item = &mut Participant> { self.map.values_mut() }
+    fn iter(&self) -> impl Iterator<Item = &Participant> + Clone {
+        self.map.values().map(|(p, _)| p)
+    }
+    fn iter_mut(&mut self) -> impl Iterator<Item = &mut Participant> {
+        self.map.values_mut().map(|(p, _)| p)
+    }
+    fn extra(&self, id: ParticipantId) -> &ParticipantExtra { &self.map[&id].1 }
+    fn extra_mut(&mut self, id: ParticipantId) -> &mut ParticipantExtra {
+        &mut self.map.get_mut(&id).unwrap().1
+    }
     fn find_by_name(&self, name: &str) -> Option<ParticipantId> {
         self.map
             .iter()
-            .find_map(|(id, p)| if p.name == name { Some(*id) } else { None })
+            .find_map(|(id, (p, _))| if p.name == name { Some(*id) } else { None })
     }
     fn add_participant(&mut self, participant: Participant) -> ParticipantId {
         let id = ParticipantId(self.next_id);
         self.next_id += 1;
-        assert!(self.map.insert(id, participant).is_none());
+        let extra = ParticipantExtra { confirmed_local_message_id: 0 };
+        assert!(self.map.insert(id, (participant, extra)).is_none());
         id
     }
 }
 
 impl ops::Index<ParticipantId> for Participants {
     type Output = Participant;
-    fn index(&self, id: ParticipantId) -> &Self::Output { &self.map[&id] }
+    fn index(&self, id: ParticipantId) -> &Self::Output { &self.map[&id].0 }
 }
 impl ops::IndexMut<ParticipantId> for Participants {
     fn index_mut(&mut self, id: ParticipantId) -> &mut Self::Output {
-        self.map.get_mut(&id).unwrap()
+        &mut self.map.get_mut(&id).unwrap().0
+    }
+}
+
+impl IterableMut<Participant> for Participants {
+    fn get_iter<'a>(&'a self) -> impl Iterator<Item = &'a Participant> + 'a { self.iter() }
+    fn get_iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut Participant> + 'a {
+        self.iter_mut()
     }
 }
 
@@ -289,13 +317,16 @@ struct Match {
     match_creation: Instant,
     rules: Rules,
     participants: Participants,
-    scores: Option<Scores>,
+    chat: ServerChat,
+    teaming: Option<Teaming>,         // `Some` since the first game begins
+    scores: Option<Scores>,           // `Some` since the first game begins
     match_history: Vec<BughouseGame>, // final game states; TODO: rename to `game history`
     first_game_countdown_since: Option<Instant>,
     game_state: Option<GameState>, // active game or latest game
     board_assignment_override: Option<Vec<PlayerInGame>>, // for tests
 }
 
+// TODO: Put `now` and `utc_now` into `Context`.
 struct Context<'a, 'b> {
     clients: &'b mut MutexGuard<'a, Clients>,
     session_store: &'b mut MutexGuard<'a, SessionStore>,
@@ -454,6 +485,8 @@ impl CoreServerState {
             match_creation: now,
             rules,
             participants: Participants::new(),
+            chat: ServerChat::new(),
+            teaming: None,
             scores: None,
             match_history: Vec::new(),
             first_game_countdown_since: None,
@@ -708,6 +741,7 @@ impl Match {
 
     fn test_flags(&mut self, ctx: &mut Context, now: Instant) {
         let Some(GameState {
+            game_index,
             game_start,
             game_start_offset_time,
             ref mut game_end,
@@ -727,14 +761,14 @@ impl Match {
         let game_now = GameInstant::from_now_game_active(game_start, now);
         game.test_flag(game_now);
         if !game.is_active() {
-            let round = self.match_history.len() + 1;
             let update = update_on_game_over(
                 ctx,
-                round,
+                game_index,
                 game,
                 turn_requests,
                 &mut self.participants,
                 self.scores.as_mut().unwrap(),
+                &mut self.chat,
                 game_now,
                 game_start_offset_time,
                 game_end,
@@ -789,6 +823,9 @@ impl Match {
                 self.process_set_ready(ctx, client_id, now, is_ready)
             }
             BughouseClientEvent::Leave => self.process_leave(ctx, client_id),
+            BughouseClientEvent::SendChatMessage { message } => {
+                self.process_send_chat_message(ctx, client_id, message)
+            }
             BughouseClientEvent::UpdateChalkDrawing { drawing } => {
                 self.process_update_chalk_drawing(ctx, client_id, drawing)
             }
@@ -893,13 +930,8 @@ impl Match {
             // LobbyUpdated should precede GameStarted, because this is how the client gets their
             // team in FixedTeam mode.
             self.send_lobby_updated(ctx, now);
-            let mut outcome_history =
-                self.match_history.iter().map(|game| game.outcome()).collect_vec();
-            if !game_state.game.is_active() {
-                outcome_history.push(game_state.game.outcome());
-            }
-            ctx.clients[client_id].send(BughouseServerEvent::OutcomeHistory { outcome_history });
             ctx.clients[client_id].send(self.make_game_start_event(now, Some(participant_id)));
+            self.send_messages(ctx, Some(client_id), self.chat.all_messages());
             let chalkboard = game_state.chalkboard.clone();
             ctx.clients[client_id].send(BughouseServerEvent::ChalkboardUpdated { chalkboard });
             Ok(())
@@ -996,6 +1028,7 @@ impl Match {
         turn_input: TurnInput,
     ) -> EventResult {
         let Some(GameState {
+            game_index,
             ref mut game_start,
             ref mut game_start_offset_time,
             ref mut game_end,
@@ -1012,8 +1045,6 @@ impl Match {
             .find_player(&self.participants[participant_id].name)
             .ok_or_else(|| unknown_error!())?;
         let envoy = player_bughouse_id.envoy_for(board_idx).ok_or_else(|| unknown_error!())?;
-        let scores = self.scores.as_mut().unwrap();
-        let participants = &mut self.participants;
 
         if turn_requests.iter().filter(|r| r.envoy == envoy).count()
             > self.rules.chess_rules.max_preturns_per_board()
@@ -1035,14 +1066,14 @@ impl Match {
             }
             if !game.is_active() {
                 let game_now = GameInstant::from_now_game_active(game_start.unwrap(), now);
-                let round = self.match_history.len() + 1;
                 game_over_update = Some(update_on_game_over(
                     ctx,
-                    round,
+                    game_index,
                     game,
                     turn_requests,
-                    participants,
-                    scores,
+                    &mut self.participants,
+                    self.scores.as_mut().unwrap(),
+                    &mut self.chat,
                     game_now,
                     *game_start_offset_time,
                     game_end,
@@ -1089,6 +1120,7 @@ impl Match {
         &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
     ) -> EventResult {
         let Some(GameState {
+            game_index,
             ref mut game,
             ref mut turn_requests,
             game_start,
@@ -1111,18 +1143,16 @@ impl Match {
             player_bughouse_id.team().opponent(),
             VictoryReason::Resignation,
         );
-        let scores = self.scores.as_mut().unwrap();
-        let participants = &mut self.participants;
         let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
         game.set_status(status, game_now);
-        let round = self.match_history.len() + 1;
         let update = update_on_game_over(
             ctx,
-            round,
+            game_index,
             game,
             turn_requests,
-            participants,
-            scores,
+            &mut self.participants,
+            self.scores.as_mut().unwrap(),
+            &mut self.chat,
             game_now,
             game_start_offset_time,
             game_end,
@@ -1159,6 +1189,61 @@ impl Match {
         Ok(())
     }
 
+    fn process_send_chat_message(
+        &mut self, ctx: &mut Context, client_id: ClientId, message: OutgoingChatMessage,
+    ) -> EventResult {
+        let participant_id =
+            ctx.clients[client_id].participant_id.ok_or_else(|| unknown_error!())?;
+        let sender = &self.participants[participant_id];
+        let recipient_expanded = match &message.recipient {
+            ChatRecipient::All => ChatRecipientExpanded::All,
+            ChatRecipient::Team => {
+                let teaming = self.teaming.ok_or_else(|| unknown_error!())?;
+                match teaming {
+                    Teaming::DynamicTeams => {
+                        let Some(GameState { ref game, .. }) = self.game_state else {
+                            return Err(unknown_error!());
+                        };
+                        let Some(sender_team) = game.find_player(&sender.name).map(|p| p.team())
+                        else {
+                            return Err(unknown_error!());
+                        };
+                        ChatRecipientExpanded::Participants(
+                            self.participants
+                                .iter()
+                                .map(|p| p.name.clone())
+                                .filter(|name| {
+                                    game.find_player(name).is_some_and(|p| p.team() == sender_team)
+                                })
+                                .collect(),
+                        )
+                    }
+                    Teaming::FixedTeams => match sender.faction {
+                        Faction::Fixed(team) => ChatRecipientExpanded::FixedTeam(team),
+                        Faction::Random => unreachable!(),
+                        Faction::Observer => return Err(unknown_error!()),
+                    },
+                }
+            }
+            ChatRecipient::Participant(name) => {
+                ChatRecipientExpanded::Participants(iter::once(name.clone()).collect())
+            }
+        };
+        let utc_now = UtcDateTime::now();
+        let game_index = self.game_state.as_ref().map(|s| s.game_index);
+        self.chat.add(game_index, utc_now, ChatMessageBodyExpanded::Regular {
+            sender: sender.name.clone(),
+            recipient: message.recipient,
+            recipient_expanded,
+            text: message.text,
+        });
+        self.participants
+            .extra_mut(participant_id)
+            .confirmed_local_message_id
+            .relax_max(message.local_message_id);
+        Ok(())
+    }
+
     fn process_update_chalk_drawing(
         &mut self, ctx: &mut Context, client_id: ClientId, drawing: ChalkDrawing,
     ) -> EventResult {
@@ -1192,6 +1277,9 @@ impl Match {
     }
 
     fn post_process(&mut self, ctx: &mut Context, execution: Execution, now: Instant) {
+        let new_chat_messages = fetch_new_chat_messages!(self.chat);
+        self.send_messages(ctx, None, new_chat_messages);
+
         // Improvement potential: Collapse `send_lobby_updated` events generated during one event
         //   processing cycle. Right now there could up to three: one from the event (SetTeam/SetReady),
         //   one from here and one from `self.start_game`.
@@ -1201,7 +1289,7 @@ impl Match {
             ctx.clients.map.values().filter_map(|c| c.participant_id).collect();
         let mut lobby_updated = false;
         let mut chalkboard_updated = false;
-        self.participants.map.retain(|id, p| {
+        self.participants.map.retain(|id, (p, _)| {
             let is_online = active_participant_ids.contains(id);
             if !is_online {
                 if self.game_state.is_none() {
@@ -1261,7 +1349,7 @@ impl Match {
                 self.start_game(ctx, now);
             } else if self.first_game_countdown_since.is_none() {
                 // Show final teams when countdown begins.
-                fix_teams_if_needed(&mut self.participants.map);
+                fix_teams_if_needed(&mut self.participants);
                 self.send_lobby_updated(ctx, now);
 
                 if ctx.disable_countdown {
@@ -1281,14 +1369,18 @@ impl Match {
     fn start_game(&mut self, ctx: &mut Context, now: Instant) {
         self.reset_readiness();
 
-        // Non-trivial only in the beginning of a match (we've already called `fix_teams_if_needed`
-        // when the countdown began, but calling it again to be sure).
-        let teaming = fix_teams_if_needed(&mut self.participants.map);
-        self.init_scores(teaming);
+        // Non-trivial only in the beginning of a match, when the first game starts. Moreover, we've
+        // already called `fix_teams_if_needed` when the countdown began, but calling it again to be
+        // sure.
+        if self.teaming.is_none() {
+            let teaming = fix_teams_if_needed(&mut self.participants);
+            self.teaming = Some(teaming);
+            self.init_scores(teaming);
+        }
 
         let players = self.assign_boards();
         let game = BughouseGame::new(self.rules.clone(), &players);
-        let game_index = self.match_history.len();
+        let game_index = self.match_history.len() as u64;
         self.game_state = Some(GameState {
             game_index,
             game,
@@ -1378,6 +1470,85 @@ impl Match {
         }
         assign_boards(self.participants.iter(), &mut rand::thread_rng())
     }
+
+    // Improvement potential. Instead of traversing all messages for each client we could keep a map
+    // from client_id to (messages, message_confirmations) and update it as we traverse the messages
+    // in one go. In practice it doesn't matter much, since we either have one message (in a regular
+    // chat workflow) or one client (in case of a reconnect).
+    fn send_messages(
+        &self, ctx: &mut Context, limit_to_client_id: Option<ClientId>,
+        messages_to_send: impl IntoIterator<Item = &ChatMessageExpanded>,
+    ) {
+        let messages_to_send = messages_to_send.into_iter().collect_vec();
+        let send_to_client = |client: &mut Client| {
+            if let Some(participant_id) = client.participant_id {
+                let p = &self.participants[participant_id];
+                let p_extra = &self.participants.extra(participant_id);
+                let mut messages = vec![];
+                for m in messages_to_send.iter() {
+                    let body = match &m.body {
+                        ChatMessageBodyExpanded::Regular {
+                            sender,
+                            recipient,
+                            recipient_expanded,
+                            text,
+                        } => {
+                            let is_sender = &p.name == sender;
+                            let is_recipient = match recipient_expanded {
+                                ChatRecipientExpanded::All => true,
+                                ChatRecipientExpanded::FixedTeam(team) => {
+                                    matches!(p.faction, Faction::Fixed(t) if t == *team)
+                                }
+                                ChatRecipientExpanded::Participants(names) => {
+                                    names.contains(&p.name)
+                                }
+                            };
+                            if is_sender || is_recipient {
+                                Some(ChatMessageBody::Regular {
+                                    sender: sender.clone(),
+                                    recipient: recipient.clone(),
+                                    text: text.clone(),
+                                })
+                            } else {
+                                None
+                            }
+                        }
+                        ChatMessageBodyExpanded::GameOver { outcome } => {
+                            Some(ChatMessageBody::GameOver { outcome: outcome.clone() })
+                        }
+                    };
+                    if let Some(body) = body {
+                        messages.push(ChatMessage {
+                            message_id: m.message_id.clone(),
+                            game_index: m.game_index.clone(),
+                            time: m.time,
+                            body,
+                        });
+                    }
+                }
+                // Checking whether `confirmed_local_message_id` advanced seperately is superfluous:
+                // we are sending all messages back to the client, so there will always be new
+                // messages whenever `confirmed_local_message_id` advances.
+                if !messages.is_empty() {
+                    client.send(BughouseServerEvent::ChatMessages {
+                        messages,
+                        confirmed_local_message_id: p_extra.confirmed_local_message_id,
+                    });
+                }
+            }
+        };
+
+        if let Some(limit_to_client_id) = limit_to_client_id {
+            let client = &mut ctx.clients[limit_to_client_id];
+            send_to_client(client);
+        } else {
+            for client in ctx.clients.map.values_mut() {
+                if client.match_id.as_ref() == Some(&self.match_id) {
+                    send_to_client(client);
+                }
+            }
+        }
+    }
 }
 
 fn current_game_time(game_state: &GameState, now: Instant) -> Option<GameInstant> {
@@ -1437,11 +1608,13 @@ fn resolve_one_turn(
     None
 }
 
+// Improvement potential. Find a way to make this a member function instead of passing so many
+// arguments separately.
 fn update_on_game_over(
-    ctx: &mut Context, round: usize, game: &BughouseGame, turn_requests: &mut Vec<TurnRequest>,
-    participants: &mut Participants, scores: &mut Scores, game_now: GameInstant,
-    game_start_offset_time: Option<time::OffsetDateTime>, game_end: &mut Option<Instant>,
-    now: Instant,
+    ctx: &mut Context, game_index: u64, game: &BughouseGame, turn_requests: &mut Vec<TurnRequest>,
+    participants: &mut Participants, scores: &mut Scores, chat: &mut ServerChat,
+    game_now: GameInstant, game_start_offset_time: Option<time::OffsetDateTime>,
+    game_end: &mut Option<Instant>, now: Instant,
 ) -> GameUpdate {
     assert!(game_end.is_none());
     *game_end = Some(now);
@@ -1481,6 +1654,11 @@ fn update_on_game_over(
             }
         }
     }
+    let utc_now = UtcDateTime::now();
+    chat.add(Some(game_index), utc_now, ChatMessageBodyExpanded::GameOver {
+        outcome: game.outcome(),
+    });
+    let round = game_index as usize + 1;
     ctx.hooks.on_game_over(game, game_start_offset_time, round);
     GameUpdate::GameOver {
         time: game_now,
@@ -1532,6 +1710,7 @@ fn event_name(event: &IncomingEvent) -> &'static str {
             BughouseClientEvent::Resign => "Client_Resign",
             BughouseClientEvent::SetReady { .. } => "Client_SetReady",
             BughouseClientEvent::Leave => "Client_Leave",
+            BughouseClientEvent::SendChatMessage { .. } => "Client_SendChatMessage",
             BughouseClientEvent::UpdateChalkDrawing { .. } => "Client_UpdateChalkDrawing",
             BughouseClientEvent::RequestExport { .. } => "Client_RequestExport",
             BughouseClientEvent::ReportPerformace(_) => "Client_ReportPerformace",
