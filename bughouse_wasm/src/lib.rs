@@ -893,7 +893,10 @@ impl WebClient {
             .class_list()
             .toggle_with_force("active-player", is_clock_ticking(&game, my_id))?;
         let chat_node = web_document().get_existing_element_by_id("chat-text-area")?;
-        web_chat::update_chat(&chat_node, &mtch.chat.items(&mtch.my_name, Some(game_index)))?;
+        web_chat::update_chat(
+            &chat_node,
+            &mtch.chat.items(&mtch.my_name, game.chess_rules(), Some(game_index)),
+        )?;
         self.repaint_chalk()?;
         Ok(())
     }

@@ -176,8 +176,7 @@ impl BughouseGameStatus {
 }
 
 impl GameOutcome {
-    // Note. Not using `Display` or `ToString` because we'll need localization at some point.
-    pub fn to_readable_string(&self) -> String {
+    pub fn to_readable_string(&self, rules: &ChessRules) -> String {
         use BughouseGameStatus::*;
         use DrawReason::*;
         use VictoryReason::*;
@@ -185,7 +184,15 @@ impl GameOutcome {
         let losers = self.losers.join(" & ");
         match self.status {
             Active => "Unterminated".to_owned(),
-            Victory(_, Checkmate) => format!("{winners} won: {losers} checkmated"),
+            Victory(_, Checkmate) => {
+                if rules.bughouse_rules.as_ref().map_or(false, |r| r.koedem) {
+                    format!("{winners} won: {losers} lost all kings")
+                } else if rules.regicide() {
+                    format!("{winners} won: {losers} lost a king")
+                } else {
+                    format!("{winners} won: {losers} checkmated")
+                }
+            }
             Victory(_, Flag) => format!("{winners} won: {losers} timed out"),
             Victory(_, Resignation) => format!("{winners} won: {losers} resigned"),
             Draw(SimultaneousFlag) => "Draw by simultaneous flags".to_owned(),

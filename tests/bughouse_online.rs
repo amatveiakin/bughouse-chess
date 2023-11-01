@@ -134,12 +134,13 @@ impl Client {
 
     fn chat_item_text(&self) -> Vec<String> {
         let my_name = self.state.my_name().unwrap();
+        let chess_rules = &self.state.mtch().unwrap().rules.chess_rules;
         let game_index = self.state.game_state().map(|state| state.game_index);
         self.state
             .mtch()
             .unwrap()
             .chat
-            .items(my_name, game_index)
+            .items(my_name, chess_rules, game_index)
             .into_iter()
             .map(|item| item.text)
             .collect_vec()

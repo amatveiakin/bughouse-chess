@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use crate::chat::{
     ChatMessage, ChatMessageBody, ChatRecipient, OutgoingChatMessage, MAX_CHAT_MESSAGES,
 };
+use crate::rules::ChessRules;
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -72,11 +73,13 @@ impl ClientChat {
         self.local_messages.iter()
     }
 
-    pub fn items(&self, my_name: &str, game_index: Option<u64>) -> Vec<ChatItem> {
+    pub fn items(
+        &self, my_name: &str, chess_rules: &ChessRules, game_index: Option<u64>,
+    ) -> Vec<ChatItem> {
         (self
             .static_messages
             .iter()
-            .map(|m| static_message_to_item(m, my_name, game_index)))
+            .map(|m| static_message_to_item(m, my_name, chess_rules, game_index)))
         .chain(self.local_messages.iter().map(|m| local_message_to_item(m)))
         .chain(self.ephemeral_message.iter().map(|m| ephemeral_message_to_item(m)))
         .collect()
@@ -125,7 +128,7 @@ impl ClientChat {
 fn chat_item_id(prefix: &str, sub_id: u64) -> String { format!("{prefix}-{sub_id:08}") }
 
 fn static_message_to_item(
-    message: &ChatMessage, my_name: &str, game_index: Option<u64>,
+    message: &ChatMessage, my_name: &str, chess_rules: &ChessRules, game_index: Option<u64>,
 ) -> ChatItem {
     let id = chat_item_id("a", message.message_id);
     let dim = message.game_index != game_index;
@@ -154,7 +157,7 @@ fn static_message_to_item(
             }
         }
         ChatMessageBody::GameOver { outcome } => {
-            let outcome = outcome.to_readable_string();
+            let outcome = outcome.to_readable_string(chess_rules);
             let highlight = !dim;
             ChatItem {
                 id,
