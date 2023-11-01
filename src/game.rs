@@ -193,7 +193,7 @@ impl GameOutcome {
                     format!("{winners} won: {losers} checkmated")
                 }
             }
-            Victory(_, Flag) => format!("{winners} won: {losers} timed out"),
+            Victory(_, Flag) => format!("{winners} won: {losers} lost on time"),
             Victory(_, Resignation) => format!("{winners} won: {losers} resigned"),
             Draw(SimultaneousFlag) => "Draw by simultaneous flags".to_owned(),
             Draw(ThreefoldRepetition) => "Draw by threefold repetition".to_owned(),
