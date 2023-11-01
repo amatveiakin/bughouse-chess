@@ -74,8 +74,6 @@ svg {
     ".  prim-name-top   .  prim-rsrv-top     .      scnd-rsrv-top  .   scnd-name-top  ."
     ".  prim-clock-top  .   prim-board       .       scnd-board    .  scnd-clock-top  ."
     ".     prim-log     .   prim-board       .       scnd-board    .     scnd-log     ."
-    ".     prim-log     .   prim-board       .       scnd-board    .     scnd-log     ."
-    ".     prim-log     .   prim-board       .       scnd-board    .     scnd-log     ."
     ".     prim-log     .   prim-board       .       scnd-board    .  scnd-clock-bot  ."
     ".     prim-log     .   prim-board       .      scnd-rsrv-bot  .   scnd-name-bot  ."
     ".     prim-log     .   prim-board       .      scnd-rsrv-bot  .  scr-individual  ."
@@ -96,11 +94,9 @@ svg {
     1fr
   ;
   grid-template-rows:
-    repeat(3, auto)
-    4.8em
-    repeat(3, auto)
-    4.5em
-    repeat(6, auto)
+    repeat(4, auto)
+    1fr
+    repeat(7, auto)
   ;
 }
 
@@ -110,8 +106,6 @@ body.symmetric #page {
     ".        .         .  prim-rsrv-top     .      scnd-rsrv-top  .        .         ."
     ".  prim-name-top   .  prim-rsrv-top     .      scnd-rsrv-top  .   scnd-name-top  ."
     ".  prim-clock-top  .   prim-board       .       scnd-board    .  scnd-clock-top  ."
-    ".     prim-log     .   prim-board       .       scnd-board    .     scnd-log     ."
-    ".     prim-log     .   prim-board       .       scnd-board    .     scnd-log     ."
     ".     prim-log     .   prim-board       .       scnd-board    .     scnd-log     ."
     ".  prim-clock-bot  .   prim-board       .       scnd-board    .  scnd-clock-bot  ."
     ".  prim-name-bot   .  prim-rsrv-bot     .      scnd-rsrv-bot  .   scnd-name-bot  ."
@@ -130,11 +124,9 @@ body.symmetric #page {
     1fr
   ;
   grid-template-rows:
-    repeat(2, auto)
-    5em
     repeat(3, auto)
-    4.5em
-    repeat(3, auto)
+    1fr
+    repeat(4, auto)
   ;
 }
 
@@ -439,8 +431,16 @@ body.observer .reserve {
 
 
 #player-name-container-primary-top,
+#player-name-container-secondary-top {
+  padding-bottom: 0.3em;
+}
+#player-name-container-primary-bottom,
+#player-name-container-secondary-bottom {
+  padding-top: 0.3em;
+}
+#player-name-container-primary-top,
 #player-name-container-primary-bottom {
-  /* Align right and put status emojis (like “⚠️” on the right).
+  /* Align right and put status emojis like “⚠️” on the right.
      TODO: Safer solution that wouldn't break if we allow emojis in player names. */
   direction: rtl;
 }
@@ -532,7 +532,7 @@ body.symmetric .individual-score-value {
   display: inline-block;
   border-radius: calc(var(--sq-size-primary) * 0.2);
   padding: calc(var(--sq-size-primary) * 0.05) calc(var(--sq-size-primary) * 0.1);
-  margin: calc(var(--sq-size-primary) * 0.2)  0;
+  margin: calc(var(--sq-size-primary) * 0.05)  0;
 }
 .clock-inactive {
   color: #909090;
@@ -573,12 +573,10 @@ body.observer .clock-active.clock-low-time {
 #clock-container-primary-top,
 #clock-container-primary-bottom {
   text-align: right;
-  padding: calc(var(--sq-size-primary) * 0.1) 0;
 }
 #clock-container-secondary-top,
 #clock-container-secondary-bottom {
   text-align: left;
-  padding: calc(var(--sq-size-primary) * 0.1) 0;
 }
 
 #chat-container {
@@ -720,6 +718,9 @@ dialog ::-webkit-scrollbar-thumb {
   background-color: var(--color-main-scrollbar);
 }
 
+.turn-log-container {
+  padding: 1.2em 0;
+}
 #turn-log-container-primary {
   text-align: right;
 }
