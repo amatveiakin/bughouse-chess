@@ -80,8 +80,8 @@ impl ClientChat {
             .static_messages
             .iter()
             .map(|m| static_message_to_item(m, my_name, chess_rules, game_index)))
-        .chain(self.local_messages.iter().map(|m| local_message_to_item(m)))
-        .chain(self.ephemeral_message.iter().map(|m| ephemeral_message_to_item(m)))
+        .chain(self.local_messages.iter().map(local_message_to_item))
+        .chain(self.ephemeral_message.iter().map(ephemeral_message_to_item))
         .collect()
     }
 

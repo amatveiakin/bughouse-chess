@@ -197,10 +197,8 @@ impl ops::IndexMut<ParticipantId> for Participants {
 }
 
 impl IterableMut<Participant> for Participants {
-    fn get_iter<'a>(&'a self) -> impl Iterator<Item = &'a Participant> + 'a { self.iter() }
-    fn get_iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut Participant> + 'a {
-        self.iter_mut()
-    }
+    fn get_iter(&self) -> impl Iterator<Item = &Participant> { self.iter() }
+    fn get_iter_mut(&mut self) -> impl Iterator<Item = &mut Participant> { self.iter_mut() }
 }
 
 

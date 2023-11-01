@@ -276,10 +276,8 @@ mod tests {
     type Participants = HashMap<String, Participant>;
 
     impl IterableMut<Participant> for Participants {
-        fn get_iter<'a>(&'a self) -> impl Iterator<Item = &'a Participant> { self.values() }
-        fn get_iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut Participant> {
-            self.values_mut()
-        }
+        fn get_iter(&self) -> impl Iterator<Item = &Participant> { self.values() }
+        fn get_iter_mut(&mut self) -> impl Iterator<Item = &mut Participant> { self.values_mut() }
     }
 
     trait ParticipantsExt {

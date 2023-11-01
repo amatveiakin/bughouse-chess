@@ -18,11 +18,11 @@
 // Note. Cannot use names `iter` and `iter_mut`, because this would create conflicts in blanket
 // implementations for things like `Vec`.
 pub trait IterableMut<T: 'static> {
-    fn get_iter<'a>(&'a self) -> impl Iterator<Item = &'a T>;
-    fn get_iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut T>;
+    fn get_iter(&self) -> impl Iterator<Item = &T>;
+    fn get_iter_mut(&mut self) -> impl Iterator<Item = &mut T>;
 }
 
 impl<T: 'static> IterableMut<T> for Vec<T> {
-    fn get_iter<'a>(&'a self) -> impl Iterator<Item = &'a T> { self.iter() }
-    fn get_iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut T> { self.iter_mut() }
+    fn get_iter(&self) -> impl Iterator<Item = &T> { self.iter() }
+    fn get_iter_mut(&mut self) -> impl Iterator<Item = &mut T> { self.iter_mut() }
 }

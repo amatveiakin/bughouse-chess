@@ -351,10 +351,10 @@ impl World {
         let mut something_changed = true;
         while something_changed {
             something_changed = false;
-            if self.process_events_from_clients(&filter) {
+            if self.process_events_from_clients(filter) {
                 something_changed = true;
             }
-            if self.process_events_to_clients(&filter) {
+            if self.process_events_to_clients(filter) {
                 something_changed = true;
             }
         }
