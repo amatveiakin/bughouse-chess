@@ -91,6 +91,7 @@ const SearchParams = {
 
 const page_element = document.getElementById('page');
 const chat_input = document.getElementById('chat-input');
+const chat_send_button = document.getElementById('chat-send-button');
 const connection_info = document.getElementById('connection-info');
 
 const menu_backdrop = document.getElementById('menu-backdrop');
@@ -262,7 +263,9 @@ update_session();
 document.addEventListener('keydown', on_document_keydown);
 document.addEventListener('paste', on_paste);
 
+chat_input.addEventListener('input', () => update_chat_input());
 chat_input.addEventListener('keydown', on_chat_input_keydown);
+chat_send_button.addEventListener('click', () => execute_chat_input());
 
 ready_button.addEventListener('click', () => execute_input('/ready'));
 resign_button.addEventListener('click', request_resign);
@@ -498,11 +501,22 @@ function on_paste(event) {
     }
 }
 
+function update_chat_input() {
+    chat_send_button.classList.toggle('display-none', chat_input.value === "");
+
+}
+
+function execute_chat_input() {
+    const input = String(chat_input.value);
+    chat_input.value = '';
+    chat_input.focus();
+    update_chat_input();
+    execute_input(input);
+}
+
 function on_chat_input_keydown(event) {
     if (!event.repeat && event.key == 'Enter') {
-        const input = String(chat_input.value);
-        chat_input.value = '';
-        execute_input(input);
+        execute_chat_input();
     }
 }
 
