@@ -1,7 +1,6 @@
 use std::collections::{HashSet, VecDeque};
 
-use crate::chat::{ChatRecipient, MAX_CHAT_MESSAGES, MAX_CHAT_MESSAGE_LENGTH};
-use crate::game::GameOutcome;
+use crate::chat::{ChatMessage, ChatMessageBody, MAX_CHAT_MESSAGES, MAX_CHAT_MESSAGE_LENGTH};
 use crate::player::Team;
 use crate::utc_time::UtcDateTime;
 
@@ -23,29 +22,8 @@ pub enum ChatRecipientExpanded {
 }
 
 #[derive(Clone, Debug)]
-pub enum ChatMessageBodyExpanded {
-    Regular {
-        sender: String,
-        recipient: ChatRecipient,
-        recipient_expanded: ChatRecipientExpanded,
-        text: String,
-    },
-    GameOver {
-        outcome: GameOutcome,
-    },
-}
-
-#[derive(Clone, Debug)]
-pub struct ChatMessageExpanded {
-    pub message_id: u64,
-    pub game_index: Option<u64>,
-    pub time: UtcDateTime,
-    pub body: ChatMessageBodyExpanded,
-}
-
-#[derive(Clone, Debug)]
 pub struct ServerChat {
-    messages: VecDeque<ChatMessageExpanded>,
+    messages: VecDeque<(ChatRecipientExpanded, ChatMessage)>,
     first_new_message_id: u64,
     next_id: u64,
 }
@@ -62,31 +40,34 @@ impl ServerChat {
     pub fn first_new_message_id(&self) -> u64 { self.first_new_message_id }
     pub fn reset_first_new_message_id(&mut self) { self.first_new_message_id = self.next_id; }
 
-    pub fn messages_since(&self, start: usize) -> impl Iterator<Item = &ChatMessageExpanded> {
+    pub fn messages_since(
+        &self, start: usize,
+    ) -> impl Iterator<Item = &(ChatRecipientExpanded, ChatMessage)> {
         self.messages.range(start..)
     }
-    pub fn all_messages(&self) -> impl Iterator<Item = &ChatMessageExpanded> {
+    pub fn all_messages(&self) -> impl Iterator<Item = &(ChatRecipientExpanded, ChatMessage)> {
         self.messages.iter()
     }
 
     pub fn add(
-        &mut self, game_index: Option<u64>, time: UtcDateTime, mut body: ChatMessageBodyExpanded,
+        &mut self, game_index: Option<u64>, time: UtcDateTime,
+        recipient_expanded: ChatRecipientExpanded, mut body: ChatMessageBody,
     ) {
         // TODO: Check message length on the client and don't allow to send longer messages instead.
         // Also add a small "N characted left" widget when close to the limit (like SMS apps or
         // comments on StackOverflow do).
         match body {
-            ChatMessageBodyExpanded::Regular { ref mut text, .. } => {
+            ChatMessageBody::Regular { ref mut text, .. } => {
                 // Improvement potential. Apply NFC and count Unicode graphemes instead. Need to
                 // check how this affects WASM size, though.
                 *text = text.chars().take(MAX_CHAT_MESSAGE_LENGTH).collect()
             }
-            ChatMessageBodyExpanded::GameOver { .. } => {}
+            ChatMessageBody::GameOver { .. } => {}
         }
         let message_id = self.next_id;
         self.next_id += 1;
-        let message = ChatMessageExpanded { message_id, game_index, time, body };
-        self.messages.push_back(message);
+        let message = ChatMessage { message_id, game_index, time, body };
+        self.messages.push_back((recipient_expanded, message));
         while self.messages.len() > MAX_CHAT_MESSAGES {
             self.messages.pop_front();
         }

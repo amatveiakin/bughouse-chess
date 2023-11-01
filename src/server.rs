@@ -35,9 +35,7 @@ use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Faction, Participant};
 use crate::rules::{Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
-use crate::server_chat::{
-    ChatMessageBodyExpanded, ChatMessageExpanded, ChatRecipientExpanded, ServerChat,
-};
+use crate::server_chat::{ChatRecipientExpanded, ServerChat};
 use crate::server_helpers::ServerHelpers;
 use crate::server_hooks::{NoopServerHooks, ServerHooks};
 use crate::session::Session;
@@ -1231,12 +1229,12 @@ impl Match {
         };
         let utc_now = UtcDateTime::now();
         let game_index = self.game_state.as_ref().map(|s| s.game_index);
-        self.chat.add(game_index, utc_now, ChatMessageBodyExpanded::Regular {
-            sender: sender.name.clone(),
-            recipient: message.recipient,
-            recipient_expanded,
-            text: message.text,
-        });
+        self.chat
+            .add(game_index, utc_now, recipient_expanded, ChatMessageBody::Regular {
+                sender: sender.name.clone(),
+                recipient: message.recipient,
+                text: message.text,
+            });
         self.participants
             .extra_mut(participant_id)
             .confirmed_local_message_id
@@ -1477,7 +1475,7 @@ impl Match {
     // chat workflow) or one client (in case of a reconnect).
     fn send_messages(
         &self, ctx: &mut Context, limit_to_client_id: Option<ClientId>,
-        messages_to_send: impl IntoIterator<Item = &ChatMessageExpanded>,
+        messages_to_send: impl IntoIterator<Item = &(ChatRecipientExpanded, ChatMessage)>,
     ) {
         let messages_to_send = messages_to_send.into_iter().collect_vec();
         let send_to_client = |client: &mut Client| {
@@ -1485,45 +1483,20 @@ impl Match {
                 let p = &self.participants[participant_id];
                 let p_extra = &self.participants.extra(participant_id);
                 let mut messages = vec![];
-                for m in messages_to_send.iter() {
-                    let body = match &m.body {
-                        ChatMessageBodyExpanded::Regular {
-                            sender,
-                            recipient,
-                            recipient_expanded,
-                            text,
-                        } => {
-                            let is_sender = &p.name == sender;
-                            let is_recipient = match recipient_expanded {
-                                ChatRecipientExpanded::All => true,
-                                ChatRecipientExpanded::FixedTeam(team) => {
-                                    matches!(p.faction, Faction::Fixed(t) if t == *team)
-                                }
-                                ChatRecipientExpanded::Participants(names) => {
-                                    names.contains(&p.name)
-                                }
-                            };
-                            if is_sender || is_recipient {
-                                Some(ChatMessageBody::Regular {
-                                    sender: sender.clone(),
-                                    recipient: recipient.clone(),
-                                    text: text.clone(),
-                                })
-                            } else {
-                                None
-                            }
-                        }
-                        ChatMessageBodyExpanded::GameOver { outcome } => {
-                            Some(ChatMessageBody::GameOver { outcome: outcome.clone() })
-                        }
+                for (recipient_expanded, m) in messages_to_send.iter() {
+                    let is_sender = match &m.body {
+                        ChatMessageBody::Regular { sender, .. } => &p.name == sender,
+                        ChatMessageBody::GameOver { .. } => false,
                     };
-                    if let Some(body) = body {
-                        messages.push(ChatMessage {
-                            message_id: m.message_id.clone(),
-                            game_index: m.game_index.clone(),
-                            time: m.time,
-                            body,
-                        });
+                    let is_recipient = match recipient_expanded {
+                        ChatRecipientExpanded::All => true,
+                        ChatRecipientExpanded::FixedTeam(team) => {
+                            matches!(p.faction, Faction::Fixed(t) if t == *team)
+                        }
+                        ChatRecipientExpanded::Participants(names) => names.contains(&p.name),
+                    };
+                    if is_sender || is_recipient {
+                        messages.push(m.clone());
                     }
                 }
                 // Checking whether `confirmed_local_message_id` advanced seperately is superfluous:
@@ -1655,9 +1628,12 @@ fn update_on_game_over(
         }
     }
     let utc_now = UtcDateTime::now();
-    chat.add(Some(game_index), utc_now, ChatMessageBodyExpanded::GameOver {
-        outcome: game.outcome(),
-    });
+    chat.add(
+        Some(game_index),
+        utc_now,
+        ChatRecipientExpanded::All,
+        ChatMessageBody::GameOver { outcome: game.outcome() },
+    );
     let round = game_index as usize + 1;
     ctx.hooks.on_game_over(game, game_start_offset_time, round);
     GameUpdate::GameOver {
