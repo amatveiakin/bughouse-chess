@@ -9,11 +9,13 @@
 // Improvement potential. Make simple updates, like adding a new message, O(1).
 
 use bughouse_chess::client_chat::{ChatItem, ChatItemDurability, ChatParty, SystemMessageClass};
+use bughouse_chess::game::{BughouseParticipant, BughousePlayer};
 
 use crate::rust_error;
 use crate::web_document::web_document;
+use crate::web_element_ext::WebElementExt;
 use crate::web_error_handling::JsResult;
-use crate::web_util::scroll_to_bottom;
+use crate::web_util::{remove_all_children, scroll_to_bottom};
 
 
 const CHAT_ID_ATTR: &str = "data-chat-item-id";
@@ -85,44 +87,21 @@ fn new_chat_item(item: &ChatItem) -> JsResult<web_sys::Element> {
     item_node.class_list().add_1("chat-message")?;
 
     if item.sender.is_some() || item.recipient.is_some() {
-        let prefix_node = document.create_element("span")?;
-        prefix_node.class_list().add_1("chat-prefix")?;
+        let prefix_node = item_node.append_span(["chat-prefix"])?;
         if let Some(sender) = &item.sender {
             let (sender_name, sender_class) = chat_party_name_and_class(&sender, "sender");
-            let node = document.create_element("span")?;
-            node.class_list().add_2("chat-sender", &sender_class)?;
-            node.set_text_content(Some(&sender_name));
-            prefix_node.append_child(&node)?;
+            prefix_node.append_text_span(sender_name, ["chat-sender", &sender_class])?;
         }
         if let Some(recipient) = &item.recipient {
             let (recipient_name, recipient_class) =
                 chat_party_name_and_class(&recipient, "recipient");
-            {
-                let node = document.create_element("span")?;
-                node.class_list().add_1("chat-arrow")?;
-                node.set_text_content(Some("→"));
-                prefix_node.append_child(&node)?;
-            }
-            {
-                let node = document.create_element("span")?;
-                node.class_list().add_2("chat-recipient", &recipient_class)?;
-                node.set_text_content(Some(&recipient_name));
-                prefix_node.append_child(&node)?;
-            }
+            prefix_node.append_text_span("→", ["chat-arrow"])?;
+            prefix_node.append_text_span(recipient_name, ["chat-recipient", &recipient_class])?;
         }
-        {
-            let node = document.create_element("span")?;
-            node.class_list().add_1("chat-colon")?;
-            node.set_text_content(Some(":"));
-            prefix_node.append_child(&node)?;
-        }
-        item_node.append_child(&prefix_node)?;
+        prefix_node.append_text_span(":", ["chat-colon"])?;
     }
 
-    let text_node = document.create_element("span")?;
-    text_node.class_list().add_1("chat-message-text")?;
-    text_node.set_text_content(Some(&item.text));
-    item_node.append_child(&text_node)?;
+    item_node.append_text_span(&item.text, ["chat-message-text"])?;
 
     update_chat_item(&item_node, item)?;
     Ok(item_node)
@@ -142,4 +121,177 @@ fn chat_party_name_and_class<'a>(party: &'a ChatParty, side: &str) -> (&'a str, 
             ("system", format!("chat-{side}-system-{message_class}"))
         }
     }
+}
+
+enum ChatReferenceElement {
+    Command(&'static str),
+    Message(&'static str),
+    Recipient(&'static str),
+    Notation(&'static str),
+}
+
+pub fn render_chat_reference_tooltip(
+    participant_id: BughouseParticipant, team_chat_enabled: bool,
+) -> JsResult<()> {
+    use ChatReferenceElement::*;
+    let mut lines = vec![];
+
+    if team_chat_enabled {
+        lines.push(([Message("message")].as_slice(), "send to team"));
+        lines.push(([Command("/a"), Message(" message")].as_slice(), "send to all"));
+    } else {
+        lines.push(([Message("message")].as_slice(), "send to all"));
+    }
+    lines.push((
+        [Command("/dm"), Recipient(" name"), Message(" message")].as_slice(),
+        "send to a given player",
+    ));
+
+    lines.push(([Command("/h")].as_slice(), "more details on chat commands"));
+
+    match participant_id {
+        BughouseParticipant::Observer => {}
+        BughouseParticipant::Player(BughousePlayer::SinglePlayer(_)) => {
+            lines.push((
+                [Command("<"), Notation("notation")].as_slice(),
+                "make move with algebraic notation",
+            ));
+        }
+        BughouseParticipant::Player(BughousePlayer::DoublePlayer(_)) => {
+            lines.push((
+                [Command("<"), Notation("notation")].as_slice(),
+                "make move on the left board",
+            ));
+            lines.push((
+                [Command(">"), Notation("notation")].as_slice(),
+                "make move on the right board",
+            ));
+        }
+    }
+
+    let document = web_document();
+    let reference_node = document.get_existing_element_by_id("chat-reference-tooltip")?;
+    remove_all_children(&reference_node)?;
+    for line in lines {
+        let (input, explanation) = line;
+        let line_node = reference_node.append_new_element("div")?;
+        let input_node = line_node.append_span(["chat-reference-input"])?;
+        for element in input {
+            let (text, class) = match element {
+                Command(text) => (text, "chat-reference-command"),
+                Message(text) => (text, "chat-reference-message"),
+                Recipient(text) => (text, "chat-reference-recipient"),
+                Notation(text) => (text, "chat-reference-notation"),
+            };
+            input_node.append_text_span(*text, [class])?;
+        }
+        line_node.append_text_span(" — ", ["chat-reference-separator"])?;
+        line_node.append_text_span(explanation, ["chat-reference-explanation"])?;
+    }
+    Ok(())
+}
+
+pub fn render_chat_reference_dialog() -> JsResult<()> {
+    use ChatReferenceElement::*;
+    // Improvement potential. Highlight "/a" and notation examples in explanation sections.
+    let mut line_groups = vec![];
+    line_groups.push(vec![
+        (
+            [Message("message")].as_slice(),
+            [
+                "Send a message to the team if playing in a team.",
+                "Acts as /a if playing on two boards or observing.",
+            ]
+            .as_slice(),
+        ),
+        (
+            [Command("/a"), Message(" message")].as_slice(),
+            ["Send a message to all players and observers, including those who join later."]
+                .as_slice(),
+        ),
+        (
+            [Command("/dm"), Recipient(" name"), Message(" message")].as_slice(),
+            ["Send a message to a given player."].as_slice(),
+        ),
+    ]);
+    line_groups.push(vec![
+        ([Command("/resign")].as_slice(), ["Resign from the game."].as_slice()),
+        (
+            [Command("/ready")].as_slice(),
+            ["Toggle readiness for the next game."].as_slice(),
+        ),
+        ([Command("/h")].as_slice(), ["Show this reference."].as_slice()),
+        (
+            [Command("/tooltip")].as_slice(),
+            ["Toggle tooltip with the short version of this reference."].as_slice(),
+        ),
+    ]);
+    line_groups.push(vec![
+        (
+            [Command("<"), Notation("notation")].as_slice(),
+            ["Make move (on the left board if playing on two boards)."].as_slice(),
+        ),
+        (
+            [Command("<"), Notation("-")].as_slice(),
+            ["Undo premove (on the left board if playing on two boards)."].as_slice(),
+        ),
+        (
+            [Command(">"), Notation("notation")].as_slice(),
+            ["Make move on the right board (if playing on two boards)."].as_slice(),
+        ),
+        (
+            [Command(">"), Notation("-")].as_slice(),
+            ["Undo premove on the right board (if playing on two boards)."].as_slice(),
+        ),
+    ]);
+    line_groups.push(vec![(
+        [].as_slice(),
+        [
+            "Algebraic notation reference:",
+            "Use standard notation for chess moves: e4 (or e2e4), Nc3, Qxd5, Rad8, O-O (or 0-0).",
+            "Drops are denoted by piece name followed by “@” followed by target square: P@c6, B@f3.",
+            "Duck moves are denoted by “@” followed by target square: @e3.",
+            "Promotions are denoted with “/” or “=”:",
+            "- regular (upgrade) promotions: e8/Q (or e8=Q).",
+            "- discard promotions: e8/. (or e8=.).",
+            "- steal promotions: e8/Rc1 (or e8/Rc1); note that the target square is on the other board.",
+        ]
+        .as_slice(),
+    )]);
+
+    let document = web_document();
+    let reference_node = document.get_existing_element_by_id("chat-reference-dialog-body")?;
+    remove_all_children(&reference_node)?;
+    let table = reference_node.append_new_element("table")?;
+    for (group_index, group) in line_groups.iter().enumerate() {
+        if group_index > 0 {
+            table
+                .append_new_element("tr")?
+                .with_classes(["chat-reference-group-separator"])?;
+        }
+        for line in group {
+            let (input, explanation) = line;
+            let line_tr = table.append_new_element("tr")?;
+            let input_td =
+                line_tr.append_new_element("td")?.with_classes(["chat-reference-input"])?;
+            for element in input.iter() {
+                let (text, class) = match element {
+                    Command(text) => (text, "chat-reference-command"),
+                    Message(text) => (text, "chat-reference-message"),
+                    Recipient(text) => (text, "chat-reference-recipient"),
+                    Notation(text) => (text, "chat-reference-notation"),
+                };
+                input_td.append_text_span(*text, [class])?;
+            }
+            let explanation_td =
+                line_tr.append_new_element("td")?.with_classes(["chat-reference-explanation"])?;
+            for (i, l) in explanation.iter().enumerate() {
+                if i > 0 {
+                    explanation_td.append_new_element("br")?;
+                }
+                explanation_td.append_text_span(l, [])?;
+            }
+        }
+    }
+    Ok(())
 }

@@ -1,3 +1,4 @@
+#![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(let_chains)]
 #![feature(result_option_inspect)]
 #![cfg_attr(feature = "strict", deny(warnings))]
@@ -18,6 +19,7 @@ mod svg;
 mod table;
 mod web_chat;
 mod web_document;
+mod web_element_ext;
 mod web_error_handling;
 mod web_util;
 
@@ -38,6 +40,7 @@ use strum::IntoEnumIterator;
 use table::{td, td_safe, HtmlTable};
 use wasm_bindgen::prelude::*;
 use web_document::{web_document, WebDocument};
+use web_element_ext::WebElementExt;
 use web_error_handling::{JsResult, RustError};
 use web_sys::{ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
 use web_util::{remove_all_children, scroll_to_bottom};
@@ -370,6 +373,9 @@ impl WebClient {
     }
 
     pub fn execute_input(&mut self, input: &str) { self.state.execute_input(input); }
+    pub fn clear_ephemeral_chat_items(&mut self) { self.state.clear_ephemeral_chat_items(); }
+    pub fn show_command_result(&mut self, text: String) { self.state.show_command_result(text); }
+    pub fn show_command_error(&mut self, text: String) { self.state.show_command_error(text); }
 
     pub fn click_board(&mut self, board_id: &str, x: f64, y: f64) -> JsResult<()> {
         // Note: cannot use "data-bughouse-location" attribute: squares are not the click targets
@@ -673,6 +679,7 @@ impl WebClient {
                 let my_id = alt_game.my_id();
                 render_boards(alt_game.board_shape(), alt_game.perspective())?;
                 setup_participation_mode(my_id)?;
+                web_chat::render_chat_reference_tooltip(my_id, self.state.team_chat_enabled())?;
                 for display_board_idx in DisplayBoard::iter() {
                     scroll_log_to_bottom(display_board_idx)?;
                 }
@@ -1128,6 +1135,8 @@ fn scroll_log_to_bottom(board_idx: DisplayBoard) -> JsResult<()> {
 pub fn init_page() -> JsResult<()> {
     generate_svg_markers()?;
     render_starting()?;
+    web_chat::render_chat_reference_tooltip(BughouseParticipant::Observer, false)?;
+    web_chat::render_chat_reference_dialog()?;
     Ok(())
 }
 
@@ -1776,22 +1785,11 @@ fn update_turn_log(
             }
             prev_index = index;
 
-            let turn_number_node = document.create_element("span")?;
-            turn_number_node.set_text_content(Some(&turn_number_str));
-            turn_number_node.set_attribute("class", "log-turn-number")?;
-            line_node.append_child(&turn_number_node)?;
-
-            let algebraic_node = document.create_element("span")?;
-            algebraic_node.set_text_content(Some(&algebraic));
-            algebraic_node.set_attribute("class", "log-algebraic")?;
-            line_node.append_child(&algebraic_node)?;
+            line_node.append_text_span(&turn_number_str, ["log-turn-number"])?;
+            line_node.append_text_span(&algebraic, ["log-algebraic"])?;
 
             if !captures.is_empty() {
-                let capture_sep_node = document.create_element("span")?;
-                capture_sep_node.set_text_content(Some("·"));
-                capture_sep_node.set_attribute("class", "log-capture-separator")?;
-                line_node.append_child(&capture_sep_node)?;
-
+                line_node.append_text_span("·", ["log-capture-separator"])?;
                 for capture in captures.iter() {
                     let capture_classes = [
                         "log-piece",
@@ -1813,9 +1811,7 @@ fn update_turn_log(
                 // Clicking on the steal will send you the previous turn on this board.
                 line_node.set_attribute("data-turn-index", &prev_index)?;
 
-                let turn_number_node = document.create_element("span")?;
-                turn_number_node.set_attribute("class", "log-turn-number")?;
-                line_node.append_child(&turn_number_node)?;
+                line_node.append_span(["log-turn-number"])?;
 
                 let stealing_hand_node = svg_icon("#stealing-hand", 150, 100, &["log-steal-icon"])?;
                 line_node.append_child(&stealing_hand_node)?;

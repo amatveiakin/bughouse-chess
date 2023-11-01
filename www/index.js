@@ -81,6 +81,7 @@ log_time();  // start the counter
 // Improvement potential. Similarly group other global variables.
 const Storage = {
     cookies_accepted: 'cookies-accepted',  // values: null, "essential", "all"
+    chat_reference_tooltip: 'chat-reference-tooltip',  // values: "show" (default), "hide"
     player_name: 'player-name',
 };
 
@@ -92,6 +93,8 @@ const SearchParams = {
 const page_element = document.getElementById('page');
 const chat_input = document.getElementById('chat-input');
 const chat_send_button = document.getElementById('chat-send-button');
+const chat_reference_tooltip_container = document.getElementById('chat-reference-tooltip-container');
+const chat_reference_tooltip_hide = document.getElementById('chat-reference-tooltip-hide');
 const connection_info = document.getElementById('connection-info');
 
 const menu_backdrop = document.getElementById('menu-backdrop');
@@ -265,7 +268,10 @@ document.addEventListener('paste', on_paste);
 
 chat_input.addEventListener('input', () => update_chat_input());
 chat_input.addEventListener('keydown', on_chat_input_keydown);
+chat_input.addEventListener('focusin', () => update_chat_reference_tooltip());
+chat_input.addEventListener('focusout', () => update_chat_reference_tooltip());
 chat_send_button.addEventListener('click', () => execute_chat_input());
+chat_reference_tooltip_hide.addEventListener('click', () => set_show_chat_reference_tooltip('hide'));
 
 ready_button.addEventListener('click', () => execute_input('/ready'));
 resign_button.addEventListener('click', request_resign);
@@ -320,7 +326,8 @@ function with_error_handling(f) {
         } else if (e instanceof WasmClientPanicked) {
             // Error dialog should already be shown.
         } else if (e instanceof InvalidCommand) {
-            wasm_client().add_command_error(e.msg);
+            wasm_client().show_command_error(e.msg);
+            update();
         } else if (e?.constructor?.name == 'IgnorableError') {
             ignorable_error_dialog(e.message);
         } else if (e?.constructor?.name == 'KickedFromMatch') {
@@ -517,18 +524,30 @@ function execute_chat_input() {
 function on_chat_input_keydown(event) {
     if (!event.repeat && event.key == 'Enter') {
         execute_chat_input();
+    } else if (!event.repeat && event.key == 'Escape') {
+        // Remove focus thus hiding the chat reference tooltip.
+        chat_input.blur();
     }
 }
 
 function execute_input(input) {
     with_error_handling(function() {
-        let command_result_message = '';
+        wasm_client().clear_ephemeral_chat_items();
         // TODO: Move all command handling to WASM.
         let known_command = false;
         if (input.startsWith('/')) {
             known_command = true;
             const args = input.slice(1).split(/\s+/);
             switch (args[0]) {
+                case 'h':
+                case 'help':
+                    get_args(args, []);
+                    show_chat_reference_dialog();
+                    break;
+                case 'tooltip':
+                    get_args(args, []);
+                    toggle_chat_reference_tooltip();
+                    break;
                 case 'sound': {
                     const expected_args = ['0:1:2:3'];
                     const [value] = get_args(args, expected_args);
@@ -537,7 +556,7 @@ function execute_input(input) {
                         throw usage_error(args, expected_args);
                     }
                     set_volume(volume);
-                    command_result_message = 'Applied';
+                    wasm_client().show_command_result('Applied');
                     break;
                 }
                 case 'resign':
@@ -561,7 +580,7 @@ function execute_input(input) {
                     get_args(args, []);
                     const stats = wasm_client().meter_stats();
                     console.log(stats);
-                    command_result_message = stats;
+                    wasm_client().show_command_result(stats);
                     break;
                 }
                 // Internal. For testing WebSocket re-connection.
@@ -576,9 +595,6 @@ function execute_input(input) {
             wasm_client().execute_input(input);
         }
         update();
-        if (command_result_message) {
-            wasm_client().add_command_result(command_result_message);
-        }
     });
 }
 
@@ -1534,6 +1550,49 @@ function show_match_rules() {
     rules_node.innerHTML = wasm_client().readonly_rules_body();
     html_dialog(rules_node, [new MyButton('Ok', MyButton.HIDE)]);
   });
+}
+
+function show_chat_reference_dialog() {
+    const reference_node = document.getElementById('chat-reference-dialog-body');
+    reference_node.classList.remove('display-none');
+    html_dialog(reference_node, [new MyButton('Ok', MyButton.HIDE)]);
+}
+
+function toggle_chat_reference_tooltip() {
+    const old_value = window.localStorage.getItem(Storage.chat_reference_tooltip) || 'show';
+    const new_value = (old_value === 'show') ? 'hide' : 'show';
+    set_show_chat_reference_tooltip(new_value);
+}
+function set_show_chat_reference_tooltip(value) {
+    with_error_handling(function() {
+        window.localStorage.setItem(Storage.chat_reference_tooltip, value);
+        update_chat_reference_tooltip();
+        if (value === 'hide') {
+            wasm_client().show_command_result('To show the tooltip again, type /tooltip');
+            update();
+        }
+    });
+}
+
+function update_chat_reference_tooltip() {
+    // TODO: Don't hide while clicking the send button.
+    const enabled = window.localStorage.getItem(Storage.chat_reference_tooltip) !== 'hide';
+    const input_focused = document.activeElement === chat_input;
+    const show = enabled && input_focused;
+    if (show) {
+        if (update_chat_reference_tooltip.hide_timeout_id !== undefined) {
+            clearTimeout(update_chat_reference_tooltip.hide_timeout_id);
+            update_chat_reference_tooltip.hide_timeout_id = undefined;
+        }
+        chat_reference_tooltip_container.classList.remove('display-none');
+        chat_reference_tooltip_container.classList.remove('fading');
+    } else {
+        // Besides being so marvelously beautiful, the fading animation plays an important role:
+        // it allows to click on "Hide" before the tooltip disappears.
+        chat_reference_tooltip_container.classList.add('fading');
+        update_chat_reference_tooltip.hide_timeout_id =
+            setTimeout(() => chat_reference_tooltip_container.classList.add('display-none'), 200);
+    }
 }
 
 function set_volume(volume) {
