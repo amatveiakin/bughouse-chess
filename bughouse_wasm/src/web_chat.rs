@@ -41,10 +41,11 @@ pub fn update_chat(chat_node: &web_sys::Element, items: &[ChatItem]) -> JsResult
             items_added = true;
             let new_node = new_chat_item(item)?;
             chat_node.insert_before(&new_node, Some(&child_node))?;
+            idx += 1;
         } else {
             update_chat_item(&child_node, item)?;
+            idx += 1;
         }
-        idx += 1;
     }
     while idx < chat_node.children().length() {
         chat_node.children().get_with_index(idx).unwrap().remove();
