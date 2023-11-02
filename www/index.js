@@ -846,6 +846,8 @@ function set_up_drag_and_drop() {
             // Note. For a mouse we can simple assume that drag_element is null here. For multi-touch
             //   screens however this is not always the case.
             if (!drag_element && event.target.classList.contains('draggable') && is_main_pointer(event)) {
+                document.getSelection().removeAllRanges();
+
                 const source = event.target.getAttribute('data-bughouse-location');
                 const board_idx = wasm_client().start_drag_piece(source);
 
