@@ -515,7 +515,13 @@ function update_chat_input() {
 
 function execute_chat_input() {
     const input = String(chat_input.value);
-    chat_input.value = '';
+    if (input.startsWith('<')) {
+        chat_input.value = '<';
+    } else if (input.startsWith('>')) {
+        chat_input.value = '>';
+    } else {
+        chat_input.value = '';
+    }
     chat_input.focus();
     update_chat_input();
     execute_input(input);
@@ -527,6 +533,11 @@ function on_chat_input_keydown(event) {
     } else if (!event.repeat && event.key == 'Escape') {
         // Remove focus thus hiding the chat reference tooltip.
         chat_input.blur();
+    } else if (['<', '>', '/'].includes(chat_input.value) && ['>', '<', '/'].includes(event.key)) {
+        chat_input.value = '';
+    } else if (['<', '>', '/', ''].includes(chat_input.value) && event.key === ' ') {
+        chat_input.value = '';
+        event.preventDefault();
     }
 }
 

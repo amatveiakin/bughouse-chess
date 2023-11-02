@@ -256,6 +256,11 @@ pub fn render_chat_reference_dialog() -> JsResult<()> {
             "- regular (upgrade) promotions: e8/Q (or e8=Q).",
             "- discard promotions: e8/. (or e8=.).",
             "- steal promotions: e8/Rc1 (or e8/Rc1); note that the target square is on the other board.",
+            concat!(
+                "Tip. Chat input preserves “<” or “>” after a move is made via algebraic notation. ",
+                "Typing “<”, “>” or “/” overrides this suggestion. ",
+                "Press Space or Backspace to send a regular chat message again."
+            ),
         ]
         .as_slice(),
     )]);

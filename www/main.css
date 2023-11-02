@@ -723,6 +723,7 @@ body.symmetric #chat-box {
 }
 #chat-reference-dialog-body {
   color: #202020;
+  max-width: 55em;
 }
 #chat-reference-dialog-body td {
   vertical-align: top;
