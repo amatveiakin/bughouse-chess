@@ -1187,12 +1187,15 @@ function init_menu() {
 // If there is a button with `MyButton.HIDE` action, then `Escape` will close the dialog and
 // also return `MyButton.HIDE`. If there are no buttons with `MyButton.HIDE` action, then
 // `Escape` key will be ignored.
-function html_dialog(body, buttons) {
+function html_dialog(dialog_classes, body, buttons) {
     if (fatal_error_shown) {
         return;
     }
     return new Promise(resolve => {
         const dialog = document.createElement('dialog');
+        if (dialog_classes.length > 0) {
+            dialog.classList.add(dialog_classes);
+        }
         document.body.appendChild(dialog);
         const button_box = document.createElement('div');
         button_box.className = 'simple-dialog-button-box';
@@ -1230,7 +1233,7 @@ function text_dialog(message, buttons) {
   const message_node = document.createElement('div');
   message_node.className = 'simple-dialog-message';
   message_node.innerText = message;
-  return html_dialog(message_node, buttons);
+  return html_dialog([], message_node, buttons);
 }
 
 function info_dialog(message) {
@@ -1561,14 +1564,14 @@ function show_match_rules() {
     const rules_node = document.createElement('div');
     rules_node.className = 'match-rules-body';
     rules_node.innerHTML = wasm_client().readonly_rules_body();
-    html_dialog(rules_node, [new MyButton('Ok', MyButton.HIDE)]);
+    html_dialog(['overflow-visible'], rules_node, [new MyButton('Ok', MyButton.HIDE)]);
   });
 }
 
 function show_chat_reference_dialog() {
     const reference_node = document.getElementById('chat-reference-dialog-body');
     reference_node.classList.remove('display-none');
-    html_dialog(reference_node, [new MyButton('Ok', MyButton.HIDE)]);
+    html_dialog([], reference_node, [new MyButton('Ok', MyButton.HIDE)]);
 }
 
 function toggle_chat_reference_tooltip() {

@@ -166,6 +166,10 @@ body.symmetric #page {
 .nowrap {
   white-space: nowrap;
 }
+.overflow-visible {
+  /* Mostly used to allow tooltips to go outside of the dialog area. */
+  overflow: visible;
+}
 .align-left {
   width: 100%;
   text-align: left;
@@ -1077,6 +1081,7 @@ dialog {
   background-color: var(--color-dialog-background);
   font-size: var(--dialog-rem);
   padding: 0.6em 1em;
+  overflow: auto;
 }
 
 #menu-dialog {
@@ -1086,7 +1091,6 @@ dialog {
   top: 50%;
   transform: translateY(-50%);
   z-index: 100;
-  overflow: visible;  /* allow tooltips to go outside of the page area */
 }
 #menu-backdrop {
   background: #000000a0;
