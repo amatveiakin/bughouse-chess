@@ -607,6 +607,8 @@ body.symmetric #chat-box {
   display: flex;
   flex-direction: column;
   gap: 0.2em;
+  overflow-wrap: break-word;
+  overflow-x: hidden;
   overflow-y: scroll;
   padding: 0.2em 0.4em 0.6em 0.4em;
   background-color: #00000020;
