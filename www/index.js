@@ -1575,12 +1575,12 @@ function on_join_match_confirm(event) {
 }
 
 function show_match_rules() {
-  with_error_handling(function() {
-    const rules_node = document.createElement('div');
-    rules_node.className = 'match-rules-body';
-    rules_node.innerHTML = wasm_client().readonly_rules_body();
-    html_dialog(['overflow-visible'], rules_node, [new MyButton('Ok', MyButton.HIDE)]);
-  });
+    with_error_handling(function() {
+        const rules_node = document.createElement('div');
+        rules_node.className = 'match-rules-body';
+        rules_node.appendChild(wasm_client().readonly_rules_body());
+        html_dialog(['overflow-visible'], rules_node, [new MyButton('Ok', MyButton.HIDE)]);
+    });
 }
 
 function show_chat_reference_dialog() {

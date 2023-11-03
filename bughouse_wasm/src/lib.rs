@@ -16,7 +16,6 @@ mod bughouse_prelude;
 mod html_collection_iterator;
 mod rules_ui;
 mod svg;
-mod table;
 mod web_chat;
 mod web_document;
 mod web_element_ext;
@@ -37,7 +36,6 @@ use html_collection_iterator::IntoHtmlCollectionIterator;
 use instant::Instant;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
-use table::{td, td_safe, HtmlTable};
 use wasm_bindgen::prelude::*;
 use web_document::{web_document, WebDocument};
 use web_element_ext::WebElementExt;
@@ -240,11 +238,7 @@ impl WebClient {
 
     pub fn init_new_match_rules_body(&self) -> JsResult<()> {
         let server_options = self.state.server_options().ok_or_else(|| rust_error!())?;
-        let (variants, details) = rules_ui::make_new_match_rules_body(server_options);
-        let variants_node = web_document().get_existing_element_by_id("cc-rule-variants")?;
-        let details_node = web_document().get_existing_element_by_id("cc-rule-details")?;
-        variants_node.set_inner_html(&variants);
-        details_node.set_inner_html(&details);
+        rules_ui::make_new_match_rules_body(server_options)?;
         update_new_match_rules_body()?;
         Ok(())
     }
@@ -870,7 +864,7 @@ impl WebClient {
                 .toggle_with_force("see-though-fog", see_though_fog)?;
             for force in Force::iter() {
                 let player_idx = get_display_player(force, board_orientation);
-                let name_node = document.get_existing_element_by_id(&player_name_node_id(
+                let p_node = document.get_existing_element_by_id(&player_name_node_id(
                     display_board_idx,
                     player_idx,
                 ))?;
@@ -878,8 +872,8 @@ impl WebClient {
                 let player = mtch.participants.iter().find(|p| p.name == *player_name).unwrap();
                 // TODO: Show teams for the upcoming game in individual mode.
                 let show_readiness = false;
-                let player_line = participant_line_html(player, show_readiness)?;
-                name_node.set_inner_html(&player_line);
+                let name_content = participant_node(player, show_readiness)?;
+                p_node.replace_children_with_node_1(&name_content);
                 let is_draggable = is_piece_draggable(force.into());
                 update_reserve(
                     board.reserve(force),
@@ -984,8 +978,9 @@ impl WebClient {
         Ok(())
     }
 
-    pub fn readonly_rules_body(&self) -> Option<String> {
-        Some(rules_ui::make_readonly_rules_body(&self.state.mtch()?.rules))
+    pub fn readonly_rules_body(&self) -> JsResult<web_sys::Element> {
+        let mtch = self.state.mtch().ok_or_else(|| rust_error!())?;
+        rules_ui::make_readonly_rules_body(&mtch.rules)
     }
 
     fn change_faction(&mut self, faction_modifier: impl Fn(i32) -> i32) {
@@ -1199,9 +1194,9 @@ fn init_lobby(rules: &Rules) -> JsResult<()> {
     } else {
         "Unrated match"
     }));
-    let rules_body = rules_ui::make_readonly_rules_body(rules);
+    let rules_body = rules_ui::make_readonly_rules_body(rules)?;
     let rules_node = web_document().get_existing_element_by_id("lobby-rules")?;
-    rules_node.set_inner_html(&rules_body);
+    rules_node.replace_children_with_node_1(&rules_body);
     Ok(())
 }
 
@@ -1304,7 +1299,7 @@ fn get_text_width(s: &str) -> JsResult<u32> {
     Ok(context.measure_text(&s)?.width() as u32)
 }
 
-fn participant_line_html(p: &Participant, show_readiness: bool) -> JsResult<String> {
+fn participant_node(p: &Participant, show_readiness: bool) -> JsResult<web_sys::Element> {
     let width = get_text_width(&p.name)?;
     // Context. Player name limit is 16 characters. String consisting of 'W' repeated 16 times
     // measured 151px on my laptop. 'W' is usually the widest latter in common Latin, but you could
@@ -1317,11 +1312,10 @@ fn participant_line_html(p: &Participant, show_readiness: bool) -> JsResult<Stri
         80.. => "participant-name-l",
         _ => "participant-name-m",
     };
-    Ok(format!(
-        "<span class='nowrap'>{}<span class='participant-name {class}'>{}</span></span>",
-        participant_prefix(p, show_readiness),
-        html_escape::encode_text(&p.name)
-    ))
+    let node = web_document().create_element("span")?.with_classes(["nowrap"])?;
+    node.append_text_span(participant_prefix(p, show_readiness), [])?;
+    node.append_text_span(&p.name, [class])?;
+    Ok(node)
 }
 
 fn svg_icon(image: &str, width: u32, height: u32, classes: &[&str]) -> JsResult<web_sys::Element> {
@@ -1654,7 +1648,7 @@ fn update_scores(
 ) -> JsResult<()> {
     let show_readiness = !game_status.is_active();
     let normalize = |score: u32| (score as f64) / 2.0;
-    let mut score_table = HtmlTable::new();
+    let table = web_document().create_element("table")?;
     match scores {
         None => {}
         Some(Scores::PerTeam(score_map)) => {
@@ -1670,17 +1664,24 @@ fn update_scores(
                 let team_size = players.len();
                 let mut first = true;
                 for p in players.iter().sorted_by_key(|p| &p.name) {
-                    let p_line = participant_line_html(p, show_readiness)?;
+                    let p_node = participant_node(p, show_readiness)?;
+                    let tr = table.append_new_element("tr")?;
                     if first {
                         first = false;
                         let score = normalize(score_map[team]);
-                        score_table.add_row([
-                            td_safe(p_line)
-                                .with_classes(["score-player-name", "score-first-player-name"]),
-                            td(score).with_row_span(team_size).with_classes(["team-score-value"]),
-                        ]);
+                        tr.append_new_element("td")?
+                            .with_classes(["score-player-name", "score-first-player-name"])?
+                            .append_child(&p_node)?;
+                        {
+                            let td =
+                                tr.append_new_element("td")?.with_classes(["team-score-value"])?;
+                            td.set_text_content(Some(&score.to_string()));
+                            td.set_attribute("rowspan", &team_size.to_string())?;
+                        }
                     } else {
-                        score_table.add_row([td_safe(p_line).with_classes(["score-player-name"])]);
+                        tr.append_new_element("td")?
+                            .with_classes(["score-player-name"])?
+                            .append_child(&p_node)?;
                     }
                 }
             }
@@ -1689,28 +1690,32 @@ fn update_scores(
             for (name, score) in score_map.iter().sorted_by_key(|(name, _)| *name) {
                 let score = normalize(*score);
                 let p = participants.iter().find(|p| p.name == *name).unwrap();
-                let p_line = participant_line_html(p, show_readiness)?;
-                score_table.add_row([
-                    td_safe(p_line).with_classes(["score-player-name"]),
-                    td(score).with_classes(["individual-score-value"]),
-                ]);
+                let p_node = participant_node(p, show_readiness)?;
+                let tr = table.append_new_element("tr")?;
+                tr.append_new_element("td")?
+                    .with_classes(["score-player-name"])?
+                    .append_child(&p_node)?;
+                tr.append_new_element("td")?
+                    .with_classes(["individual-score-value"])?
+                    .set_text_content(Some(&score.to_string()));
             }
         }
     }
     let score_node = web_document().get_existing_element_by_id("score-body")?;
-    score_node.set_inner_html(&score_table.to_html());
+    score_node.replace_children_with_node_1(&table);
     Ok(())
 }
 
 fn update_observers(participants: &[Participant]) -> JsResult<()> {
     let observers_node = web_document().get_existing_element_by_id("observers")?;
-    let mut text = String::new();
+    remove_all_children(&observers_node)?;
     for p in participants {
         if p.faction == Faction::Observer {
-            text.push_str(&format!("<div>{}</div>", participant_line_html(p, false)?));
+            let node = observers_node.append_new_element("div")?;
+            let p_node = participant_node(p, false)?;
+            node.append_child(&p_node)?;
         }
     }
-    observers_node.set_inner_html(&text);
     Ok(())
 }
 

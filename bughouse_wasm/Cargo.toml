@@ -13,7 +13,6 @@ strict = []  # treat warnings as a build error
 [dependencies]
 enum-map = "2.6.3"
 getrandom = { version = "0.2.10", features = ["js"] }
-html-escape = "0.2.13"
 instant = { version = "0.1.12", features = [ "wasm-bindgen" ] }
 itertools = "0.11.0"
 regex-lite = "0.1.0"
