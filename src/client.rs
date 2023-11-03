@@ -1073,6 +1073,8 @@ fn my_time_left(
 // Improvement potential. Add TurnError payload to make error messages even more useful.
 fn turn_error_message(err: TurnError, rules: &ChessRules) -> Option<String> {
     // We return `None` for errors that are either internal or trivial.
+    // Improvement potential. Show even trivial errors (like PathBlocked) when making a turn via
+    //   algebraic notation.
     let promotion = || match rules.promotion() {
         Promotion::Upgrade => "upgrade",
         Promotion::Discard => "discard",

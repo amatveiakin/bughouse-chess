@@ -1251,7 +1251,7 @@ fn chat_basic() {
     world[cl1].state.send_chat_message("gg".to_owned(), ChatRecipient::All);
     world.process_all_events();
 
-    let over = "Game over! p1 & p2 won: p3 & p4 checkmated";
+    let over = "Game over! p1 & p2 won: p3 & p4 checkmated.";
     assert_eq!(world[cl1].chat_item_text(), ["hi all", "hi team", "hi p1", over, "gg"]);
     assert_eq!(world[cl2].chat_item_text(), ["hi all", "hi team", over, "gg"]);
     assert_eq!(world[cl3].chat_item_text(), ["hi all", "hi p1", over, "gg"]);
@@ -1376,7 +1376,7 @@ fn team_chat_dynamic_teams() {
     world[cl1].state.send_chat_message("second".to_owned(), ChatRecipient::Team);
     world.process_all_events();
 
-    let over = "Game over! p4 & p5 won: p1 & p2 resigned";
+    let over = "Game over! p4 & p5 won: p1 & p2 resigned.";
     assert_eq!(world[cl1].chat_item_text(), ["first", over, "second"]);
     assert_eq!(world[cl2].chat_item_text(), ["first", over]);
     assert_eq!(world[cl3].chat_item_text(), [over, "second"]);
@@ -1443,7 +1443,7 @@ fn team_chat_fixed_teams() {
     world[cl1].state.send_chat_message("second".to_owned(), ChatRecipient::Team);
     world.process_all_events();
 
-    let over = "Game over! p4 & p5 won: p1 & p2 resigned";
+    let over = "Game over! p4 & p5 won: p1 & p2 resigned.";
     assert_eq!(world[cl1].chat_item_text(), ["first", over, "second"]);
     assert_eq!(world[cl2].chat_item_text(), ["first", over, "second"]);
     assert_eq!(world[cl3].chat_item_text(), ["first", over, "second"]);

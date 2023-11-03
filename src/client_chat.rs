@@ -162,7 +162,7 @@ fn static_message_to_item(
             ChatItem {
                 id,
                 durability: ChatItemDurability::Static,
-                text: format!("Game over! {outcome}"),
+                text: format!("Game over! {outcome}."),
                 sender: Some(ChatParty::System(SystemMessageClass::GameOver)),
                 recipient: None,
                 dimmed: dim,

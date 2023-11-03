@@ -567,7 +567,7 @@ function execute_input(input) {
                         throw usage_error(args, expected_args);
                     }
                     set_volume(volume);
-                    wasm_client().show_command_result('Applied');
+                    wasm_client().show_command_result(`Applied: sound volume ${volume}.`);
                     break;
                 }
                 case 'resign':
@@ -1584,7 +1584,7 @@ function set_show_chat_reference_tooltip(value) {
         window.localStorage.setItem(Storage.chat_reference_tooltip, value);
         update_chat_reference_tooltip();
         if (value === 'hide') {
-            wasm_client().show_command_result('To show the tooltip again, type /tooltip');
+            wasm_client().show_command_result('Type /tooltip to show the tooltip again.');
             update();
         }
     });
