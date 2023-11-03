@@ -293,9 +293,12 @@ body.symmetric #page {
   fill: #acbd38;
   opacity: 0.5;
 }
-.latest-turn-to,
-.latest-turn-drop {
+.latest-turn-to {
   fill: #a7c000;
+  opacity: 0.5;
+}
+.latest-turn-drop {
+  fill: #4dcc7d;
   opacity: 0.5;
 }
 
@@ -310,11 +313,11 @@ body.symmetric #page {
 }
 
 .latest-turn-capture {
-  fill: #4dcc7d;
-  opacity: 0.5;
+  fill: #ff889c;
+  opacity: 0.6;
 }
 .latest-turn-capture-above {
-  fill: #4dcc7d;
+  fill: #ff889c;
   opacity: 0.4;
 }
 
