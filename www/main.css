@@ -633,11 +633,7 @@ body.symmetric #chat-box {
   outline: none;
 }
 #chat-input:focus {
-  box-shadow: 0 -0.15em 0.35em #000000a0, inset 0 0 0.2em #66aa4180;
-  background-image: linear-gradient(to top left,
-                                    #ffffff0c,
-                                    #ffffff00 30%,
-                                    #ffffff00);
+  box-shadow: 0 -0.2em 0.4em #00000080, inset 0 0 0.3em #7dca54;
 }
 #chat-send-button {
   position: absolute;
