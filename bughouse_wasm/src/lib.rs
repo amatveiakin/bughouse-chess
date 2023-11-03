@@ -1118,6 +1118,14 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ShapeRendering {
+    // Use by default.
+    Normal,
+    // Use for layers with board squared to avoid anti-aliasing artifacts.
+    CrispEdges,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SquareHighlightLayer {
     Turn,      // last turn, preturn
     TurnAbove, // like `Turn`, but above the fog of war
@@ -1867,7 +1875,6 @@ fn render_grid(
     let board_orientation = get_board_orientation(board_idx, perspective);
     let document = web_document();
     let layer = document.get_existing_element_by_id(&square_grid_layer_id(board_idx))?;
-    layer.set_attribute("shape-rendering", "crispEdges")?;
     for row in board_shape.rows() {
         for col in board_shape.cols() {
             let sq = document.create_svg_element("rect")?;
@@ -1922,12 +1929,18 @@ fn render_board(
     svg.set_attribute("viewBox", &format!("0 0 {num_cols} {num_rows}"))?;
     remove_all_children(&svg)?;
 
-    let add_layer = |id: String| -> JsResult<()> {
+    let add_layer = |id: String, shape_rendering: ShapeRendering| -> JsResult<()> {
         let layer = document.create_svg_element("g")?;
         layer.set_attribute("id", &id)?;
         // TODO: Less hacky way to do this.
         if let Some(class) = id.strip_suffix("-primary").or(id.strip_suffix("-secondary")) {
             layer.set_attribute("class", class)?;
+        }
+        match shape_rendering {
+            ShapeRendering::Normal => {}
+            ShapeRendering::CrispEdges => {
+                layer.set_attribute("shape-rendering", "crispEdges")?;
+            }
         }
         svg.append_child(&layer)?;
         Ok(())
@@ -1937,24 +1950,33 @@ fn render_board(
     shadow.set_attribute("class", "board-shadow")?;
     svg.append_child(&shadow)?;
 
-    add_layer(square_grid_layer_id(board_idx))?;
+    add_layer(square_grid_layer_id(board_idx), ShapeRendering::CrispEdges)?;
     render_grid(board_idx, board_shape, perspective)?;
 
     let border = make_board_rect(&document)?;
     border.set_attribute("class", "board-border")?;
     svg.append_child(&border)?;
 
-    add_layer(square_highlight_layer_id(SquareHighlightLayer::Turn, board_idx))?;
-    add_layer(chalk_highlight_layer_id(board_idx))?;
-    add_layer(piece_layer_id(board_idx))?;
-    add_layer(fog_of_war_layer_id(board_idx))?;
+    add_layer(
+        square_highlight_layer_id(SquareHighlightLayer::Turn, board_idx),
+        ShapeRendering::CrispEdges,
+    )?;
+    add_layer(chalk_highlight_layer_id(board_idx), ShapeRendering::CrispEdges)?;
+    add_layer(piece_layer_id(board_idx), ShapeRendering::Normal)?;
+    add_layer(fog_of_war_layer_id(board_idx), ShapeRendering::Normal)?;
     // Highlight layer for squares inside the fog of war.
-    add_layer(square_highlight_layer_id(SquareHighlightLayer::TurnAbove, board_idx))?;
+    add_layer(
+        square_highlight_layer_id(SquareHighlightLayer::TurnAbove, board_idx),
+        ShapeRendering::CrispEdges,
+    )?;
     // Place drag highlight layer above pieces to allow legal move highlight for captures.
     // Note that the dragged piece will still be above the highlight.
-    add_layer(square_highlight_layer_id(SquareHighlightLayer::Drag, board_idx))?;
-    add_layer(chalk_drawing_layer_id(board_idx))?;
-    add_layer(promotion_target_layer_id(board_idx))?;
+    add_layer(
+        square_highlight_layer_id(SquareHighlightLayer::Drag, board_idx),
+        ShapeRendering::Normal,
+    )?;
+    add_layer(chalk_drawing_layer_id(board_idx), ShapeRendering::Normal)?;
+    add_layer(promotion_target_layer_id(board_idx), ShapeRendering::Normal)?;
 
     for player_idx in DisplayPlayer::iter() {
         let reserve = document.create_svg_element("g")?;
