@@ -134,6 +134,7 @@ const create_rated_match_button = document.getElementById('create-rated-match-bu
 const create_unrated_match_button = document.getElementById('create-unrated-match-button');
 const join_match_button = document.getElementById('join-match-button');
 const jc_match_id = document.getElementById('jc-match-id');
+const jc_confirm_button = document.getElementById('jc-confirm-button');
 
 const ready_button = document.getElementById('ready-button');
 const resign_button = document.getElementById('resign-button');
@@ -1363,11 +1364,13 @@ function update_session() {
             create_unrated_match_button.disabled = false;
             join_match_button.disabled = false;
             authorization_button.disabled = false;
+            jc_confirm_button.disabled = false;
         } else {
             create_rated_match_button.disabled = true;
             create_unrated_match_button.disabled = true;
             join_match_button.disabled = true;
             authorization_button.disabled = true;
+            jc_confirm_button.disabled = true;
         }
         for (const node of document.querySelectorAll('.logged-in-as-account')) {
             node.classList.toggle('account-user', is_registered_user);
