@@ -665,6 +665,7 @@ function process_notable_events() {
             // Noop, but other events might be coming.
         } else if (js_event_type == 'JsEventSessionUpdated') {
             update_session();
+            menu_page_auto_focus();
         } else if (js_event_type == 'JsEventMatchStarted') {
             const url = new URL(window.location);
             url.searchParams.set(SearchParams.match_id, js_event.match_id);
@@ -1129,28 +1130,39 @@ function reset_menu(page) {
     }
 }
 
+function current_menu_page() {
+    return menu_page_stack.at(-1) || menu_start_page;
+}
+
+function menu_page_auto_focus() {
+    const page = current_menu_page();
+    for (const input of page.getElementsByTagName('input')) {
+        if (!input.disabled != 'none' && !input.value) {
+            input.focus();
+            return;
+        }
+    }
+    if (page === menu_join_match_page) {
+        // Make sure "Enter" joines the match when joining via link.
+        jc_confirm_button.focus();
+    }
+}
+
 function push_menu_page(page) {
     menu_page_stack.push(page);
     hide_menu_pages();
     page.style.display = 'block';
 
-    // Auto fill player name:
     const player_name_input = find_player_name_input(page);
     if (player_name_input) {
         player_name_input.value = window.localStorage.getItem(Storage.player_name);
     }
-    // Focus first empty input, if any:
-    for (const input of page.getElementsByTagName('input')) {
-        if (!input.disabled != 'none' && !input.value) {
-            input.focus();
-            break;
-        }
-    }
+    menu_page_auto_focus();
 }
 
 function pop_menu_page() {
     menu_page_stack.pop();
-    const page = menu_page_stack.at(-1) || menu_start_page;
+    const page = current_menu_page();
     hide_menu_pages();
     page.style.display = 'block';
 }
