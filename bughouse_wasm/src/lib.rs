@@ -41,7 +41,7 @@ use web_document::{web_document, WebDocument};
 use web_element_ext::WebElementExt;
 use web_error_handling::{JsResult, RustError};
 use web_sys::{ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
-use web_util::{remove_all_children, scroll_to_bottom};
+use web_util::scroll_to_bottom;
 
 use crate::bughouse_prelude::*;
 
@@ -622,11 +622,12 @@ impl WebClient {
         };
         let document = web_document();
         for board_idx in DisplayBoard::iter() {
-            let layer =
-                document.get_existing_element_by_id(&chalk_highlight_layer_id(board_idx))?;
-            remove_all_children(&layer)?;
-            let layer = document.get_existing_element_by_id(&chalk_drawing_layer_id(board_idx))?;
-            remove_all_children(&layer)?;
+            document
+                .get_existing_element_by_id(&chalk_highlight_layer_id(board_idx))?
+                .remove_all_children();
+            document
+                .get_existing_element_by_id(&chalk_drawing_layer_id(board_idx))?
+                .remove_all_children();
         }
         for (player_name, drawing) in chalkboard.all_drawings() {
             let owner = self.state.relation_to(player_name);
@@ -1203,7 +1204,7 @@ fn init_lobby(rules: &Rules) -> JsResult<()> {
 fn update_lobby(mtch: &Match) -> JsResult<()> {
     let document = web_document();
     let lobby_participants_node = document.get_existing_element_by_id("lobby-participants")?;
-    remove_all_children(&lobby_participants_node)?;
+    lobby_participants_node.remove_all_children();
     for p in &mtch.participants {
         let is_me = p.name == mtch.my_name;
         add_lobby_participant_node(p, is_me, &lobby_participants_node)?;
@@ -1266,9 +1267,9 @@ fn set_square_highlight(
 fn clear_square_highlight_layer(layer: SquareHighlightLayer) -> JsResult<()> {
     let document = web_document();
     for board_idx in DisplayBoard::iter() {
-        let layer =
-            document.get_existing_element_by_id(&square_highlight_layer_id(layer, board_idx))?;
-        remove_all_children(&layer)?;
+        document
+            .get_existing_element_by_id(&square_highlight_layer_id(layer, board_idx))?
+            .remove_all_children();
     }
     Ok(())
 }
@@ -1424,7 +1425,7 @@ fn render_reserve(
         document.get_existing_element_by_id(&reserve_node_id(board_idx, player_idx))?;
     // Does not interfere with dragging a reserve piece, because dragged piece is re-parented
     // to board SVG.
-    remove_all_children(&reserve_node)?;
+    reserve_node.remove_all_children();
 
     let num_piece: u8 = reserve_iter.clone().map(|(_, amount)| amount).sum();
     if num_piece == 0 {
@@ -1511,7 +1512,8 @@ fn render_upgrade_promotion_selector(
     let layer =
         document.get_existing_element_by_id(&promotion_target_layer_id(display_board_idx))?;
     let Some(display_coord) = upgrade_promotion_target else {
-        return remove_all_children(&layer);
+        layer.remove_all_children();
+        return Ok(());
     };
     let force = force.unwrap();
 
@@ -1708,7 +1710,7 @@ fn update_scores(
 
 fn update_observers(participants: &[Participant]) -> JsResult<()> {
     let observers_node = web_document().get_existing_element_by_id("observers")?;
-    remove_all_children(&observers_node)?;
+    observers_node.remove_all_children();
     for p in participants {
         if p.faction == Faction::Observer {
             let node = observers_node.append_new_element("div")?;
@@ -1738,7 +1740,7 @@ fn update_turn_log(
         .class_list()
         .toggle_with_force("wayback", wayback.active())?;
     let log_node = document.get_existing_element_by_id(&turn_log_node_id(display_board_idx))?;
-    remove_all_children(&log_node)?;
+    log_node.remove_all_children();
     let mut prev_number = 0;
     let mut prev_index = String::new();
     for record in game.turn_log().iter() {
@@ -1932,7 +1934,7 @@ fn render_board(
     let document = web_document();
     let svg = document.get_existing_element_by_id(&board_node_id(board_idx))?;
     svg.set_attribute("viewBox", &format!("0 0 {num_cols} {num_rows}"))?;
-    remove_all_children(&svg)?;
+    svg.remove_all_children();
 
     let add_layer = |id: String, shape_rendering: ShapeRendering| -> JsResult<()> {
         let layer = document.create_svg_element("g")?;

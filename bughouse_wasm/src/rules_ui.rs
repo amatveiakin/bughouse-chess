@@ -9,7 +9,6 @@ use crate::bughouse_prelude::*;
 use crate::web_document::web_document;
 use crate::web_element_ext::WebElementExt;
 use crate::web_error_handling::JsResult;
-use crate::web_util::remove_all_children;
 
 
 pub const RATING: &str = "rating"; // filled by JSs
@@ -554,7 +553,7 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
     let variants_node = document.get_existing_element_by_id("cc-rule-variants")?;
     let details_node = document.get_existing_element_by_id("cc-rule-details")?;
 
-    remove_all_children(&variants_node)?;
+    variants_node.remove_all_children();
     variants_node.append_element(
         VariantButton::new(FAIRY_PIECES, vec![
             VariantButtonState::new("off", "Standard pieces", ACCOLADE_OFF_ICON),
@@ -597,7 +596,7 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
         .to_element()?,
     )?;
 
-    remove_all_children(&details_node)?;
+    details_node.remove_all_children();
     details_node.append_children(
         RuleNode::new(STARTING_TIME, "Starting time")
             .with_input_text("[0-9]+:[0-5][0-9]", "m:ss", "5:00")?

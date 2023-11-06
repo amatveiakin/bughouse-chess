@@ -7,6 +7,7 @@ use crate::web_error_handling::JsResult;
 pub trait WebElementExt {
     fn with_text_content(self, text: &str) -> web_sys::Element;
     fn with_classes(self, classes: impl IntoIterator<Item = &str>) -> JsResult<web_sys::Element>;
+    fn remove_all_children(&self);
     fn append_element(&self, child: web_sys::Element) -> JsResult<()>;
     fn append_children(
         &self, children: impl IntoIterator<Item = impl ops::Deref<Target = web_sys::Node>>,
@@ -31,6 +32,8 @@ impl WebElementExt for web_sys::Element {
         }
         Ok(self)
     }
+
+    fn remove_all_children(&self) { self.replace_children_with_node_0() }
 
     // Workaround for not being able to call `append_child(func_returning_element()?)` without an
     // intermediate variable.

@@ -15,7 +15,7 @@ use crate::rust_error;
 use crate::web_document::web_document;
 use crate::web_element_ext::WebElementExt;
 use crate::web_error_handling::JsResult;
-use crate::web_util::{remove_all_children, scroll_to_bottom};
+use crate::web_util::scroll_to_bottom;
 
 
 const CHAT_ID_ATTR: &str = "data-chat-item-id";
@@ -172,7 +172,7 @@ pub fn render_chat_reference_tooltip(
 
     let document = web_document();
     let reference_node = document.get_existing_element_by_id("chat-reference-tooltip")?;
-    remove_all_children(&reference_node)?;
+    reference_node.remove_all_children();
     for line in lines {
         let (input, explanation) = line;
         let line_node = reference_node.append_new_element("div")?;
@@ -267,7 +267,7 @@ pub fn render_chat_reference_dialog() -> JsResult<()> {
 
     let document = web_document();
     let reference_node = document.get_existing_element_by_id("chat-reference-dialog-body")?;
-    remove_all_children(&reference_node)?;
+    reference_node.remove_all_children();
     let table = reference_node.append_new_element("table")?;
     for (group_index, group) in line_groups.iter().enumerate() {
         if group_index > 0 {
