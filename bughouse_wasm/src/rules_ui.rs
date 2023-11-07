@@ -4,6 +4,8 @@ use std::time::Duration;
 use std::{fmt, iter};
 
 use bughouse_chess::client::ServerOptions;
+use itertools::Itertools;
+use strum::IntoEnumIterator;
 
 use crate::bughouse_prelude::*;
 use crate::web_document::web_document;
@@ -360,6 +362,22 @@ pub fn combine_elements(
     Ok(parent_node)
 }
 
+fn regicide_reason(rules: &ChessRules) -> Option<String> {
+    let variants = rules.regicide_reason();
+    let prefix = match variants.len() {
+        0 => {
+            return None;
+        }
+        1 => "chess variant: ",
+        _ => "chess variants: ",
+    };
+    Some(format!(
+        "{}{}",
+        prefix,
+        variants.iter().map(|v| v.to_human_readable()).join(", ")
+    ))
+}
+
 pub fn accolade_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
@@ -439,9 +457,9 @@ pub fn promotion_upgrade_tooltip() -> JsResult<Vec<web_sys::Element>> {
         .create_element("p")?
         .append_text_i("Upgrade.")?
         .append_text(
-            " Regular promotion rules. Note that there is currently no UI to choose promotion
-            target. By default a pawn will be promoted to a Queen. Hold Shift to promote to a
-            Knight. Use algebraic input to promote to a Rook or a Bishop.",
+            " Regular promotion rules.
+            Turn the pawn into a Queen, a Rook, a Bishop or a Knight.
+            If captured, the piece goes into reserve as a pawn.",
         )?])
 }
 pub fn promotion_discard_tooltip() -> JsResult<Vec<web_sys::Element>> {
@@ -453,13 +471,32 @@ pub fn promotion_discard_tooltip() -> JsResult<Vec<web_sys::Element>> {
             You get nothing. C'est la vie.",
         )?])
 }
-pub fn promotion_steal_tooltip() -> JsResult<Vec<web_sys::Element>> {
+pub fn promotion_steal_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![
         web_document().create_element("p")?.append_text_i("Steal.")?.append_text(
             " Expropriate your partner opponent's piece when promoting a pawn!
             Can only steal a piece from the board, not from reserve.
-            Cannot expose king to new attacks by stealing a piece.",
+            Cannot expose a king to new attacks by stealing a piece
+            unless regicide is on (i.e. unless king capture is allowed by
+            chess variant like Fog of war or Duck chess).",
         )?,
+    ])
+}
+pub fn promotion_steal_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Element>> {
+    let exposure = if rules.regicide() {
+        "It is possible to expose a king to new attacks by stealing a piece
+        since regicide is on."
+    } else {
+        "Cannot expose a king to new attacks by stealing a piece."
+    };
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .append_text_i("Steal.")?
+            .append_text(&format!(
+                " Expropriate your partner opponent's piece when promoting a pawn!
+                Can only steal a piece from the board, not from reserve. {exposure}",
+            ))?,
     ])
 }
 
@@ -535,16 +572,33 @@ pub fn pawn_drop_rank_specific_tooltip(
     Ok(vec![web_document().create_element("p")?.append_text(&message)?])
 }
 
-pub fn regicide_tooltip() -> JsResult<Vec<web_sys::Element>> {
+pub fn regicide_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
+    let regicide_variants = ChessVariant::iter()
+        .filter(|v| v.enables_regicide())
+        .map(|v| v.to_human_readable())
+        .join(", ");
     Ok(vec![
         web_document().create_element("p")?.append_text_i("Regicide.")?.append_text(
             " Capture opponent's king in order to win the game.
             There are no checks and checkmates. Drop aggression is always “Mate Allowed”.
             Attacking the king does not prevent castling.",
         )?,
-        web_document().create_element("p")?.append_text(
-            "This option is implied by certain game variants, namely Duck chess and Fog of war.",
+        web_document().create_element("p")?.append_text(&format!(
+            "This option is enabled when any of these variants is on: {regicide_variants}."
+        ))?,
+    ])
+}
+pub fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Element>> {
+    Ok(vec![
+        web_document().create_element("p")?.append_text_i("Regicide.")?.append_text(
+            " Capture opponent's king in order to win the game.
+            There are no checks and checkmates. Drop aggression is always “Mate Allowed”.
+            Attacking the king does not prevent castling.",
         )?,
+        web_document().create_element("p")?.append_text(&format!(
+            "This option is enabled because of these {}.",
+            regicide_reason(rules).unwrap()
+        ))?,
     ])
 }
 
@@ -616,7 +670,7 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
                 [
                     promotion_upgrade_tooltip()?,
                     promotion_discard_tooltip()?,
-                    promotion_steal_tooltip()?,
+                    promotion_steal_general_tooltip()?,
                 ]
                 .into_iter()
                 .flatten(),
@@ -669,7 +723,7 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
         )?;
         details_node.append_children([
             node,
-            standalone_tooltip(combine_elements(regicide_tooltip()?)?, [REGICIDE_CLASS])?,
+            standalone_tooltip(combine_elements(regicide_general_tooltip()?)?, [REGICIDE_CLASS])?,
         ])?;
     }
     Ok(())
@@ -737,7 +791,7 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
         let promotion_tooltip = match bughouse_rules.promotion {
             Promotion::Upgrade => promotion_upgrade_tooltip()?,
             Promotion::Discard => promotion_discard_tooltip()?,
-            Promotion::Steal => promotion_steal_tooltip()?,
+            Promotion::Steal => promotion_steal_specific_tooltip(&rules.chess_rules)?,
         };
         rule_rows.push((
             "Promotion",
@@ -755,7 +809,11 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
         ));
     }
     if rules.chess_rules.regicide() {
-        rule_rows.push(("", "Regicide".to_owned(), Some(combine_elements(regicide_tooltip()?)?)))
+        rule_rows.push((
+            "",
+            "Regicide".to_owned(),
+            Some(combine_elements(regicide_specific_tooltip(&rules.chess_rules)?)?),
+        ))
     } else {
         if let Some(bughouse_rules) = rules.bughouse_rules() {
             let drop_aggression_tooltip = match bughouse_rules.drop_aggression {

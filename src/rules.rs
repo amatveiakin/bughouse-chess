@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use chain_cmp::chmp;
 use serde::{Deserialize, Serialize};
+use strum::EnumIter;
 
 use crate::clock::TimeControl;
 use crate::coord::{BoardShape, SubjectiveRow};
@@ -164,7 +165,7 @@ pub struct Rules {
     pub chess_rules: ChessRules,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter, Serialize, Deserialize)]
 pub enum ChessVariant {
     Accolade,
     FischerRandom,
@@ -204,16 +205,8 @@ impl ChessRules {
         self.bughouse_rules.as_ref().map_or(Promotion::Upgrade, |r| r.promotion)
     }
 
-    // TODO: Use to improve UI tooltips.
     pub fn regicide_reason(&self) -> Vec<ChessVariant> {
-        use ChessVariant::*;
-        self.variants()
-            .into_iter()
-            .filter(|v| match v {
-                FogOfWar | DuckChess | Koedem => true,
-                Accolade | FischerRandom => false,
-            })
-            .collect()
+        self.variants().into_iter().filter(|v| v.enables_regicide()).collect()
     }
 
     // If false, use normal chess rules: players are not allowed to leave the king undefended,
@@ -331,6 +324,14 @@ impl Rules {
 }
 
 impl ChessVariant {
+    pub fn enables_regicide(self) -> bool {
+        use ChessVariant::*;
+        match self {
+            Accolade | FischerRandom => false,
+            FogOfWar | DuckChess | Koedem => true,
+        }
+    }
+
     pub fn to_pgn(self) -> &'static str {
         match self {
             ChessVariant::Accolade => "Accolade",
