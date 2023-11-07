@@ -61,6 +61,11 @@ body.active-player {
   background: radial-gradient(circle farthest-corner, #1c3a0c 85%, #295313 100%);
   background-attachment: fixed;
 }
+table, tr, td, th {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
 
 svg {
   overflow: visible;  /* allow shadows outside of svg area */
@@ -1134,6 +1139,7 @@ dialog hr {
   overflow: visible;
   text-align: center;
   height: 0;
+  margin: 1em 0;
 }
 dialog hr:after {
   background: var(--color-dialog-background);
@@ -1298,8 +1304,11 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   font-size: 85%;
 }
 
+.readonly-rules-match-caption {
+  font-size: 110%;
+}
 .readonly-rule-caption {
-  padding-right: 0.7em;
+  padding-right: 1em;
   font-size: 85%;
   /* Set `white-space: nowrap` to compensate `width: 100%` in the value column */
   white-space: nowrap;
@@ -1332,9 +1341,6 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 #menu-lobby-page {
   width: 24em;
 }
-#menu-lobby-page > hr {
-  margin: 1em 0;
-}
 #lobby-participants {
   min-width: 10em;
   font-size: 110%;
@@ -1348,7 +1354,7 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 #lobby-match {
   font-size: 110%;
 }
-#lobby-match-id {
+.lobby-match-id {
   font-weight: bold;
 }
 #lobby-footer {

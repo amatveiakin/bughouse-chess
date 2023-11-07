@@ -663,7 +663,7 @@ impl WebClient {
         match self.state.next_notable_event() {
             Some(NotableEvent::SessionUpdated) => Ok(JsEventSessionUpdated {}.into()),
             Some(NotableEvent::MatchStarted(match_id)) => {
-                init_lobby(&self.state.mtch().unwrap().rules)?;
+                init_lobby(&self.state.mtch().unwrap())?;
                 Ok(JsEventMatchStarted { match_id }.into())
             }
             Some(NotableEvent::GameStarted) => {
@@ -981,7 +981,13 @@ impl WebClient {
 
     pub fn readonly_rules_body(&self) -> JsResult<web_sys::Element> {
         let mtch = self.state.mtch().ok_or_else(|| rust_error!())?;
-        rules_ui::make_readonly_rules_body(&mtch.rules)
+        let node = web_document().create_element("div")?;
+        node.append_element(
+            make_match_caption_body(&mtch)?.with_classes(["readonly-rules-match-caption"])?,
+        )?;
+        node.append_new_element("hr")?;
+        node.append_element(rules_ui::make_readonly_rules_body(&mtch.rules)?)?;
+        Ok(node)
     }
 
     fn change_faction(&mut self, faction_modifier: impl Fn(i32) -> i32) {
@@ -1186,32 +1192,38 @@ fn new_match_rules_form_data() -> JsResult<web_sys::FormData> {
 #[wasm_bindgen]
 pub fn git_version() -> String { my_git_version!().to_owned() }
 
+fn make_match_caption_body(mtch: &Match) -> JsResult<web_sys::Element> {
+    let prefix = if mtch.rules.match_rules.rated {
+        "Rated match "
+    } else {
+        "Unrated match "
+    };
+    let node = web_document().create_element("div")?;
+    node.append_text_span(prefix, [])?;
+    node.append_text_span(&mtch.match_id, ["lobby-match-id"])?;
+    Ok(node)
+}
+
 // Try to keep ordering in sync with "New match" dialog.
 // Improvement potential: Add tooltips (similarly to match creation dialog).
-fn init_lobby(rules: &Rules) -> JsResult<()> {
-    let lobby_match_caption = web_document().get_existing_element_by_id("lobby-match-caption")?;
-    lobby_match_caption.set_text_content(Some(if rules.match_rules.rated {
-        "Rated match"
-    } else {
-        "Unrated match"
-    }));
-    let rules_body = rules_ui::make_readonly_rules_body(rules)?;
+fn init_lobby(mtch: &Match) -> JsResult<()> {
+    web_document()
+        .get_existing_element_by_id("lobby-match-caption")?
+        .set_children([make_match_caption_body(mtch)?])?;
+    let rules_body = rules_ui::make_readonly_rules_body(&mtch.rules)?;
     let rules_node = web_document().get_existing_element_by_id("lobby-rules")?;
     rules_node.replace_children_with_node_1(&rules_body);
     Ok(())
 }
 
 fn update_lobby(mtch: &Match) -> JsResult<()> {
-    let document = web_document();
-    let lobby_participants_node = document.get_existing_element_by_id("lobby-participants")?;
+    let lobby_participants_node =
+        web_document().get_existing_element_by_id("lobby-participants")?;
     lobby_participants_node.remove_all_children();
     for p in &mtch.participants {
         let is_me = p.name == mtch.my_name;
         add_lobby_participant_node(p, is_me, &lobby_participants_node)?;
     }
-    document
-        .get_existing_element_by_id("lobby-match-id")?
-        .set_text_content(Some(&mtch.match_id));
     Ok(())
 }
 
