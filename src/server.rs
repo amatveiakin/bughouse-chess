@@ -318,8 +318,8 @@ struct Match {
     scores: Option<Scores>,           // `Some` since the first game begins
     match_history: Vec<BughouseGame>, // final game states; TODO: rename to `game history`
     first_game_countdown_since: Option<Instant>,
+    next_board_assignment: Option<Vec<PlayerInGame>>,
     game_state: Option<GameState>, // active game or latest game
-    board_assignment_override: Option<Vec<PlayerInGame>>, // for tests
 }
 
 // TODO: Put `now` and `utc_now` into `Context`.
@@ -410,7 +410,17 @@ impl ServerState {
         &mut self, match_id: String, assignment: Vec<PlayerInGame>,
     ) {
         let match_id = MatchId(match_id);
-        self.core.matches.get_mut(&match_id).unwrap().board_assignment_override = Some(assignment);
+        let mtch = self.core.matches.get_mut(&match_id).unwrap();
+        for player_assignment in &assignment {
+            if let Some(player) =
+                mtch.participants.iter().find(|p| p.name == player_assignment.name)
+            {
+                if let Faction::Fixed(team) = player.faction {
+                    assert_eq!(team, player_assignment.id.team());
+                }
+            }
+        }
+        mtch.next_board_assignment = Some(assignment);
     }
 }
 
@@ -486,8 +496,8 @@ impl CoreServerState {
             scores: None,
             match_history: Vec::new(),
             first_game_countdown_since: None,
+            next_board_assignment: None,
             game_state: None,
-            board_assignment_override: None,
         };
         assert!(self.matches.insert(id.clone(), mtch).is_none());
         Ok(id)
@@ -759,11 +769,13 @@ impl Match {
         if !game.is_active() {
             let update = update_on_game_over(
                 ctx,
+                self.teaming.unwrap(),
                 game_index,
                 game,
                 turn_requests,
                 &mut self.participants,
                 self.scores.as_mut().unwrap(),
+                &mut self.next_board_assignment,
                 &mut self.chat,
                 game_now,
                 game_start_offset_time,
@@ -1064,11 +1076,13 @@ impl Match {
                 let game_now = GameInstant::from_now_game_active(game_start.unwrap(), now);
                 game_over_update = Some(update_on_game_over(
                     ctx,
+                    self.teaming.unwrap(),
                     game_index,
                     game,
                     turn_requests,
                     &mut self.participants,
                     self.scores.as_mut().unwrap(),
+                    &mut self.next_board_assignment,
                     &mut self.chat,
                     game_now,
                     *game_start_offset_time,
@@ -1143,11 +1157,13 @@ impl Match {
         game.set_status(status, game_now);
         let update = update_on_game_over(
             ctx,
+            self.teaming.unwrap(),
             game_index,
             game,
             turn_requests,
             &mut self.participants,
             self.scores.as_mut().unwrap(),
+            &mut self.next_board_assignment,
             &mut self.chat,
             game_now,
             game_start_offset_time,
@@ -1374,7 +1390,10 @@ impl Match {
             self.init_scores(teaming);
         }
 
-        let players = self.assign_boards();
+        let players = self
+            .next_board_assignment
+            .take()
+            .unwrap_or_else(|| assign_boards(self.participants.iter(), &mut rand::thread_rng()));
         let game = BughouseGame::new(self.rules.clone(), &players);
         let game_index = self.match_history.len() as u64;
         self.game_state = Some(GameState {
@@ -1451,22 +1470,6 @@ impl Match {
 
     fn reset_readiness(&mut self) { self.participants.iter_mut().for_each(|p| p.is_ready = false); }
 
-    fn assign_boards(&self) -> Vec<PlayerInGame> {
-        if let Some(assignment) = &self.board_assignment_override {
-            for player_assignment in assignment {
-                if let Some(player) =
-                    self.participants.iter().find(|p| p.name == player_assignment.name)
-                {
-                    if let Faction::Fixed(team) = player.faction {
-                        assert_eq!(team, player_assignment.id.team());
-                    }
-                }
-            }
-            return assignment.clone();
-        }
-        assign_boards(self.participants.iter(), &mut rand::thread_rng())
-    }
-
     // Improvement potential. Instead of traversing all messages for each client we could keep a map
     // from client_id to (messages, message_confirmations) and update it as we traverse the messages
     // in one go. In practice it doesn't matter much, since we either have one message (in a regular
@@ -1485,6 +1488,7 @@ impl Match {
                     let is_sender = match &m.body {
                         ChatMessageBody::Regular { sender, .. } => &p.name == sender,
                         ChatMessageBody::GameOver { .. } => false,
+                        ChatMessageBody::NextGamePlayers { .. } => false,
                     };
                     let is_recipient = match recipient_expanded {
                         ChatRecipientExpanded::All => true,
@@ -1582,8 +1586,9 @@ fn resolve_one_turn(
 // Improvement potential. Find a way to make this a member function instead of passing so many
 // arguments separately.
 fn update_on_game_over(
-    ctx: &mut Context, game_index: u64, game: &BughouseGame, turn_requests: &mut Vec<TurnRequest>,
-    participants: &mut Participants, scores: &mut Scores, chat: &mut ServerChat,
+    ctx: &mut Context, teaming: Teaming, game_index: u64, game: &BughouseGame,
+    turn_requests: &mut Vec<TurnRequest>, participants: &mut Participants, scores: &mut Scores,
+    next_board_assignment: &mut Option<Vec<PlayerInGame>>, chat: &mut ServerChat,
     game_now: GameInstant, game_start_offset_time: Option<time::OffsetDateTime>,
     game_end: &mut Option<Instant>, now: Instant,
 ) -> GameUpdate {
@@ -1625,6 +1630,11 @@ fn update_on_game_over(
             }
         }
     }
+    let round = game_index as usize + 1;
+    ctx.hooks.on_game_over(game, game_start_offset_time, round);
+    let next_players = assign_boards(participants.iter(), &mut rand::thread_rng());
+    *next_board_assignment = Some(next_players.clone());
+
     let utc_now = UtcDateTime::now();
     chat.add(
         Some(game_index),
@@ -1632,8 +1642,16 @@ fn update_on_game_over(
         ChatRecipientExpanded::All,
         ChatMessageBody::GameOver { outcome: game.outcome() },
     );
-    let round = game_index as usize + 1;
-    ctx.hooks.on_game_over(game, game_start_offset_time, round);
+    let total_players = participants.iter().filter(|p| p.faction.is_player()).count();
+    if next_players.len() < total_players || teaming == Teaming::DynamicTeams {
+        chat.add(
+            Some(game_index),
+            utc_now,
+            ChatRecipientExpanded::All,
+            ChatMessageBody::NextGamePlayers { players: next_players },
+        );
+    }
+
     GameUpdate::GameOver {
         time: game_now,
         game_status: game.status(),

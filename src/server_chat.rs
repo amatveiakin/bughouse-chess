@@ -63,6 +63,7 @@ impl ServerChat {
                 *text = text.chars().take(MAX_CHAT_MESSAGE_LENGTH).collect()
             }
             ChatMessageBody::GameOver { .. } => {}
+            ChatMessageBody::NextGamePlayers { .. } => {}
         }
         let message_id = self.next_id;
         self.next_id += 1;

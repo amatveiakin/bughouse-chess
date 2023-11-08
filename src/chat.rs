@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::game::GameOutcome;
+use crate::game::{GameOutcome, PlayerInGame};
 use crate::utc_time::UtcDateTime;
 
 
@@ -23,6 +23,9 @@ pub enum ChatMessageBody {
     },
     GameOver {
         outcome: GameOutcome,
+    },
+    NextGamePlayers {
+        players: Vec<PlayerInGame>,
     },
 }
 

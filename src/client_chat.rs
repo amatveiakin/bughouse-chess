@@ -1,8 +1,11 @@
 use std::collections::VecDeque;
 
+use enum_map::enum_map;
+
 use crate::chat::{
     ChatMessage, ChatMessageBody, ChatRecipient, OutgoingChatMessage, MAX_CHAT_MESSAGES,
 };
+use crate::player::Team;
 use crate::rules::ChessRules;
 
 
@@ -79,7 +82,7 @@ impl ClientChat {
         (self
             .static_messages
             .iter()
-            .map(|m| static_message_to_item(m, my_name, chess_rules, game_index)))
+            .filter_map(|m| static_message_to_item(m, my_name, chess_rules, game_index)))
         .chain(self.local_messages.iter().map(local_message_to_item))
         .chain(self.ephemeral_message.iter().map(ephemeral_message_to_item))
         .collect()
@@ -129,9 +132,9 @@ fn chat_item_id(prefix: &str, sub_id: u64) -> String { format!("{prefix}-{sub_id
 
 fn static_message_to_item(
     message: &ChatMessage, my_name: &str, chess_rules: &ChessRules, game_index: Option<u64>,
-) -> ChatItem {
+) -> Option<ChatItem> {
     let id = chat_item_id("a", message.message_id);
-    let dim = message.game_index != game_index;
+    let old_game = message.game_index != game_index;
     match &message.body {
         ChatMessageBody::Regular { sender, recipient, text } => {
             let sender_party = if sender == my_name {
@@ -145,30 +148,55 @@ fn static_message_to_item(
                 ChatRecipient::Participant(name) if name == my_name => Some(ChatParty::Myself),
                 ChatRecipient::Participant(name) => Some(ChatParty::Participant(name.clone())),
             };
-            ChatItem {
+            Some(ChatItem {
                 id,
                 durability: ChatItemDurability::Static,
                 text: text.clone(),
                 sender: Some(sender_party),
                 recipient: recipient_party,
-                dimmed: dim,
+                dimmed: old_game,
                 prominent: false,
                 flash: false,
-            }
+            })
         }
         ChatMessageBody::GameOver { outcome } => {
             let outcome = outcome.to_readable_string(chess_rules);
-            let highlight = !dim;
-            ChatItem {
+            let highlight = !old_game;
+            Some(ChatItem {
                 id,
                 durability: ChatItemDurability::Static,
                 text: format!("Game over! {outcome}."),
                 sender: Some(ChatParty::System(SystemMessageClass::GameOver)),
                 recipient: None,
-                dimmed: dim,
+                dimmed: old_game,
                 prominent: highlight,
                 flash: highlight,
+            })
+        }
+        ChatMessageBody::NextGamePlayers { players } => {
+            if old_game {
+                // Improvement potential. Consider if this is confusing. Can we reduce chat clutter
+                // without editing the content retroactively?
+                return None;
             }
+            let mut teams = enum_map! {_ => vec![]};
+            for p in players {
+                teams[p.id.team()].push(p.name.clone());
+            }
+            Some(ChatItem {
+                id,
+                durability: ChatItemDurability::Static,
+                text: format!(
+                    "Next up: {} vs {}.",
+                    teams[Team::Red].join(" & "),
+                    teams[Team::Blue].join(" & ")
+                ),
+                sender: Some(ChatParty::System(SystemMessageClass::Info)),
+                recipient: None,
+                dimmed: old_game,
+                prominent: false,
+                flash: false,
+            })
         }
     }
 }
