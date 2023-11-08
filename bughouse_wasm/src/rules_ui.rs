@@ -383,8 +383,8 @@ pub fn accolade_tooltip() -> JsResult<Vec<web_sys::Element>> {
         .create_element("p")?
         .append_text_i("Accolade.")?
         .append_text(
-            " Confer knighthood to any piece! Combine a Knight with a Bishop, a Rook
-            or a Queen to get a Cardinal, an Empress or an Amazon respectively.
+            " Combine a Knight with a Bishop, a Rook or a Queen
+            to get a Cardinal, an Empress or an Amazon respectively.
             Combine by moving one piece onto another or by dropping one piece onto another.
             If captured, the piece falls back apart.",
         )?])
