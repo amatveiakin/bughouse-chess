@@ -285,10 +285,15 @@ impl Clients {
         }
     }
 
-    fn find_participant(&self, participant_id: ParticipantId) -> Option<ClientId> {
+    fn find_participant(
+        &self, match_id: &MatchId, participant_id: ParticipantId,
+    ) -> Option<ClientId> {
         self.map
             .iter()
-            .find_map(|(&id, c)| (c.participant_id == Some(participant_id)).then_some(id))
+            .find(|(_, c)| {
+                c.match_id.as_ref() == Some(match_id) && c.participant_id == Some(participant_id)
+            })
+            .map(|(&id, _)| id)
     }
 }
 
@@ -895,8 +900,9 @@ impl Match {
             let existing_participant_id = self.participants.find_by_name(&player_name);
             if let Some(existing_participant_id) = existing_participant_id {
                 if let Some(existing_client_id) =
-                    ctx.clients.find_participant(existing_participant_id)
+                    ctx.clients.find_participant(&self.match_id, existing_participant_id)
                 {
+                    assert_ne!(existing_client_id, client_id);
                     let is_existing_user_registered =
                         self.participants[existing_participant_id].is_registered_user;
                     let is_existing_user_connection_healthy =
@@ -947,8 +953,9 @@ impl Match {
             let existing_participant_id = self.participants.find_by_name(&player_name);
             if let Some(existing_participant_id) = existing_participant_id {
                 if let Some(existing_client_id) =
-                    ctx.clients.find_participant(existing_participant_id)
+                    ctx.clients.find_participant(&self.match_id, existing_participant_id)
                 {
+                    assert_ne!(existing_client_id, client_id);
                     let is_existing_user_registered =
                         self.participants[existing_participant_id].is_registered_user;
                     let is_existing_user_connection_healthy =
