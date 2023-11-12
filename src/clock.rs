@@ -156,6 +156,7 @@ impl WallGameTimePair {
 }
 
 
+#[derive(Clone, Debug)]
 pub struct ClockShowing {
     pub is_active: bool,
     pub show_separator: bool,
@@ -164,9 +165,107 @@ pub struct ClockShowing {
 }
 
 // Improvement potential: Support longer time controls (with hours).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TimeBreakdown {
     NormalTime { minutes: u32, seconds: u32 },
     LowTime { seconds: u32, deciseconds: u32 },
+}
+
+// Difference between player's and their diagonal opponent's clocks.
+#[derive(Clone, Debug)]
+pub struct ClockDifference {
+    pub comparison: Ordering,
+    pub time_breakdown: TimeDifferenceBreakdown,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TimeDifferenceBreakdown {
+    Minutes { minutes: u32, seconds: u32 },
+    Seconds { seconds: u32 },
+    Subseconds { seconds: u32, deciseconds: u32 },
+}
+
+impl ClockShowing {
+    // Includes padding for TUI. HTML will ignore trailing spaces.
+    pub fn ui_string(&self) -> String {
+        let separator = |s| if self.show_separator { s } else { " " };
+        match self.time_breakdown {
+            TimeBreakdown::NormalTime { minutes, seconds } => {
+                format!("{:02}{}{:02}", minutes, separator(":"), seconds)
+            }
+            TimeBreakdown::LowTime { seconds, deciseconds } => {
+                format!(" {:02}{}{}", seconds, separator("."), deciseconds)
+            }
+        }
+    }
+}
+
+impl ClockDifference {
+    pub fn ui_string(&self) -> String {
+        let sign = match self.comparison {
+            Ordering::Less => '−', // U+2212 Minus Sign
+            Ordering::Equal => '=',
+            Ordering::Greater => '+',
+        };
+        match self.time_breakdown {
+            TimeDifferenceBreakdown::Minutes { minutes, seconds } => {
+                format!("{}{}:{:02}", sign, minutes, seconds)
+            }
+            TimeDifferenceBreakdown::Seconds { seconds } => {
+                format!("{}{:02}", sign, seconds)
+            }
+            TimeDifferenceBreakdown::Subseconds { seconds, deciseconds } => {
+                format!("{}{}.{}", sign, seconds, deciseconds)
+            }
+        }
+    }
+}
+
+impl From<Duration> for TimeBreakdown {
+    fn from(time: Duration) -> Self {
+        // Get duration in the highest possible precision. It's important to round the time up, so
+        // that we never show "0.00" for a player who has not lost by flag. Also in the beginning of
+        // the game rounding up ensures that first tick happens one second after the game starts
+        // rather than immediately.
+        const NANOS_PER_SEC: u128 = 1_000_000_000;
+        const NANOS_PER_DECI: u128 = NANOS_PER_SEC / 10;
+        let nanos = time.as_nanos();
+        let s_floor = nanos / NANOS_PER_SEC;
+        let low_time = s_floor < 20;
+        if low_time {
+            let seconds = s_floor.try_into().unwrap();
+            let deciseconds = (nanos.div_ceil(NANOS_PER_DECI) % 10).try_into().unwrap();
+            TimeBreakdown::LowTime { seconds, deciseconds }
+        } else {
+            let s_ceil = nanos.div_ceil(NANOS_PER_SEC);
+            let minutes = (s_ceil / 60).try_into().unwrap();
+            let seconds = (s_ceil % 60).try_into().unwrap();
+            TimeBreakdown::NormalTime { minutes, seconds }
+        }
+    }
+}
+
+impl From<Duration> for TimeDifferenceBreakdown {
+    fn from(time: Duration) -> Self {
+        const NANOS_PER_SEC: u128 = 1_000_000_000;
+        const NANOS_PER_DECI: u128 = NANOS_PER_SEC / 10;
+        let nanos = time.as_nanos();
+        let s_floor = nanos / NANOS_PER_SEC;
+        // Ceil whole seconds for consistency with `TimeBreakdown`.
+        let s_ceil = nanos.div_ceil(NANOS_PER_SEC);
+        if s_floor < 10 {
+            let seconds = s_floor.try_into().unwrap();
+            let deciseconds = (nanos.div_ceil(NANOS_PER_DECI) % 10).try_into().unwrap();
+            TimeDifferenceBreakdown::Subseconds { seconds, deciseconds }
+        } else if s_ceil < 60 {
+            let seconds = s_ceil.try_into().unwrap();
+            TimeDifferenceBreakdown::Seconds { seconds }
+        } else {
+            let minutes = (s_ceil / 60).try_into().unwrap();
+            let seconds = (s_ceil % 60).try_into().unwrap();
+            TimeDifferenceBreakdown::Minutes { minutes, seconds }
+        }
+    }
 }
 
 
@@ -212,39 +311,40 @@ impl Clock {
     }
 
     pub fn showing_for(&self, force: Force, now: GameInstant) -> ClockShowing {
-        // Get duration in the highest possible precision. It's important to round the time up,
-        // so that we never show "0.00" for a player who has not lost by flag.
-        const NANOS_PER_SEC: u128 = 1_000_000_000;
-        const NANOS_PER_DECI: u128 = NANOS_PER_SEC / 10;
         let is_active = self.active_force() == Some(force);
-        let nanos = self.time_left(force, now).as_nanos();
-        let s_floor = nanos / NANOS_PER_SEC;
-        let show_separator = !is_active || nanos % NANOS_PER_SEC >= NANOS_PER_SEC / 2;
+        let time = self.time_left(force, now);
+        let show_separator = !is_active || time.subsec_millis() >= 500;
 
         // Note. Never consider an active player to be out of time. On the server or in an
         // offline client this never happens, because all clocks stop when the game is over.
         // In an online client an active player can have zero time, but we shouldn't tell the
         // user they've run out of time until the server confirms game result, because the
         // game may have ended earlier on the other board.
-        let out_of_time = !is_active && nanos == 0;
+        let out_of_time = !is_active && time.is_zero();
 
-        let low_time = s_floor < 20;
-        let time_breakdown = if low_time {
-            let seconds = s_floor.try_into().unwrap();
-            let deciseconds = (nanos.div_ceil(NANOS_PER_DECI) % 10).try_into().unwrap();
-            TimeBreakdown::LowTime { seconds, deciseconds }
-        } else {
-            let s_ceil = (nanos + NANOS_PER_SEC - 1) / NANOS_PER_SEC;
-            let minutes = (s_ceil / 60).try_into().unwrap();
-            let seconds = (s_ceil % 60).try_into().unwrap();
-            TimeBreakdown::NormalTime { minutes, seconds }
-        };
+        let time_breakdown = time.into();
         ClockShowing {
             is_active,
             show_separator,
             out_of_time,
             time_breakdown,
         }
+    }
+
+    // In practice `force` affects only the sign and `now` isn't actually required at all, but it's
+    // easier to implement it this way.
+    pub fn difference_for(
+        &self, force: Force, other_clock: &Clock, now: GameInstant,
+    ) -> ClockDifference {
+        let my_time = self.time_left(force, now);
+        let other_time = other_clock.time_left(force, now);
+        let comparison = my_time.cmp(&other_time);
+        let time_breakdown = match comparison {
+            Ordering::Less => (other_time - my_time).into(),
+            Ordering::Greater => (my_time - other_time).into(),
+            Ordering::Equal => TimeDifferenceBreakdown::Subseconds { seconds: 0, deciseconds: 0 },
+        };
+        ClockDifference { comparison, time_breakdown }
     }
 
     pub fn total_time_elapsed(&self) -> Duration {

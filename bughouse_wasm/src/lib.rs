@@ -22,6 +22,7 @@ mod web_element_ext;
 mod web_error_handling;
 mod web_util;
 
+use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -903,8 +904,9 @@ impl WebClient {
         Ok(())
     }
 
+    // Improvement potential. Time difference is the same for all players (modulo sign). Consider if
+    // we should duplicate it four times or if there is a better way to display it.
     pub fn update_clock(&self) -> JsResult<()> {
-        let document = web_document();
         let Some(GameState { ref alt_game, time_pair, .. }) = self.state.game_state() else {
             return Ok(());
         };
@@ -917,9 +919,14 @@ impl WebClient {
                 get_board_orientation(display_board_idx, alt_game.perspective());
             for force in Force::iter() {
                 let player_idx = get_display_player(force, board_orientation);
-                let clock_node = document
-                    .get_existing_element_by_id(&clock_node_id(display_board_idx, player_idx))?;
-                render_clock(board.clock(), force, game_now, &clock_node)?;
+                let clock = board.clock();
+                let other_clock = game.board(board_idx.other()).clock();
+                render_clock(
+                    clock.showing_for(force, game_now),
+                    clock.difference_for(force, other_clock, game_now),
+                    display_board_idx,
+                    player_idx,
+                )?;
             }
         }
         Ok(())
@@ -1626,34 +1633,49 @@ fn is_clock_ticking(game: &BughouseGame, participant_id: BughouseParticipant) ->
 }
 
 fn render_clock(
-    clock: &Clock, force: Force, now: GameInstant, clock_node: &web_sys::Element,
+    showing: ClockShowing, diff: ClockDifference, display_board_idx: DisplayBoard,
+    player_idx: DisplayPlayer,
 ) -> JsResult<()> {
-    let ClockShowing {
-        is_active,
-        show_separator,
-        out_of_time,
-        time_breakdown,
-    } = clock.showing_for(force, now);
-    let separator = |s| if show_separator { s } else { " " };
-    let clock_str = match time_breakdown {
-        TimeBreakdown::NormalTime { minutes, seconds } => {
-            format!("{:02}{}{:02}", minutes, separator(":"), seconds)
-        }
-        TimeBreakdown::LowTime { seconds, deciseconds } => {
-            format!("{:02}{}{}", seconds, separator("."), deciseconds)
-        }
-    };
-    clock_node.set_text_content(Some(&clock_str));
+    let document = web_document();
+    let clock_node =
+        document.get_existing_element_by_id(&clock_node_id(display_board_idx, player_idx))?;
+    clock_node.set_text_content(Some(&showing.ui_string()));
     let mut classes = vec!["clock"];
-    if out_of_time {
+    if showing.out_of_time {
         classes.push("clock-flag");
     } else {
-        classes.push(if is_active { "clock-active" } else { "clock-inactive" });
-        if matches!(time_breakdown, TimeBreakdown::LowTime { .. }) {
+        classes.push(if showing.is_active {
+            "clock-active"
+        } else {
+            "clock-inactive"
+        });
+        if matches!(showing.time_breakdown, TimeBreakdown::LowTime { .. }) {
             classes.push("clock-low-time");
         }
     }
     clock_node.set_attribute("class", &classes.join(" "))?;
+
+    let diff_node = document.ensure_node(
+        "div",
+        &clock_diff_node_id(display_board_idx, player_idx),
+        &clock_node,
+    )?;
+    diff_node.class_list().add_1("clock-difference")?;
+    match player_idx {
+        DisplayPlayer::Top => diff_node.class_list().add_1("clock-difference-top")?,
+        DisplayPlayer::Bottom => diff_node.class_list().add_1("clock-difference-bot")?,
+    }
+    diff_node
+        .class_list()
+        .toggle_with_force("clock-difference-lt", diff.comparison == Ordering::Less)?;
+    diff_node
+        .class_list()
+        .toggle_with_force("clock-difference-eq", diff.comparison == Ordering::Equal)?;
+    diff_node
+        .class_list()
+        .toggle_with_force("clock-difference-gt", diff.comparison == Ordering::Greater)?;
+    diff_node.set_text_content(Some(&diff.ui_string()));
+
     Ok(())
 }
 
@@ -2120,6 +2142,10 @@ fn reserve_node_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String
 
 fn clock_node_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String {
     format!("clock-{}-{}", board_id(board_idx), player_id(player_idx))
+}
+
+fn clock_diff_node_id(board_idx: DisplayBoard, player_idx: DisplayPlayer) -> String {
+    format!("clock-diff-{}-{}", board_id(board_idx), player_id(player_idx))
 }
 
 fn turn_log_scroll_area_node_id(board_idx: DisplayBoard) -> String {

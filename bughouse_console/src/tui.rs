@@ -7,27 +7,12 @@ use itertools::Itertools;
 use crate::bughouse_prelude::*;
 
 
-fn render_clock(clock: &Clock, force: Force, now: GameInstant) -> (String, usize) {
-    // Improvement potential: Support longer time controls (with hours).
-    let ClockShowing {
-        is_active,
-        show_separator,
-        out_of_time,
-        time_breakdown,
-    } = clock.showing_for(force, now);
-    let separator = |s| if show_separator { s } else { " " };
-    let mut clock_str = match time_breakdown {
-        TimeBreakdown::NormalTime { minutes, seconds } => {
-            format!("{:02}{}{:02}", minutes, separator(":"), seconds)
-        }
-        TimeBreakdown::LowTime { seconds, deciseconds } => {
-            format!(" {:02}{}{}", seconds, separator("."), deciseconds)
-        }
-    };
+fn render_clock(showing: ClockShowing) -> (String, usize) {
+    let mut clock_str = showing.ui_string();
     let clock_str_len = clock_str.len();
-    if out_of_time {
+    if showing.out_of_time {
         clock_str = Style::new().on_red().apply_to(clock_str).to_string();
-    } else if is_active {
+    } else if showing.is_active {
         clock_str = Style::new().reverse().apply_to(clock_str).to_string();
     }
     (clock_str, clock_str_len)
@@ -41,7 +26,7 @@ fn render_header(
     clock: &Clock, player_name: &str, force: Force, now: GameInstant, view_board: DisplayBoard,
     board_width: usize,
 ) -> String {
-    let (clock_str, clock_str_len) = render_clock(clock, force, now);
+    let (clock_str, clock_str_len) = render_clock(clock.showing_for(force, now));
     let (player_str, player_str_len) = render_player(player_name);
     let space = String::from(' ').repeat(board_width - clock_str_len - player_str_len);
     match view_board {

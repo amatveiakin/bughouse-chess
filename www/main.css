@@ -448,11 +448,11 @@ body.observer .reserve {
 
 #player-name-container-primary-top,
 #player-name-container-secondary-top {
-  padding-bottom: 0.3em;
+  padding-bottom: 0.5em;
 }
 #player-name-container-primary-bottom,
 #player-name-container-secondary-bottom {
-  padding-top: 0.3em;
+  padding-top: 0.5em;
 }
 #player-name-container-primary-top,
 #player-name-container-primary-bottom {
@@ -540,6 +540,7 @@ body.symmetric .individual-score-value {
 }
 
 .clock {
+  position: relative;
   font-family: Monaco, monospace;
   font-size: 180%;
   text-align: center;
@@ -547,7 +548,7 @@ body.symmetric .individual-score-value {
   min-width: 3em;
   display: inline-block;
   border-radius: calc(var(--sq-size-primary) * 0.2);
-  padding: calc(var(--sq-size-primary) * 0.05) calc(var(--sq-size-primary) * 0.1);
+  padding: calc(var(--sq-size-primary) * 0.1);
   margin: calc(var(--sq-size-primary) * 0.05)  0;
 }
 .clock-inactive {
@@ -584,6 +585,40 @@ body.observer .clock-active {
 body.observer .clock-active.clock-low-time {
   background-color: #4a5616;
   outline-color: #dad26e;
+}
+
+.clock-difference {
+  color: #b0b0b0;
+  min-width: 2.4em;
+  font-size: 50%;
+  font-weight: normal;
+  padding: 0 0.2em;
+  border-radius: calc(var(--sq-size-primary) * 0.1);
+  background-color: inherit;
+  outline-color: inherit;
+  outline-width: calc(var(--sq-size-primary) * 0.02);
+  outline-style: solid;
+}
+.clock-difference-top {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -65%);
+}
+.clock-difference-bot {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translate(-50%, 65%);
+}
+.clock-difference-lt {
+  color: #ff9d92c0;
+}
+.clock-difference-eq {
+  color: #e0e0e0a0;
+}
+.clock-difference-gt {
+  color: #4dde4db0;
 }
 
 #clock-container-primary-top,
