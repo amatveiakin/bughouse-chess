@@ -93,9 +93,11 @@ impl<T: Clone> ops::Index<Coord> for GenericGrid<T> {
     #[track_caller]
     fn index(&self, pos: Coord) -> &Self::Output {
         let shape = self.shape();
-        self.data
-            .get(coord_to_index(pos))
-            .unwrap_or_else(|| panic!("{}", out_of_bound_message(pos, shape)))
+        // Expand `unwrap_or_else(|| panic!(...)` manually: closure breaks `track_caller`.
+        let Some(ret) = self.data.get(coord_to_index(pos)) else {
+            panic!("{}", out_of_bound_message(pos, shape))
+        };
+        ret
     }
 }
 
@@ -103,9 +105,10 @@ impl<T: Clone> ops::IndexMut<Coord> for GenericGrid<T> {
     #[track_caller]
     fn index_mut(&mut self, pos: Coord) -> &mut Self::Output {
         let shape = self.shape();
-        self.data
-            .get_mut(coord_to_index(pos))
-            .unwrap_or_else(|| panic!("{}", out_of_bound_message(pos, shape)))
+        let Some(ret) = self.data.get_mut(coord_to_index(pos)) else {
+            panic!("{}", out_of_bound_message(pos, shape))
+        };
+        ret
     }
 }
 
