@@ -3,6 +3,9 @@
 //
 // Improvement potential. Combine integration tests together:
 //   https://matklad.github.io/2021/02/27/delete-cargo-integration-tests.html
+//
+// Improvement potential. Unit tests in this file are executed by each test module. To fix this we
+//   could combine all integration tests together (see above) or move out the unit tests.
 
 use std::collections::HashMap;
 use std::rc::Rc;
