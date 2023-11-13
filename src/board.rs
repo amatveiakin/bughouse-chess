@@ -882,10 +882,14 @@ impl Board {
             self.clock.new_turn(self.active_force, now);
         }
     }
+    pub fn flag_defeat_moment(&self, now: GameInstant) -> Option<GameInstant> {
+        assert_eq!(self.status, ChessGameStatus::Active);
+        self.clock
+            .time_excess(self.active_force, now)
+            .map(|excess| now.checked_sub(excess).unwrap())
+    }
     pub fn test_flag(&mut self, now: GameInstant) {
-        if self.status != ChessGameStatus::Active {
-            return;
-        }
+        assert_eq!(self.status, ChessGameStatus::Active);
         if self.clock.time_left(self.active_force, now).is_zero() {
             self.status =
                 ChessGameStatus::Victory(self.active_force.opponent(), VictoryReason::Flag);

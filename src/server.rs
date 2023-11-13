@@ -1539,18 +1539,9 @@ fn current_game_time(game_state: &GameState, now: Instant) -> Option<GameInstant
     } else if game_state.game.is_active() {
         Some(GameInstant::from_now_game_maybe_active(game_state.game_start, now))
     } else {
-        // Normally `clock().total_time_elapsed()` should be the same on all boards. But
-        // it could differ in case the of a flag defeat. Consider the following situation:
-        // total time is 300 seconds; on board A the game proceeded normally; on board B
-        // white didn't make any turns. In this case board A clock would report real wall
-        // time (e.g. 300.1s), while board B clock would report exactly 300s, because each
-        // player remaining time is always non-negative.
-        // Also this example shows that the best approximation to real game time is the
-        // minimum of all boards. Everything higher than the minimum is an artifact of not
-        // having checked the flags in time.
         let elapsed_since_start = BughouseBoard::iter()
             .map(|board_idx| game_state.game.board(board_idx).clock().total_time_elapsed())
-            .min()
+            .all_equal_value()
             .unwrap();
         Some(GameInstant::from_duration(elapsed_since_start))
     }

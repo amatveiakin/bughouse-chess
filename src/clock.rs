@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fmt;
 use std::time::Duration;
 
@@ -50,6 +51,16 @@ pub enum TimeMeasurement {
 pub struct GameInstant {
     elapsed_since_start: Duration,
     measurement: TimeMeasurement,
+}
+
+impl PartialOrd for GameInstant {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        use TimeMeasurement::*;
+        match (self.measurement, other.measurement) {
+            (Exact, Exact) => Some(self.elapsed_since_start.cmp(&other.elapsed_since_start)),
+            (Approximate, _) | (_, Approximate) => None,
+        }
+    }
 }
 
 impl GameInstant {
@@ -105,6 +116,13 @@ impl GameInstant {
                 self.elapsed_since_start.saturating_sub(earlier.elapsed_since_start)
             }
         }
+    }
+
+    pub fn checked_sub(self, d: Duration) -> Option<Self> {
+        self.elapsed_since_start.checked_sub(d).map(|elapsed_since_start| GameInstant {
+            elapsed_since_start,
+            measurement: self.measurement,
+        })
     }
 
     pub fn measurement(&self) -> TimeMeasurement { self.measurement }
@@ -181,6 +199,16 @@ impl Clock {
             }
         }
         ret
+    }
+    // Effectively `time_left` with the opposite sign. `Some` only when `time_left` is zero.
+    pub fn time_excess(&self, force: Force, now: GameInstant) -> Option<Duration> {
+        let ret = self.remaining_time[force];
+        if let Some((current_force, current_start)) = self.turn_state {
+            if force == current_force {
+                return now.duration_since(current_start).checked_sub(ret);
+            }
+        }
+        Some(ret)
     }
 
     pub fn showing_for(&self, force: Force, now: GameInstant) -> ClockShowing {

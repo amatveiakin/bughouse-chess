@@ -495,6 +495,12 @@ impl BughouseGame {
         use BughouseGameStatus::*;
         use VictoryReason::Flag;
         assert_eq!(self.status, Active);
+        let now = BughouseBoard::iter()
+            .filter_map(|board| self.boards[board].flag_defeat_moment(now))
+            .min_by(|t1, t2| t1.partial_cmp(t2).unwrap());
+        let Some(now) = now else {
+            return;
+        };
         self.boards[A].test_flag(now);
         self.boards[B].test_flag(now);
         let status_a = self.game_status_for_board(A);
@@ -509,7 +515,9 @@ impl BughouseGame {
             }
             (Victory(winner, Flag), Active) => Victory(winner, Flag),
             (Active, Victory(winner, Flag)) => Victory(winner, Flag),
-            (Active, Active) => Active,
+            (Active, Active) => {
+                panic!("Unexpected active status after `flag_defeat_moment` returned `Some`")
+            }
             (Victory(_, reason), _) => {
                 panic!("Unexpected victory reason in `test_flag`: {:?}", reason)
             }
