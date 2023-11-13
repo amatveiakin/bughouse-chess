@@ -686,6 +686,8 @@ impl WebClient {
                     SubjectiveGameResult::Victory => "victory",
                     SubjectiveGameResult::Defeat => "defeat",
                     SubjectiveGameResult::Draw => "draw",
+                    // Improvement potential. Add a separate sound for `Observation`.
+                    SubjectiveGameResult::Observation => "draw",
                 }
                 .to_owned();
                 Ok(JsEventGameOver { result }.into())

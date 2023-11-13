@@ -37,6 +37,7 @@ pub enum SubjectiveGameResult {
     Victory,
     Defeat,
     Draw,
+    Observation,
 }
 
 #[derive(Clone, Debug)]
@@ -940,8 +941,8 @@ impl ClientState {
         }
 
         if generate_notable_events {
-            if let BughouseParticipant::Player(my_player_id) = alt_game.my_id() {
-                let game_status = match alt_game.status() {
+            let game_status = if let BughouseParticipant::Player(my_player_id) = alt_game.my_id() {
+                match alt_game.status() {
                     BughouseGameStatus::Active => unreachable!(),
                     BughouseGameStatus::Victory(team, _) => {
                         if team == my_player_id.team() {
@@ -951,12 +952,14 @@ impl ClientState {
                         }
                     }
                     BughouseGameStatus::Draw(_) => SubjectiveGameResult::Draw,
-                };
-                self.notable_event_queue.push_back(NotableEvent::GameOver(game_status));
-                // Note. It would make more sense to send performanse stats on leave, but there doesn't
-                // seem to be a way to do this reliably, especially on mobile.
-                self.report_performance();
-            }
+                }
+            } else {
+                SubjectiveGameResult::Observation
+            };
+            self.notable_event_queue.push_back(NotableEvent::GameOver(game_status));
+            // Note. It would make more sense to send performanse stats on leave, but there doesn't
+            // seem to be a way to do this reliably, especially on mobile.
+            self.report_performance();
         }
         Ok(())
     }
