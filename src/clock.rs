@@ -314,7 +314,6 @@ impl Clock {
     pub fn showing_for(&self, force: Force, now: GameInstant) -> ClockShowing {
         let is_active = self.active_force() == Some(force);
         let mut time = self.time_left(force, now);
-        let show_separator = !is_active || time.subsec_millis() >= 500;
 
         // Note. Never consider an active player to be out of time. On the server or in an
         // offline client this never happens, because all clocks stop when the game is over.
@@ -327,6 +326,13 @@ impl Clock {
         }
 
         let time_breakdown = time.into();
+
+        let show_separator = match (is_active, time_breakdown) {
+            (false, _) => true,
+            (true, TimeBreakdown::NormalTime { .. }) => time.subsec_millis() >= 500,
+            (true, TimeBreakdown::LowTime { .. }) => true,
+        };
+
         ClockShowing {
             is_active,
             show_separator,
