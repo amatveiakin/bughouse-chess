@@ -949,7 +949,9 @@ fn get_turn_highlight_basis(turn_expanded: &TurnExpanded) -> Vec<(TurnHighlightI
         highlights.push((TurnHighlightItem::MoveFrom, from));
         highlights.push((TurnHighlightItem::MoveTo, to));
     }
-    if let Some(drop) = turn_expanded.drop {
+    if let Turn::PlaceDuck(coord) = turn_expanded.turn {
+        highlights.push((TurnHighlightItem::MoveTo, coord));
+    } else if let Some(drop) = turn_expanded.drop {
         highlights.push((TurnHighlightItem::Drop, drop));
     }
     for capture in turn_expanded.captures.iter() {

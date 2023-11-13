@@ -366,7 +366,7 @@ fn turn_highlights_in_duck_chess() {
     // Both the normal piece and the duck should be highlighted when the megaturn is competed.
     alt_game.apply_remote_turn(envoy!(Black A), &alg("@c3"), T0).unwrap();
     assert_eq!(turn_highlights_sorted(&alt_game), vec![
-        turn_highlight!(A C3 : BelowFog LatestTurn Drop),
+        turn_highlight!(A C3 : BelowFog LatestTurn MoveTo),
         turn_highlight!(A D5 : BelowFog LatestTurn MoveTo),
         turn_highlight!(A D7 : BelowFog LatestTurn MoveFrom),
     ]);
