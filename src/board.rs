@@ -17,7 +17,7 @@ use crate::algebraic::{
 use crate::clock::{Clock, GameInstant};
 use crate::coord::{BoardShape, Col, Coord, Row, SubjectiveRow};
 use crate::force::Force;
-use crate::grid::{Grid, GridForRepetitionDraw};
+use crate::grid::{Grid, GridForRepetitionDraw, GridItem};
 use crate::piece::{
     accolade_combine_pieces, CastleDirection, PieceForRepetitionDraw, PieceForce, PieceId,
     PieceKind, PieceMovement, PieceOnBoard, PieceOrigin, PieceReservable,
@@ -488,6 +488,19 @@ fn combine_reachability(a: Reachability, b: Reachability) -> Reachability {
     }
 }
 
+fn piece_to_captured(pos: Coord, piece: PieceOnBoard) -> impl Iterator<Item = Capture> {
+    let piece_kinds = match piece.origin {
+        PieceOrigin::Innate | PieceOrigin::Dropped => vec![piece.kind],
+        PieceOrigin::Promoted => vec![PieceKind::Pawn],
+        PieceOrigin::Combined((p1, p2)) => vec![p1, p2],
+    };
+    piece_kinds.into_iter().map(move |piece_kind| Capture {
+        from: Some(pos),
+        piece_kind,
+        force: piece.force,
+    })
+}
+
 fn initial_castling_rights(starting_position: &EffectiveStartingPosition) -> CastlingRights {
     let row = starting_piece_row(starting_position);
     let king_pos = row.iter().position(|&p| p == PieceKind::King).unwrap();
@@ -672,14 +685,15 @@ pub enum TurnMode {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum VictoryReason {
-    Checkmate,
+    Checkmate, // means "checkmake", "king lost" (if regicide) or "all kings lost" (if Koedem)
     Flag,
     Resignation,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum DrawReason {
-    SimultaneousFlag, // for bughouse
+    SimultaneousCheckmate, // for atomic chess
+    SimultaneousFlag,      // for bughouse
     ThreefoldRepetition,
 }
 
@@ -726,6 +740,7 @@ pub enum TurnError {
     MustMovePieceBeforeDuck,
     MustPlaceDuck,
     MustChangeDuckPosition,
+    KingCannotCaptureInAtomicChess,
     MustDropKingIfPossible,
     NoGameInProgress,
     GameOver,
@@ -1118,19 +1133,31 @@ impl Board {
                         }
                     }
                 } else {
-                    // This assumes opposite kings cannot be capture simultaneously.
-                    for capture in facts.captures.iter() {
-                        if capture.piece_kind == PieceKind::King {
-                            if self.bughouse_rules().map_or(false, |r| r.koedem) {
-                                // Cannot check victory condition here, need to see both boards.
-                            } else {
+                    if self.bughouse_rules().map_or(false, |r| r.koedem) {
+                        // Cannot check victory condition here, need to see both boards.
+                    } else {
+                        let captured_kings = facts
+                            .captures
+                            .iter()
+                            .filter(|c| c.piece_kind == PieceKind::King)
+                            .collect_vec();
+                        match captured_kings.len() {
+                            0 => {}
+                            1 => {
                                 // Unwrap ok: King cannot be neutral.
-                                let loser: Force = capture.force.try_into().unwrap();
+                                let loser: Force = captured_kings[0].force.try_into().unwrap();
                                 self.status = ChessGameStatus::Victory(
                                     loser.opponent(),
                                     VictoryReason::Checkmate,
                                 );
                             }
+                            2 => {
+                                self.status =
+                                    ChessGameStatus::Draw(DrawReason::SimultaneousCheckmate)
+                            }
+                            _ => panic!(
+                                "Shouldn't be able to capture more than two kings if not Koedem"
+                            ),
                         }
                     }
                 }
@@ -1259,18 +1286,25 @@ impl Board {
                 }
                 new_grid[mv.from] = None;
                 if let Some(capture_pos) = capture_pos_or {
-                    let captured_piece = new_grid[capture_pos].unwrap();
-                    let captured_piece_kinds = match captured_piece.origin {
-                        PieceOrigin::Innate | PieceOrigin::Dropped => vec![captured_piece.kind],
-                        PieceOrigin::Promoted => vec![PieceKind::Pawn],
-                        PieceOrigin::Combined((p1, p2)) => vec![p1, p2],
-                    };
-                    captures.extend(captured_piece_kinds.into_iter().map(|piece_kind| Capture {
-                        from: Some(capture_pos),
-                        piece_kind,
-                        force: captured_piece.force,
-                    }));
+                    captures.extend(piece_to_captured(capture_pos, new_grid[capture_pos].unwrap()));
                     new_grid[capture_pos] = None;
+                    if self.chess_rules().atomic_chess {
+                        if piece.kind == PieceKind::King {
+                            // Improvement potential. Should we make an exception for Koedem?
+                            return Err(TurnError::KingCannotCaptureInAtomicChess);
+                        }
+                        for d_row in -1..=1 {
+                            for d_col in -1..=1 {
+                                let pos = capture_pos + (d_row, d_col);
+                                if let GridItem::Piece(&piece) = new_grid.get(pos) {
+                                    if piece.kind.destroyed_by_atomic_explosion() {
+                                        captures.extend(piece_to_captured(pos, piece));
+                                        new_grid[pos] = None;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 // Verify that requested promotion does not violate promotion rules.
                 match (mv.promote_to, self.chess_rules().promotion()) {
@@ -1367,6 +1401,10 @@ impl Board {
                     } else {
                         new_grid[mv.to] = Some(piece);
                     }
+                }
+                if self.chess_rules().atomic_chess && capture_pos_or.is_some() {
+                    captures.extend(piece_to_captured(mv.to, new_grid[mv.to].unwrap()));
+                    new_grid[mv.to] = None;
                 }
             }
             Turn::Drop(drop) => {

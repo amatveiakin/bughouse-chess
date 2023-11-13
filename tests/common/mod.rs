@@ -133,6 +133,14 @@ impl ReserveAsHashMap for Reserve {
     fn to_map(self) -> HashMap<PieceKind, u8> { self.into_iter().filter(|&(_, n)| n > 0).collect() }
 }
 
+pub trait GridExt {
+    fn without_ids(&self) -> Self;
+}
+
+impl GridExt for Grid {
+    fn without_ids(&self) -> Grid { self.map(|piece| PieceOnBoard { id: PieceId::tmp(), ..piece }) }
+}
+
 fn parse_ascii_setup<'a>(
     rules: &Rules, board_line: impl IntoIterator<Item = &'a str>,
     board_orientation: BoardOrientation,
@@ -259,10 +267,6 @@ mod tests {
 
     use super::*;
 
-    fn strip_piece_ids(grid: &Grid) -> Grid {
-        grid.map(|p| PieceOnBoard { id: PieceId::tmp(), ..p })
-    }
-
     #[test]
     fn parse_ascii_board_opening() {
         const T0: GameInstant = GameInstant::game_start();
@@ -287,7 +291,7 @@ mod tests {
         game_expected.try_turn(&algebraic_turn("d5"), TurnMode::Normal, T0).unwrap();
         let board_expected = game_expected.board();
 
-        assert_eq!(strip_piece_ids(board.grid()), strip_piece_ids(board_expected.grid()));
+        assert_eq!(board.grid().without_ids(), board_expected.grid().without_ids());
     }
 
     #[test]
@@ -318,8 +322,8 @@ mod tests {
 
         for board_idx in BughouseBoard::iter() {
             assert_eq!(
-                strip_piece_ids(game.board(board_idx).grid()),
-                strip_piece_ids(game_expected.board(board_idx).grid())
+                game.board(board_idx).grid().without_ids(),
+                game_expected.board(board_idx).grid().without_ids()
             );
         }
     }

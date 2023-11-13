@@ -99,6 +99,7 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
                     StartingPosition::FischerRandom
                 },
                 duck_chess: rng.gen::<bool>(),
+                atomic_chess: rng.gen::<bool>(),
                 fog_of_war: rng.gen::<bool>(),
                 time_control: TimeControl { starting_time: Duration::from_secs(300) },
                 bughouse_rules: Some(BughouseRules {

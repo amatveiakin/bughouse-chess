@@ -119,6 +119,9 @@ impl ChessGame {
         ChessGame { starting_position, board }
     }
 
+    pub fn rules(&self) -> &Rules { self.board.rules() }
+    pub fn match_rules(&self) -> &MatchRules { &self.rules().match_rules }
+    pub fn chess_rules(&self) -> &ChessRules { &self.rules().chess_rules }
     pub fn board(&self) -> &Board { &self.board }
     pub fn status(&self) -> ChessGameStatus { self.board.status() }
 
@@ -195,8 +198,16 @@ impl GameOutcome {
             }
             Victory(_, Flag) => format!("{winners} won: {losers} lost on time"),
             Victory(_, Resignation) => format!("{winners} won: {losers} resigned"),
-            Draw(SimultaneousFlag) => "Draw by simultaneous flags".to_owned(),
-            Draw(ThreefoldRepetition) => "Draw by threefold repetition".to_owned(),
+            Draw(SimultaneousCheckmate) => {
+                if rules.regicide() {
+                    "Draw: both kings lost".to_owned()
+                } else {
+                    // Future-proofing: this isn't possible at the time of writing.
+                    "Draw: both players checkmated".to_owned()
+                }
+            }
+            Draw(SimultaneousFlag) => "Draw: simultaneous flags".to_owned(),
+            Draw(ThreefoldRepetition) => "Draw: threefold repetition".to_owned(),
         }
     }
 }

@@ -1139,6 +1139,9 @@ fn turn_error_message(err: TurnError, rules: &ChessRules) -> Option<String> {
         TurnError::MustChangeDuckPosition => {
             Some("Must move duck to a different position".to_owned())
         }
+        TurnError::KingCannotCaptureInAtomicChess => {
+            Some("King cannot capture in atomic chess".to_owned())
+        }
         TurnError::MustDropKingIfPossible => {
             Some("Must drop a king when you have one in reserve".to_owned())
         }

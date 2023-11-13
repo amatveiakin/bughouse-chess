@@ -12,6 +12,7 @@ use bughouse_chess::rules::{ChessRules, FairyPieces, MatchRules, Promotion, Rule
 use bughouse_chess::test_util::*;
 use common::*;
 use itertools::Itertools;
+use strum::IntoEnumIterator;
 
 
 const T0: GameInstant = GameInstant::game_start();
@@ -428,4 +429,53 @@ fn koedem_two_kings_and_a_duck() {
     );
     game.try_turn(BughouseBoard::B, &alg("K@c3"), TurnMode::Normal, T0).unwrap();
     game.try_turn(BughouseBoard::B, &alg("@b4"), TurnMode::Normal, T0).unwrap();
+}
+
+// TODO: More atomic chess tests:
+//   - King explosions;
+//   - Simultaneous king explosions;
+//   - Kings cannot capture;
+//   - Explosions on the border of the board;
+//   - Explosions plus pawn promotions;
+//   - Explosions plus combined pieces;
+//   - Explosions destroy pieces in the fog of war;
+//   - Explosions does not destroy the duck.
+#[test]
+fn atomic_explosions() {
+    let mut rules = default_rules();
+    rules.chess_rules.atomic_chess = true;
+    let mut game = BughouseGame::new(rules.clone(), &sample_bughouse_players());
+    replay_log(&mut game, "1A.Nc3 1a.e5  2A.Nd5 2a.f5  3A.Nxc7").unwrap();
+    let expected_game_str = "
+        r . . . k b n r     R N B K Q B N R
+        p p . p . . p p     P P P P P P P P
+        . . . . . . . .     . . . . . . . .
+        . . . . p p . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        . . . . . . . .     . . . . . . . .
+        P P P P P P P P     p p p p p p p p
+        R . B Q K B N R     r n b k q b n r
+    ";
+    let expected_game = parse_ascii_bughouse(rules, expected_game_str).unwrap();
+    for board in BughouseBoard::iter() {
+        assert_eq!(
+            game.board(board).grid().without_ids(),
+            expected_game.board(board).grid().without_ids()
+        );
+    }
+    assert_eq!(
+        game.board(BughouseBoard::B).reserve(Force::White).to_map(),
+        [(PieceKind::Knight, 1)].into_iter().collect()
+    );
+    assert_eq!(
+        game.board(BughouseBoard::B).reserve(Force::Black).to_map(),
+        [
+            (PieceKind::Pawn, 1),
+            (PieceKind::Knight, 1),
+            (PieceKind::Bishop, 1),
+            (PieceKind::Queen, 1)
+        ]
+        .into_iter()
+        .collect()
+    );
 }

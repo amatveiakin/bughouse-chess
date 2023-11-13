@@ -103,6 +103,7 @@ fn make_termination_string(game: &BughouseGame) -> &'static str {
         // There is no "resign" Termination, should use "normal" apparently:
         // https://lichess.org/forum/general-chess-discussion/how-do-i-make-it-say-that-one-side-resigned#4
         Victory(_, Resignation) => "normal",
+        Draw(SimultaneousCheckmate) => "normal",
         // Somehow I'm skeptical many chess engines would be prepared for a "time forfeit" draw
         Draw(SimultaneousFlag) => "normal",
         Draw(ThreefoldRepetition) => "normal",

@@ -142,6 +142,12 @@ pub struct ChessRules {
     //   - Less risk of history horizontal overflow.
     pub duck_chess: bool,
 
+    // Every time the piece is captured, it explodes, destroying all pieces in a 3x3 square except
+    // pawns.
+    // TODO: Fix promotions rules with atomic chess. Steal promotion is weird and upgrade promotion
+    // just doesn't make sense.
+    pub atomic_chess: bool,
+
     // Can only see squares that are legal move destinations for your pieces.
     pub fog_of_war: bool,
 
@@ -170,6 +176,7 @@ pub enum ChessVariant {
     Accolade,
     FischerRandom,
     DuckChess,
+    AtomicChess,
     FogOfWar,
     Koedem,
 }
@@ -186,6 +193,7 @@ impl ChessRules {
             fairy_pieces: FairyPieces::NoFairy,
             starting_position: StartingPosition::Classic,
             duck_chess: false,
+            atomic_chess: false,
             fog_of_war: false,
             time_control: TimeControl { starting_time: Duration::from_secs(300) },
             bughouse_rules: None,
@@ -241,6 +249,9 @@ impl ChessRules {
         }
         if self.duck_chess {
             v.push(ChessVariant::DuckChess);
+        }
+        if self.atomic_chess {
+            v.push(ChessVariant::AtomicChess);
         }
         if self.fog_of_war {
             v.push(ChessVariant::FogOfWar);
@@ -328,7 +339,7 @@ impl ChessVariant {
         use ChessVariant::*;
         match self {
             Accolade | FischerRandom => false,
-            FogOfWar | DuckChess | Koedem => true,
+            DuckChess | AtomicChess | FogOfWar | Koedem => true,
         }
     }
 
@@ -337,6 +348,7 @@ impl ChessVariant {
             ChessVariant::Accolade => "Accolade",
             ChessVariant::FischerRandom => "Chess960",
             ChessVariant::DuckChess => "DuckChess",
+            ChessVariant::AtomicChess => "Atomic",
             // TODO: Should it be "DarkChess" of "FogOfWar"? Similarity with "DuckChess" is
             // confusing. If renaming, don't forget to update existing PGNs!
             ChessVariant::FogOfWar => "DarkChess",
@@ -349,6 +361,7 @@ impl ChessVariant {
             ChessVariant::Accolade => "Accolade",
             ChessVariant::FischerRandom => "Fischer random",
             ChessVariant::DuckChess => "Duck chess",
+            ChessVariant::AtomicChess => "Atomic chess",
             ChessVariant::FogOfWar => "Fog of war",
             ChessVariant::Koedem => "Koedem",
         }

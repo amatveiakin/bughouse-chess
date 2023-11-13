@@ -1649,6 +1649,7 @@ fn update_on_game_over(
         ChatMessageBody::GameOver { outcome: game.outcome() },
     );
     let total_players = participants.iter().filter(|p| p.faction.is_player()).count();
+    // Improvement potential. Remove "Next up" message when playing one vs one.
     if next_players.len() < total_players || teaming == Teaming::DynamicTeams {
         chat.add(
             Some(game_index),

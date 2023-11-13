@@ -279,6 +279,14 @@ impl PieceKind {
         }
     }
 
+    pub fn destroyed_by_atomic_explosion(self) -> bool {
+        use PieceKind::*;
+        match self {
+            Pawn | Duck => false,
+            Knight | Bishop | Rook | Queen | Cardinal | Empress | Amazon | King => true,
+        }
+    }
+
     pub fn from_algebraic(notation: &str) -> Option<Self> {
         as_single_char(notation).and_then(Self::from_algebraic_char)
     }

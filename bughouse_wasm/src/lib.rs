@@ -271,6 +271,11 @@ impl WebClient {
             "on" => true,
             s => return Err(format!("Invalid duck chess option: {s}").into()),
         };
+        let atomic_chess = match variants.get(ATOMIC_CHESS).unwrap().as_str() {
+            "off" => false,
+            "on" => true,
+            s => return Err(format!("Invalid atomic chess option: {s}").into()),
+        };
         let fog_of_war = match variants.get(FOG_OF_WAR).unwrap().as_str() {
             "off" => false,
             "on" => true,
@@ -327,6 +332,7 @@ impl WebClient {
             fairy_pieces,
             starting_position,
             duck_chess,
+            atomic_chess,
             fog_of_war,
             time_control: TimeControl { starting_time },
             bughouse_rules: Some(BughouseRules {
@@ -1168,12 +1174,13 @@ pub fn update_new_match_rules_body() -> JsResult<()> {
     use rules_ui::*;
     let variants = new_match_rules_variants()?;
     let duck_chess = variants.get(DUCK_CHESS).unwrap() == "on";
+    let atomic_chess = variants.get(ATOMIC_CHESS).unwrap() == "on";
     let fog_of_war = variants.get(FOG_OF_WAR).unwrap() == "on";
     let koedem = variants.get(KOEDEM).unwrap() == "on";
     // Should mirror `ChessRules::regicide`. Could've constructed `ChessRules` and called it
     // directly, but doing so could fail due to unrelated problems, e.g. errors in "starting time"
     // format.
-    let regicide = duck_chess || fog_of_war || koedem;
+    let regicide = duck_chess || atomic_chess || fog_of_war || koedem;
     for node in web_document().get_elements_by_class_name(REGICIDE_CLASS) {
         node.class_list().toggle_with_force("display-none", !regicide)?;
     }

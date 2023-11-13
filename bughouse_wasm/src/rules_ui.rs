@@ -18,6 +18,7 @@ pub const RATING: &str = "rating"; // filled by JSs
 pub const FAIRY_PIECES: &str = "fairy_pieces";
 pub const STARTING_POSITION: &str = "starting_position";
 pub const DUCK_CHESS: &str = "duck_chess";
+pub const ATOMIC_CHESS: &str = "atomic_chess";
 pub const FOG_OF_WAR: &str = "fog_of_war";
 pub const KOEDEM: &str = "koedem";
 pub const STARTING_TIME: &str = "starting_time";
@@ -92,6 +93,33 @@ const DUCK_CHESS_OFF_ICON: &str = r##"
 const DUCK_CHESS_ON_ICON: &str = r##"
 <svg class="rule-variant-icon" viewBox="0 0 10 10">
  <path transform="matrix(.0978 0 0 .0978 .159 2.07e-7)" d="m61.1 12.8c-9.85-4.7e-5 -17.5 7.01-17.8 16.8-0.217 6.2 4.33 11.5 6.24 14.4-0.252-0.0052-0.504-0.0078-0.756-0.0078-5.22-7.6e-5 -5.85 8.26-19.1 7.68-5.45-1.41-8.76-6.86-13.2-10.4-0.432-0.708-2.76-0.329-3.44 2.71-1 7.01 1.57 18.6 3.39 26.2 3 11.3 15.1 19.3 29.1 19.3 16.4 2.71e-4 29.8-11 29.8-24.6-5.56e-4 -6.51-1.81-12-6.85-17.4 4.47-2.62 6.86-5.02 8.95-9.61l7.62-3.33c1.35-0.187 1.77-1.92 0.662-2.71l-6.94-4.35c-1.47-8.56-8.89-14.8-17.6-14.8z" fill="#d4d400" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.04"/>
+</svg>
+"##;
+
+// Note. `defs` are in `index.html` since they are global.
+// Improvement potential. Store defs nearby, extract them and add to header automatically.
+// Better yet, load SVGs as external files.
+const ATOMIC_CHESS_OFF_ICON: &str = r##"
+<svg class="rule-variant-icon" viewBox="0 0 100 100">
+ <circle cx="50" cy="50" r="10.7" fill="url(#atomic-gr)"/>
+ <g fill="none" stroke="#000">
+  <ellipse cx="50" cy="50" rx="23.1" ry="40.5"/>
+  <ellipse transform="rotate(60)" cx="68.3" cy="-18.3" rx="23.1" ry="40.5"/>
+  <ellipse transform="rotate(-60)" cx="-18.3" cy="68.3" rx="23.1" ry="40.5"/>
+ </g>
+</svg>
+"##;
+const ATOMIC_CHESS_ON_ICON: &str = r##"
+<svg class="rule-variant-icon" viewBox="0 0 100 100">
+ <circle cx="50" cy="50" r="10.7" fill="url(#atomic-gr2)" stroke-width="13.4"/>
+ <g fill="none" stroke="#000" stroke-width="2">
+  <ellipse cx="50" cy="50" rx="23.1" ry="40.5"/>
+  <ellipse transform="rotate(60)" cx="68.3" cy="-18.3" rx="23.1" ry="40.5"/>
+  <ellipse transform="rotate(-60)" cx="-18.3" cy="68.3" rx="23.1" ry="40.5"/>
+ </g>
+ <circle cx="58.3" cy="11.8" r="6.96" fill="url(#atomic-gr3)"/>
+ <circle cx="75.5" cy="58.6" r="6.96" fill="url(#atomic-gr4)"/>
+ <circle cx="12.6" cy="39" r="6.96" fill="url(#atomic-gr5)"/>
 </svg>
 "##;
 
@@ -401,6 +429,17 @@ pub fn duck_chess_tooltip() -> JsResult<Vec<web_sys::Element>> {
         )?])
 }
 
+pub fn atomic_tooltip() -> JsResult<Vec<web_sys::Element>> {
+    Ok(vec![web_document()
+        .create_element("p")?
+        .append_text_i("Atomic chess.")?
+        .append_text(
+            " Every time a piece is captured, it explodes
+            destroying everything in a 3x3 area except pawns.
+            Kings are not allowed to capture pieces.",
+        )?])
+}
+
 pub fn fog_of_war_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
@@ -626,6 +665,14 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
         .to_element()?,
     )?;
     variants_node.append_element(
+        VariantButton::new(ATOMIC_CHESS, vec![
+            VariantButtonState::new("off", "No atomic", ATOMIC_CHESS_OFF_ICON),
+            VariantButtonState::new("on", "Atomic chess", ATOMIC_CHESS_ON_ICON),
+        ])
+        .with_tooltip(combine_elements(atomic_tooltip()?)?)
+        .to_element()?,
+    )?;
+    variants_node.append_element(
         VariantButton::new(FOG_OF_WAR, vec![
             VariantButtonState::new("off", "No fog of war", FOG_OF_WAR_OFF_ICON),
             VariantButtonState::new("on", "Fog of war", FOG_OF_WAR_ON_ICON),
@@ -734,6 +781,7 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
                 Accolade => (ACCOLADE_ON_ICON, accolade_tooltip()?),
                 FischerRandom => (FISCHER_RANDOM_ON_ICON, fischer_random_tooltip()?),
                 DuckChess => (DUCK_CHESS_ON_ICON, duck_chess_tooltip()?),
+                AtomicChess => (ATOMIC_CHESS_ON_ICON, atomic_tooltip()?),
                 FogOfWar => (FOG_OF_WAR_ON_ICON, fog_of_war_tooltip()?),
                 Koedem => (KOEDEM_ON_ICON, koedem_tooltip()?),
             };

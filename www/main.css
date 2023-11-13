@@ -880,6 +880,7 @@ dialog::-webkit-scrollbar-thumb {
   padding: 0.15em 0.2em;
   overflow: hidden;
   font-family: "Open Sans", sans-serif;
+  white-space: nowrap;
 }
 .log-turn-record.wayback-current-turn-active {
   outline: 0.2em solid #00b000;
