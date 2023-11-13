@@ -159,7 +159,8 @@ pub enum BughouseClientEvent {
     SetReady {
         is_ready: bool,
     },
-    Leave,
+    LeaveMatch,
+    LeaveServer,
     SendChatMessage {
         message: OutgoingChatMessage,
     },

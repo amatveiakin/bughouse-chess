@@ -1224,6 +1224,13 @@ dialog button:hover:enabled {
   height: 2em;
   width: 2em;
   border-radius: 0.3em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.square-button-icon {
+  height: 1.2em;
+  width: 1.2em;
 }
 
 dialog select, dialog input {

@@ -135,6 +135,7 @@ const create_unrated_match_button = document.getElementById('create-unrated-matc
 const join_match_button = document.getElementById('join-match-button');
 const jc_match_id = document.getElementById('jc-match-id');
 const jc_confirm_button = document.getElementById('jc-confirm-button');
+const lobby_leave_button = document.getElementById('lobby-leave-button');
 
 const ready_button = document.getElementById('ready-button');
 const resign_button = document.getElementById('resign-button');
@@ -302,6 +303,7 @@ join_match_button.addEventListener('click', on_join_match_submenu);
 menu_create_match_name_page.addEventListener('submit', create_match_as_guest);
 menu_create_match_page.addEventListener('submit', on_create_match_confirm);
 menu_join_match_page.addEventListener('submit', on_join_match_confirm);
+lobby_leave_button.addEventListener('click', leave_match);
 
 for (const button of document.querySelectorAll('.back-button')) {
     button.addEventListener('click', pop_menu_page);
@@ -1571,6 +1573,17 @@ function on_join_match_confirm(event) {
         wasm_client().set_guest_player_name(data.get('player_name'));
         wasm_client().join(data.get('match_id').toUpperCase());
         update();
+    });
+}
+
+function leave_match() {
+    with_error_handling(function() {
+        wasm_client().leave_match();
+        update();
+        const url = new URL(window.location);
+        url.searchParams.delete(SearchParams.match_id);
+        window.history.pushState({}, '', url);
+        reset_menu();
     });
 }
 

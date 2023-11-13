@@ -366,6 +366,7 @@ impl WebClient {
         self.state.request_export(format);
         Ok(())
     }
+    pub fn leave_match(&mut self) { self.state.leave_match(); }
 
     pub fn execute_input(&mut self, input: &str) { self.state.execute_input(input); }
     pub fn clear_ephemeral_chat_items(&mut self) { self.state.clear_ephemeral_chat_items(); }

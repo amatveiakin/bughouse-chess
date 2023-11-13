@@ -593,7 +593,7 @@ fn preturn_auto_cancellation_on_checkmate() {
 
     world.replay_white_checkmates_black(cl1, cl3);
     assert!(world[cl2].my_board().grid()[Coord::E5].is_none());
-    world[cl2].state.leave();
+    world[cl2].state.leave_server();
     world.process_all_events();
 
     let cl2_new = world.new_client();
@@ -658,8 +658,8 @@ fn cold_reconnect_lobby() {
     world.process_all_events();
     assert_eq!(world[cl1].state.mtch().unwrap().participants.len(), 3);
 
-    world[cl2].state.leave();
-    world[cl3].state.leave();
+    world[cl2].state.leave_server();
+    world[cl3].state.leave_server();
     world.process_all_events();
     assert_eq!(world[cl1].state.mtch().unwrap().participants.len(), 1);
 
@@ -712,7 +712,7 @@ fn cold_reconnect_game_active() {
     world[cl3].make_turn("Nf6").unwrap();
     world.process_all_events();
 
-    world[cl3].state.leave();
+    world[cl3].state.leave_server();
     world.process_all_events();
     // Show must go on - the game has started.
     assert!(world[cl1].state.game_state().is_some());
@@ -756,7 +756,7 @@ fn cold_reconnect_game_over_checkmate() {
 
     world[cl4].make_turn("e4").unwrap();
     world.process_all_events();
-    world[cl4].state.leave();
+    world[cl4].state.leave_server();
     world.process_all_events();
 
     world.replay_white_checkmates_black(cl1, cl3);
@@ -777,7 +777,7 @@ fn cold_reconnect_game_over_resignation() {
 
     world[cl4].make_turn("e4").unwrap();
     world.process_all_events();
-    world[cl4].state.leave();
+    world[cl4].state.leave_server();
     world.process_all_events();
 
     world[cl1].state.resign();
@@ -1383,8 +1383,8 @@ fn team_chat_dynamic_teams() {
     assert_eq!(world[cl4].chat_item_text(), [over]);
     assert_eq!(world[cl5].chat_item_text(), [over]);
 
-    world[cl2].state.leave();
-    world[cl3].state.leave();
+    world[cl2].state.leave_server();
+    world[cl3].state.leave_server();
     world.process_all_events();
 
     let cl2_new = world.new_client();
@@ -1450,8 +1450,8 @@ fn team_chat_fixed_teams() {
     assert_eq!(world[cl4].chat_item_text(), [over]);
     assert_eq!(world[cl5].chat_item_text(), [over]);
 
-    world[cl2].state.leave();
-    world[cl3].state.leave();
+    world[cl2].state.leave_server();
+    world[cl3].state.leave_server();
     world.process_all_events();
 
     let cl2_new = world.new_client();

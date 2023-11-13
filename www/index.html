@@ -40,8 +40,6 @@
   <svg width="0" height="0" style="position: absolute">
     <defs id="svg-defs">
       <symbol id="registered-user">
-        <!-- <path id="path" d="m40.489 25.142c7.2751-2.7949 4.5466-13.648-3.1644-12.709-7.711 0.93906-7.7549 12.13-0.021639 13.097l-2.943 17.81-14.189-6.323c5.7204-5.3229-0.9512-14.371-7.7224-10.528-6.7712 3.8429-2.4236 14.21 5.0794 12.028l7.392 25.343 7.644 12.508-7.644 1.352v9.9h50.262v-9.9l-7.742-1.358 7.64-12.5 7.392-25.342c7.5331 2.198 11.904-8.2133 5.1044-12.072-6.8-3.8592-13.497 5.232-7.7474 10.572l-14.189 6.32-2.94-17.81c7.7333-0.96719 7.6893-12.158-0.021639-13.097-7.711-0.93906-10.439 9.914-3.1644 12.709l-9.514 15.558z" fill="#159fea"/>
-        <path d="m37.091 58.232 10.77 10.77 17.195-17.195" fill="none" stroke="#fff" stroke-width="7"/> -->
         <path id="path" d="m4.047 2.5141a0.66 0.66 0 1 0-0.3186 0.0388l-0.2943 2.381-1.4189-1.2323a0.6575 0.6575 0 1 0-0.2643 0.15l0.7392 2.5343 0.7644 1.2508-0.7644 0.1352v0.99h5.0262v-0.99l-0.7742-0.1358 0.764-1.25 0.7392-2.5342a0.66 0.66 0 1 0-0.2643-0.15l-1.4189 1.232-0.294-2.381a0.66 0.66 0 1 0-0.3186-0.0388l-0.9514 2.1558z" stroke-width=".1"/>
       </symbol>
 
@@ -661,8 +659,11 @@
     <div id="menu-lobby-page" class="menu-page">
       <div class="flex-row-full">
         <div id="lobby-match"><span id="lobby-match-caption"></span></div>
-        <!-- TODO: Allow to leave match (don't forget to send the message to the server) -->
-        <!-- <button type="button" class="back-button" title="Go back">Leave</button> -->
+        <button id="lobby-leave-button" type="button" class="square-button" title="Leave match">
+          <svg class="square-button-icon" viewBox="0 0 100 100">
+            <path d="m80.2 88.8q3.56 0 6.1-2.54 2.54-2.54 2.54-6.1v-60.4q0-3.56-2.54-6.1-2.54-2.54-6.1-2.54h-30.2v8.63h30.2v60.4h-30.2v8.63zm-47.5-17.3 5.93-6.26-11-11h35.3v-8.63h-35.3l11-11-5.93-6.26-21.6 21.6z"/>
+          </svg>
+        </button>
       </div>
       <hr>
       <div id="lobby-rules"></div>

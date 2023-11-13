@@ -835,7 +835,8 @@ impl Match {
             BughouseClientEvent::SetReady { is_ready } => {
                 self.process_set_ready(ctx, client_id, now, is_ready)
             }
-            BughouseClientEvent::Leave => self.process_leave(ctx, client_id),
+            BughouseClientEvent::LeaveMatch => self.process_leave_match(ctx, client_id),
+            BughouseClientEvent::LeaveServer => self.process_leave_server(ctx, client_id),
             BughouseClientEvent::SendChatMessage { message } => {
                 self.process_send_chat_message(ctx, client_id, message)
             }
@@ -1197,7 +1198,14 @@ impl Match {
         Ok(())
     }
 
-    fn process_leave(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
+    fn process_leave_match(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
+        ctx.clients[client_id].match_id = None;
+        ctx.clients[client_id].participant_id = None;
+        // Participant will be removed automatically if required.
+        Ok(())
+    }
+
+    fn process_leave_server(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
         if let Some(logging_id) = ctx.clients.remove_client(client_id) {
             info!("Client {} left", logging_id);
         }
@@ -1699,7 +1707,8 @@ fn event_name(event: &IncomingEvent) -> &'static str {
             BughouseClientEvent::CancelPreturn { .. } => "Client_CancelPreturn",
             BughouseClientEvent::Resign => "Client_Resign",
             BughouseClientEvent::SetReady { .. } => "Client_SetReady",
-            BughouseClientEvent::Leave => "Client_Leave",
+            BughouseClientEvent::LeaveMatch => "Client_LeaveMatch",
+            BughouseClientEvent::LeaveServer => "Client_LeaveServer",
             BughouseClientEvent::SendChatMessage { .. } => "Client_SendChatMessage",
             BughouseClientEvent::UpdateChalkDrawing { .. } => "Client_UpdateChalkDrawing",
             BughouseClientEvent::RequestExport { .. } => "Client_RequestExport",

@@ -193,7 +193,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                             if let Some(cmd) = keyboard_input.strip_prefix('/') {
                                 match cmd {
                                     "quit" => {
-                                        client_state.leave();
+                                        client_state.leave_server();
                                         return Ok(());
                                     }
                                     "resign" => {
