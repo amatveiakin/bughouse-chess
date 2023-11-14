@@ -500,7 +500,7 @@ impl WebClient {
                     _ = self.state.make_turn(display_board_idx, turn_input);
                 }
                 Err(CannotCastleDroppedKing) => {
-                    self.state.show_turn_result(Err(TurnError::CastlingPieceHasMoved));
+                    self.state.show_turn_result(Err(TurnError::CannotCastleDroppedKing));
                 }
                 Err(DragIllegal) => {
                     // Ignore: tried to make an illegal move (this is usually checked later, but

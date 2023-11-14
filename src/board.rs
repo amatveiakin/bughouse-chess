@@ -2,6 +2,7 @@
 
 #![allow(unused_parens)]
 
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::rc::Rc;
@@ -705,6 +706,7 @@ pub enum TurnError {
     PathBlocked,
     UnprotectedKing,
     CastlingPieceHasMoved,
+    CannotCastleDroppedKing,
     BadPromotionType,
     MustPromoteHere,
     CannotPromoteHere,
@@ -1605,25 +1607,26 @@ impl Board {
                     if piece.force != force.into() {
                         return Err(TurnError::WrongTurnOrder);
                     }
-                    // Check piece origin for Koedem: only innate king can be castled.
-                    if piece.kind == PieceKind::King && piece.origin == PieceOrigin::Innate {
+                    let first_row = SubjectiveRow::first().to_row(self.shape(), force);
+                    if piece.kind == PieceKind::King
+                        && mv.from.row == first_row
+                        && mv.to.row == first_row
+                    {
                         if let Some(dst_piece) = self.grid[mv.to] {
-                            let first_row = SubjectiveRow::first().to_row(self.shape(), force);
-                            let maybe_is_special_castling = dst_piece.force == force.into()
-                                && dst_piece.kind == PieceKind::Rook
-                                && mv.to.row == first_row;
-                            // Improvement potential. Consider not checking `castling_rights` here:
-                            // turn will be verified later anyway, and `CastlingPieceHasMoved` might
-                            // be a better error to report than `PathBlocked`. Need to be careful
-                            // about Koedem, so that we don't accidentally castle the wrong king.
-                            if maybe_is_special_castling {
-                                let castle_direction =
-                                    self.castling_rights[force].iter().find_map(|(dir, &col)| {
-                                        (col == Some(mv.to.col)).then_some(dir)
-                                    });
-                                if let Some(castle_direction) = castle_direction {
-                                    assert_eq!(mv.from.row, first_row); // implied by having castling rights
+                            if dst_piece.force == force.into() && dst_piece.kind == PieceKind::Rook
+                            {
+                                if piece.origin == PieceOrigin::Innate {
+                                    let castle_direction = match mv.to.col.cmp(&mv.from.col) {
+                                        Ordering::Less => CastleDirection::ASide,
+                                        Ordering::Greater => CastleDirection::HSide,
+                                        Ordering::Equal => {
+                                            return Err(TurnError::ImpossibleTrajectory);
+                                        }
+                                    };
+                                    // Castling rights will be checked later when applying the turn.
                                     return Ok(Turn::Castle(castle_direction));
+                                } else {
+                                    return Err(TurnError::CannotCastleDroppedKing);
                                 }
                             }
                         }

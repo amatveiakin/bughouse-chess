@@ -1109,6 +1109,7 @@ fn turn_error_message(err: TurnError, rules: &ChessRules) -> Option<String> {
         TurnError::PathBlocked => None,
         TurnError::UnprotectedKing => Some("King is unprotected.".to_owned()),
         TurnError::CastlingPieceHasMoved => Some("Cannot castle: piece has moved.".to_owned()),
+        TurnError::CannotCastleDroppedKing => Some("Cannot castle: king was dropped.".to_owned()),
         TurnError::BadPromotionType => {
             Some(format!("Bad promotion type, expected “{}”", promotion()))
         }
