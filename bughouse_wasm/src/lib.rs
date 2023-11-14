@@ -916,6 +916,8 @@ impl WebClient {
         let now = Instant::now();
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now).approximate();
         let game = alt_game.local_game();
+        let wayback_active =
+            BughouseBoard::iter().any(|board_idx| alt_game.wayback(board_idx).active());
         for (board_idx, board) in game.boards() {
             let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
             let board_orientation =
@@ -929,6 +931,7 @@ impl WebClient {
                     clock.difference_for(force, other_clock, game_now),
                     display_board_idx,
                     player_idx,
+                    wayback_active,
                 )?;
             }
         }
@@ -1637,7 +1640,7 @@ fn is_clock_ticking(game: &BughouseGame, participant_id: BughouseParticipant) ->
 
 fn render_clock(
     showing: ClockShowing, diff: ClockDifference, display_board_idx: DisplayBoard,
-    player_idx: DisplayPlayer,
+    player_idx: DisplayPlayer, wayback_active: bool,
 ) -> JsResult<()> {
     let document = web_document();
     let clock_node =
@@ -1677,6 +1680,7 @@ fn render_clock(
     diff_node
         .class_list()
         .toggle_with_force("clock-difference-gt", diff.comparison == Ordering::Greater)?;
+    diff_node.class_list().toggle_with_force("display-none", wayback_active)?;
     diff_node.set_text_content(Some(&diff.ui_string()));
 
     Ok(())
