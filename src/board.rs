@@ -1605,12 +1605,17 @@ impl Board {
                     if piece.force != force.into() {
                         return Err(TurnError::WrongTurnOrder);
                     }
-                    if piece.kind == PieceKind::King {
+                    // Check piece origin for Koedem: only innate king can be castled.
+                    if piece.kind == PieceKind::King && piece.origin == PieceOrigin::Innate {
                         if let Some(dst_piece) = self.grid[mv.to] {
                             let first_row = SubjectiveRow::first().to_row(self.shape(), force);
                             let maybe_is_special_castling = dst_piece.force == force.into()
                                 && dst_piece.kind == PieceKind::Rook
                                 && mv.to.row == first_row;
+                            // Improvement potential. Consider not checking `castling_rights` here:
+                            // turn will be verified later anyway, and `CastlingPieceHasMoved` might
+                            // be a better error to report than `PathBlocked`. Need to be careful
+                            // about Koedem, so that we don't accidentally castle the wrong king.
                             if maybe_is_special_castling {
                                 let castle_direction =
                                     self.castling_rights[force].iter().find_map(|(dir, &col)| {
