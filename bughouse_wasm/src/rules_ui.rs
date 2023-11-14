@@ -8,6 +8,7 @@ use itertools::Itertools;
 use strum::IntoEnumIterator;
 
 use crate::bughouse_prelude::*;
+use crate::rust_error;
 use crate::web_document::web_document;
 use crate::web_element_ext::WebElementExt;
 use crate::web_error_handling::JsResult;
@@ -362,22 +363,6 @@ pub fn combine_elements(
     Ok(parent_node)
 }
 
-fn regicide_reason(rules: &ChessRules) -> Option<String> {
-    let variants = rules.regicide_reason();
-    let prefix = match variants.len() {
-        0 => {
-            return None;
-        }
-        1 => "chess variant: ",
-        _ => "chess variants: ",
-    };
-    Some(format!(
-        "{}{}",
-        prefix,
-        variants.iter().map(|v| v.to_human_readable()).join(", ")
-    ))
-}
-
 pub fn accolade_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
@@ -589,6 +574,12 @@ pub fn regicide_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
     ])
 }
 pub fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Element>> {
+    let variants = rules.regicide_reason();
+    let prefix = match variants.len() {
+        0 => return Err(rust_error!("Regicide is on, but regicide reason list is empty")),
+        1 => "this chess variant: ",
+        _ => "these chess variants: ",
+    };
     Ok(vec![
         web_document().create_element("p")?.append_text_i("Regicide.")?.append_text(
             " Capture opponent's king in order to win the game.
@@ -596,8 +587,9 @@ pub fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::El
             Attacking the king does not prevent castling.",
         )?,
         web_document().create_element("p")?.append_text(&format!(
-            "This option is enabled because of these {}.",
-            regicide_reason(rules).unwrap()
+            "This option is enabled because of {}{}.",
+            prefix,
+            variants.iter().map(|v| v.to_human_readable()).join(", ")
         ))?,
     ])
 }
