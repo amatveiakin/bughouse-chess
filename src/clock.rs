@@ -224,18 +224,17 @@ impl ClockDifference {
 
 impl From<Duration> for TimeBreakdown {
     fn from(time: Duration) -> Self {
-        // Get duration in the highest possible precision. It's important to round the time up, so
-        // that we never show "0.00" for a player who has not lost by flag. Also in the beginning of
-        // the game rounding up ensures that first tick happens one second after the game starts
-        // rather than immediately.
+        // Always round the time up, so that we never show "0.00" for a player who has not lost by
+        // flag. Also in the beginning of the game rounding up ensures that the first tick happens
+        // one second after the game starts rather than immediately, which seems nice (although not
+        // as important).
         const NANOS_PER_SEC: u128 = 1_000_000_000;
         const NANOS_PER_DECI: u128 = NANOS_PER_SEC / 10;
         let nanos = time.as_nanos();
-        let s_floor = nanos / NANOS_PER_SEC;
-        let low_time = s_floor < 20;
-        if low_time {
-            let seconds = s_floor.try_into().unwrap();
-            let deciseconds = (nanos.div_ceil(NANOS_PER_DECI) % 10).try_into().unwrap();
+        let ds_ceil = nanos.div_ceil(NANOS_PER_DECI);
+        if ds_ceil < 200 {
+            let seconds = (ds_ceil / 10).try_into().unwrap();
+            let deciseconds = (ds_ceil % 10).try_into().unwrap();
             TimeBreakdown::LowTime { seconds, deciseconds }
         } else {
             let s_ceil = nanos.div_ceil(NANOS_PER_SEC);
@@ -251,12 +250,12 @@ impl From<Duration> for TimeDifferenceBreakdown {
         const NANOS_PER_SEC: u128 = 1_000_000_000;
         const NANOS_PER_DECI: u128 = NANOS_PER_SEC / 10;
         let nanos = time.as_nanos();
-        let s_floor = nanos / NANOS_PER_SEC;
-        // Ceil whole seconds for consistency with `TimeBreakdown`.
+        // Ceil for consistency with `TimeBreakdown`.
+        let ds_ceil = nanos.div_ceil(NANOS_PER_DECI);
         let s_ceil = nanos.div_ceil(NANOS_PER_SEC);
-        if s_floor < 10 {
-            let seconds = s_floor.try_into().unwrap();
-            let deciseconds = (nanos.div_ceil(NANOS_PER_DECI) % 10).try_into().unwrap();
+        if ds_ceil < 100 {
+            let seconds = (ds_ceil / 10).try_into().unwrap();
+            let deciseconds = (ds_ceil % 10).try_into().unwrap();
             TimeDifferenceBreakdown::Subseconds { seconds, deciseconds }
         } else if s_ceil < 60 {
             let seconds = s_ceil.try_into().unwrap();
@@ -386,5 +385,60 @@ impl Clock {
             self.remaining_time[prev_force] = remaining;
         }
         self.turn_state = None;
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn time_from_nanos(nanos: u64) -> TimeBreakdown { Duration::from_nanos(nanos).into() }
+    fn diff_from_nanos(nanos: u64) -> TimeDifferenceBreakdown { Duration::from_nanos(nanos).into() }
+
+    #[test]
+    fn time_breakdown() {
+        use TimeBreakdown::*;
+        assert_eq!(time_from_nanos(0), LowTime { seconds: 0, deciseconds: 0 });
+        assert_eq!(time_from_nanos(1), LowTime { seconds: 0, deciseconds: 1 });
+        assert_eq!(time_from_nanos(100_000_000), LowTime { seconds: 0, deciseconds: 1 });
+        assert_eq!(time_from_nanos(100_000_001), LowTime { seconds: 0, deciseconds: 2 });
+        assert_eq!(time_from_nanos(900_000_000), LowTime { seconds: 0, deciseconds: 9 });
+        assert_eq!(time_from_nanos(900_000_001), LowTime { seconds: 1, deciseconds: 0 });
+        assert_eq!(time_from_nanos(1_000_000_000), LowTime { seconds: 1, deciseconds: 0 });
+        assert_eq!(time_from_nanos(1_000_000_001), LowTime { seconds: 1, deciseconds: 1 });
+        assert_eq!(time_from_nanos(19_900_000_000), LowTime { seconds: 19, deciseconds: 9 });
+        assert_eq!(time_from_nanos(19_900_000_001), NormalTime { minutes: 0, seconds: 20 });
+        assert_eq!(time_from_nanos(20_000_000_000), NormalTime { minutes: 0, seconds: 20 });
+        assert_eq!(time_from_nanos(20_000_000_001), NormalTime { minutes: 0, seconds: 21 });
+        assert_eq!(time_from_nanos(59_000_000_000), NormalTime { minutes: 0, seconds: 59 });
+        assert_eq!(time_from_nanos(59_000_000_001), NormalTime { minutes: 1, seconds: 0 });
+        assert_eq!(time_from_nanos(60_000_000_000), NormalTime { minutes: 1, seconds: 0 });
+        assert_eq!(time_from_nanos(60_000_000_001), NormalTime { minutes: 1, seconds: 1 });
+        assert_eq!(time_from_nanos(119_000_000_000), NormalTime { minutes: 1, seconds: 59 });
+        assert_eq!(time_from_nanos(119_000_000_001), NormalTime { minutes: 2, seconds: 0 });
+    }
+
+    #[test]
+    fn time_difference_breakdown() {
+        use TimeDifferenceBreakdown::*;
+        assert_eq!(diff_from_nanos(0), Subseconds { seconds: 0, deciseconds: 0 });
+        assert_eq!(diff_from_nanos(1), Subseconds { seconds: 0, deciseconds: 1 });
+        assert_eq!(diff_from_nanos(100_000_000), Subseconds { seconds: 0, deciseconds: 1 });
+        assert_eq!(diff_from_nanos(100_000_001), Subseconds { seconds: 0, deciseconds: 2 });
+        assert_eq!(diff_from_nanos(900_000_000), Subseconds { seconds: 0, deciseconds: 9 });
+        assert_eq!(diff_from_nanos(900_000_001), Subseconds { seconds: 1, deciseconds: 0 });
+        assert_eq!(diff_from_nanos(1_000_000_000), Subseconds { seconds: 1, deciseconds: 0 });
+        assert_eq!(diff_from_nanos(1_000_000_001), Subseconds { seconds: 1, deciseconds: 1 });
+        assert_eq!(diff_from_nanos(2_000_000_000), Subseconds { seconds: 2, deciseconds: 0 });
+        assert_eq!(diff_from_nanos(2_000_000_001), Subseconds { seconds: 2, deciseconds: 1 });
+        assert_eq!(diff_from_nanos(9_900_000_000), Subseconds { seconds: 9, deciseconds: 9 });
+        assert_eq!(diff_from_nanos(9_900_000_001), Seconds { seconds: 10 });
+        assert_eq!(diff_from_nanos(59_000_000_000), Seconds { seconds: 59 });
+        assert_eq!(diff_from_nanos(59_000_000_001), Minutes { minutes: 1, seconds: 0 });
+        assert_eq!(diff_from_nanos(60_000_000_000), Minutes { minutes: 1, seconds: 0 });
+        assert_eq!(diff_from_nanos(60_000_000_001), Minutes { minutes: 1, seconds: 1 });
+        assert_eq!(diff_from_nanos(119_000_000_000), Minutes { minutes: 1, seconds: 59 });
+        assert_eq!(diff_from_nanos(119_000_000_001), Minutes { minutes: 2, seconds: 0 });
     }
 }
