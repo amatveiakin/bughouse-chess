@@ -894,6 +894,8 @@ impl Board {
         }
     }
 
+    pub fn reset_threefold_repetition_draw(&mut self) { self.position_count.clear(); }
+
     pub fn start_clock(&mut self, now: GameInstant) {
         if !self.clock.is_active() {
             self.clock.new_turn(self.active_force, now);

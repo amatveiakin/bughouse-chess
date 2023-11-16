@@ -195,7 +195,7 @@ impl ClockShowing {
                 format!("{:02}{}{:02}", minutes, separator(":"), seconds)
             }
             TimeBreakdown::LowTime { seconds, deciseconds } => {
-                format!(" {:02}{}{}", seconds, separator("."), deciseconds)
+                format!("{:02}{}{} ", seconds, separator("."), deciseconds)
             }
         }
     }
@@ -301,13 +301,14 @@ impl Clock {
     }
     // Effectively `time_left` with the opposite sign. `Some` only when `time_left` is zero.
     pub fn time_excess(&self, force: Force, now: GameInstant) -> Option<Duration> {
-        let ret = self.remaining_time[force];
         if let Some((current_force, current_start)) = self.turn_state {
             if force == current_force {
-                return now.duration_since(current_start).checked_sub(ret);
+                return now.duration_since(current_start).checked_sub(self.remaining_time[force]);
             }
+        } else if self.remaining_time[force].is_zero() {
+            return Some(Duration::ZERO);
         }
-        Some(ret)
+        None
     }
 
     pub fn showing_for(&self, force: Force, now: GameInstant) -> ClockShowing {

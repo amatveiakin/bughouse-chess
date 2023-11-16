@@ -268,10 +268,7 @@ mod tests {
     use super::*;
     use crate::force::Force;
     use crate::rules::{ChessRules, MatchRules};
-
-    // In theory random tests verify statistical properties that should always hold, but let's fix
-    // the seed to avoid sporadic failures.
-    fn deterministic_rng() -> impl Rng { rand::rngs::StdRng::from_seed([0; 32]) }
+    use crate::test_util::deterministic_rng;
 
     type Participants = HashMap<String, Participant>;
 

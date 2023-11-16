@@ -1,7 +1,10 @@
 mod common;
 
+use std::cmp::Ordering;
+use std::time::Duration;
+
 use bughouse_chess::board::{DrawReason, TurnError, TurnInput, TurnMode, VictoryReason};
-use bughouse_chess::clock::GameInstant;
+use bughouse_chess::clock::{ClockShowing, GameInstant, TimeBreakdown, TimeDifferenceBreakdown};
 use bughouse_chess::coord::Coord;
 use bughouse_chess::force::Force;
 use bughouse_chess::game::{BughouseBoard, BughouseGame, BughouseGameStatus};
@@ -11,7 +14,9 @@ use bughouse_chess::player::Team;
 use bughouse_chess::rules::{ChessRules, FairyPieces, MatchRules, Promotion, Rules};
 use bughouse_chess::test_util::*;
 use common::*;
+use enum_map::EnumMap;
 use itertools::Itertools;
+use rand::Rng;
 use strum::IntoEnumIterator;
 
 
@@ -77,6 +82,38 @@ fn replay_log_symmetric(game: &mut BughouseGame, log: &str) -> Result<(), TurnEr
         game.try_turn(BughouseBoard::B, &turn_input, TurnMode::Normal, now)?;
     }
     Ok(())
+}
+
+// Rust-upgrade: use Duration::abs_diff (https://github.com/rust-lang/rust/pull/117619).
+fn duration_abs_diff(a: Duration, b: Duration) -> Duration {
+    match a.cmp(&b) {
+        Ordering::Less => b - a,
+        Ordering::Equal => Duration::ZERO,
+        Ordering::Greater => a - b,
+    }
+}
+
+fn time_breakdown_to_duration(time_breakdown: TimeBreakdown) -> Duration {
+    match time_breakdown {
+        TimeBreakdown::NormalTime { minutes, seconds } => {
+            Duration::from_secs((minutes * 60 + seconds).into())
+        }
+        TimeBreakdown::LowTime { seconds, deciseconds } => {
+            Duration::from_millis((seconds * 1000 + deciseconds * 100).into())
+        }
+    }
+}
+
+fn time_difference_breakdown_to_duration(time_breakdown: TimeDifferenceBreakdown) -> Duration {
+    match time_breakdown {
+        TimeDifferenceBreakdown::Minutes { minutes, seconds } => {
+            Duration::from_secs((minutes * 60 + seconds).into())
+        }
+        TimeDifferenceBreakdown::Seconds { seconds } => Duration::from_secs(seconds.into()),
+        TimeDifferenceBreakdown::Subseconds { seconds, deciseconds } => {
+            Duration::from_millis((seconds * 1000 + deciseconds * 100).into())
+        }
+    }
 }
 
 #[test]
@@ -478,4 +515,128 @@ fn atomic_explosions() {
         .into_iter()
         .collect()
     );
+}
+
+// Unfortunately we cannot mock the boards, so the test has to pay the full price of executing the
+// turns. Which does serve as a limiting factor since we are only able to do about 50k turns per
+// second in debug mode at the time of writing. I considered instantiating two clocks manually, but
+// this reduces the quality of the test since there is some non-trivial clock-related logic in the
+// game class. Notably `BughouseGame::test_flag` tries to stop clock at a very precise moment to
+// avoid time overflows.
+#[test]
+fn clock_showings_match() {
+    let turn_white_1 = drag_move!(B1 -> C3);
+    let turn_white_2 = drag_move!(C3 -> B1);
+    let turn_black_1 = drag_move!(B8 -> C6);
+    let turn_black_2 = drag_move!(C6 -> B8);
+    let force_separator = |showing: ClockShowing| -> ClockShowing {
+        ClockShowing { show_separator: true, ..showing }
+    };
+    let mut rng = deterministic_rng();
+    const NUM_ITERATIONS: usize = 100;
+    for _ in 0..NUM_ITERATIONS {
+        use BughouseBoard::*;
+        use Force::*;
+        let mut rules = default_rules();
+        // Should be enough to cover all time display styles.
+        rules.chess_rules.time_control.starting_time = Duration::from_secs(120);
+        // Enables regicide: check/mate evaluations are irrelevant and just slow thing down.
+        rules.chess_rules.fog_of_war = true;
+        let mut game = BughouseGame::new(rules, &sample_bughouse_players());
+        let mut t = Duration::ZERO;
+        loop {
+            // Increase the probability of small time increments.
+            let dt = if rng.gen() {
+                Duration::from_millis(rng.gen_range(0..1000))
+            } else {
+                Duration::from_millis(rng.gen_range(1000..20_000))
+            };
+            t += dt;
+            let game_t = GameInstant::from_duration(t);
+            let board = if rng.gen() { A } else { B };
+            game.test_flag(game_t);
+            if !game.is_active() {
+                // Improvement potential. Test that time diff matches the time diagonally from the
+                // player who ran out of time.
+                break;
+            }
+
+            let board_total: EnumMap<_, _> = BughouseBoard::iter()
+                .map(|b| {
+                    (
+                        b,
+                        Force::iter()
+                            .map(|f| {
+                                time_breakdown_to_duration(
+                                    game.board(b).clock().showing_for(f, game_t).time_breakdown,
+                                )
+                            })
+                            .sum::<Duration>(),
+                    )
+                })
+                .collect();
+            {
+                let showing_a_white = game.board(A).clock().showing_for(White, game_t);
+                let showing_a_black = game.board(A).clock().showing_for(Black, game_t);
+                let showing_b_white = game.board(B).clock().showing_for(White, game_t);
+                let showing_b_black = game.board(B).clock().showing_for(Black, game_t);
+                let threshold =
+                    if matches!(showing_a_white.time_breakdown, TimeBreakdown::LowTime { .. })
+                        && matches!(showing_a_black.time_breakdown, TimeBreakdown::LowTime { .. })
+                        && matches!(showing_b_white.time_breakdown, TimeBreakdown::LowTime { .. })
+                        && matches!(showing_b_black.time_breakdown, TimeBreakdown::LowTime { .. })
+                    {
+                        Duration::from_millis(100)
+                    } else {
+                        Duration::from_secs(2)
+                    };
+                assert!(
+                    duration_abs_diff(board_total[A], board_total[B]) <= threshold,
+                    "\n{}   {}\n{}   {}\n",
+                    force_separator(showing_a_black).ui_string(),
+                    force_separator(showing_b_white).ui_string(),
+                    force_separator(showing_a_white).ui_string(),
+                    force_separator(showing_b_black).ui_string(),
+                );
+            }
+
+            let clock_a = game.board(A).clock();
+            let clock_b = game.board(B).clock();
+            for force in Force::iter() {
+                let diff = clock_a.difference_for(force, clock_b, game_t);
+                let showing_a = clock_a.showing_for(force, game_t);
+                let showing_b = clock_b.showing_for(force, game_t);
+                let diff_duration = time_difference_breakdown_to_duration(diff.time_breakdown);
+                let expected_diff_duration = duration_abs_diff(
+                    time_breakdown_to_duration(showing_a.time_breakdown),
+                    time_breakdown_to_duration(showing_b.time_breakdown),
+                );
+                let threshold =
+                    if matches!(diff.time_breakdown, TimeDifferenceBreakdown::Subseconds { .. })
+                        && matches!(showing_a.time_breakdown, TimeBreakdown::LowTime { .. })
+                        && matches!(showing_b.time_breakdown, TimeBreakdown::LowTime { .. })
+                    {
+                        Duration::from_millis(100)
+                    } else {
+                        Duration::from_secs(1)
+                    };
+                assert!(
+                    duration_abs_diff(diff_duration, expected_diff_duration) <= threshold,
+                    "{} - {}  vs  {}",
+                    force_separator(showing_a).ui_string(),
+                    force_separator(showing_b).ui_string(),
+                    diff.ui_string()
+                );
+            }
+
+            let (turn_1, turn_2) = match game.board(board).active_force() {
+                Force::White => (&turn_white_1, &turn_white_2),
+                Force::Black => (&turn_black_1, &turn_black_2),
+            };
+            if game.try_turn(board, turn_1, TurnMode::Normal, game_t).is_err() {
+                game.try_turn(board, turn_2, TurnMode::Normal, game_t).unwrap();
+            }
+            game.board_mut(board).reset_threefold_repetition_draw();
+        }
+    }
 }
