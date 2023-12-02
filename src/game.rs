@@ -42,6 +42,7 @@ use crate::coord::BoardShape;
 use crate::force::Force;
 use crate::piece::PieceKind;
 use crate::player::Team;
+use crate::role::Role;
 use crate::rules::{BughouseRules, ChessRules, MatchRules, Rules};
 use crate::starter::{generate_starting_position, EffectiveStartingPosition};
 
@@ -105,17 +106,17 @@ pub struct ChessGame {
 }
 
 impl ChessGame {
-    pub fn new(rules: Rules, player_names: EnumMap<Force, String>) -> Self {
+    pub fn new(rules: Rules, role: Role, player_names: EnumMap<Force, String>) -> Self {
         let starting_position = generate_starting_position(&rules.chess_rules);
-        Self::new_with_starting_position(rules, starting_position, player_names)
+        Self::new_with_starting_position(rules, role, starting_position, player_names)
     }
 
     pub fn new_with_starting_position(
-        rules: Rules, starting_position: EffectiveStartingPosition,
+        rules: Rules, role: Role, starting_position: EffectiveStartingPosition,
         player_names: EnumMap<Force, String>,
     ) -> Self {
         assert!(rules.bughouse_rules().is_none());
-        let board = Board::new(Rc::new(rules), player_names, &starting_position);
+        let board = Board::new(Rc::new(rules), role, player_names, &starting_position);
         ChessGame { starting_position, board }
     }
 
@@ -375,6 +376,7 @@ impl BughouseParticipant {
 #[derive(Clone, Debug)]
 pub struct BughouseGame {
     rules: Rc<Rules>,
+    role: Role,
     starting_position: EffectiveStartingPosition,
     boards: EnumMap<BughouseBoard, Board>,
     turn_log: Vec<TurnRecordExpanded>,
@@ -383,33 +385,46 @@ pub struct BughouseGame {
 
 // Improvement potential. Remove mutable access to fields.
 impl BughouseGame {
-    pub fn new(rules: Rules, players: &[PlayerInGame]) -> Self {
+    pub fn new(rules: Rules, role: Role, players: &[PlayerInGame]) -> Self {
         assert!(rules.bughouse_rules().is_some());
         let starting_position = generate_starting_position(&rules.chess_rules);
-        Self::new_with_starting_position(rules, starting_position, players)
+        Self::new_with_starting_position(rules, role, starting_position, players)
     }
 
     pub fn new_with_starting_position(
-        rules: Rules, starting_position: EffectiveStartingPosition, players: &[PlayerInGame],
+        rules: Rules, role: Role, starting_position: EffectiveStartingPosition,
+        players: &[PlayerInGame],
     ) -> Self {
-        Self::new_with_starting_position_and_rules_rc(Rc::new(rules), starting_position, players)
+        Self::new_with_starting_position_and_rules_rc(
+            Rc::new(rules),
+            role,
+            starting_position,
+            players,
+        )
     }
 
     fn new_with_starting_position_and_rules_rc(
-        rules: Rc<Rules>, starting_position: EffectiveStartingPosition, players: &[PlayerInGame],
+        rules: Rc<Rules>, role: Role, starting_position: EffectiveStartingPosition,
+        players: &[PlayerInGame],
     ) -> Self {
         let player_map = make_player_map(players);
         let boards = if let EffectiveStartingPosition::ManualSetup(setup) = &starting_position {
             player_map.map(|board_idx, board_players| {
-                Board::new_from_setup(Rc::clone(&rules), board_players, setup[&board_idx].clone())
+                Board::new_from_setup(
+                    Rc::clone(&rules),
+                    role,
+                    board_players,
+                    setup[&board_idx].clone(),
+                )
             })
         } else {
             player_map.map(|_, board_players| {
-                Board::new(Rc::clone(&rules), board_players, &starting_position)
+                Board::new(Rc::clone(&rules), role, board_players, &starting_position)
             })
         };
         BughouseGame {
             rules,
+            role,
             starting_position,
             boards,
             status: BughouseGameStatus::Active,
@@ -420,6 +435,7 @@ impl BughouseGame {
     pub fn clone_from_start(&self) -> Self {
         Self::new_with_starting_position_and_rules_rc(
             Rc::clone(&self.rules),
+            self.role,
             self.starting_position.clone(),
             &self.players(),
         )
@@ -508,7 +524,7 @@ impl BughouseGame {
         assert_eq!(self.status, Active);
         let now = BughouseBoard::iter()
             .filter_map(|board| self.boards[board].flag_defeat_moment(now))
-            .min_by(|t1, t2| t1.partial_cmp(t2).unwrap());
+            .min();
         let Some(now) = now else {
             return;
         };

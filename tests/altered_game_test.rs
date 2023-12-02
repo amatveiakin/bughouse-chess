@@ -11,6 +11,7 @@ use bughouse_chess::game::{
     BughousePlayer,
 };
 use bughouse_chess::player::Team;
+use bughouse_chess::role::Role;
 use bughouse_chess::rules::{ChessRules, MatchRules, Promotion, Rules};
 use bughouse_chess::test_util::*;
 use common::*;
@@ -37,25 +38,25 @@ fn default_rules() -> Rules {
 
 fn default_game() -> BughouseGame {
     let rules = default_rules();
-    BughouseGame::new(rules, &sample_bughouse_players())
+    BughouseGame::new(rules, Role::Client, &sample_bughouse_players())
 }
 
 fn stealing_promotion_game() -> BughouseGame {
     let mut rules = default_rules();
     rules.bughouse_rules_mut().unwrap().promotion = Promotion::Steal;
-    BughouseGame::new(rules, &sample_bughouse_players())
+    BughouseGame::new(rules, Role::Client, &sample_bughouse_players())
 }
 
 fn duck_chess_game() -> BughouseGame {
     let mut rules = default_rules();
     rules.chess_rules.duck_chess = true;
-    BughouseGame::new(rules, &sample_bughouse_players())
+    BughouseGame::new(rules, Role::Client, &sample_bughouse_players())
 }
 
 fn fog_of_war_bughouse_game() -> BughouseGame {
     let mut rules = default_rules();
     rules.chess_rules.fog_of_war = true;
-    BughouseGame::new(rules, &sample_bughouse_players())
+    BughouseGame::new(rules, Role::Client, &sample_bughouse_players())
 }
 
 macro_rules! turn_highlight {
@@ -395,7 +396,7 @@ fn duck_visible_in_the_fog() {
     let mut rules = default_rules();
     rules.chess_rules.duck_chess = true;
     rules.chess_rules.fog_of_war = true;
-    let game = BughouseGame::new(rules, &sample_bughouse_players());
+    let game = BughouseGame::new(rules, Role::Client, &sample_bughouse_players());
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), game);
     alt_game.apply_remote_turn(envoy!(White A), &alg("e3"), T0).unwrap();
     assert!(alt_game.fog_of_war_area(A).contains(&Coord::D6));

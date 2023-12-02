@@ -42,6 +42,7 @@ pub mod pgn;
 pub mod piece;
 pub mod ping_pong;
 pub mod player;
+pub mod role;
 pub mod rules;
 pub mod scores;
 pub mod server;

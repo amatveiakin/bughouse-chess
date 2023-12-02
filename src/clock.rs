@@ -41,6 +41,8 @@ fn format_duration_to_mss(d: Duration, f: &mut impl fmt::Write) -> fmt::Result {
 }
 
 
+// In all valid cases `Exact` measurement is equivalent to `Approximate`, but `Exact` checks
+// additional invariants that should hold on server and in standalone apps.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum TimeMeasurement {
     Exact,
@@ -48,34 +50,17 @@ pub enum TimeMeasurement {
 }
 
 // Time since game start.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct GameInstant {
     elapsed_since_start: Duration,
-    measurement: TimeMeasurement,
-}
-
-impl PartialOrd for GameInstant {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        use TimeMeasurement::*;
-        match (self.measurement, other.measurement) {
-            (Exact, Exact) => Some(self.elapsed_since_start.cmp(&other.elapsed_since_start)),
-            (Approximate, _) | (_, Approximate) => None,
-        }
-    }
 }
 
 impl GameInstant {
     pub fn from_duration(elapsed_since_start: Duration) -> Self {
-        GameInstant {
-            elapsed_since_start,
-            measurement: TimeMeasurement::Exact,
-        }
+        GameInstant { elapsed_since_start }
     }
     pub fn from_now_game_active(game_start: Instant, now: Instant) -> Self {
-        GameInstant {
-            elapsed_since_start: now - game_start,
-            measurement: TimeMeasurement::Exact,
-        }
+        GameInstant { elapsed_since_start: now - game_start }
     }
     pub fn from_now_game_maybe_active(game_start: Option<Instant>, now: Instant) -> GameInstant {
         match game_start {
@@ -86,7 +71,6 @@ impl GameInstant {
     pub fn from_pair_game_active(pair: WallGameTimePair, now: Instant) -> GameInstant {
         GameInstant {
             elapsed_since_start: (now - pair.world_t) + pair.game_t.elapsed_since_start,
-            measurement: pair.game_t.measurement,
         }
     }
     // TODO: Fix: due to the `None` branch, the users have to call `.approximate()` even in places
@@ -100,42 +84,24 @@ impl GameInstant {
         }
     }
 
-    pub const fn game_start() -> Self {
-        GameInstant {
-            elapsed_since_start: Duration::ZERO,
-            measurement: TimeMeasurement::Exact,
-        }
-    }
+    pub const fn game_start() -> Self { GameInstant { elapsed_since_start: Duration::ZERO } }
     pub fn elapsed_since_start(self) -> Duration { self.elapsed_since_start }
-    pub fn duration_since(self, earlier: GameInstant) -> Duration {
-        use TimeMeasurement::*;
-        match (self.measurement, earlier.measurement) {
-            (Exact, Exact) => {
+    pub fn duration_since(self, earlier: GameInstant, measurement: TimeMeasurement) -> Duration {
+        match measurement {
+            TimeMeasurement::Exact => {
                 self.elapsed_since_start.checked_sub(earlier.elapsed_since_start).unwrap()
             }
-            (Approximate, _) | (_, Approximate) => {
+            TimeMeasurement::Approximate => {
                 self.elapsed_since_start.saturating_sub(earlier.elapsed_since_start)
             }
         }
     }
 
     pub fn checked_sub(self, d: Duration) -> Option<Self> {
-        self.elapsed_since_start.checked_sub(d).map(|elapsed_since_start| GameInstant {
-            elapsed_since_start,
-            measurement: self.measurement,
-        })
+        self.elapsed_since_start
+            .checked_sub(d)
+            .map(|elapsed_since_start| GameInstant { elapsed_since_start })
     }
-
-    pub fn measurement(&self) -> TimeMeasurement { self.measurement }
-    pub fn set_measurement(mut self, m: TimeMeasurement) -> Self {
-        self.measurement = m;
-        self
-    }
-    // Mark as approximate, so that attemps to go back in time wouldn't panic. Could be
-    // used in online clients where local time and server time can be sligtly desynced.
-    // Should not be used on the server side or in offline clients - if you get a crash
-    // without it this is likely a bug.
-    pub fn approximate(self) -> Self { self.set_measurement(TimeMeasurement::Approximate) }
 }
 
 
@@ -271,18 +237,21 @@ impl From<Duration> for TimeDifferenceBreakdown {
 
 #[derive(Clone, Debug)]
 pub struct Clock {
-    turn_state: Option<(Force, GameInstant)>, // force, start time
-    remaining_time: EnumMap<Force, Duration>,
     #[allow(dead_code)]
     control: TimeControl,
+    measurement: TimeMeasurement,
+    turn_state: Option<(Force, GameInstant)>, // force, start time
+    remaining_time: EnumMap<Force, Duration>,
 }
 
 impl Clock {
-    pub fn new(control: TimeControl) -> Self {
+    pub fn new(control: TimeControl, measurement: TimeMeasurement) -> Self {
+        let remaining_time = enum_map! { _ => control.starting_time };
         Self {
-            turn_state: None,
-            remaining_time: enum_map! { _ => control.starting_time },
             control,
+            measurement,
+            turn_state: None,
+            remaining_time,
         }
     }
 
@@ -294,7 +263,7 @@ impl Clock {
         let mut ret = self.remaining_time[force];
         if let Some((current_force, current_start)) = self.turn_state {
             if force == current_force {
-                ret = ret.saturating_sub(now.duration_since(current_start));
+                ret = ret.saturating_sub(now.duration_since(current_start, self.measurement));
             }
         }
         ret
@@ -303,7 +272,9 @@ impl Clock {
     pub fn time_excess(&self, force: Force, now: GameInstant) -> Option<Duration> {
         if let Some((current_force, current_start)) = self.turn_state {
             if force == current_force {
-                return now.duration_since(current_start).checked_sub(self.remaining_time[force]);
+                return now
+                    .duration_since(current_start, self.measurement)
+                    .checked_sub(self.remaining_time[force]);
             }
         } else if self.remaining_time[force].is_zero() {
             return Some(Duration::ZERO);
@@ -368,7 +339,7 @@ impl Clock {
         if let Some((prev_force, _)) = self.turn_state {
             let remaining = self.time_left(prev_force, now);
             self.remaining_time[prev_force] = remaining;
-            match now.measurement {
+            match self.measurement {
                 TimeMeasurement::Exact => {
                     // On the server or in offline game this should always hold true:
                     // otherwise game should've already finished by flag.

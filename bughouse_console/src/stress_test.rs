@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::time::Duration;
 use std::{io, panic};
 
+use bughouse_chess::role::Role;
 use bughouse_chess::test_util::*;
 use instant::Instant;
 use rand::distributions::WeightedIndex;
@@ -126,7 +127,7 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
 }
 
 fn bughouse_game(rules: Rules) -> BughouseGame {
-    BughouseGame::new(rules, &sample_bughouse_players())
+    BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players())
 }
 
 fn random_coord(rng: &mut rand::rngs::ThreadRng, board_shape: BoardShape) -> Coord {

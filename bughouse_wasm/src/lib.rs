@@ -920,7 +920,7 @@ impl WebClient {
             return Ok(());
         };
         let now = Instant::now();
-        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now).approximate();
+        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         let game = alt_game.local_game();
         let wayback_active =
             BughouseBoard::iter().any(|board_idx| alt_game.wayback(board_idx).active());

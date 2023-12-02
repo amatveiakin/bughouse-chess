@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::algebraic::{
     AlgebraicDetails, AlgebraicDrop, AlgebraicMove, AlgebraicPromotionTarget, AlgebraicTurn,
 };
-use crate::clock::{Clock, GameInstant};
+use crate::clock::{Clock, GameInstant, TimeMeasurement};
 use crate::coord::{BoardShape, Col, Coord, Row, SubjectiveRow};
 use crate::force::Force;
 use crate::grid::{Grid, GridForRepetitionDraw, GridItem};
@@ -22,6 +22,7 @@ use crate::piece::{
     accolade_combine_pieces, CastleDirection, PieceForRepetitionDraw, PieceForce, PieceId,
     PieceKind, PieceMovement, PieceOnBoard, PieceOrigin, PieceReservable,
 };
+use crate::role::Role;
 use crate::rules::{
     BughouseRules, ChessRules, DropAggression, FairyPieces, MatchRules, Promotion, Rules,
 };
@@ -784,6 +785,8 @@ impl Reachability {
 #[derive(Clone, Debug)]
 pub struct Board {
     rules: Rc<Rules>,
+    #[allow(dead_code)]
+    role: Role,
     player_names: EnumMap<Force, String>,
     status: ChessGameStatus,
     grid: Grid,
@@ -804,7 +807,7 @@ pub struct Board {
 
 impl Board {
     pub fn new(
-        rules: Rc<Rules>, players: EnumMap<Force, String>,
+        rules: Rc<Rules>, role: Role, players: EnumMap<Force, String>,
         starting_position: &EffectiveStartingPosition,
     ) -> Board {
         let board_shape = rules.chess_rules.board_shape();
@@ -824,15 +827,20 @@ impl Board {
             reserves,
             active_force: Force::White,
         };
-        Self::new_from_setup(rules, players, setup)
+        Self::new_from_setup(rules, role, players, setup)
     }
 
     pub fn new_from_setup(
-        rules: Rc<Rules>, players: EnumMap<Force, String>, setup: BoardSetup,
+        rules: Rc<Rules>, role: Role, players: EnumMap<Force, String>, setup: BoardSetup,
     ) -> Board {
         let time_control = rules.chess_rules.time_control.clone();
+        let time_measurement = match role {
+            Role::ServerOrStandalone => TimeMeasurement::Exact,
+            Role::Client => TimeMeasurement::Approximate,
+        };
         let mut board = Board {
             rules,
+            role,
             player_names: players,
             status: ChessGameStatus::Active,
             grid: setup.grid,
@@ -842,7 +850,7 @@ impl Board {
             reserves: setup.reserves,
             total_drops: 0,
             position_count: HashMap::new(),
-            clock: Clock::new(time_control),
+            clock: Clock::new(time_control, time_measurement),
             active_force: setup.active_force,
             is_duck_turn: enum_map! { _ => false },
         };

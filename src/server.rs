@@ -33,6 +33,7 @@ use crate::lobby::{assign_boards, fix_teams_if_needed, verify_participants, Team
 use crate::pgn::{self, BughouseExportFormat};
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Faction, Participant};
+use crate::role::Role;
 use crate::rules::{Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
 use crate::server_chat::{ChatRecipientExpanded, ServerChat};
@@ -1409,7 +1410,7 @@ impl Match {
             .next_board_assignment
             .take()
             .unwrap_or_else(|| assign_boards(self.participants.iter(), &mut rand::thread_rng()));
-        let game = BughouseGame::new(self.rules.clone(), &players);
+        let game = BughouseGame::new(self.rules.clone(), Role::ServerOrStandalone, &players);
         let game_index = self.match_history.len() as u64;
         self.game_state = Some(GameState {
             game_index,

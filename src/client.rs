@@ -25,6 +25,7 @@ use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::BughouseExportFormat;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Faction, Participant};
+use crate::role::Role;
 use crate::rules::{ChessRules, DropAggression, Promotion, Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
 use crate::session::Session;
@@ -452,7 +453,7 @@ impl ClientState {
         let board_idx = get_board_index(display_board, alt_game.perspective());
         let my_envoy = alt_game.my_id().envoy_for(board_idx).ok_or(TurnError::NotPlayer)?;
         let now = Instant::now();
-        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now).approximate();
+        let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         alt_game.try_local_turn(board_idx, turn_input.clone(), game_now)?;
         self.connection.send(BughouseClientEvent::MakeTurn { board_idx, turn_input });
         self.notable_event_queue.push_back(NotableEvent::TurnMade(my_envoy));
@@ -783,10 +784,11 @@ impl ClientState {
             }
         }
         // This is a new game or a cold reconnect.
-        let time_pair = time.map(|t| WallGameTimePair::new(now, t.approximate()));
+        let time_pair = time.map(|t| WallGameTimePair::new(now, t));
         mtch.scores = Some(scores);
         let game = BughouseGame::new_with_starting_position(
             mtch.rules.clone(),
+            Role::Client,
             starting_position,
             &players,
         );
@@ -815,7 +817,7 @@ impl ClientState {
         }
         for (board_idx, preturn) in preturns.into_iter() {
             let now = Instant::now();
-            let game_now = GameInstant::from_pair_game_maybe_active(time_pair, now).approximate();
+            let game_now = GameInstant::from_pair_game_maybe_active(time_pair, now);
             // Unwrap ok: we just created the `game_state`.
             let alt_game = self.alt_game_mut().unwrap();
             // Unwrap ok: this is a preturn made by this very client before reconnection.
@@ -891,7 +893,7 @@ impl ClientState {
         let now = Instant::now();
         if time_pair.is_none() {
             // Improvement potential. Sync client/server times better; consider NTP.
-            let game_start = GameInstant::game_start().approximate();
+            let game_start = GameInstant::game_start();
             *time_pair = Some(WallGameTimePair::new(now, game_start));
         }
         let turn_record = alt_game.apply_remote_turn(envoy, &turn_input, time).map_err(|err| {

@@ -7,6 +7,7 @@ use bughouse_chess::force::Force;
 use bughouse_chess::game::ChessGame;
 use bughouse_chess::once_cell_regex;
 use bughouse_chess::piece::PieceKind;
+use bughouse_chess::role::Role;
 use bughouse_chess::rules::{ChessRules, MatchRules, Rules, StartingPosition};
 use bughouse_chess::starter::EffectiveStartingPosition;
 use bughouse_chess::test_util::*;
@@ -20,6 +21,7 @@ fn chess_with_rules(chess_rules: ChessRules) -> ChessGame {
             match_rules: MatchRules::unrated(),
             chess_rules,
         },
+        Role::ServerOrStandalone,
         sample_chess_players(),
     )
 }
@@ -41,6 +43,7 @@ fn chess960_from_short_fen(pieces: &str) -> ChessGame {
             match_rules: MatchRules::unrated(),
             chess_rules,
         },
+        Role::ServerOrStandalone,
         starting_position,
         sample_chess_players(),
     )

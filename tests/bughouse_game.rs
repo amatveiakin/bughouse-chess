@@ -11,6 +11,7 @@ use bughouse_chess::game::{BughouseBoard, BughouseGame, BughouseGameStatus};
 use bughouse_chess::once_cell_regex;
 use bughouse_chess::piece::PieceKind;
 use bughouse_chess::player::Team;
+use bughouse_chess::role::Role;
 use bughouse_chess::rules::{ChessRules, FairyPieces, MatchRules, Promotion, Rules};
 use bughouse_chess::test_util::*;
 use common::*;
@@ -31,12 +32,14 @@ fn default_rules() -> Rules {
     }
 }
 
-fn default_game() -> BughouseGame { BughouseGame::new(default_rules(), &sample_bughouse_players()) }
+fn default_game() -> BughouseGame {
+    BughouseGame::new(default_rules(), Role::ServerOrStandalone, &sample_bughouse_players())
+}
 
 fn koedem_game() -> BughouseGame {
     let mut rules = default_rules();
     rules.bughouse_rules_mut().unwrap().koedem = true;
-    BughouseGame::new(rules, &sample_bughouse_players())
+    BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players())
 }
 
 fn make_turn(
@@ -198,7 +201,7 @@ fn threefold_repetition_draw_ignores_reserve() {
 fn discard_promotion() {
     let mut rules = default_rules();
     rules.bughouse_rules_mut().unwrap().promotion = Promotion::Discard;
-    let mut game = BughouseGame::new(rules, &sample_bughouse_players());
+    let mut game = BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());
     replay_log(
         &mut game,
         "
@@ -219,7 +222,7 @@ fn discard_promotion() {
 fn steal_promotion_piece_goes_back_unchanged() {
     let mut rules = default_rules();
     rules.bughouse_rules_mut().unwrap().promotion = Promotion::Steal;
-    let mut game = BughouseGame::new(rules, &sample_bughouse_players());
+    let mut game = BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());
     replay_log(
         &mut game,
         "
@@ -243,7 +246,7 @@ fn steal_promotion_piece_goes_back_unchanged() {
 fn steal_promotion_cannot_expose_opponent_king() {
     let mut rules = default_rules();
     rules.bughouse_rules_mut().unwrap().promotion = Promotion::Steal;
-    let mut game = BughouseGame::new(rules, &sample_bughouse_players());
+    let mut game = BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());
     assert_eq!(
         replay_log(
             &mut game,
@@ -277,7 +280,7 @@ fn steal_promotion_cannot_expose_checked_king() {
         . . . . . . . .     . . . . . . . .
         . . . . K . . .     . . . . . . . k
     ";
-    let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
+    let mut game = parse_ascii_bughouse(rules, Role::ServerOrStandalone, game_str).unwrap();
     assert_eq!(
         game.try_turn(BughouseBoard::A, &alg("a8=Bh2"), TurnMode::Normal, T0),
         Err(TurnError::ExposingKingByStealing)
@@ -298,7 +301,7 @@ fn steal_promotion_cannot_expose_partner_king() {
         . . . . . . . .     . . . . . . . .
         . . . . K . . .     . R . N . k . .
     ";
-    let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
+    let mut game = parse_ascii_bughouse(rules, Role::ServerOrStandalone, game_str).unwrap();
     assert_eq!(
         game.try_turn(BughouseBoard::A, &alg("a8=Ne8"), TurnMode::Normal, T0),
         Err(TurnError::ExposingPartnerKingByStealing)
@@ -323,7 +326,7 @@ fn steal_promotion_cannot_expose_checked_partner_king() {
         . . . . . . . .     . . . . . . . .
         . . . . K . . .     . R . R . k . .
     ";
-    let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
+    let mut game = parse_ascii_bughouse(rules, Role::ServerOrStandalone, game_str).unwrap();
     assert_eq!(
         game.try_turn(BughouseBoard::A, &alg("a8=Re8"), TurnMode::Normal, T0),
         Err(TurnError::ExposingPartnerKingByStealing)
@@ -344,7 +347,7 @@ fn combined_piece_falls_apart_on_capture() {
         . . N . . . . .     . . . . . . . .
         R . . . K . . .     . . . k . . . .
     ";
-    let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
+    let mut game = parse_ascii_bughouse(rules, Role::ServerOrStandalone, game_str).unwrap();
     game.try_turn(BughouseBoard::A, &alg("Na1"), TurnMode::Normal, T0).unwrap();
     game.try_turn(BughouseBoard::A, &alg("Bxa1"), TurnMode::Normal, T0).unwrap();
     assert_eq!(
@@ -368,7 +371,7 @@ fn steal_promotion_preserves_piece_composition() {
         . . N . . . . .     . . . . . . . P
         R . . . K . . .     . . . k . . . .
     ";
-    let mut game = parse_ascii_bughouse(rules, game_str).unwrap();
+    let mut game = parse_ascii_bughouse(rules, Role::ServerOrStandalone, game_str).unwrap();
     game.try_turn(BughouseBoard::A, &alg("Na1"), TurnMode::Normal, T0).unwrap();
     game.try_turn(BughouseBoard::B, &alg("Pa8=Ea1"), TurnMode::Normal, T0).unwrap();
     game.try_turn(BughouseBoard::B, &alg("Bxa8"), TurnMode::Normal, T0).unwrap();
@@ -436,7 +439,7 @@ fn koedem_two_kings_and_a_duck() {
     let mut rules = default_rules();
     rules.chess_rules.duck_chess = true;
     rules.bughouse_rules_mut().unwrap().koedem = true;
-    let mut game = BughouseGame::new(rules, &sample_bughouse_players());
+    let mut game = BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());
     replay_log(
         &mut game,
         "
@@ -481,7 +484,8 @@ fn koedem_two_kings_and_a_duck() {
 fn atomic_explosions() {
     let mut rules = default_rules();
     rules.chess_rules.atomic_chess = true;
-    let mut game = BughouseGame::new(rules.clone(), &sample_bughouse_players());
+    let mut game =
+        BughouseGame::new(rules.clone(), Role::ServerOrStandalone, &sample_bughouse_players());
     replay_log(&mut game, "1A.Nc3 1a.e5  2A.Nd5 2a.f5  3A.Nxc7").unwrap();
     let expected_game_str = "
         r . . . k b n r     R N B K Q B N R
@@ -493,7 +497,8 @@ fn atomic_explosions() {
         P P P P P P P P     p p p p p p p p
         R . B Q K B N R     r n b k q b n r
     ";
-    let expected_game = parse_ascii_bughouse(rules, expected_game_str).unwrap();
+    let expected_game =
+        parse_ascii_bughouse(rules, Role::ServerOrStandalone, expected_game_str).unwrap();
     for board in BughouseBoard::iter() {
         assert_eq!(
             game.board(board).grid().without_ids(),
@@ -542,7 +547,8 @@ fn clock_showings_match() {
         rules.chess_rules.time_control.starting_time = Duration::from_secs(120);
         // Enables regicide: check/mate evaluations are irrelevant and just slow thing down.
         rules.chess_rules.fog_of_war = true;
-        let mut game = BughouseGame::new(rules, &sample_bughouse_players());
+        let mut game =
+            BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());
         let mut t = Duration::ZERO;
         loop {
             // Increase the probability of small time increments.

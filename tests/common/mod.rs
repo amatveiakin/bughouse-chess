@@ -19,6 +19,7 @@ use bughouse_chess::once_cell_regex;
 use bughouse_chess::piece::{
     piece_from_ascii, PieceForce, PieceId, PieceKind, PieceOnBoard, PieceOrigin,
 };
+use bughouse_chess::role::Role;
 use bughouse_chess::rules::Rules;
 use bughouse_chess::starter::{assign_piece_ids, BoardSetup, EffectiveStartingPosition};
 use bughouse_chess::test_util::{sample_bughouse_players, sample_chess_players};
@@ -197,11 +198,11 @@ fn parse_ascii_setup<'a>(
 //
 // For an example, see `parse_ascii_board_opening` test.
 #[allow(dead_code)]
-pub fn parse_ascii_board(rules: Rules, board_str: &str) -> Result<Board, String> {
+pub fn parse_ascii_board(rules: Rules, role: Role, board_str: &str) -> Result<Board, String> {
     let lines = board_str.split('\n').map(|line| line.trim()).filter(|line| !line.is_empty());
     let setup = parse_ascii_setup(&rules, lines, BoardOrientation::Normal)?;
     let players = sample_chess_players();
-    Ok(Board::new_from_setup(Rc::new(rules), players, setup))
+    Ok(Board::new_from_setup(Rc::new(rules), role, players, setup))
 }
 
 // Parses board representation in ASCII format.
@@ -219,7 +220,9 @@ pub fn parse_ascii_board(rules: Rules, board_str: &str) -> Result<Board, String>
 //
 // For an example, see `parse_ascii_bughouse_opening` test.
 #[allow(dead_code)]
-pub fn parse_ascii_bughouse(rules: Rules, game_str: &str) -> Result<BughouseGame, String> {
+pub fn parse_ascii_bughouse(
+    rules: Rules, role: Role, game_str: &str,
+) -> Result<BughouseGame, String> {
     let lots_of_spaces = once_cell_regex!(r" {2,}");
     let (lines_a, lines_b): (Vec<_>, Vec<_>) = game_str
         .split('\n')
@@ -232,7 +235,12 @@ pub fn parse_ascii_bughouse(rules: Rules, game_str: &str) -> Result<BughouseGame
     setup.insert(BughouseBoard::B, parse_ascii_setup(&rules, lines_b, BoardOrientation::Rotated)?);
     let starting_position = EffectiveStartingPosition::ManualSetup(setup);
     let players = sample_bughouse_players();
-    Ok(BughouseGame::new_with_starting_position(rules, starting_position, &players))
+    Ok(BughouseGame::new_with_starting_position(
+        rules,
+        role,
+        starting_position,
+        &players,
+    ))
 }
 
 /*
@@ -284,9 +292,10 @@ mod tests {
             P P P P . P P P
             R N B Q K B N R
         ";
-        let board = parse_ascii_board(rules.clone(), board_str).unwrap();
+        let board = parse_ascii_board(rules.clone(), Role::ServerOrStandalone, board_str).unwrap();
 
-        let mut game_expected = ChessGame::new(rules, sample_chess_players());
+        let mut game_expected =
+            ChessGame::new(rules, Role::ServerOrStandalone, sample_chess_players());
         game_expected.try_turn(&algebraic_turn("e4"), TurnMode::Normal, T0).unwrap();
         game_expected.try_turn(&algebraic_turn("d5"), TurnMode::Normal, T0).unwrap();
         let board_expected = game_expected.board();
@@ -312,9 +321,10 @@ mod tests {
             P P P P . P P P     p p p p p p p p
             R N B Q K B N R     r . b k q b n r
         ";
-        let game = parse_ascii_bughouse(rules.clone(), game_str).unwrap();
+        let game = parse_ascii_bughouse(rules.clone(), Role::ServerOrStandalone, game_str).unwrap();
 
-        let mut game_expected = BughouseGame::new(rules, &sample_bughouse_players());
+        let mut game_expected =
+            BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());
         game_expected.try_turn(A, &algebraic_turn("e4"), TurnMode::Normal, T0).unwrap();
         game_expected.try_turn(A, &algebraic_turn("d5"), TurnMode::Normal, T0).unwrap();
         game_expected.try_turn(B, &algebraic_turn("e3"), TurnMode::Normal, T0).unwrap();
