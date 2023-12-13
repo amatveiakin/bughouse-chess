@@ -29,9 +29,12 @@ use bughouse_chess::rules::{
 use bughouse_chess::server::{ServerInfo, ServerOptions};
 use bughouse_chess::server_helpers::TestServerHelpers;
 use bughouse_chess::session_store::SessionStore;
+use bughouse_chess::utc_time::UtcDateTime;
 use bughouse_chess::{client, pgn, server};
 use common::*;
+use instant::Instant;
 use itertools::Itertools;
+use time::Duration;
 use BughouseBoard::{A, B};
 
 
@@ -64,6 +67,8 @@ fn double_player(name: &str, team: Team) -> PlayerInGame {
 
 
 struct Server {
+    creation_instant: Instant,
+    time_elapsed: Duration,
     clients: Arc<Mutex<server::Clients>>,
     state: server::ServerState,
 }
@@ -87,18 +92,37 @@ impl Server {
             None,
         );
         state.TEST_disable_countdown();
-        Server { clients, state }
+        state.TEST_disable_connection_health_check();
+        Server {
+            creation_instant: Instant::now(),
+            time_elapsed: Duration::ZERO,
+            clients,
+            state,
+        }
     }
+
+    fn set_time(&mut self, time: Duration) { self.time_elapsed = time; }
+    fn current_instant(&self) -> Instant { self.creation_instant + self.time_elapsed }
 
     fn add_client(&mut self, events_tx: mpsc::Sender<BughouseServerEvent>) -> server::ClientId {
         self.clients.lock().unwrap().add_client(events_tx, None, "client".to_owned())
     }
 
     fn send_network_event(&mut self, id: server::ClientId, event: BughouseClientEvent) {
-        self.state.apply_event(server::IncomingEvent::Network(id, event));
+        self.state.apply_event(
+            server::IncomingEvent::Network(id, event),
+            self.current_instant(),
+            UtcDateTime::now(),
+        );
     }
-    #[allow(dead_code)]
-    fn tick(&mut self) { self.state.apply_event(server::IncomingEvent::Tick); }
+    fn tick(&mut self) {
+        println!(">>> Tick");
+        self.state.apply_event(
+            server::IncomingEvent::Tick,
+            self.current_instant(),
+            UtcDateTime::now(),
+        );
+    }
 }
 
 
@@ -229,6 +253,8 @@ struct World {
 
 impl World {
     fn new() -> Self { World { server: Server::new(), clients: vec![] } }
+
+    fn set_time(&mut self, time: Duration) { self.server.set_time(time); }
 
     fn new_match_with_rules(
         &mut self, client_id: TestClientId, player_name: &str, chess_rules: ChessRules,
@@ -1021,6 +1047,30 @@ fn high_latency_stealing() {
     assert!(world[cl2].local_game().board(B).grid()[Coord::C7].is(piece!(White Knight)));
     world.process_all_events();
     assert!(world[cl2].local_game().board(B).grid()[Coord::C7].is_none());
+}
+
+#[test]
+fn time_forfeit() {
+    let mut world = World::new();
+    let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
+
+    world[cl1].make_turn("e4").unwrap();
+    world.process_all_events();
+    world.set_time(Duration::seconds(1));
+    world[cl3].make_turn("e5").unwrap();
+    world.process_all_events();
+    world.set_time(Duration::seconds(3));
+    world[cl1].make_turn("d4").unwrap();
+    world.process_all_events();
+
+    assert!(world[cl1].alt_game().status().is_active());
+    world.set_time(Duration::seconds(1000));
+    world.server.tick();
+    world.process_all_events();
+    assert_eq!(
+        world[cl1].alt_game().status(),
+        BughouseGameStatus::Victory(Team::Red, VictoryReason::Flag)
+    );
 }
 
 #[test]

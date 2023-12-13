@@ -12,8 +12,10 @@ use bughouse_chess::event::BughouseServerEvent;
 use bughouse_chess::server::*;
 use bughouse_chess::server_hooks::ServerHooks;
 use bughouse_chess::session_store::*;
+use bughouse_chess::utc_time::UtcDateTime;
 use futures_io::{AsyncRead, AsyncWrite};
 use futures_util::StreamExt;
+use instant::Instant;
 use log::{error, info, warn};
 use prometheus::Encoder;
 use tide::StatusCode;
@@ -369,7 +371,7 @@ pub fn run(config: ServerConfig) {
         );
 
         for event in rx {
-            server_state.apply_event(event);
+            server_state.apply_event(event, Instant::now(), UtcDateTime::now());
         }
         panic!("Unexpected end of events stream");
     });

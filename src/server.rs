@@ -206,6 +206,7 @@ impl IterableMut<Participant> for Participants {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ClientId(usize);
 
+#[derive(Debug)]
 pub struct Client {
     events_tx: mpsc::Sender<BughouseServerEvent>,
     new_client: bool,
@@ -223,6 +224,7 @@ impl Client {
     }
 }
 
+#[derive(Debug)]
 pub struct Clients {
     map: HashMap<ClientId, Client>,
     next_id: usize,
@@ -341,7 +343,9 @@ struct Context<'a, 'b> {
     info: &'b mut MutexGuard<'a, ServerInfo>,
     helpers: &'a mut dyn ServerHelpers,
     hooks: &'a mut dyn ServerHooks,
+
     disable_countdown: bool,
+    disable_connection_health_check: bool,
 }
 
 struct CoreServerState {
@@ -366,8 +370,9 @@ pub struct ServerState {
     info: Arc<Mutex<ServerInfo>>,
     helpers: Box<dyn ServerHelpers>,
     hooks: Box<dyn ServerHooks>,
-    // TODO: Remove special test paths, use proper mock clock instead.
-    disable_countdown: bool, // for tests
+    // TODO: Remove special test paths, use proper mocks instead.
+    disable_countdown: bool,               // for tests
+    disable_connection_health_check: bool, // for tests
     core: CoreServerState,
 }
 
@@ -384,11 +389,12 @@ impl ServerState {
             helpers,
             hooks: hooks.unwrap_or_else(|| Box::new(NoopServerHooks {})),
             disable_countdown: false,
+            disable_connection_health_check: false,
             core: CoreServerState::new(server_options),
         }
     }
 
-    pub fn apply_event(&mut self, event: IncomingEvent) {
+    pub fn apply_event(&mut self, event: IncomingEvent, now: Instant, utc_now: UtcDateTime) {
         // Lock clients for the entire duration of the function. This means simpler and
         // more predictable event processing, e.g. it gives a guarantee that all broadcasts
         // from a single `apply_event` reach the same set of clients.
@@ -403,14 +409,15 @@ impl ServerState {
         // Improvement potential. Consider adding commonly used things like `now` and `execution`
         // to `Context`.
         let mut ctx = Context {
-            now: Instant::now(),
-            utc_now: UtcDateTime::now(),
+            now,
+            utc_now,
             clients: &mut clients,
             session_store: &mut session_store,
             info: &mut info,
             helpers: self.helpers.as_mut(),
             hooks: self.hooks.as_mut(),
             disable_countdown: self.disable_countdown,
+            disable_connection_health_check: self.disable_connection_health_check,
         };
 
         self.core.apply_event(&mut ctx, event);
@@ -418,6 +425,11 @@ impl ServerState {
 
     #[allow(non_snake_case)]
     pub fn TEST_disable_countdown(&mut self) { self.disable_countdown = true; }
+
+    #[allow(non_snake_case)]
+    pub fn TEST_disable_connection_health_check(&mut self) {
+        self.disable_connection_health_check = true;
+    }
 
     #[allow(non_snake_case)]
     pub fn TEST_override_board_assignment(
@@ -721,6 +733,9 @@ impl CoreServerState {
 
     fn check_client_connections(&mut self, ctx: &mut Context) {
         use PassiveConnectionStatus::*;
+        if ctx.disable_connection_health_check {
+            return;
+        }
         ctx.clients
             .map
             .retain(|_, client| match client.connection_monitor.status(ctx.now) {
