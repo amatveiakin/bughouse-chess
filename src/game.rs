@@ -267,11 +267,29 @@ pub enum PlayerRelation {
 }
 
 impl BughouseEnvoy {
+    pub fn iter() -> impl Iterator<Item = BughouseEnvoy> {
+        BughouseBoard::iter().flat_map(|board_idx| {
+            Force::iter().map(move |force| BughouseEnvoy { board_idx, force })
+        })
+    }
+
     pub fn team(self) -> Team { get_bughouse_team(self.board_idx, self.force) }
     pub fn opponent(self) -> Self {
         BughouseEnvoy {
             board_idx: self.board_idx,
             force: self.force.opponent(),
+        }
+    }
+    pub fn partner(self) -> Self {
+        BughouseEnvoy {
+            board_idx: self.board_idx.other(),
+            force: self.force.opponent(),
+        }
+    }
+    pub fn diagonal(self) -> Self {
+        BughouseEnvoy {
+            board_idx: self.board_idx.other(),
+            force: self.force,
         }
     }
 }
