@@ -2,6 +2,9 @@
 #![feature(let_chains)]
 #![feature(result_option_inspect)]
 #![cfg_attr(feature = "strict", deny(warnings))]
+// Suppress Rust analyzer diagnostics like:
+//   Function `__wasm_bindgen_generated_WebClient_update_state` should have snake_case ...
+#![allow(non_snake_case)]
 
 extern crate console_error_panic_hook;
 extern crate enum_map;
