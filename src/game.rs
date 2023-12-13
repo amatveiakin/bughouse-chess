@@ -535,7 +535,8 @@ impl BughouseGame {
         }
     }
 
-    pub fn test_flag(&mut self, now: GameInstant) {
+    // Returns game over time, if any.
+    pub fn test_flag(&mut self, now: GameInstant) -> Option<GameInstant> {
         use BughouseBoard::*;
         use BughouseGameStatus::*;
         use VictoryReason::Flag;
@@ -543,11 +544,11 @@ impl BughouseGame {
         let now = BughouseBoard::iter()
             .filter_map(|board| self.boards[board].flag_defeat_moment(now))
             .min();
-        let Some(now) = now else {
-            return;
+        let Some(game_over_time) = now else {
+            return None;
         };
-        self.boards[A].test_flag(now);
-        self.boards[B].test_flag(now);
+        self.boards[A].test_flag(game_over_time);
+        self.boards[B].test_flag(game_over_time);
         let status_a = self.game_status_for_board(A);
         let status_b = self.game_status_for_board(B);
         let status = match (status_a, status_b) {
@@ -571,7 +572,8 @@ impl BughouseGame {
             }
             (Draw(_), _) | (_, Draw(_)) => panic!("Unexpected draw in `test_flag`"),
         };
-        self.set_status(status, now);
+        self.set_status(status, game_over_time);
+        Some(game_over_time)
     }
 
     // Should `test_flag` first!

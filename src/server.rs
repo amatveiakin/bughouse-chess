@@ -788,8 +788,8 @@ impl Match {
             return;
         }
         let game_now = GameInstant::from_now_game_active(game_start, ctx.now);
-        game.test_flag(game_now);
-        if !game.is_active() {
+        if let Some(game_over_time) = game.test_flag(game_now) {
+            assert!(!game.is_active());
             let update = update_on_game_over(
                 ctx,
                 self.teaming.unwrap(),
@@ -800,7 +800,7 @@ impl Match {
                 self.scores.as_mut().unwrap(),
                 &mut self.next_board_assignment,
                 &mut self.chat,
-                game_now,
+                game_over_time,
                 game_start_offset_time,
                 game_end,
             );

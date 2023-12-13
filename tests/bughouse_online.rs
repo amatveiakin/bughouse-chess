@@ -13,6 +13,7 @@ use std::{iter, ops};
 use bughouse_chess::altered_game::AlteredGame;
 use bughouse_chess::board::{Board, TurnError, TurnInput, VictoryReason};
 use bughouse_chess::chat::ChatRecipient;
+use bughouse_chess::clock::GameInstant;
 use bughouse_chess::coord::{Coord, SubjectiveRow};
 use bughouse_chess::display::{get_display_board_index, DisplayBoard, Perspective};
 use bughouse_chess::event::{BughouseClientEvent, BughouseServerEvent};
@@ -36,6 +37,7 @@ use instant::Instant;
 use itertools::Itertools;
 use time::Duration;
 use BughouseBoard::{A, B};
+use Force::{Black, White};
 
 
 fn default_chess_rules() -> ChessRules {
@@ -1049,10 +1051,11 @@ fn high_latency_stealing() {
     assert!(world[cl2].local_game().board(B).grid()[Coord::C7].is_none());
 }
 
+// Regression test: don't show "0:00" time left for players who haven't lost on time.
 #[test]
 fn time_forfeit() {
     let mut world = World::new();
-    let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
+    let (_, cl1, _cl2, cl3, cl4) = world.default_clients();
 
     world[cl1].make_turn("e4").unwrap();
     world.process_all_events();
@@ -1063,14 +1066,28 @@ fn time_forfeit() {
     world[cl1].make_turn("d4").unwrap();
     world.process_all_events();
 
+    world.set_time(Duration::seconds(60));
+    world[cl4].make_turn("e4").unwrap();
+    world.process_all_events();
+
     assert!(world[cl1].alt_game().status().is_active());
     world.set_time(Duration::seconds(1000));
     world.server.tick();
     world.process_all_events();
-    assert_eq!(
-        world[cl1].alt_game().status(),
-        BughouseGameStatus::Victory(Team::Red, VictoryReason::Flag)
-    );
+
+    let game = world[cl1].local_game();
+    assert_eq!(game.status(), BughouseGameStatus::Victory(Team::Red, VictoryReason::Flag));
+
+    // GameInstant shouldn't matter when checking clocks for a finished game.
+    // Improvement potential: Factor out clock showing logic to `Client` and check properly.
+    let t = GameInstant::game_start();
+
+    assert!(game.board(A).clock().time_left(Black, t).is_zero());
+
+    // Verify that we've recorded accurate game over time even if flag test was delayed.
+    assert!(!game.board(A).clock().time_left(White, t).is_zero());
+    assert!(!game.board(B).clock().time_left(Black, t).is_zero());
+    assert!(!game.board(B).clock().time_left(White, t).is_zero());
 }
 
 #[test]
