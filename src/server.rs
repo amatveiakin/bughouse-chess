@@ -328,8 +328,14 @@ struct Match {
     game_state: Option<GameState>, // active game or latest game
 }
 
-// TODO: Put `now` and `utc_now` into `Context`.
 struct Context<'a, 'b> {
+    // Use the same timestamps for the entire event processing. Code that has access to `Context`
+    // should not call `Instant::now()` or `UtcDateTime::now()`. Doing so may cause a race
+    // condition. For example: at t1 we check the flag and see that it's ok; at t2 (t2 > t1) we
+    // accept a turn, despite the fact that the game should've been over by t2.
+    now: Instant,
+    utc_now: UtcDateTime,
+
     clients: &'b mut MutexGuard<'a, Clients>,
     session_store: &'b mut MutexGuard<'a, SessionStore>,
     info: &'b mut MutexGuard<'a, ServerInfo>,
@@ -397,6 +403,8 @@ impl ServerState {
         // Improvement potential. Consider adding commonly used things like `now` and `execution`
         // to `Context`.
         let mut ctx = Context {
+            now: Instant::now(),
+            utc_now: UtcDateTime::now(),
             clients: &mut clients,
             session_store: &mut session_store,
             info: &mut info,
@@ -514,29 +522,20 @@ impl CoreServerState {
             .with_label_values(&[event_name(&event)])
             .start_timer();
 
-        // Use the same timestamp for the entire event processing. Other code reachable
-        // from this function should not call `Instant::now()`. Doing so may cause a race
-        // condition: e.g. if we check the flag, see that it's ok and then continue to
-        // write down a turn which, by that time, becomes illegal because player's time
-        // is over.
-        let now = Instant::now();
-
         ctx.clients.welcome_new_clients(&self.welcome_event);
 
         match event {
-            IncomingEvent::Network(client_id, event) => {
-                self.on_client_event(ctx, client_id, now, event)
-            }
-            IncomingEvent::Tick => self.on_tick(ctx, now),
-            IncomingEvent::Terminate => self.on_terminate(ctx, now),
+            IncomingEvent::Network(client_id, event) => self.on_client_event(ctx, client_id, event),
+            IncomingEvent::Tick => self.on_tick(ctx),
+            IncomingEvent::Terminate => self.on_terminate(ctx),
         }
-        ctx.info.num_active_matches = self.num_active_matches(now);
+        ctx.info.num_active_matches = self.num_active_matches(ctx.now);
 
         timer.observe_duration();
     }
 
     fn on_client_event(
-        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, event: BughouseClientEvent,
+        &mut self, ctx: &mut Context, client_id: ClientId, event: BughouseClientEvent,
     ) {
         if !ctx.clients.map.contains_key(&client_id) {
             // TODO: Should there be an exception for `BughouseClientEvent::ReportError`?
@@ -547,7 +546,7 @@ impl CoreServerState {
             return;
         }
 
-        ctx.clients[client_id].connection_monitor.register_incoming(now);
+        ctx.clients[client_id].connection_monitor.register_incoming(ctx.now);
 
         // First, process events that don't require a match.
         match &event {
@@ -574,7 +573,7 @@ impl CoreServerState {
                 }
                 ctx.clients[client_id].match_id = None;
                 ctx.clients[client_id].participant_id = None;
-                let match_id = match self.make_match(now, rules.clone()) {
+                let match_id = match self.make_match(ctx.now, rules.clone()) {
                     Ok(id) => id,
                     Err(err) => {
                         ctx.clients[client_id].send_rejection(err);
@@ -619,27 +618,27 @@ impl CoreServerState {
 
         // Test flags first. Thus we make sure that turns and other actions are
         // not allowed after the time is over.
-        mtch.test_flags(ctx, now);
-        mtch.process_client_event(ctx, client_id, self.execution, now, event);
-        mtch.post_process(ctx, self.execution, now);
+        mtch.test_flags(ctx);
+        mtch.process_client_event(ctx, client_id, self.execution, event);
+        mtch.post_process(ctx, self.execution);
     }
 
-    fn on_tick(&mut self, ctx: &mut Context, now: Instant) {
-        self.gc_old_matches(now);
-        self.check_client_connections(ctx, now);
+    fn on_tick(&mut self, ctx: &mut Context) {
+        self.gc_old_matches(ctx.now);
+        self.check_client_connections(ctx);
         for mtch in self.matches.values_mut() {
-            mtch.test_flags(ctx, now);
-            mtch.post_process(ctx, self.execution, now);
+            mtch.test_flags(ctx);
+            mtch.post_process(ctx, self.execution);
         }
-        if !matches!(self.execution, Execution::Running) && self.num_active_matches(now) == 0 {
+        if !matches!(self.execution, Execution::Running) && self.num_active_matches(ctx.now) == 0 {
             println!("No more active matches left. Shutting down.");
             shutdown();
         }
     }
 
-    pub fn on_terminate(&mut self, ctx: &mut Context, now: Instant) {
+    pub fn on_terminate(&mut self, ctx: &mut Context) {
         const ABORT_INSTRUCTION: &str = "Press Ctrl+C twice within a second to abort immediately.";
-        let num_active_matches = self.num_active_matches(now);
+        let num_active_matches = self.num_active_matches(ctx.now);
         match self.execution {
             Execution::Running => {
                 if num_active_matches == 0 {
@@ -653,8 +652,8 @@ impl CoreServerState {
                         {ABORT_INSTRUCTION}
                     ");
                     self.execution = Execution::ShuttingDown {
-                        shutting_down_since: now,
-                        last_termination_request: now,
+                        shutting_down_since: ctx.now,
+                        last_termination_request: ctx.now,
                     };
                     self.matches.values().for_each(|mtch| {
                         // Immediately notify clients who are still in the lobby: they wouldn't be
@@ -682,13 +681,14 @@ impl CoreServerState {
                 shutting_down_since,
                 ref mut last_termination_request,
             } => {
-                if now.duration_since(*last_termination_request)
+                if ctx.now.duration_since(*last_termination_request)
                     <= DOUBLE_TERMINATION_ABORT_THRESHOLD
                 {
                     println!("Aborting!");
                     shutdown();
                 } else {
-                    let shutdown_duration_sec = now.duration_since(shutting_down_since).as_secs();
+                    let shutdown_duration_sec =
+                        ctx.now.duration_since(shutting_down_since).as_secs();
                     println!(
                         "Shutdown was requested {}s ago. Waiting for {} active matches to finish.\n{}",
                         shutdown_duration_sec,
@@ -696,7 +696,7 @@ impl CoreServerState {
                         ABORT_INSTRUCTION,
                     );
                 }
-                *last_termination_request = now;
+                *last_termination_request = ctx.now;
             }
         }
     }
@@ -719,12 +719,14 @@ impl CoreServerState {
         });
     }
 
-    fn check_client_connections(&mut self, ctx: &mut Context, now: Instant) {
+    fn check_client_connections(&mut self, ctx: &mut Context) {
         use PassiveConnectionStatus::*;
-        ctx.clients.map.retain(|_, client| match client.connection_monitor.status(now) {
-            Healthy | TemporaryLost => true,
-            PermanentlyLost => false,
-        });
+        ctx.clients
+            .map
+            .retain(|_, client| match client.connection_monitor.status(ctx.now) {
+                Healthy | TemporaryLost => true,
+                PermanentlyLost => false,
+            });
     }
 }
 
@@ -751,7 +753,7 @@ impl Match {
         }
     }
 
-    fn test_flags(&mut self, ctx: &mut Context, now: Instant) {
+    fn test_flags(&mut self, ctx: &mut Context) {
         let Some(GameState {
             game_index,
             game_start,
@@ -770,7 +772,7 @@ impl Match {
         if !game.is_active() {
             return;
         }
-        let game_now = GameInstant::from_now_game_active(game_start, now);
+        let game_now = GameInstant::from_now_game_active(game_start, ctx.now);
         game.test_flag(game_now);
         if !game.is_active() {
             let update = update_on_game_over(
@@ -786,7 +788,6 @@ impl Match {
                 game_now,
                 game_start_offset_time,
                 game_end,
-                now,
             );
             self.add_game_updates(ctx, vec![update]);
         }
@@ -806,35 +807,35 @@ impl Match {
     }
 
     fn process_client_event(
-        &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution, now: Instant,
+        &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution,
         event: BughouseClientEvent,
     ) {
         let result = match event {
             BughouseClientEvent::NewMatch { player_name, .. } => {
                 // The match was created earlier.
-                self.join_participant(ctx, client_id, execution, now, player_name, false)
+                self.join_participant(ctx, client_id, execution, player_name, false)
             }
             BughouseClientEvent::Join { match_id: _, player_name } => {
-                self.join_participant(ctx, client_id, execution, now, player_name, false)
+                self.join_participant(ctx, client_id, execution, player_name, false)
             }
             BughouseClientEvent::HotReconnect { match_id: _, player_name } => {
-                self.join_participant(ctx, client_id, execution, now, player_name, true)
+                self.join_participant(ctx, client_id, execution, player_name, true)
             }
             BughouseClientEvent::SetFaction { faction } => {
-                self.process_set_faction(ctx, client_id, now, faction)
+                self.process_set_faction(ctx, client_id, faction)
             }
             BughouseClientEvent::SetTurns { turns } => {
-                self.process_set_turns(ctx, client_id, now, turns)
+                self.process_set_turns(ctx, client_id, turns)
             }
             BughouseClientEvent::MakeTurn { board_idx, turn_input } => {
-                self.process_make_turn(ctx, client_id, now, board_idx, turn_input)
+                self.process_make_turn(ctx, client_id, board_idx, turn_input)
             }
             BughouseClientEvent::CancelPreturn { board_idx } => {
                 self.process_cancel_preturn(ctx, client_id, board_idx)
             }
-            BughouseClientEvent::Resign => self.process_resign(ctx, client_id, now),
+            BughouseClientEvent::Resign => self.process_resign(ctx, client_id),
             BughouseClientEvent::SetReady { is_ready } => {
-                self.process_set_ready(ctx, client_id, now, is_ready)
+                self.process_set_ready(ctx, client_id, is_ready)
             }
             BughouseClientEvent::LeaveMatch => self.process_leave_match(ctx, client_id),
             BughouseClientEvent::LeaveServer => self.process_leave_server(ctx, client_id),
@@ -863,7 +864,7 @@ impl Match {
     }
 
     fn join_participant(
-        &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution, now: Instant,
+        &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution,
         player_name: String, hot_reconnect: bool,
     ) -> EventResult {
         assert!(ctx.clients[client_id].match_id.is_none());
@@ -907,8 +908,10 @@ impl Match {
                     assert_ne!(existing_client_id, client_id);
                     let is_existing_user_registered =
                         self.participants[existing_participant_id].is_registered_user;
-                    let is_existing_user_connection_healthy =
-                        ctx.clients[existing_client_id].connection_monitor.status(now).is_healthy();
+                    let is_existing_user_connection_healthy = ctx.clients[existing_client_id]
+                        .connection_monitor
+                        .status(ctx.now)
+                        .is_healthy();
                     let both_registered = is_registered_user && is_existing_user_registered;
                     let both_guests = !is_registered_user && !is_existing_user_registered;
                     if both_registered
@@ -945,8 +948,8 @@ impl Match {
             ctx.clients[client_id].send(self.make_match_welcome_event());
             // LobbyUpdated should precede GameStarted, because this is how the client gets their
             // team in FixedTeam mode.
-            self.send_lobby_updated(ctx, now);
-            ctx.clients[client_id].send(self.make_game_start_event(now, Some(participant_id)));
+            self.send_lobby_updated(ctx);
+            ctx.clients[client_id].send(self.make_game_start_event(ctx.now, Some(participant_id)));
             self.send_messages(ctx, Some(client_id), self.chat.all_messages());
             let chalkboard = game_state.chalkboard.clone();
             ctx.clients[client_id].send(BughouseServerEvent::ChalkboardUpdated { chalkboard });
@@ -960,8 +963,10 @@ impl Match {
                     assert_ne!(existing_client_id, client_id);
                     let is_existing_user_registered =
                         self.participants[existing_participant_id].is_registered_user;
-                    let is_existing_user_connection_healthy =
-                        ctx.clients[existing_client_id].connection_monitor.status(now).is_healthy();
+                    let is_existing_user_connection_healthy = ctx.clients[existing_client_id]
+                        .connection_monitor
+                        .status(ctx.now)
+                        .is_healthy();
                     if is_registered_user {
                         let rejection = if is_existing_user_registered {
                             BughouseServerRejection::JoinedInAnotherClient // this is us
@@ -1003,13 +1008,13 @@ impl Match {
             });
             ctx.clients[client_id].participant_id = Some(participant_id);
             ctx.clients[client_id].send(self.make_match_welcome_event());
-            self.send_lobby_updated(ctx, now);
+            self.send_lobby_updated(ctx);
             Ok(())
         }
     }
 
     fn process_set_faction(
-        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, faction: Faction,
+        &mut self, ctx: &mut Context, client_id: ClientId, faction: Faction,
     ) -> EventResult {
         let participant_id =
             ctx.clients[client_id].participant_id.ok_or_else(|| unknown_error!())?;
@@ -1017,13 +1022,12 @@ impl Match {
             return Err(unknown_error!());
         }
         self.participants[participant_id].faction = faction;
-        self.send_lobby_updated(ctx, now);
+        self.send_lobby_updated(ctx);
         Ok(())
     }
 
     fn process_set_turns(
-        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
-        turns: Vec<(BughouseBoard, TurnInput)>,
+        &mut self, ctx: &mut Context, client_id: ClientId, turns: Vec<(BughouseBoard, TurnInput)>,
     ) -> EventResult {
         let Some(GameState { ref game, ref mut turn_requests, .. }) = self.game_state else {
             return Err(unknown_error!());
@@ -1035,13 +1039,13 @@ impl Match {
             .ok_or_else(|| unknown_error!())?;
         turn_requests.retain(|r| !player_bughouse_id.plays_for(r.envoy));
         for (board_idx, turn_input) in turns {
-            self.process_make_turn(ctx, client_id, now, board_idx, turn_input)?;
+            self.process_make_turn(ctx, client_id, board_idx, turn_input)?;
         }
         Ok(())
     }
 
     fn process_make_turn(
-        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, board_idx: BughouseBoard,
+        &mut self, ctx: &mut Context, client_id: ClientId, board_idx: BughouseBoard,
         turn_input: TurnInput,
     ) -> EventResult {
         let Some(GameState {
@@ -1075,14 +1079,14 @@ impl Match {
         let mut game_over_update = None;
         // Note. Turn resolution is currently O(N^2) where N is the number of turns in the queue,
         // but this is fine because in practice N is very low.
-        while let Some(turn_event) = resolve_one_turn(now, *game_start, game, turn_requests) {
+        while let Some(turn_event) = resolve_one_turn(ctx.now, *game_start, game, turn_requests) {
             turns.push(turn_event);
             if game_start.is_none() {
-                *game_start = Some(now);
+                *game_start = Some(ctx.now);
                 *game_start_offset_time = Some(time::OffsetDateTime::now_utc());
             }
             if !game.is_active() {
-                let game_now = GameInstant::from_now_game_active(game_start.unwrap(), now);
+                let game_now = GameInstant::from_now_game_active(game_start.unwrap(), ctx.now);
                 game_over_update = Some(update_on_game_over(
                     ctx,
                     self.teaming.unwrap(),
@@ -1096,7 +1100,6 @@ impl Match {
                     game_now,
                     *game_start_offset_time,
                     game_end,
-                    now,
                 ));
                 break;
             }
@@ -1135,9 +1138,7 @@ impl Match {
         Ok(())
     }
 
-    fn process_resign(
-        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant,
-    ) -> EventResult {
+    fn process_resign(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
         let Some(GameState {
             game_index,
             ref mut game,
@@ -1162,7 +1163,7 @@ impl Match {
             player_bughouse_id.team().opponent(),
             VictoryReason::Resignation,
         );
-        let game_now = GameInstant::from_now_game_maybe_active(game_start, now);
+        let game_now = GameInstant::from_now_game_maybe_active(game_start, ctx.now);
         game.set_status(status, game_now);
         let update = update_on_game_over(
             ctx,
@@ -1177,14 +1178,13 @@ impl Match {
             game_now,
             game_start_offset_time,
             game_end,
-            now,
         );
         self.add_game_updates(ctx, vec![update]);
         Ok(())
     }
 
     fn process_set_ready(
-        &mut self, ctx: &mut Context, client_id: ClientId, now: Instant, is_ready: bool,
+        &mut self, ctx: &mut Context, client_id: ClientId, is_ready: bool,
     ) -> EventResult {
         let participant_id =
             ctx.clients[client_id].participant_id.ok_or_else(|| unknown_error!())?;
@@ -1195,7 +1195,7 @@ impl Match {
             }
         }
         self.participants[participant_id].is_ready = is_ready;
-        self.send_lobby_updated(ctx, now);
+        self.send_lobby_updated(ctx);
         Ok(())
     }
 
@@ -1257,10 +1257,9 @@ impl Match {
                 ChatRecipientExpanded::Participants(iter::once(name.clone()).collect())
             }
         };
-        let utc_now = UtcDateTime::now();
         let game_index = self.game_state.as_ref().map(|s| s.game_index);
         self.chat
-            .add(game_index, utc_now, recipient_expanded, ChatMessageBody::Regular {
+            .add(game_index, ctx.utc_now, recipient_expanded, ChatMessageBody::Regular {
                 sender: sender.name.clone(),
                 recipient: message.recipient,
                 text: message.text,
@@ -1304,7 +1303,7 @@ impl Match {
         Ok(())
     }
 
-    fn post_process(&mut self, ctx: &mut Context, execution: Execution, now: Instant) {
+    fn post_process(&mut self, ctx: &mut Context, execution: Execution) {
         let new_chat_messages = fetch_new_chat_messages!(self.chat);
         self.send_messages(ctx, None, new_chat_messages);
 
@@ -1341,7 +1340,7 @@ impl Match {
             true
         });
         if lobby_updated {
-            self.send_lobby_updated(ctx, now);
+            self.send_lobby_updated(ctx);
         }
         if chalkboard_updated {
             let chalkboard = self.game_state.as_ref().unwrap().chalkboard.clone();
@@ -1353,11 +1352,11 @@ impl Match {
         if let Some(first_game_countdown_start) = self.first_game_countdown_since {
             if !can_start_game {
                 self.first_game_countdown_since = None;
-                self.send_lobby_updated(ctx, now);
-            } else if now.duration_since(first_game_countdown_start)
+                self.send_lobby_updated(ctx);
+            } else if ctx.now.duration_since(first_game_countdown_start)
                 >= FIRST_GAME_COUNTDOWN_DURATION
             {
-                self.start_game(ctx, now);
+                self.start_game(ctx);
             }
         } else if can_start_game {
             if !matches!(execution, Execution::Running) {
@@ -1374,27 +1373,27 @@ impl Match {
                     "Players must not be allowed to set is_ready flag while the game is active"
                 );
                 self.match_history.push(game.clone());
-                self.start_game(ctx, now);
+                self.start_game(ctx);
             } else if self.first_game_countdown_since.is_none() {
                 // Show final teams when countdown begins.
                 fix_teams_if_needed(&mut self.participants);
-                self.send_lobby_updated(ctx, now);
+                self.send_lobby_updated(ctx);
 
                 if ctx.disable_countdown {
-                    self.start_game(ctx, now);
+                    self.start_game(ctx);
                 } else {
                     // TODO: Add some way of blocking last-moment faction changes, e.g.:
                     //   - Forbid all changes other than resetting readiness;
                     //   - Allow changes, but restart the count-down;
                     //   - Blizzard-style: allow changes during the first half of the count-down.
-                    self.first_game_countdown_since = Some(now);
-                    self.send_lobby_updated(ctx, now);
+                    self.first_game_countdown_since = Some(ctx.now);
+                    self.send_lobby_updated(ctx);
                 }
             }
         }
     }
 
-    fn start_game(&mut self, ctx: &mut Context, now: Instant) {
+    fn start_game(&mut self, ctx: &mut Context) {
         self.reset_readiness();
 
         // Non-trivial only in the beginning of a match, when the first game starts. Moreover, we've
@@ -1415,7 +1414,7 @@ impl Match {
         self.game_state = Some(GameState {
             game_index,
             game,
-            game_creation: now,
+            game_creation: ctx.now,
             game_start: None,
             game_start_offset_time: None,
             game_end: None,
@@ -1423,8 +1422,8 @@ impl Match {
             turn_requests: Vec::new(),
             chalkboard: Chalkboard::new(),
         });
-        self.broadcast(ctx, &self.make_game_start_event(now, None));
-        self.send_lobby_updated(ctx, now); // update readiness flags
+        self.broadcast(ctx, &self.make_game_start_event(ctx.now, None));
+        self.send_lobby_updated(ctx); // update readiness flags
     }
 
     fn init_scores(&mut self, teaming: Teaming) {
@@ -1478,9 +1477,9 @@ impl Match {
         }
     }
 
-    fn send_lobby_updated(&self, ctx: &mut Context, now: Instant) {
+    fn send_lobby_updated(&self, ctx: &mut Context) {
         let participants = self.participants.iter().cloned().collect();
-        let countdown_elapsed = self.first_game_countdown_since.map(|t| now.duration_since(t));
+        let countdown_elapsed = self.first_game_countdown_since.map(|t| ctx.now.duration_since(t));
         self.broadcast(ctx, &BughouseServerEvent::LobbyUpdated { participants, countdown_elapsed });
     }
 
@@ -1597,10 +1596,10 @@ fn update_on_game_over(
     turn_requests: &mut Vec<TurnRequest>, participants: &mut Participants, scores: &mut Scores,
     next_board_assignment: &mut Option<Vec<PlayerInGame>>, chat: &mut ServerChat,
     game_now: GameInstant, game_start_offset_time: Option<time::OffsetDateTime>,
-    game_end: &mut Option<Instant>, now: Instant,
+    game_end: &mut Option<Instant>,
 ) -> GameUpdate {
     assert!(game_end.is_none());
-    *game_end = Some(now);
+    *game_end = Some(ctx.now);
     turn_requests.clear();
     let team_scores = match game.status() {
         BughouseGameStatus::Active => {
@@ -1642,10 +1641,9 @@ fn update_on_game_over(
     let next_players = assign_boards(participants.iter(), &mut rand::thread_rng());
     *next_board_assignment = Some(next_players.clone());
 
-    let utc_now = UtcDateTime::now();
     chat.add(
         Some(game_index),
-        utc_now,
+        ctx.utc_now,
         ChatRecipientExpanded::All,
         ChatMessageBody::GameOver { outcome: game.outcome() },
     );
@@ -1654,7 +1652,7 @@ fn update_on_game_over(
     if next_players.len() < total_players || teaming == Teaming::DynamicTeams {
         chat.add(
             Some(game_index),
-            utc_now,
+            ctx.utc_now,
             ChatRecipientExpanded::All,
             ChatMessageBody::NextGamePlayers { players: next_players },
         );
