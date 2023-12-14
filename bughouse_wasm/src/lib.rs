@@ -916,8 +916,8 @@ impl WebClient {
         Ok(())
     }
 
-    // Improvement potential. Time difference is the same for all players (modulo sign). Consider if
-    // we should duplicate it four times or if there is a better way to display it.
+    // Improvement potential. Time difference is the same for all players (modulo sign). Consider
+    // showing it only once, e.g. add a colored hourglass/progressbar somewhere in the middle.
     pub fn update_clock(&self) -> JsResult<()> {
         let Some(GameState { ref alt_game, time_pair, .. }) = self.state.game_state() else {
             return Ok(());
@@ -932,12 +932,18 @@ impl WebClient {
             let board_orientation =
                 get_board_orientation(display_board_idx, alt_game.perspective());
             for force in Force::iter() {
+                let team = get_bughouse_team(board_idx, force);
                 let player_idx = get_display_player(force, board_orientation);
                 let clock = board.clock();
                 let other_clock = game.board(board_idx.other()).clock();
+                let show_diff = match alt_game.my_id() {
+                    BughouseParticipant::Player(player) => player.team() == team,
+                    BughouseParticipant::Observer => true,
+                };
+                let diff = show_diff.then(|| clock.difference_for(force, other_clock, game_now));
                 render_clock(
                     clock.showing_for(force, game_now),
-                    clock.difference_for(force, other_clock, game_now),
+                    diff,
                     display_board_idx,
                     player_idx,
                     wayback_active,
@@ -1649,7 +1655,7 @@ fn is_clock_ticking(game: &BughouseGame, participant_id: BughouseParticipant) ->
 }
 
 fn render_clock(
-    showing: ClockShowing, diff: ClockDifference, display_board_idx: DisplayBoard,
+    showing: ClockShowing, diff: Option<ClockDifference>, display_board_idx: DisplayBoard,
     player_idx: DisplayPlayer, wayback_active: bool,
 ) -> JsResult<()> {
     let document = web_document();
@@ -1677,21 +1683,25 @@ fn render_clock(
         &clock_node,
     )?;
     diff_node.class_list().add_1("clock-difference")?;
-    match player_idx {
-        DisplayPlayer::Top => diff_node.class_list().add_1("clock-difference-top")?,
-        DisplayPlayer::Bottom => diff_node.class_list().add_1("clock-difference-bot")?,
+    if let Some(diff) = diff {
+        match player_idx {
+            DisplayPlayer::Top => diff_node.class_list().add_1("clock-difference-top")?,
+            DisplayPlayer::Bottom => diff_node.class_list().add_1("clock-difference-bot")?,
+        }
+        diff_node
+            .class_list()
+            .toggle_with_force("clock-difference-lt", diff.comparison == Ordering::Less)?;
+        diff_node
+            .class_list()
+            .toggle_with_force("clock-difference-eq", diff.comparison == Ordering::Equal)?;
+        diff_node
+            .class_list()
+            .toggle_with_force("clock-difference-gt", diff.comparison == Ordering::Greater)?;
+        diff_node.set_text_content(Some(&diff.ui_string()));
+        diff_node.class_list().toggle_with_force("display-none", wayback_active)?;
+    } else {
+        diff_node.class_list().toggle_with_force("display-none", true)?;
     }
-    diff_node
-        .class_list()
-        .toggle_with_force("clock-difference-lt", diff.comparison == Ordering::Less)?;
-    diff_node
-        .class_list()
-        .toggle_with_force("clock-difference-eq", diff.comparison == Ordering::Equal)?;
-    diff_node
-        .class_list()
-        .toggle_with_force("clock-difference-gt", diff.comparison == Ordering::Greater)?;
-    diff_node.class_list().toggle_with_force("display-none", wayback_active)?;
-    diff_node.set_text_content(Some(&diff.ui_string()));
 
     Ok(())
 }
