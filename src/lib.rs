@@ -34,6 +34,7 @@ pub mod fen;
 pub mod force;
 pub mod game;
 pub mod grid;
+pub mod half_integer;
 pub mod iterable_mut;
 pub mod janitor;
 pub mod lobby;

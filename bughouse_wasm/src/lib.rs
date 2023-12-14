@@ -1710,7 +1710,6 @@ fn update_scores(
     scores: &Option<Scores>, participants: &[Participant], game_status: BughouseGameStatus,
 ) -> JsResult<()> {
     let show_readiness = !game_status.is_active();
-    let normalize = |score: u32| (score as f64) / 2.0;
     let table = web_document().create_element("table")?;
     match scores {
         None => {}
@@ -1731,7 +1730,7 @@ fn update_scores(
                     let tr = table.append_new_element("tr")?;
                     if first {
                         first = false;
-                        let score = normalize(score_map[team]);
+                        let score = score_map[team].as_f64();
                         tr.append_new_element("td")?
                             .with_classes(["score-player-name", "score-first-player-name"])?
                             .append_child(&p_node)?;
@@ -1751,7 +1750,7 @@ fn update_scores(
         }
         Some(Scores::PerPlayer(score_map)) => {
             for (name, score) in score_map.iter().sorted_by_key(|(name, _)| *name) {
-                let score = normalize(*score);
+                let score = score.as_f64();
                 let p = participants.iter().find(|p| p.name == *name).unwrap();
                 let p_node = participant_node(p, show_readiness)?;
                 let tr = table.append_new_element("tr")?;

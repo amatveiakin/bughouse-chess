@@ -27,6 +27,7 @@ use bughouse_chess::player::{Faction, Team};
 use bughouse_chess::rules::{
     BughouseRules, ChessRules, DropAggression, MatchRules, Promotion, Rules,
 };
+use bughouse_chess::scores::Scores;
 use bughouse_chess::server::{ServerInfo, ServerOptions};
 use bughouse_chess::server_helpers::TestServerHelpers;
 use bughouse_chess::session_store::SessionStore;
@@ -316,23 +317,28 @@ impl World {
         self[cl1].state.set_faction(Faction::Fixed(Team::Red));
         self.process_all_events();
 
-        self.server.state.TEST_override_board_assignment(mtch.clone(), vec![
-            single_player("p1", envoy!(White A)),
-            single_player("p2", envoy!(Black B)),
-            single_player("p3", envoy!(Black A)),
-            single_player("p4", envoy!(White B)),
-        ]);
-
         self.join_and_set_team(cl2, &mtch, "p2", Team::Red);
         self.join_and_set_team(cl3, &mtch, "p3", Team::Blue);
         self.join_and_set_team(cl4, &mtch, "p4", Team::Blue);
         self.process_all_events();
 
+        self.new_game_with_default_board_assignment(mtch.clone(), cl1, cl2, cl3, cl4);
+        (mtch, cl1, cl2, cl3, cl4)
+    }
+    fn new_game_with_default_board_assignment(
+        &mut self, mtch: String, cl1: TestClientId, cl2: TestClientId, cl3: TestClientId,
+        cl4: TestClientId,
+    ) {
+        self.server.state.TEST_override_board_assignment(mtch, vec![
+            single_player("p1", envoy!(White A)), // Red team
+            single_player("p2", envoy!(Black B)), // Red team
+            single_player("p3", envoy!(Black A)), // Blue team
+            single_player("p4", envoy!(White B)), // Blue team
+        ]);
         for cl in [cl1, cl2, cl3, cl4].iter() {
             self[*cl].state.set_ready(true);
         }
         self.process_all_events();
-        (mtch, cl1, cl2, cl3, cl4)
     }
 
     fn process_outgoing_events_for(&mut self, client_id: TestClientId) -> bool {
@@ -409,6 +415,25 @@ impl World {
         self[white_id].make_turn("Qxf7").unwrap();
         self.process_all_events();
     }
+
+    fn replay_three_repetition_draw(&mut self, white_id: TestClientId, black_id: TestClientId) {
+        self[white_id].make_turn("Nc3").unwrap();
+        self.process_all_events();
+        self[black_id].make_turn("Nc6").unwrap();
+        self.process_all_events();
+        self[white_id].make_turn("Nb1").unwrap();
+        self.process_all_events();
+        self[black_id].make_turn("Nb8").unwrap();
+        self.process_all_events();
+        self[white_id].make_turn("Nc3").unwrap();
+        self.process_all_events();
+        self[black_id].make_turn("Nc6").unwrap();
+        self.process_all_events();
+        self[white_id].make_turn("Nb1").unwrap();
+        self.process_all_events();
+        self[black_id].make_turn("Nb8").unwrap();
+        self.process_all_events();
+    }
 }
 
 impl ops::Index<TestClientId> for World {
@@ -475,6 +500,21 @@ fn play_online_misc() {
 
     world[cl2].make_turn("xd3").unwrap(); // en passant
     world.process_all_events();
+}
+
+#[test]
+fn score_valid() {
+    let mut world = World::new();
+    let (mtch, cl1, cl2, cl3, cl4) = world.default_clients();
+    world.replay_white_checkmates_black(cl1, cl3);
+    world.new_game_with_default_board_assignment(mtch, cl1, cl2, cl3, cl4);
+    world.replay_three_repetition_draw(cl1, cl3);
+    let scores = match world[cl1].state.mtch().as_ref().unwrap().scores.as_ref().unwrap() {
+        Scores::PerTeam(v) => v,
+        _ => panic!("Expected Scores::PerTeam"),
+    };
+    assert_eq!(scores[Team::Red].as_f64(), 1.5);
+    assert_eq!(scores[Team::Blue].as_f64(), 0.5);
 }
 
 // Regression test for turn preview bug: turns from the other boards could've been

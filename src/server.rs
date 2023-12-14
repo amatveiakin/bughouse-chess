@@ -28,6 +28,7 @@ use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughousePlayer, PlayerInGame,
     TurnRecord,
 };
+use crate::half_integer::HalfU32;
 use crate::iterable_mut::IterableMut;
 use crate::lobby::{assign_boards, fix_teams_if_needed, verify_participants, Teaming};
 use crate::pgn::{self, BughouseExportFormat};
@@ -1447,13 +1448,13 @@ impl Match {
         }
         match teaming {
             Teaming::FixedTeams => {
-                let scores = enum_map! { _ => 0 };
+                let scores = enum_map! { _ => HalfU32::ZERO };
                 self.scores = Some(Scores::PerTeam(scores));
             }
             Teaming::DynamicTeams => {
                 let mut scores = HashMap::new();
                 for p in self.participants.iter() {
-                    scores.insert(p.name.clone(), 0);
+                    scores.insert(p.name.clone(), HalfU32::ZERO);
                 }
                 self.scores = Some(Scores::PerPlayer(scores));
             }
@@ -1621,11 +1622,11 @@ fn update_on_game_over(
             panic!("It just so happens that the game here is only mostly over")
         }
         BughouseGameStatus::Victory(team, _) => {
-            let mut s = enum_map! { _ => 0 };
-            s[team] = 2;
+            let mut s = enum_map! { _ => HalfU32::ZERO };
+            s[team] = HalfU32::whole(1);
             s
         }
-        BughouseGameStatus::Draw(_) => enum_map! { _ => 1 },
+        BughouseGameStatus::Draw(_) => enum_map! { _ => HalfU32::HALF },
     };
     match scores {
         Scores::PerTeam(ref mut score_map) => {
@@ -1635,7 +1636,8 @@ fn update_on_game_over(
         }
         Scores::PerPlayer(ref mut score_map) => {
             for p in game.players() {
-                *score_map.entry(p.name.clone()).or_insert(0) += team_scores[p.id.team()];
+                *score_map.entry(p.name.clone()).or_insert(HalfU32::ZERO) +=
+                    team_scores[p.id.team()];
             }
         }
     }
