@@ -204,6 +204,8 @@ load_svg_images([
     { path: fog_3, symbol: 'fog-3', size: FOG_TILE_SIZE },
 ]);
 
+let audio_context = null;
+
 // Improvement potential. Establish priority on sounds; play more important sounds first
 // in case of a clash.
 const Sound = load_sounds({
@@ -237,8 +239,6 @@ let last_socket_connection_attempt = null;
 let consecutive_socket_connection_attempts = 0;
 let socket = null;
 open_socket();
-
-let audio_context = null;
 
 // Parameters and data structures for the audio logic. Our goal is to make short and
 // important sounds (like turn sound) as clear as possible when several events occur
@@ -1305,7 +1305,7 @@ function load_svg_images(image_records) {
 async function load_sound(filepath, key) {
     const reader = new FileReader();
     reader.addEventListener('load', () => {
-        const audio = Sound[key];
+        const audio = Sound[key].audio;
         audio.setAttribute('src', reader.result);
         loading_tracker.resource_loaded();
     }, false);
@@ -1318,9 +1318,15 @@ async function load_sound(filepath, key) {
 }
 
 function load_sounds(sound_map) {
+    ensure_audio_context();
     const ret = {};
     for (const [key, filepath] of Object.entries(sound_map)) {
-        ret[key] = new Audio();
+        const audio = new Audio();
+        const panner = new StereoPannerNode(audio_context);
+        const track = audio_context.createMediaElementSource(audio);
+        track.connect(panner).connect(audio_context.destination);
+        const panned_audio = { audio, panner };
+        ret[key] = panned_audio;
         load_sound(filepath, key);
         loading_tracker.resource_required();
     }
@@ -1670,13 +1676,13 @@ function ensure_audio_context() {
     audio_context.resume();
 }
 
-function play_audio(audio, pan) {
+function play_audio(panned_audio, pan) {
     ensure_audio_context();
     pan = pan || 0;
     if (audio_queue.length >= audio_max_queue_size) {
         return;
     }
-    audio_queue.push({ audio, pan });
+    audio_queue.push({ panned_audio, pan });
     const now = performance.now();
     const audio_next_avaiable = audio_last_played + audio_min_interval_ms;
     if (audio_queue.length > 1) {
@@ -1697,16 +1703,14 @@ function play_audio_delayed() {
 
 function play_audio_impl() {
     console.assert(audio_queue.length > 0);
-    const { audio, pan } = audio_queue.shift();
+    const { panned_audio, pan } = audio_queue.shift();
+    const { audio, panner } = panned_audio;
     if (audio_volume > 0) {
-        // Clone node to allow playing overlapping instances of the same sound.
-        // TODO: Should `audio_clone`, `track` and/or `panner` be manually GCed?
-        let audio_clone = audio.cloneNode();
-        const panner = new StereoPannerNode(audio_context, { pan });
-        const track = audio_context.createMediaElementSource(audio_clone);
-        track.connect(panner).connect(audio_context.destination);
-        audio_clone.volume = volume_to_js[audio_volume];
-        audio_clone.play();
+        audio.pause();
+        audio.currentTime = 0;
+        panner.pan.value = pan;
+        audio.volume = volume_to_js[audio_volume];
+        audio.play();
     }
     audio_last_played = performance.now();
 }
