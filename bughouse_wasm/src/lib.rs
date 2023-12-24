@@ -2324,6 +2324,8 @@ fn broken_king_path(force: PieceForce) -> &'static str {
     }
 }
 
+// Note. This function must return only a limited set of values, because JS will create a permament
+// `PannerNode` for each pan ever played.
 fn get_audio_pan(my_id: BughouseParticipant, display_board_idx: DisplayBoard) -> JsResult<f64> {
     use BughouseParticipant::*;
     use BughousePlayer::*;

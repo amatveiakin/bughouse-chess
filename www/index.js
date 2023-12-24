@@ -204,7 +204,11 @@ load_svg_images([
     { path: fog_3, symbol: 'fog-3', size: FOG_TILE_SIZE },
 ]);
 
-let audio_context = null;
+// Ideally AudioContext should be created after the first user interaction. Otherwise
+// it's be created in the "suspended" state, and a log warning will be shown (in Chrome):
+// https://developer.chrome.com/blog/autoplay/#webaudio
+// But we can't really create the context later, because we need it to load sounds.
+let audio_context = new AudioContext();
 
 // Improvement potential. Establish priority on sounds; play more important sounds first
 // in case of a clash.
@@ -248,6 +252,7 @@ const audio_min_interval_ms = 70;
 const audio_max_queue_size = 5;
 const max_volume = 3;
 const volume_to_js = {
+    0: 0.0,
     1: 0.25,
     2: 0.5,
     3: 1.0,
@@ -255,6 +260,10 @@ const volume_to_js = {
 let audio_last_played = 0;
 let audio_queue = [];
 let audio_volume = 0;
+
+const gain_node = audio_context.createGain();
+gain_node.connect(audio_context.destination);
+const pan_nodes = new Map();
 
 let drag_source_board_id = null;
 let drag_element = null;
@@ -1303,30 +1312,18 @@ function load_svg_images(image_records) {
 }
 
 async function load_sound(filepath, key) {
-    const reader = new FileReader();
-    reader.addEventListener('load', () => {
-        const audio = Sound[key].audio;
-        audio.setAttribute('src', reader.result);
-        loading_tracker.resource_loaded();
-    }, false);
-    reader.addEventListener('error', () => {
-        console.error(`Cannot load sound ${filepath}`);
-    });
     const response = await fetch(filepath);
-    const blob = await response.blob();
-    reader.readAsDataURL(blob);
+    const array_buffer = await response.arrayBuffer();
+    const audio_buffer = await audio_context.decodeAudioData(array_buffer);
+    Sound[key] = audio_buffer;
+    loading_tracker.resource_loaded();
 }
 
 function load_sounds(sound_map) {
-    ensure_audio_context();
+    ensure_audio_context_running();
     const ret = {};
     for (const [key, filepath] of Object.entries(sound_map)) {
-        const audio = new Audio();
-        const panner = new StereoPannerNode(audio_context);
-        const track = audio_context.createMediaElementSource(audio);
-        track.connect(panner).connect(audio_context.destination);
-        const panned_audio = { audio, panner };
-        ret[key] = panned_audio;
+        ret[key] = null;
         load_sound(filepath, key);
         loading_tracker.resource_required();
     }
@@ -1648,6 +1645,7 @@ function update_chat_reference_tooltip() {
 function set_volume(volume) {
     // TODO: Save settings to a local storage.
     audio_volume = volume;
+    gain_node.gain.value = volume_to_js[volume];
     if (volume == 0) {
         document.getElementById('volume-mute').style.display = null;
         for (let v = 1; v <= max_volume; ++v) {
@@ -1666,23 +1664,18 @@ function next_volume() {
     play_audio(Sound.clack);
 }
 
-function ensure_audio_context() {
-    // Ideally this should be called after the first user interaction.
-    // If an AudioContext is created before the document receives a user gesture, it will be
-    // created in the "suspended" state, and a log warning will be shown (in Chrome):
-    // https://developer.chrome.com/blog/autoplay/#webaudio
-    audio_context ||= new AudioContext();
-    // Ensure that the context is active in case it was created too early.
+function ensure_audio_context_running() {
+    // Need to activate the context, because we create it before the first user interaction.
     audio_context.resume();
 }
 
-function play_audio(panned_audio, pan) {
-    ensure_audio_context();
+function play_audio(audio_buffer, pan) {
+    ensure_audio_context_running();
     pan = pan || 0;
     if (audio_queue.length >= audio_max_queue_size) {
         return;
     }
-    audio_queue.push({ panned_audio, pan });
+    audio_queue.push({ audio_buffer, pan });
     const now = performance.now();
     const audio_next_avaiable = audio_last_played + audio_min_interval_ms;
     if (audio_queue.length > 1) {
@@ -1703,14 +1696,18 @@ function play_audio_delayed() {
 
 function play_audio_impl() {
     console.assert(audio_queue.length > 0);
-    const { panned_audio, pan } = audio_queue.shift();
-    const { audio, panner } = panned_audio;
+    const { audio_buffer, pan } = audio_queue.shift();
     if (audio_volume > 0) {
-        audio.pause();
-        audio.currentTime = 0;
-        panner.pan.value = pan;
-        audio.volume = volume_to_js[audio_volume];
-        audio.play();
+        if (!pan_nodes.has(pan)) {
+            const panner_node = audio_context.createStereoPanner();
+            panner_node.pan.value = pan;
+            panner_node.connect(gain_node);
+            pan_nodes.set(pan, panner_node);
+        }
+        const source = audio_context.createBufferSource();
+        source.buffer = audio_buffer;
+        source.connect(pan_nodes.get(pan));
+        source.start();
     }
     audio_last_played = performance.now();
 }
