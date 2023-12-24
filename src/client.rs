@@ -913,7 +913,7 @@ impl ClientState {
                 self.notable_event_queue
                     .push_back(NotableEvent::MyReserveRestocked(envoy.board_idx.other()));
             }
-            if alt_game.my_id().is_player() && !turn_record.turn_expanded.steals.is_empty() {
+            if !turn_record.turn_expanded.steals.is_empty() {
                 self.notable_event_queue.push_back(NotableEvent::PieceStolen);
             }
         }

@@ -709,7 +709,9 @@ impl WebClient {
                 let display_board_idx =
                     get_display_board_index(envoy.board_idx, alt_game.perspective());
                 scroll_log_to_bottom(display_board_idx)?;
-                if alt_game.my_id().plays_on_board(envoy.board_idx) {
+                if alt_game.my_id().plays_on_board(envoy.board_idx)
+                    || alt_game.my_id().is_observer()
+                {
                     return Ok(JsEventPlaySound {
                         audio: "turn".to_owned(),
                         pan: self.get_game_audio_pan(envoy.board_idx)?,

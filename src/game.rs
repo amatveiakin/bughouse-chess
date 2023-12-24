@@ -372,6 +372,7 @@ impl BughousePlayer {
 
 impl BughouseParticipant {
     pub fn is_player(self) -> bool { self.as_player().is_some() }
+    pub fn is_observer(self) -> bool { !self.is_player() }
     pub fn as_player(self) -> Option<BughousePlayer> {
         match self {
             BughouseParticipant::Player(player) => Some(player),
