@@ -8,6 +8,8 @@
 // What to put in prelude? The idea was to expose chess concepts directly: rules, pieces, boards,
 // etc. Auxiliary concepts (networking, persistent, utils, etc.) remain behind namespaces.
 
+#![allow(unused_imports)]
+
 pub use bughouse_chess::algebraic::*;
 pub use bughouse_chess::altered_game::*;
 pub use bughouse_chess::board::*;

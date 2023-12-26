@@ -1,6 +1,5 @@
 #![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(let_chains)]
-#![feature(result_option_inspect)]
 #![cfg_attr(feature = "strict", deny(warnings))]
 // Suppress Rust analyzer diagnostics like:
 //   Function `__wasm_bindgen_generated_WebClient_update_state` should have snake_case ...
@@ -788,15 +787,15 @@ impl WebClient {
                 board_idx == input_board_idx.other()
                     && board.stealing_result(coord, envoy.force).is_ok()
             };
-            let upgrade_promotion_target =
-                if let Some((input_board_idx, partial_input)) = alt_game.partial_turn_input()
-                    && let PartialTurnInput::UpgradePromotion { to, .. } = partial_input
-                    && board_idx == input_board_idx
-                {
-                    Some(to)
-                } else {
-                    None
-                };
+            let upgrade_promotion_target = if let Some((input_board_idx, partial_input)) =
+                alt_game.partial_turn_input()
+                && let PartialTurnInput::UpgradePromotion { to, .. } = partial_input
+                && board_idx == input_board_idx
+            {
+                Some(to)
+            } else {
+                None
+            };
             let my_force = my_id.envoy_for(board_idx).map(|e| e.force);
             let see_though_fog = alt_game.see_though_fog();
             let empty_area = HashSet::new();
@@ -844,17 +843,19 @@ impl WebClient {
                 {
                     let node_id = square_id(display_board_idx, coord);
                     let node = ensure_square_node(display_coord, &piece_layer, &node_id, 1.0)?;
-                    if !fog_cover_area.contains(&coord) && let Some(piece) = grid[coord] {
-                        let filename =
-                            if let ChessGameStatus::Victory(winner, reason) = board.status()
-                                && reason == VictoryReason::Checkmate
-                                && piece.kind == PieceKind::King
-                                && piece.force == winner.opponent().into()
-                            {
-                                broken_king_path(piece.force)
-                            } else {
-                                piece_path(piece.kind, piece.force)
-                            };
+                    if !fog_cover_area.contains(&coord)
+                        && let Some(piece) = grid[coord]
+                    {
+                        let filename = if let ChessGameStatus::Victory(winner, reason) =
+                            board.status()
+                            && reason == VictoryReason::Checkmate
+                            && piece.kind == PieceKind::King
+                            && piece.force == winner.opponent().into()
+                        {
+                            broken_king_path(piece.force)
+                        } else {
+                            piece_path(piece.kind, piece.force)
+                        };
                         node.set_attribute("href", filename)?;
                         node.remove_attribute("class")?;
                         node.class_list()

@@ -2,6 +2,8 @@
 //
 // The rationaly for external prelude is there.
 
+#![allow(unused_imports)]
+
 pub use bughouse_chess::algebraic::*;
 pub use bughouse_chess::altered_game::*;
 pub use bughouse_chess::board::*;

@@ -7,7 +7,6 @@
 
 #![forbid(unsafe_code)]
 #![cfg_attr(feature = "strict", deny(warnings))]
-#![feature(result_option_inspect)]
 
 extern crate clap;
 extern crate console;
