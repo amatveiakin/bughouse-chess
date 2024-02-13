@@ -44,7 +44,7 @@ async fn handle_connection<
     let (mut stream_tx, mut stream_rx) = stream.split();
     info!("Client connected: {}", peer_addr);
 
-    let (client_tx, client_rx) = mpsc::channel();
+    let (client_tx, client_rx) = async_std::channel::unbounded();
 
     let session_store_subscription_id = session_id.as_ref().map(|session_id| {
         // Subscribe the client to all updates to the session in session store.
@@ -101,31 +101,18 @@ async fn handle_connection<
         }
     });
 
-    // Still spawning an OS thread here because client_rx is a
-    // synchronous receiver.
-    // Calling blocking functions (such as client_rx.recv()) within async context
-    // means completely blocking an executor thread, which quickly leads to
-    // stavation and deadlocks because the number of async executor threads
-    // is limited.
-    let (done_tx, done_rx) = async_std::channel::bounded(1);
-    std::thread::spawn(move || {
-        loop {
-            let Ok(ev) = client_rx.recv() else { break };
-            match async_std::task::block_on(network::write_obj_async(&mut stream_tx, &ev)) {
-                Ok(()) => {}
-                Err(err) => {
-                    if let Some(logging_id) = remove_client2() {
-                        warn!("Client {} disconnected due to write error: {:?}", logging_id, err);
-                    }
-                    break;
+    loop {
+        let Ok(ev) = client_rx.recv().await else { break };
+        match network::write_obj_async(&mut stream_tx, &ev).await {
+            Ok(()) => {}
+            Err(err) => {
+                if let Some(logging_id) = remove_client2() {
+                    warn!("Client {} disconnected due to write error: {:?}", logging_id, err);
                 }
+                break;
             }
         }
-        async_std::task::block_on(done_tx.send(())).unwrap();
-    });
-    // This instead of just running the loop to completion or join() on the
-    // thread for the same reason of not blocking the async executor thread.
-    done_rx.recv().await.unwrap();
+    }
     Ok(())
 }
 

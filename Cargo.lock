@@ -594,6 +594,7 @@ dependencies = [
 name = "bughouse_chess"
 version = "0.1.0"
 dependencies = [
+ "async-std",
  "chain-cmp",
  "chrono",
  "derive-new",
