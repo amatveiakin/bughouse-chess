@@ -44,3 +44,4 @@ time = { version = "0.3.29", features = ["formatting", "macros", "serde", "wasm-
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
+async-std = { version = "1.12.0", features = ["attributes"] }

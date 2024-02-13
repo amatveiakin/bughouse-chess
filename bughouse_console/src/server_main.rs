@@ -53,7 +53,8 @@ async fn handle_connection<
             // Send the entire session data to the client.
             // We can perform some mapping here if we want to hide
             // some of the state from the client.
-            let _ = my_client_tx.send(BughouseServerEvent::UpdateSession { session: s.clone() });
+            let _ =
+                my_client_tx.try_send(BughouseServerEvent::UpdateSession { session: s.clone() });
         })
     });
 
@@ -77,6 +78,7 @@ async fn handle_connection<
     };
     let remove_client2 = remove_client1.clone();
 
+    // Client -> Server
     async_std::task::spawn(async move {
         loop {
             match network::read_obj_async(&mut stream_rx).await {
@@ -101,8 +103,8 @@ async fn handle_connection<
         }
     });
 
-    loop {
-        let Ok(ev) = client_rx.recv().await else { break };
+    // Server -> Client
+    while let Ok(ev) = client_rx.recv().await {
         match network::write_obj_async(&mut stream_tx, &ev).await {
             Ok(()) => {}
             Err(err) => {
@@ -113,6 +115,7 @@ async fn handle_connection<
             }
         }
     }
+
     Ok(())
 }
 

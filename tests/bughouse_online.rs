@@ -107,7 +107,9 @@ impl Server {
     fn set_time(&mut self, time: Duration) { self.time_elapsed = time; }
     fn current_instant(&self) -> Instant { self.creation_instant + self.time_elapsed }
 
-    fn add_client(&mut self, events_tx: mpsc::Sender<BughouseServerEvent>) -> server::ClientId {
+    fn add_client(
+        &mut self, events_tx: async_std::channel::Sender<BughouseServerEvent>,
+    ) -> server::ClientId {
         self.clients.lock().unwrap().add_client(events_tx, None, "client".to_owned())
     }
 
@@ -131,7 +133,7 @@ impl Server {
 
 struct Client {
     id: Option<server::ClientId>,
-    incoming_rx: Option<mpsc::Receiver<BughouseServerEvent>>,
+    incoming_rx: Option<async_std::channel::Receiver<BughouseServerEvent>>,
     state: client::ClientState,
 }
 
@@ -144,7 +146,7 @@ impl Client {
     }
 
     fn connect(&mut self, server: &mut Server) {
-        let (incoming_tx, incoming_rx) = mpsc::channel();
+        let (incoming_tx, incoming_rx) = async_std::channel::unbounded();
         self.id = Some(server.add_client(incoming_tx));
         self.incoming_rx = Some(incoming_rx);
     }
@@ -206,7 +208,7 @@ impl Client {
     }
     fn process_incoming_events(&mut self) -> (bool, Result<(), client::EventError>) {
         let mut something_changed = false;
-        for event in self.incoming_rx.as_mut().unwrap().try_iter() {
+        while let Ok(event) = self.incoming_rx.as_mut().unwrap().try_recv() {
             something_changed = true;
             println!("{:?} <<< {:?}", self.id.unwrap(), event);
             let result = self.state.process_server_event(event);

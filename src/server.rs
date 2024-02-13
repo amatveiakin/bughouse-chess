@@ -2,7 +2,7 @@
 //   with a direct mapping (participant_id -> player_bughouse_id).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::{mpsc, Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 use std::{iter, mem, ops};
 
