@@ -2,7 +2,7 @@
 //   with a direct mapping (participant_id -> player_bughouse_id).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::{mpsc, Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 use std::{iter, mem, ops};
 
@@ -209,7 +209,7 @@ pub struct ClientId(usize);
 
 #[derive(Debug)]
 pub struct Client {
-    events_tx: mpsc::Sender<BughouseServerEvent>,
+    events_tx: async_std::channel::Sender<BughouseServerEvent>,
     new_client: bool,
     match_id: Option<MatchId>,
     participant_id: Option<ParticipantId>,
@@ -219,7 +219,7 @@ pub struct Client {
 }
 
 impl Client {
-    fn send(&mut self, event: BughouseServerEvent) { self.events_tx.send(event).unwrap(); }
+    fn send(&mut self, event: BughouseServerEvent) { self.events_tx.try_send(event).unwrap(); }
     fn send_rejection(&mut self, rejection: BughouseServerRejection) {
         self.send(BughouseServerEvent::Rejection(rejection));
     }
@@ -235,8 +235,8 @@ impl Clients {
     pub fn new() -> Self { Clients { map: HashMap::new(), next_id: 1 } }
 
     pub fn add_client(
-        &mut self, events_tx: mpsc::Sender<BughouseServerEvent>, session_id: Option<SessionId>,
-        logging_id: String,
+        &mut self, events_tx: async_std::channel::Sender<BughouseServerEvent>,
+        session_id: Option<SessionId>, logging_id: String,
     ) -> ClientId {
         let now = Instant::now();
         let client = Client {

@@ -15,6 +15,7 @@ edition = "2021"
 strict = []  # treat warnings as a build error
 
 [dependencies]
+async-std = "1.12.0"
 chain-cmp = "0.2.0"
 # We don't use `chrono` ourselves, but some dependencies do. Until recently `chrono` depended
 # on `time 0.1.45`, which is affected by https://rustsec.org/advisories/RUSTSEC-2020-0071.
@@ -43,3 +44,4 @@ time = { version = "0.3.29", features = ["formatting", "macros", "serde", "wasm-
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
+async-std = { version = "1.12.0", features = ["attributes"] }
