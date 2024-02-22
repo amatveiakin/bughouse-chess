@@ -60,6 +60,7 @@ macro_rules! piece {
 
 
 pub trait AutoTurnInput {
+    #[allow(dead_code)]
     fn to_turn_input(self) -> TurnInput;
 }
 
@@ -127,6 +128,7 @@ macro_rules! envoy {
 }
 
 pub trait ReserveAsHashMap {
+    #[allow(dead_code)]
     fn to_map(self) -> HashMap<PieceKind, u8>;
 }
 

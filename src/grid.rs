@@ -164,7 +164,7 @@ impl fmt::Debug for GridForRepetitionDraw {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::piece::{PieceForce, PieceId, PieceKind, PieceOrigin};
+    use crate::piece::{PieceForce, PieceKind};
 
     #[test]
     fn scoped_set() {

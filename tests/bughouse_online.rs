@@ -7,7 +7,7 @@
 mod common;
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use std::{iter, ops};
 
 use bughouse_chess::altered_game::AlteredGame;

@@ -6,7 +6,7 @@ use oauth2::basic::BasicClient;
 // Alternatively, this can be oauth2::curl::http_client or a custom.
 use oauth2::reqwest::async_http_client;
 use oauth2::{
-    url, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, RevocationUrl,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, RevocationUrl,
     Scope, TokenResponse, TokenUrl,
 };
 use serde::Deserialize;

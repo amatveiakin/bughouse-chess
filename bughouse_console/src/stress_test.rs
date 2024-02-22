@@ -11,7 +11,6 @@ use bughouse_chess::test_util::*;
 use instant::Instant;
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
-use rand::seq::SliceRandom;
 
 use crate::bughouse_prelude::*;
 
