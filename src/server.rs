@@ -1206,7 +1206,7 @@ impl Match {
             ctx.clients[client_id].participant_id.ok_or_else(|| unknown_error!())?;
         if let Some(GameState { ref game, .. }) = self.game_state {
             if game.is_active() {
-                // No error: somebody could've tried to unset ready flag while the game has started.
+                // No error: the next game could've started.
                 return Ok(());
             }
         }
@@ -1291,12 +1291,14 @@ impl Match {
         &mut self, ctx: &mut Context, client_id: ClientId, drawing: ChalkDrawing,
     ) -> EventResult {
         let Some(GameState { ref mut chalkboard, ref game, .. }) = self.game_state else {
-            return Err(unknown_error!());
+            // No error: the next game could've started.
+            return Ok(());
         };
         let participant_id =
             ctx.clients[client_id].participant_id.ok_or_else(|| unknown_error!())?;
         if game.is_active() {
-            return Err(unknown_error!());
+            // No error: the next game could've started.
+            return Ok(());
         }
         chalkboard.set_drawing(self.participants[participant_id].name.clone(), drawing);
         let chalkboard = chalkboard.clone();
@@ -1308,7 +1310,8 @@ impl Match {
         &self, ctx: &mut Context, client_id: ClientId, format: BughouseExportFormat,
     ) -> EventResult {
         let Some(GameState { ref game, .. }) = self.game_state else {
-            return Err(unknown_error!());
+            // No error: the next game could've started.
+            return Ok(());
         };
         let all_games = self.match_history.iter().chain(iter::once(game));
         let content = all_games
