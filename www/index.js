@@ -416,7 +416,7 @@ function make_meters() {
 
 function on_socket_message(event) {
     with_error_handling(function() {
-        console.log(log_time(), 'server: ', event.data);
+        // console.log(log_time(), 'server: ', event.data);
         const update_needed = wasm_client().process_server_event(event.data);
         if (update_needed) {
             update();
@@ -663,7 +663,7 @@ function process_outgoing_events() {
     }
     let event;
     while ((event = wasm_client().next_outgoing_event())) {
-        console.log(log_time(), 'sending: ', event);
+        // console.log(log_time(), 'sending: ', event);
         socket.send(event);
     }
 }
