@@ -8,7 +8,7 @@ mod common;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use std::{iter, ops};
+use std::ops;
 
 use bughouse_chess::altered_game::AlteredGame;
 use bughouse_chess::board::{Board, TurnError, TurnInput, VictoryReason};
@@ -293,11 +293,7 @@ impl World {
         idx
     }
     fn new_clients<const NUM: usize>(&mut self) -> [TestClientId; NUM] {
-        iter::repeat_with(|| self.new_client())
-            .take(NUM)
-            .collect_vec()
-            .try_into()
-            .unwrap()
+        std::array::from_fn(|_| self.new_client())
     }
     fn reconnect_client(&mut self, client_id: TestClientId) {
         let client = &mut self.clients[client_id.0];
