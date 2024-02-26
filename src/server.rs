@@ -1331,8 +1331,13 @@ impl Match {
         //   one from here and one from `self.start_game`.
         //   Idea: Add `ctx.should_update_lobby` bit and check it in the end.
         // TODO: Show lobby participants as offline when `!c.heart.is_online()`.
-        let active_participant_ids: HashSet<_> =
-            ctx.clients.map.values().filter_map(|c| c.participant_id).collect();
+        let active_participant_ids: HashSet<_> = ctx
+            .clients
+            .map
+            .values()
+            .filter(|c| c.match_id.as_ref() == Some(&self.match_id))
+            .filter_map(|c| c.participant_id)
+            .collect();
         let mut lobby_updated = false;
         let mut chalkboard_updated = false;
         self.participants.map.retain(|id, (p, _)| {

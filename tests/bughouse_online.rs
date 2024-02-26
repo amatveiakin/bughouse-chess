@@ -7,8 +7,8 @@
 mod common;
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
 use std::ops;
+use std::sync::{Arc, Mutex};
 
 use bughouse_chess::altered_game::AlteredGame;
 use bughouse_chess::board::{Board, TurnError, TurnInput, VictoryReason};
@@ -30,7 +30,8 @@ use bughouse_chess::rules::{
 use bughouse_chess::scores::Scores;
 use bughouse_chess::server::{ServerInfo, ServerOptions};
 use bughouse_chess::server_helpers::TestServerHelpers;
-use bughouse_chess::session_store::SessionStore;
+use bughouse_chess::session::{RegistrationMethod, Session, UserInfo};
+use bughouse_chess::session_store::{SessionId, SessionStore};
 use bughouse_chess::utc_time::UtcDateTime;
 use bughouse_chess::{client, pgn, server};
 use common::*;
@@ -72,6 +73,8 @@ fn double_player(name: &str, team: Team) -> PlayerInGame {
 struct Server {
     creation_instant: Instant,
     time_elapsed: Duration,
+    next_session_id: usize,
+    session_store: Arc<Mutex<SessionStore>>,
     clients: Arc<Mutex<server::Clients>>,
     state: server::ServerState,
 }
@@ -83,13 +86,12 @@ impl Server {
             max_starting_time: None,
         };
         let clients = Arc::new(Mutex::new(server::Clients::new()));
-        let clients_copy = Arc::clone(&clients);
         let session_store = Arc::new(Mutex::new(SessionStore::new()));
         let server_info = Arc::new(Mutex::new(ServerInfo::new()));
         let mut state = server::ServerState::new(
             options,
-            clients_copy,
-            session_store,
+            Arc::clone(&clients),
+            Arc::clone(&session_store),
             server_info,
             Box::new(TestServerHelpers {}),
             None,
@@ -99,6 +101,8 @@ impl Server {
         Server {
             creation_instant: Instant::now(),
             time_elapsed: Duration::ZERO,
+            next_session_id: 1,
+            session_store,
             clients,
             state,
         }
@@ -107,10 +111,26 @@ impl Server {
     fn set_time(&mut self, time: Duration) { self.time_elapsed = time; }
     fn current_instant(&self) -> Instant { self.creation_instant + self.time_elapsed }
 
+    fn signin_user(&mut self, user_name: &str) -> SessionId {
+        let session_id = SessionId::new(self.next_session_id.to_string());
+        self.next_session_id += 1;
+        let user_info = Session::LoggedIn(UserInfo {
+            user_name: user_name.to_owned(),
+            email: None,
+            registration_method: RegistrationMethod::Password,
+        });
+        self.session_store.lock().unwrap().set(session_id.clone(), user_info);
+        session_id
+    }
+
     fn add_client(
         &mut self, events_tx: async_std::channel::Sender<BughouseServerEvent>,
+        session_id: Option<SessionId>,
     ) -> server::ClientId {
-        self.clients.lock().unwrap().add_client(events_tx, None, "client".to_owned())
+        self.clients
+            .lock()
+            .unwrap()
+            .add_client(events_tx, session_id, "client".to_owned())
     }
 
     fn send_network_event(&mut self, id: server::ClientId, event: BughouseClientEvent) {
@@ -145,9 +165,9 @@ impl Client {
         Client { id: None, incoming_rx: None, state }
     }
 
-    fn connect(&mut self, server: &mut Server) {
+    fn connect(&mut self, server: &mut Server, session_id: Option<SessionId>) {
         let (incoming_tx, incoming_rx) = async_std::channel::unbounded();
-        self.id = Some(server.add_client(incoming_tx));
+        self.id = Some(server.add_client(incoming_tx, session_id));
         self.incoming_rx = Some(incoming_rx);
     }
 
@@ -288,17 +308,29 @@ impl World {
     fn new_client(&mut self) -> TestClientId {
         let idx = TestClientId(self.clients.len());
         let mut client = Client::new();
-        client.connect(&mut self.server);
+        client.connect(&mut self.server, None);
+        self.clients.push(client);
+        idx
+    }
+    fn new_client_registered_user(&mut self, user_name: &str) -> TestClientId {
+        let idx = TestClientId(self.clients.len());
+        let mut client = Client::new();
+        let session_id = self.server.signin_user(user_name);
+        client.connect(&mut self.server, Some(session_id));
         self.clients.push(client);
         idx
     }
     fn new_clients<const NUM: usize>(&mut self) -> [TestClientId; NUM] {
         std::array::from_fn(|_| self.new_client())
     }
+    fn disconnect_client(&mut self, client_id: TestClientId) {
+        let client = &mut self.clients[client_id.0];
+        self.server.clients.lock().unwrap().remove_client(client.id.unwrap()).unwrap();
+    }
     fn reconnect_client(&mut self, client_id: TestClientId) {
         let client = &mut self.clients[client_id.0];
-        self.server.clients.lock().unwrap().remove_client(client.id.unwrap());
-        client.connect(&mut self.server);
+        self.server.clients.lock().unwrap().remove_client(client.id.unwrap()).unwrap();
+        client.connect(&mut self.server, None);
     }
 
     fn default_clients(
@@ -391,7 +423,10 @@ impl World {
             }
         }
     }
-    fn process_all_events(&mut self) { self.process_events_for_clients(&ClientFilter::all()); }
+    fn process_all_events(&mut self) {
+        self.server.tick();
+        self.process_events_for_clients(&ClientFilter::all());
+    }
 
     fn replay_white_checkmates_black(&mut self, white_id: TestClientId, black_id: TestClientId) {
         self[white_id].make_turn("Nf3").unwrap();
@@ -1567,4 +1602,24 @@ fn team_chat_fixed_teams() {
 
     assert_eq!(world[cl2_new].chat_item_text(), ["first", over, "second"]);
     assert_eq!(world[cl3_new].chat_item_text(), ["first", over, "second"]);
+}
+
+// Regression test: we used to not remove offline participants from the lobby if there was an active
+// client with the same participant ID in another match.
+#[test]
+fn two_matches_same_participant_id() {
+    let mut world = World::new();
+
+    let m1_cl1 = world.new_client_registered_user("Alice");
+    let m1_cl2 = world.new_client_registered_user("Bob");
+    let m1 = world.new_match(m1_cl1, "Alice");
+    world[m1_cl2].join(&m1, "Bob");
+    world.process_all_events();
+
+    let m2_cl = world.new_client_registered_user("Alice");
+    world.new_match(m2_cl, "Alice");
+
+    world.disconnect_client(m1_cl1);
+    world.process_all_events();
+    assert_eq!(world[m1_cl2].state.mtch().unwrap().participants.len(), 1);
 }
