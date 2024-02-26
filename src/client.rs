@@ -333,18 +333,27 @@ impl ClientState {
             self.connection.send(BughouseClientEvent::SetFaction { faction });
         }
     }
-    pub fn resign(&mut self) { self.connection.send(BughouseClientEvent::Resign); }
+    pub fn resign(&mut self) {
+        // TODO: Display an error message if trying to resign as an observer via console.
+        if self.my_faction().is_some_and(|f| f.is_player()) {
+            self.connection.send(BughouseClientEvent::Resign);
+        }
+    }
     pub fn set_ready(&mut self, is_ready: bool) {
         if let Some(mtch) = self.mtch_mut() {
             mtch.is_ready = is_ready;
             self.connection.send(BughouseClientEvent::SetReady { is_ready });
         }
     }
-    pub fn leave_match(&mut self) { self.connection.send(BughouseClientEvent::LeaveMatch); }
+    pub fn leave_match(&mut self) {
+        if self.mtch().is_some() {
+            self.connection.send(BughouseClientEvent::LeaveMatch);
+        }
+    }
     pub fn leave_server(&mut self) {
         // TODO: Do we need this? On the one hand, it's not necessary: detecting connection closure
-        //   seems to work well on server. On the other hand, we cannot send it reliably from the web
-        //   client when the tab is closed (especially if it was in background at that moment).
+        //   seems to work well on server. On the other hand, we cannot send it reliably from the
+        //   web client when the tab is closed (especially if it was in background at that moment).
         self.connection.send(BughouseClientEvent::LeaveServer);
     }
     pub fn report_performance(&mut self) {
