@@ -1002,26 +1002,30 @@ impl Match {
                     }
                 }
             }
-            if let Err(reason) = ctx.helpers.validate_player_name(&player_name) {
-                return Err(BughouseServerRejection::InvalidPlayerName { player_name, reason });
-            }
             if !matches!(execution, Execution::Running) {
                 return Err(BughouseServerRejection::ShuttingDown);
             }
-            info!(
-                "Client {} join match {} as {}",
-                ctx.clients[client_id].logging_id, self.match_id.0, player_name
-            );
+            let participant_id = if let Some(id) = existing_participant_id {
+                id
+            } else {
+                if let Err(reason) = ctx.helpers.validate_player_name(&player_name) {
+                    return Err(BughouseServerRejection::InvalidPlayerName { player_name, reason });
+                }
+                info!(
+                    "Client {} join match {} as {}",
+                    ctx.clients[client_id].logging_id, self.match_id.0, player_name
+                );
+                self.participants.add_participant(Participant {
+                    name: player_name,
+                    is_registered_user,
+                    faction: Faction::Random,
+                    games_played: 0,
+                    double_games_played: 0,
+                    is_online: true,
+                    is_ready: false,
+                })
+            };
             ctx.clients[client_id].match_id = Some(self.match_id.clone());
-            let participant_id = self.participants.add_participant(Participant {
-                name: player_name,
-                is_registered_user,
-                faction: Faction::Random,
-                games_played: 0,
-                double_games_played: 0,
-                is_online: true,
-                is_ready: false,
-            });
             ctx.clients[client_id].participant_id = Some(participant_id);
             ctx.clients[client_id].send(self.make_match_welcome_event());
             self.send_lobby_updated(ctx);
