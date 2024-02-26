@@ -22,6 +22,7 @@ use bughouse_chess::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
     BughousePlayer, PlayerInGame,
 };
+use bughouse_chess::half_integer::HalfU32;
 use bughouse_chess::piece::PieceKind;
 use bughouse_chess::player::{Faction, Team};
 use bughouse_chess::rules::{
@@ -1323,6 +1324,52 @@ fn seating_assignment_is_fair() {
             ("p3".to_owned(), 80),
             ("p4".to_owned(), 80),
             ("p5".to_owned(), 80),
+        ])
+    );
+}
+
+// Regression test: web client assumes there is a participant for every score entry; it used to
+// panic if an observer with a score left.
+#[test]
+fn no_score_for_observers() {
+    let mut world = World::new();
+    let [cl1, cl2, cl3, cl4, cl5] = world.new_clients();
+
+    let mtch = world.new_match(cl1, "p1");
+
+    world.server.state.TEST_override_board_assignment(mtch.clone(), vec![
+        single_player("p1", envoy!(White A)),
+        single_player("p2", envoy!(Black B)),
+        single_player("p4", envoy!(Black A)),
+        single_player("p5", envoy!(White B)),
+    ]);
+
+    world[cl2].join(&mtch, "p2");
+    world[cl3].join(&mtch, "p3");
+    world[cl4].join(&mtch, "p4");
+    world[cl5].join(&mtch, "p5");
+    world.process_all_events();
+
+    world[cl3].state.set_faction(Faction::Observer);
+    world.process_all_events();
+
+    for cl in [cl1, cl2, cl4, cl5].iter() {
+        world[*cl].state.set_ready(true);
+    }
+    world.process_all_events();
+
+    world.replay_white_checkmates_black(cl1, cl4);
+    let scores = match world[cl1].state.mtch().unwrap().scores.as_ref().unwrap() {
+        Scores::PerPlayer(scores) => scores,
+        _ => panic!(),
+    };
+    assert_eq!(
+        *scores,
+        HashMap::from_iter([
+            ("p1".to_owned(), HalfU32::whole(1)),
+            ("p2".to_owned(), HalfU32::whole(1)),
+            ("p4".to_owned(), HalfU32::whole(0)),
+            ("p5".to_owned(), HalfU32::whole(0)),
         ])
     );
 }

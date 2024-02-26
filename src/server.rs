@@ -1466,7 +1466,9 @@ impl Match {
             Teaming::DynamicTeams => {
                 let mut scores = HashMap::new();
                 for p in self.participants.iter() {
-                    scores.insert(p.name.clone(), HalfU32::ZERO);
+                    if p.faction.is_player() {
+                        scores.insert(p.name.clone(), HalfU32::ZERO);
+                    }
                 }
                 self.scores = Some(Scores::PerPlayer(scores));
             }
