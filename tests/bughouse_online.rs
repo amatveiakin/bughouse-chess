@@ -1623,3 +1623,93 @@ fn two_matches_same_participant_id() {
     world.process_all_events();
     assert_eq!(world[m1_cl2].state.mtch().unwrap().participants.len(), 1);
 }
+
+// It's ok for a registered user to reconnect at any point kicking out the old client: we know it's
+// the same person.
+#[test]
+fn registered_user_reconnect() {
+    let mut world = World::new();
+
+    let cl_old = world.new_client_registered_user("Alice");
+    let mtch = world.new_match(cl_old, "Alice");
+
+    let cl_new = world.new_client_registered_user("Alice");
+    world[cl_new].join(&mtch, "Alice");
+
+    world.process_events_for(cl_new).unwrap();
+    assert!(matches!(
+        world.process_events_for(cl_old),
+        Err(client::EventError::KickedFromMatch(_))
+    ));
+    world.process_all_events();
+}
+
+// Register user can kick a guest user with the same name.
+#[test]
+fn registered_user_after_guest_user() {
+    let mut world = World::new();
+
+    let cl_old = world.new_client();
+    let mtch = world.new_match(cl_old, "Alice");
+
+    let cl_new = world.new_client_registered_user("Alice");
+    world[cl_new].join(&mtch, "Alice");
+
+    world.process_events_for(cl_new).unwrap();
+    assert!(matches!(
+        world.process_events_for(cl_old),
+        Err(client::EventError::KickedFromMatch(_))
+    ));
+    world.process_all_events();
+}
+
+// Guest user cannot connect if there is a registered user with the same name.
+#[test]
+fn guest_user_after_registered_user() {
+    let mut world = World::new();
+
+    let cl_old = world.new_client_registered_user("Alice");
+    let mtch = world.new_match(cl_old, "Alice");
+
+    let cl_new = world.new_client();
+    world[cl_new].join(&mtch, "Alice");
+
+    assert!(matches!(
+        world.process_events_for(cl_new),
+        Err(client::EventError::Ignorable(_))
+    ));
+    world.process_all_events();
+}
+
+// Guest user cannot kick out other guest user if their client is still alive. Of course, usually
+// this would be ok. Most likely this is the same person trying to reconnect before the game
+// realized that there was a problem with the old connection. However we cannot allow this, because
+// it would allow others to steal guest user identities.
+#[test]
+fn guest_user_reconnect_early() {
+    let mut world = World::new();
+    let [cl_old, cl_new] = world.new_clients();
+
+    let mtch = world.new_match(cl_old, "Alice");
+    world[cl_new].join(&mtch, "Alice");
+
+    assert!(matches!(
+        world.process_events_for(cl_new),
+        Err(client::EventError::Ignorable(_))
+    ));
+    world.process_all_events();
+}
+
+// Guest user can reconnect if the old client is dead.
+#[test]
+fn guest_user_reconnect_ok() {
+    let mut world = World::new();
+    let [cl_old, cl_new] = world.new_clients();
+
+    let mtch = world.new_match(cl_old, "Alice");
+    world.disconnect_client(cl_old);
+    world.process_all_events();
+
+    world[cl_new].join(&mtch, "Alice");
+    world.process_all_events();
+}
