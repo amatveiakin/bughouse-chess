@@ -494,7 +494,6 @@ impl WebClient {
         let display_board_idx = parse_board_id(board_id)?;
         let pos = DisplayFCoord { x, y };
         if let Some(dest_display) = pos.to_square(board_shape) {
-            use PieceDragError::*;
             let board_idx = get_board_index(display_board_idx, alt_game.perspective());
             let board_orientation =
                 get_board_orientation(display_board_idx, alt_game.perspective());
@@ -502,26 +501,13 @@ impl WebClient {
                 from_display_coord(dest_display, board_shape, board_orientation).unwrap();
             match alt_game.drag_piece_drop(board_idx, dest_coord) {
                 Ok(None) => {
-                    // Probably a partial turn input. Awaiting completion.
+                    // A partial turn input or a transient error.
                 }
                 Ok(Some(turn_input)) => {
                     _ = self.state.make_turn(display_board_idx, turn_input);
                 }
-                Err(CannotCastleDroppedKing) => {
-                    self.state.show_turn_result(Err(TurnError::CannotCastleDroppedKing));
-                }
-                Err(DragIllegal) => {
-                    // Ignore: tried to make an illegal move (this is usually checked later, but
-                    // sometimes now).
-                }
-                Err(DragNoLongerPossible) => {
-                    // Ignore: this happen when dragged piece was captured by opponent.
-                }
-                Err(Cancelled) => {
-                    // Ignore: user cancelled the move by putting the piece back in place.
-                }
-                Err(err @ (DragForbidden | NoDragInProgress | PieceNotFound)) => {
-                    return Err(rust_error!("Drag&drop error: {:?}", err));
+                Err(err) => {
+                    self.state.show_turn_result(Err(err));
                 }
             };
         } else {

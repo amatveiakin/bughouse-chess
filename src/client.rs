@@ -1108,13 +1108,14 @@ fn turn_error_message(err: TurnError, rules: &ChessRules) -> Option<String> {
     };
     match err {
         TurnError::NotPlayer => None,
+        TurnError::DontControlPiece => None,
+        TurnError::WrongTurnMode => None,
         TurnError::InvalidNotation => Some("Invalid notation.".to_owned()),
         TurnError::AmbiguousNotation => Some("Ambiguous notation.".to_owned()),
         TurnError::CaptureNotationRequiresCapture => {
             Some("Capture notation (“x”) requires capture.".to_owned())
         }
         TurnError::PieceMissing => Some("Piece is missing.".to_owned()),
-        TurnError::WrongTurnOrder => None,
         TurnError::PreturnLimitReached => None,
         TurnError::ImpossibleTrajectory => None,
         TurnError::PathBlocked => None,
@@ -1156,6 +1157,11 @@ fn turn_error_message(err: TurnError, rules: &ChessRules) -> Option<String> {
         TurnError::MustDropKingIfPossible => {
             Some("Must drop a king when you have one in reserve".to_owned())
         }
+        TurnError::NoTurnInProgress => None,
+        TurnError::TurnObsolete => None,
+        TurnError::PreviousTurnNotFinished => None,
+        TurnError::Defunct => None,
+        TurnError::Cancelled => None,
         TurnError::NoGameInProgress => None,
         TurnError::GameOver => None,
         TurnError::WaybackIsActive => None,

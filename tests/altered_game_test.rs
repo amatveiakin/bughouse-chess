@@ -1,7 +1,7 @@
 mod common;
 use bughouse_chess::altered_game::{
-    AlteredGame, PieceDragError, PieceDragStart, TurnHighlight, TurnHighlightFamily,
-    TurnHighlightItem, TurnHighlightLayer,
+    AlteredGame, PieceDragStart, TurnHighlight, TurnHighlightFamily, TurnHighlightItem,
+    TurnHighlightLayer,
 };
 use bughouse_chess::board::{TurnError, TurnInput, VictoryReason};
 use bughouse_chess::clock::GameInstant;
@@ -90,10 +90,7 @@ fn drag_depends_on_preturn_to_blocked_square() {
     alt_game.try_local_turn(A, drag_move!(E6 -> E5), T0).unwrap();
     alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::E5)).unwrap();
     alt_game.apply_remote_turn(envoy!(White A), &alg("e5"), T0).unwrap();
-    assert_eq!(
-        alt_game.drag_piece_drop(A, Coord::E4),
-        Err(PieceDragError::DragNoLongerPossible)
-    );
+    assert_eq!(alt_game.drag_piece_drop(A, Coord::E4), Err(TurnError::Defunct));
 }
 
 // Regression test: shouldn't panic if there's a drag depending on a preturn that was reverted,
@@ -106,10 +103,7 @@ fn drag_depends_on_preturn_with_captured_piece() {
     alt_game.try_local_turn(A, drag_move!(D5 -> D4), T0).unwrap();
     alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::D4)).unwrap();
     alt_game.apply_remote_turn(envoy!(White A), &alg("xd5"), T0).unwrap();
-    assert_eq!(
-        alt_game.drag_piece_drop(A, Coord::D3),
-        Err(PieceDragError::DragNoLongerPossible)
-    );
+    assert_eq!(alt_game.drag_piece_drop(A, Coord::D3), Err(TurnError::Defunct));
 }
 
 // It is not allowed to have more than one preturn. However a player can start dragging a
@@ -264,7 +258,7 @@ fn stealing_promotion_cannot_move_pawn_onto_piece() {
     alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H6 -> G7), T0).unwrap();
     alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A3 -> B2), T0).unwrap();
     alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::G7)).unwrap();
-    assert_eq!(alt_game.drag_piece_drop(A, Coord::G8), Err(PieceDragError::DragIllegal));
+    assert_eq!(alt_game.drag_piece_drop(A, Coord::G8), Err(TurnError::PathBlocked));
     assert!(alt_game.local_game().board(A).grid()[Coord::G7].is(piece!(White Pawn)));
     assert!(alt_game.local_game().board(A).grid()[Coord::G8].is(piece!(Black Knight)));
 }

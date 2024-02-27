@@ -663,7 +663,7 @@ impl BughouseGame {
     ) -> Result<Turn, TurnError> {
         let expected_mode = self.turn_mode_for_envoy(envoy)?;
         if mode != expected_mode {
-            return Err(TurnError::WrongTurnOrder);
+            return Err(TurnError::WrongTurnMode);
         }
         self.try_turn(envoy.board_idx, turn_input, mode, now)
     }

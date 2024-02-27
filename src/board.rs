@@ -537,7 +537,7 @@ enum Capturing {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Reachability {
+pub enum Reachability {
     Reachable,
     Blocked,
     Impossible,
@@ -711,11 +711,12 @@ pub enum ChessGameStatus {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TurnError {
     NotPlayer,
+    DontControlPiece,
+    WrongTurnMode,
     InvalidNotation,
     AmbiguousNotation,
     CaptureNotationRequiresCapture,
     PieceMissing,
-    WrongTurnOrder,
     PreturnLimitReached,
     ImpossibleTrajectory,
     PathBlocked,
@@ -743,6 +744,11 @@ pub enum TurnError {
     MustChangeDuckPosition,
     KingCannotCaptureInAtomicChess,
     MustDropKingIfPossible,
+    NoTurnInProgress,
+    TurnObsolete,
+    PreviousTurnNotFinished,
+    Defunct, // turn invalidated by external circumstances, e.g. dragged piece captured
+    Cancelled,
     NoGameInProgress,
     GameOver,
     WaybackIsActive,
@@ -958,13 +964,18 @@ impl Board {
         })
     }
 
-    pub fn is_legal_move_destination(&self, from: Coord, to: Coord, mode: TurnMode) -> bool {
+    pub fn destination_reachability(&self, from: Coord, to: Coord, mode: TurnMode) -> Reachability {
         match mode {
             TurnMode::Normal => {
                 let capture = get_capture(&self.grid, from, to, self.en_passant_target);
-                reachability(self.chess_rules(), &self.grid, from, to, capture.is_some()).ok()
+                reachability(self.chess_rules(), &self.grid, from, to, capture.is_some())
             }
-            TurnMode::Preturn => is_reachable_for_premove(self.chess_rules(), &self.grid, from, to),
+            TurnMode::Preturn => {
+                match is_reachable_for_premove(self.chess_rules(), &self.grid, from, to) {
+                    true => Reachability::Reachable,
+                    false => Reachability::Impossible,
+                }
+            }
         }
     }
 
@@ -1267,7 +1278,7 @@ impl Board {
                     return Err(TurnError::MustPlaceDuck);
                 }
                 if piece.force != force.into() {
-                    return Err(TurnError::WrongTurnOrder);
+                    return Err(TurnError::DontControlPiece);
                 }
                 let mut capture_pos_or = None;
                 match mode {
@@ -1653,7 +1664,7 @@ impl Board {
                     let force = self.turn_owner(mode);
                     let piece = self.grid[mv.from].ok_or(TurnError::PieceMissing)?;
                     if piece.force != force.into() {
-                        return Err(TurnError::WrongTurnOrder);
+                        return Err(TurnError::DontControlPiece);
                     }
                     let first_row = SubjectiveRow::first().to_row(self.shape(), force);
                     if piece.kind == PieceKind::King

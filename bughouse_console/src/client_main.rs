@@ -212,9 +212,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                                 command_error = match turn_result {
                                     None => None,
                                     Some(Ok(())) => None,
-                                    Some(Err(
-                                        TurnError::WrongTurnOrder | TurnError::PreturnLimitReached,
-                                    )) => {
+                                    Some(Err(TurnError::PreturnLimitReached)) => {
                                         keep_input = true;
                                         None
                                     }

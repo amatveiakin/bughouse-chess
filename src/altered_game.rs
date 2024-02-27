@@ -22,7 +22,8 @@ use itertools::Itertools;
 use strum::IntoEnumIterator;
 
 use crate::board::{
-    PromotionTarget, Turn, TurnDrop, TurnError, TurnExpanded, TurnInput, TurnMode, TurnMove,
+    PromotionTarget, Reachability, Turn, TurnDrop, TurnError, TurnExpanded, TurnInput, TurnMode,
+    TurnMove,
 };
 use crate::clock::GameInstant;
 use crate::coord::{BoardShape, Coord, SubjectiveRow};
@@ -57,17 +58,6 @@ pub enum PartialTurnInput {
 pub enum PieceDragStart {
     Board(Coord),
     Reserve(PieceKind),
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum PieceDragError {
-    DragForbidden,
-    DragIllegal,
-    CannotCastleDroppedKing,
-    NoDragInProgress,
-    DragNoLongerPossible,
-    PieceNotFound,
-    Cancelled,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -489,19 +479,16 @@ impl AlteredGame {
 
     pub fn start_drag_piece(
         &mut self, board_idx: BughouseBoard, start: PieceDragStart,
-    ) -> Result<(), PieceDragError> {
-        let BughouseParticipant::Player(my_player_id) = self.my_id else {
-            return Err(PieceDragError::DragForbidden);
-        };
-        let Some(my_envoy) = my_player_id.envoy_for(board_idx) else {
-            return Err(PieceDragError::DragForbidden);
+    ) -> Result<(), TurnError> {
+        let Some(my_envoy) = self.my_id.envoy_for(board_idx) else {
+            return Err(TurnError::NotPlayer);
         };
         if self.wayback_turn_index[board_idx].is_some() {
-            return Err(PieceDragError::DragForbidden);
+            return Err(TurnError::WaybackIsActive);
         }
         if let Some((input_board_idx, _)) = self.partial_turn_input {
             if input_board_idx == board_idx {
-                return Err(PieceDragError::DragForbidden);
+                return Err(TurnError::PreviousTurnNotFinished);
             }
         }
         self.partial_turn_input = None;
@@ -509,15 +496,15 @@ impl AlteredGame {
         let board = game.board(board_idx);
         let (piece_kind, piece_force, piece_origin, source) = match start {
             PieceDragStart::Board(coord) => {
-                let piece = board.grid()[coord].ok_or(PieceDragError::PieceNotFound)?;
+                let piece = board.grid()[coord].ok_or(TurnError::PieceMissing)?;
                 if !board.can_potentially_move_piece(my_envoy.force, piece.force) {
-                    return Err(PieceDragError::DragForbidden);
+                    return Err(TurnError::DontControlPiece);
                 }
                 (piece.kind, piece.force, piece.origin, PieceDragSource::Board(coord))
             }
             PieceDragStart::Reserve(piece_kind) => {
                 if board.reserve(my_envoy.force)[piece_kind] == 0 {
-                    return Err(PieceDragError::PieceNotFound);
+                    return Err(TurnError::DropPieceMissing);
                 }
                 let piece_force = piece_kind.reserve_piece_force(my_envoy.force);
                 (piece_kind, piece_force, PieceOrigin::Dropped, PieceDragSource::Reserve)
@@ -529,8 +516,6 @@ impl AlteredGame {
             piece_origin,
             source,
         })
-        .map_err(|()| PieceDragError::DragIllegal)?;
-        Ok(())
     }
 
     pub fn abort_drag_piece(&mut self) {
@@ -543,7 +528,7 @@ impl AlteredGame {
     // turn via `make_turn`.
     pub fn drag_piece_drop(
         &mut self, board_idx: BughouseBoard, dest: Coord,
-    ) -> Result<Option<TurnInput>, PieceDragError> {
+    ) -> Result<Option<TurnInput>, TurnError> {
         let Some((
             input_board_idx,
             PartialTurnInput::Drag {
@@ -554,22 +539,23 @@ impl AlteredGame {
             },
         )) = self.partial_turn_input
         else {
-            return Err(PieceDragError::NoDragInProgress);
+            // TODO: Log internal error.
+            return Err(TurnError::NoTurnInProgress);
         };
         self.partial_turn_input = None;
         if input_board_idx != board_idx {
-            return Err(PieceDragError::DragForbidden);
+            return Ok(None);
         }
 
         match source {
-            PieceDragSource::Defunct => Err(PieceDragError::DragNoLongerPossible),
+            PieceDragSource::Defunct => Err(TurnError::Defunct),
             PieceDragSource::Board(source_coord) => {
                 use PieceKind::*;
                 if piece_kind == PieceKind::Duck {
                     return Ok(Some(TurnInput::DragDrop(Turn::PlaceDuck(dest))));
                 }
                 if source_coord == dest {
-                    return Err(PieceDragError::Cancelled);
+                    return Err(TurnError::Cancelled);
                 }
                 let board_shape = self.board_shape();
                 let d_col = dest.col - source_coord.col;
@@ -586,7 +572,7 @@ impl AlteredGame {
                 if is_castling {
                     use CastleDirection::*;
                     if piece_origin != PieceOrigin::Innate {
-                        return Err(PieceDragError::CannotCastleDroppedKing);
+                        return Err(TurnError::CannotCastleDroppedKing);
                     }
                     let dir = if d_col > 0 { HSide } else { ASide };
                     Ok(Some(TurnInput::DragDrop(Turn::Castle(dir))))
@@ -600,8 +586,7 @@ impl AlteredGame {
                                         from: source_coord,
                                         to: dest,
                                     },
-                                )
-                                .map_err(|()| PieceDragError::DragIllegal)?;
+                                )?;
                                 Ok(None)
                             }
                             Promotion::Discard => {
@@ -618,8 +603,7 @@ impl AlteredGame {
                                         from: source_coord,
                                         to: dest,
                                     },
-                                )
-                                .map_err(|()| PieceDragError::DragIllegal)?;
+                                )?;
                                 Ok(None)
                             }
                         }
@@ -777,24 +761,22 @@ impl AlteredGame {
 
     fn try_partial_turn(
         &mut self, board_idx: BughouseBoard, input: PartialTurnInput,
-    ) -> Result<(), ()> {
+    ) -> Result<(), TurnError> {
         self.partial_turn_input = Some((board_idx, input));
         let mut game = self.game_with_local_turns(LocalTurns::NormalAndPre);
-        match self.apply_partial_turn(&mut game) {
-            Ok(()) => Ok(()),
-            Err(()) => {
-                self.partial_turn_input = None;
-                Err(())
-            }
+        let result = self.apply_partial_turn(&mut game);
+        if result.is_err() {
+            self.partial_turn_input = None;
         }
+        result
     }
 
-    fn apply_partial_turn(&self, game: &mut BughouseGame) -> Result<(), ()> {
+    fn apply_partial_turn(&self, game: &mut BughouseGame) -> Result<(), TurnError> {
         let Some((board_idx, input)) = self.partial_turn_input else {
             return Ok(());
         };
         let Some(envoy) = self.my_id.envoy_for(board_idx) else {
-            return Err(());
+            return Err(TurnError::NotPlayer);
         };
         match input {
             PartialTurnInput::Drag {
@@ -808,17 +790,18 @@ impl AlteredGame {
                     PieceDragSource::Defunct => {}
                     PieceDragSource::Board(coord) => {
                         // Note: `take` modifies the board
-                        let piece = board.grid_mut()[coord].take().ok_or(())?;
+                        let piece =
+                            board.grid_mut()[coord].take().ok_or(TurnError::PieceMissing)?;
                         let expected = (piece_force, piece_kind, piece_origin);
                         let actual = (piece.force, piece.kind, piece.origin);
                         if expected != actual {
-                            return Err(());
+                            return Err(TurnError::TurnObsolete);
                         }
                     }
                     PieceDragSource::Reserve => {
                         let reserve = board.reserve_mut(envoy.force);
                         if reserve[piece_kind] == 0 {
-                            return Err(());
+                            return Err(TurnError::DropPieceMissing);
                         }
                         reserve[piece_kind] -= 1;
                     }
@@ -826,12 +809,12 @@ impl AlteredGame {
             }
             PartialTurnInput::UpgradePromotion { from, to }
             | PartialTurnInput::StealPromotion { from, to } => {
-                let Ok(mode) = game.turn_mode_for_envoy(envoy) else {
-                    return Err(());
-                };
+                let mode = game.turn_mode_for_envoy(envoy)?;
                 let board = game.board_mut(board_idx);
-                if !board.is_legal_move_destination(from, to, mode) {
-                    return Err(());
+                match board.destination_reachability(from, to, mode) {
+                    Reachability::Reachable => {}
+                    Reachability::Blocked => return Err(TurnError::PathBlocked),
+                    Reachability::Impossible => return Err(TurnError::ImpossibleTrajectory),
                 }
                 let grid = board.grid_mut();
                 grid[to] = grid[from].take();
