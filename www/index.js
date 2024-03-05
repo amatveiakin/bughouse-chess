@@ -529,7 +529,12 @@ function on_document_keydown(event) {
         // Make sure log is not scrolled by arrow keys: we are scrolling it
         // programmatically to make sure the current turn is visible.
         event.preventDefault();
-        wasm_client().on_vertical_arrow_key_down(event.key, event.ctrlKey, event.altKey);
+        wasm_client().on_vertical_arrow_key_down(
+          event.key,
+          event.ctrlKey,
+          event.shiftKey,
+          event.altKey
+        );
         update();
       }
     }
@@ -1116,10 +1121,9 @@ function set_up_log_navigation() {
     const area_node = document.getElementById(`turn-log-scroll-area-${board_id}`);
     area_node.addEventListener("click", (event) => {
       with_error_handling(function () {
-        // TODO: Convenient ways to navigate (including keyboard) and to reset.
         const turn_node = event.target.closest("[data-turn-index]");
         const turn_index = turn_node?.getAttribute("data-turn-index");
-        wasm_client().wayback_to_turn(board_id, turn_index);
+        wasm_client().wayback_to_turn(turn_index);
         update();
       });
     });

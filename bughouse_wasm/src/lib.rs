@@ -28,6 +28,7 @@ use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::str::FromStr;
 use std::time::Duration;
 
 use bughouse_chess::client::*;
@@ -38,7 +39,7 @@ use enum_map::enum_map;
 use html_collection_iterator::IntoHtmlCollectionIterator;
 use instant::Instant;
 use itertools::Itertools;
-use strum::IntoEnumIterator;
+use strum::{EnumIter, IntoEnumIterator};
 use wasm_bindgen::prelude::*;
 use web_document::{web_document, WebDocument};
 use web_element_ext::WebElementExt;
@@ -750,6 +751,7 @@ impl WebClient {
         let board_shape = alt_game.board_shape();
         let my_id = alt_game.my_id();
         let perspective = alt_game.perspective();
+        let wayback = alt_game.wayback();
         update_scores(&mtch.scores, &mtch.participants, game.status())?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |piece_force| {
@@ -887,9 +889,8 @@ impl WebClient {
                     game.chess_rules(),
                 )?;
             }
-            let wayback = alt_game.wayback(board_idx);
             board_node.class_list().toggle_with_force("wayback", wayback.active())?;
-            update_turn_log(&game, my_id, board_idx, display_board_idx, wayback)?;
+            update_turn_log(&game, my_id, board_idx, display_board_idx, &wayback)?;
         }
         self.update_turn_highlights()?;
         document
@@ -914,8 +915,6 @@ impl WebClient {
         let now = Instant::now();
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         let game = alt_game.local_game();
-        let wayback_active =
-            BughouseBoard::iter().any(|board_idx| alt_game.wayback(board_idx).active());
         for (board_idx, board) in game.boards() {
             let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
             let board_orientation =
@@ -935,7 +934,6 @@ impl WebClient {
                     diff,
                     display_board_idx,
                     player_idx,
-                    wayback_active,
                 )?;
             }
         }
@@ -951,32 +949,33 @@ impl WebClient {
             .join("\n")
     }
 
-    pub fn wayback_to_turn(&mut self, board_id: &str, turn_idx: Option<String>) -> JsResult<()> {
+    pub fn wayback_to_turn(&mut self, turn_idx: Option<String>) -> JsResult<()> {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
         if alt_game.is_active() {
             return Ok(());
         }
-        let turn_idx = turn_idx.map(|idx| TurnIndex(idx));
-        let display_board_idx = parse_board_id(board_id)?;
-        let board_idx = get_board_index(display_board_idx, alt_game.perspective());
-        alt_game.wayback_to_turn(board_idx, turn_idx);
+        let turn_idx = turn_idx.map(|idx| TurnIndex::from_str(&idx).unwrap());
+        alt_game.wayback_to_turn(turn_idx);
         Ok(())
     }
 
-    pub fn on_vertical_arrow_key_down(&mut self, key: &str, ctrl: bool, alt: bool) -> JsResult<()> {
+    pub fn on_vertical_arrow_key_down(
+        &mut self, key: &str, ctrl: bool, shift: bool, alt: bool,
+    ) -> JsResult<()> {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
         if alt_game.is_active() {
             return Ok(());
         }
-        let display_board_idx = match alt {
-            false => DisplayBoard::Primary,
-            true => DisplayBoard::Secondary,
+        let display_board_idx = match (shift, alt) {
+            (false, false) => None,
+            (true, false) => Some(DisplayBoard::Primary),
+            (_, true) => Some(DisplayBoard::Secondary),
         };
-        let board_idx = get_board_index(display_board_idx, alt_game.perspective());
+        let board_idx = display_board_idx.map(|idx| get_board_index(idx, alt_game.perspective()));
         match (key, ctrl) {
             ("ArrowDown", false) => alt_game.wayback_to_next(board_idx),
             ("ArrowDown", true) => alt_game.wayback_to_last(board_idx),
@@ -984,15 +983,17 @@ impl WebClient {
             ("ArrowUp", true) => alt_game.wayback_to_first(board_idx),
             _ => {}
         };
-        let node = alt_game.wayback(board_idx).turn_index().and_then(|index| {
-            web_document().get_element_by_id(&turn_record_node_id(display_board_idx, index))
-        });
-        if let Some(node) = node {
-            node.scroll_into_view_with_scroll_into_view_options(
-                ScrollIntoViewOptions::new()
-                    .behavior(ScrollBehavior::Instant)
-                    .block(ScrollLogicalPosition::Nearest),
-            );
+        for turn_record_board in TurnRecordBoard::iter() {
+            let node = alt_game.wayback().turn_index().and_then(|index| {
+                web_document().get_element_by_id(&turn_record_node_id(index, turn_record_board))
+            });
+            if let Some(node) = node {
+                node.scroll_into_view_with_scroll_into_view_options(
+                    ScrollIntoViewOptions::new()
+                        .behavior(ScrollBehavior::Instant)
+                        .block(ScrollLogicalPosition::Nearest),
+                );
+            }
         }
         Ok(())
     }
@@ -1135,6 +1136,12 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();
     t.hash(&mut s);
     s.finish()
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
+enum TurnRecordBoard {
+    Main,
+    Auxiliary,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1646,7 +1653,7 @@ fn is_clock_ticking(game: &BughouseGame, participant_id: BughouseParticipant) ->
 
 fn render_clock(
     showing: ClockShowing, diff: Option<ClockDifference>, display_board_idx: DisplayBoard,
-    player_idx: DisplayPlayer, wayback_active: bool,
+    player_idx: DisplayPlayer,
 ) -> JsResult<()> {
     let document = web_document();
     let clock_node =
@@ -1688,7 +1695,7 @@ fn render_clock(
             .class_list()
             .toggle_with_force("clock-difference-gt", diff.comparison == Ordering::Greater)?;
         diff_node.set_text_content(Some(&diff.ui_string()));
-        diff_node.class_list().toggle_with_force("display-none", wayback_active)?;
+        diff_node.class_list().toggle_with_force("display-none", false)?;
     } else {
         diff_node.class_list().toggle_with_force("display-none", true)?;
     }
@@ -1780,7 +1787,7 @@ fn render_boards(board_shape: BoardShape, perspective: Perspective) -> JsResult<
 
 fn update_turn_log(
     game: &BughouseGame, my_id: BughouseParticipant, board_idx: BughouseBoard,
-    display_board_idx: DisplayBoard, wayback: WaybackState,
+    display_board_idx: DisplayBoard, wayback: &WaybackState,
 ) -> JsResult<()> {
     let board_shape = game.board_shape();
     let document = web_document();
@@ -1791,17 +1798,27 @@ fn update_turn_log(
         .toggle_with_force("wayback", wayback.active())?;
     let log_node = document.get_existing_element_by_id(&turn_log_node_id(display_board_idx))?;
     log_node.remove_all_children();
+
     let mut prev_number = 0;
-    let mut prev_index = TurnIndex(String::new());
     for record in game.turn_log().iter() {
+        let index = record.index;
+        let line_node = document.create_element("div")?;
+        if Some(index) == wayback.turn_index() {
+            if wayback.active() {
+                line_node.class_list().add_1("wayback-current-turn-active")?;
+            } else {
+                line_node.class_list().add_1("wayback-current-turn-inactive")?;
+            }
+        }
+        line_node.set_attribute("data-turn-index", &index.to_string())?;
+
         if record.envoy.board_idx == board_idx {
             let force = record.envoy.force;
             let mut turn_number_str = String::new();
-            if prev_number != record.number {
-                turn_number_str = format!("{}.", record.number);
-                prev_number = record.number;
+            if prev_number != record.local_number {
+                turn_number_str = format!("{}.", record.local_number);
+                prev_number = record.local_number;
             }
-            let index = record.index();
             let is_in_fog = game.chess_rules().fog_of_war
                 && game.is_active()
                 && my_id.as_player().map_or(false, |p| p.team() != record.envoy.team());
@@ -1831,24 +1848,15 @@ fn update_turn_log(
             let width_class = match width_estimate {
                 55.. => "log-record-xl",
                 50.. => "log-record-l",
-                _ => "",
+                _ => "log-record-m",
             };
 
-            let line_node = document.create_element("div")?;
-            line_node.set_attribute("id", &turn_record_node_id(display_board_idx, &index))?;
-            line_node.set_attribute(
-                "class",
-                &format!("log-turn-record log-turn-record-{} {width_class}", force_id(force)),
+            line_node.set_attribute("id", &turn_record_node_id(index, TurnRecordBoard::Main))?;
+            line_node.class_list().add_3(
+                "log-turn-record",
+                &format!("log-turn-record-{}", force_id(force)),
+                width_class,
             )?;
-            line_node.set_attribute("data-turn-index", &index.0)?;
-            if Some(&index) == wayback.turn_index() {
-                if wayback.active() {
-                    line_node.class_list().add_1("wayback-current-turn-active")?;
-                } else {
-                    line_node.class_list().add_1("wayback-current-turn-inactive")?;
-                }
-            }
-            prev_index = index;
 
             line_node.append_text_span(&turn_number_str, ["log-turn-number"])?;
             line_node.append_text_span(&algebraic, ["log-algebraic"])?;
@@ -1865,16 +1873,17 @@ fn update_turn_log(
                     line_node.append_child(&capture_node)?;
                 }
             }
-
-            log_node.append_child(&line_node)?;
         } else {
-            // Add records for turns made on the other board when appropriate.
+            // Add records for turns made on the other board when appropriate. Otherwise, add a
+            // ghost record. During wayback it shows timestamp on this board when a turn on another
+            // board is active.
+            line_node
+                .set_attribute("id", &turn_record_node_id(index, TurnRecordBoard::Auxiliary))?;
             if !record.turn_expanded.steals.is_empty() {
-                let line_node = document.create_element("div")?;
                 // No need to add a width class: steal records are always small.
-                line_node.set_attribute("class", "log-turn-record log-turn-record-intervention")?;
-                // Clicking on the steal will send you the previous turn on this board.
-                line_node.set_attribute("data-turn-index", &prev_index.0)?;
+                line_node
+                    .class_list()
+                    .add_2("log-turn-record", "log-turn-record-intervention")?;
 
                 line_node.append_span(["log-turn-number"])?;
 
@@ -1890,10 +1899,11 @@ fn update_turn_log(
                         make_piece_icon(steal.piece_kind, steal.force, &capture_classes)?;
                     line_node.append_child(&steal_node)?;
                 }
-
-                log_node.append_child(&line_node)?;
+            } else {
+                line_node.class_list().add_1("log-turn-ghost-record")?;
             }
         }
+        log_node.append_child(&line_node)?;
     }
     // Note. The log will be scrolled to bottom whenever a turn is made on a given board (see
     // `NotableEvent::TurnMade` handler). Another strategy would've been to keep the log scrolled
@@ -2172,8 +2182,11 @@ fn turn_log_node_id(board_idx: DisplayBoard) -> String {
     format!("turn-log-{}", board_id(board_idx))
 }
 
-fn turn_record_node_id(board_idx: DisplayBoard, index: &TurnIndex) -> String {
-    format!("turn-record-{}-{}", board_id(board_idx), index.0)
+fn turn_record_node_id(index: TurnIndex, board: TurnRecordBoard) -> String {
+    match board {
+        TurnRecordBoard::Main => format!("turn-record-{}", index.to_string()),
+        TurnRecordBoard::Auxiliary => format!("turn-record-aux-{}", index.to_string()),
+    }
 }
 
 fn square_grid_layer_id(board_idx: DisplayBoard) -> String {

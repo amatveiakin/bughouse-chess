@@ -882,12 +882,12 @@ dialog::-webkit-scrollbar-thumb {
   font-family: "Open Sans", sans-serif;
   white-space: nowrap;
 }
-.log-turn-record.wayback-current-turn-active {
+.wayback-current-turn-active {
   outline: 0.2em solid #00b000;
   outline-offset: -0.1em;
   border-radius: 0.5em;
 }
-.log-turn-record.wayback-current-turn-inactive {
+.wayback-current-turn-inactive {
   outline: 0.15em solid #00b00080;
   outline-offset: -0.1em;
   border-radius: 0.5em;

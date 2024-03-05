@@ -26,6 +26,7 @@
 #![allow(unused_parens)]
 
 use std::rc::Rc;
+use std::str::FromStr;
 
 use enum_map::{enum_map, Enum, EnumMap};
 use itertools::Itertools;
@@ -60,17 +61,26 @@ pub struct TurnRecord {
     pub time: GameInstant,
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct TurnIndex(pub String);
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct TurnIndex(pub usize);
 
 #[derive(Clone, Debug)]
 pub struct TurnRecordExpanded {
-    pub number: u32,
+    pub index: TurnIndex,  // global unique turn index
+    pub local_number: u32, // logical turn number within the board
     pub mode: TurnMode,
     pub envoy: BughouseEnvoy,
     pub turn_expanded: TurnExpanded,
     pub time: GameInstant,
-    pub board_after: Board,
+    pub boards_after: EnumMap<BughouseBoard, Board>,
+}
+
+impl ToString for TurnIndex {
+    fn to_string(&self) -> String { self.0.to_string() }
+}
+impl FromStr for TurnIndex {
+    type Err = <usize as FromStr>::Err;
+    fn from_str(s: &str) -> Result<Self, Self::Err> { Ok(TurnIndex(s.parse()?)) }
 }
 
 impl TurnRecordExpanded {
@@ -83,20 +93,6 @@ impl TurnRecordExpanded {
             turn_input: TurnInput::Explicit(self.turn_expanded.turn),
             time: self.time,
         }
-    }
-
-    // Improvement potential: Can we simply use the index in the `turn_log`?
-    // Lexicographic order of indices is guaranteed to correspond to turn order.
-    pub fn index(&self) -> TurnIndex {
-        // Note. Black suffix should be lexicographically greater than white suffix.
-        // Note. Not using "a"/"b" because it could be confused with board index.
-        let force = match self.envoy.force {
-            Force::White => "w",
-            Force::Black => "x",
-        };
-        let id_duck_turn = matches!(self.turn_expanded.turn, Turn::PlaceDuck(_));
-        let duck_suffix = if id_duck_turn { "d" } else { "" };
-        TurnIndex(format!("{:08}-{}{}", self.number, force, duck_suffix))
     }
 }
 
@@ -479,6 +475,7 @@ impl BughouseGame {
     }
     pub fn turn_log(&self) -> &Vec<TurnRecordExpanded> { &self.turn_log }
     pub fn turn_log_mut(&mut self) -> &mut Vec<TurnRecordExpanded> { &mut self.turn_log }
+    pub fn turn_record(&self, index: TurnIndex) -> &TurnRecordExpanded { &self.turn_log[index.0] }
     pub fn last_turn_record(&self) -> Option<&TurnRecordExpanded> { self.turn_log.last() }
     pub fn started(&self) -> bool { !self.turn_log.is_empty() }
     pub fn status(&self) -> BughouseGameStatus { self.status }
@@ -633,24 +630,27 @@ impl BughouseGame {
         }
         other_board.apply_sibling_turn(&turn_facts, mode);
 
-        let prev_number = self
+        let index = TurnIndex(self.turn_log.len());
+        let prev_local_number = self
             .turn_log
             .iter()
             .rev()
             .find(|record| record.envoy.board_idx == board_idx)
-            .map_or(0, |record| record.number);
-        let inc_number =
-            (envoy.force == Force::White || mode == TurnMode::Preturn) && !is_duck_turn;
-        let number = if inc_number { prev_number + 1 } else { prev_number };
+            .map_or(0, |record| record.local_number);
+        let mut local_number = prev_local_number;
+        if (envoy.force == Force::White || mode == TurnMode::Preturn) && !is_duck_turn {
+            local_number += 1;
+        }
         let turn_expanded = make_turn_expanded(turn, turn_algebraic, turn_facts);
+        let boards_after = EnumMap::from_fn(|idx| self.boards[idx].clone_for_wayback());
         self.turn_log.push(TurnRecordExpanded {
-            number,
+            index,
+            local_number,
             mode,
             envoy,
             turn_expanded,
             time: now,
-            // Improvement potential: Show reserve prior to the next turn rather than after this one.
-            board_after: self.boards[board_idx].clone_for_wayback(),
+            boards_after,
         });
         assert!(self.status.is_active());
         if self.bughouse_rules().koedem {

@@ -187,10 +187,10 @@ pub fn export_to_bpgn(_format: BughouseExportFormat, game: &BughouseGame, round:
     let header = make_bughouse_bpng_header(game, round);
     let mut doc = TextDocument::new();
     for turn_record in game.turn_log() {
-        let TurnRecordExpanded { number, envoy, turn_expanded, .. } = turn_record;
+        let TurnRecordExpanded { local_number, envoy, turn_expanded, .. } = turn_record;
         let turn_notation = format!(
             "{}{}. {}",
-            number,
+            local_number,
             envoy_notation(*envoy),
             turn_expanded.algebraic.format(game.board_shape(), AlgebraicCharset::Ascii),
         );

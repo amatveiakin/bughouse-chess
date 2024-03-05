@@ -17,7 +17,7 @@
 
 use std::collections::HashSet;
 
-use enum_map::{enum_map, EnumMap};
+use enum_map::enum_map;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
 
@@ -119,11 +119,11 @@ pub enum WaybackState {
 }
 
 impl WaybackState {
-    pub fn turn_index(&self) -> Option<&TurnIndex> {
+    pub fn turn_index(&self) -> Option<TurnIndex> {
         match self {
             WaybackState::Disabled => None,
-            WaybackState::Enabled(index) => Some(index),
-            WaybackState::Active(index) => Some(index),
+            WaybackState::Enabled(index) => Some(*index),
+            WaybackState::Active(index) => Some(*index),
         }
     }
     pub fn active(&self) -> bool { matches!(self, WaybackState::Active(_)) }
@@ -144,7 +144,7 @@ pub struct AlteredGame {
     // The turns are executed sequentially. Preturns always follow normal turns.
     local_turns: Vec<TurnRecord>,
     // Historical position that the user is currently viewing.
-    wayback_turn_index: EnumMap<BughouseBoard, Option<TurnIndex>>,
+    wayback_turn_index: Option<TurnIndex>,
 }
 
 impl AlteredGame {
@@ -154,7 +154,7 @@ impl AlteredGame {
             game_confirmed,
             partial_turn_input: None,
             local_turns: Vec::new(),
-            wayback_turn_index: enum_map! { _ => None },
+            wayback_turn_index: None,
         }
     }
 
@@ -242,21 +242,28 @@ impl AlteredGame {
         let my_id = self.my_id;
         let game = self.local_game();
         let mut highlights = vec![];
+        let wayback = self.wayback();
+        let wayback_turn_idx = wayback.turn_index();
 
         for board_idx in BughouseBoard::iter() {
+            if wayback.active() {
+                let wayback_turn_board =
+                    game.turn_record(wayback_turn_idx.unwrap()).envoy.board_idx;
+                if wayback_turn_board != board_idx {
+                    continue;
+                }
+            }
+
             let see_though_fog = self.see_though_fog();
             let empty_area = HashSet::new();
             let fog_render_area = self.fog_of_war_area(board_idx);
             let fog_cover_area = if see_though_fog { &empty_area } else { &fog_render_area };
-
-            let wayback = self.wayback(board_idx);
-            let wayback_turn_idx = wayback.turn_index();
             let turn_log = board_turn_log_modulo_wayback(&game, board_idx, wayback_turn_idx);
 
             if let Some(latest_turn_record) = turn_log.last() {
                 if !my_id.plays_for(latest_turn_record.envoy) || wayback_turn_idx.is_some() {
-                    // Highlight all components of the latest megaturn. Normally this would be exactly one
-                    // turn, but in duck chess it's both the regular piece and the duck.
+                    // Highlight all components of the latest megaturn. Normally this would be
+                    // exactly one turn, but in duck chess it's both the regular piece and the duck.
                     for r in
                         turn_log.iter().rev().take_while(|r| r.envoy == latest_turn_record.envoy)
                     {
@@ -318,7 +325,7 @@ impl AlteredGame {
         let mut game = self.game_with_local_turns(LocalTurns::OnlyNormal);
 
         let board_shape = self.board_shape();
-        let wayback_active = self.apply_wayback_for_board(&mut game, board_idx);
+        let wayback_active = self.apply_wayback(&mut game);
         let force = get_bughouse_force(my_player_id.team(), board_idx);
         let mut visible = game.board(board_idx).fog_free_area(force);
         // Still, do show preturn pieces themselves:
@@ -341,7 +348,7 @@ impl AlteredGame {
         let Some(envoy) = self.my_id.envoy_for(board_idx) else {
             return Err(TurnError::NotPlayer);
         };
-        if self.wayback_turn_index[board_idx].is_some() {
+        if self.wayback_turn_index.is_some() {
             return Err(TurnError::WaybackIsActive);
         }
         if self.num_preturns_on_board(board_idx) >= self.chess_rules().max_preturns_per_board() {
@@ -359,29 +366,25 @@ impl AlteredGame {
         Ok(mode)
     }
 
-    pub fn wayback(&self, board_idx: BughouseBoard) -> WaybackState {
+    pub fn wayback(&self) -> WaybackState {
         if self.is_active() {
             WaybackState::Disabled
-        } else if let Some(index) = &self.wayback_turn_index[board_idx] {
-            WaybackState::Active(index.clone())
+        } else if let Some(index) = self.wayback_turn_index {
+            WaybackState::Active(index)
         } else {
-            let mut turn_index_iter = self
-                .game_confirmed
-                .turn_log()
-                .iter()
-                .filter_map(FilterByBoardGetIndex { board_idx });
-            if let Some(last_turn_idx) = turn_index_iter.next_back() {
-                WaybackState::Enabled(last_turn_idx)
+            if let Some(last_turn) = self.game_confirmed.last_turn_record() {
+                WaybackState::Enabled(last_turn.index)
             } else {
                 WaybackState::Disabled
             }
         }
     }
-    pub fn wayback_to_turn(&mut self, board_idx: BughouseBoard, turn_idx: Option<TurnIndex>) {
-        self.wayback_to(board_idx, |_, _| turn_idx)
+    pub fn wayback_to_turn(&mut self, turn_idx: Option<TurnIndex>) {
+        self.wayback_to(|_, _| turn_idx)
     }
-    pub fn wayback_to_previous(&mut self, board_idx: BughouseBoard) {
-        self.wayback_to(board_idx, |iter, current| {
+    pub fn wayback_to_previous(&mut self, board_idx: Option<BughouseBoard>) {
+        self.wayback_to(|iter, current| {
+            let iter = board_turn_index_iterator(iter, board_idx);
             if let Some(current) = current {
                 iter.rev().find_or_last(|index| *index < current)
             } else {
@@ -389,8 +392,9 @@ impl AlteredGame {
             }
         })
     }
-    pub fn wayback_to_next(&mut self, board_idx: BughouseBoard) {
-        self.wayback_to(board_idx, |mut iter, current| {
+    pub fn wayback_to_next(&mut self, board_idx: Option<BughouseBoard>) {
+        self.wayback_to(|iter, current| {
+            let mut iter = board_turn_index_iterator(iter, board_idx);
             if let Some(current) = current {
                 iter.find(|index| *index > current)
             } else {
@@ -400,11 +404,17 @@ impl AlteredGame {
             }
         })
     }
-    pub fn wayback_to_first(&mut self, board_idx: BughouseBoard) {
-        self.wayback_to(board_idx, |mut iter, _| iter.nth(0))
+    pub fn wayback_to_first(&mut self, board_idx: Option<BughouseBoard>) {
+        self.wayback_to(|iter, _| {
+            let mut iter = board_turn_index_iterator(iter, board_idx);
+            iter.nth(0)
+        })
     }
-    pub fn wayback_to_last(&mut self, board_idx: BughouseBoard) {
-        self.wayback_to(board_idx, |_, _| None)
+    pub fn wayback_to_last(&mut self, board_idx: Option<BughouseBoard>) {
+        self.wayback_to(|iter, _| {
+            let iter = board_turn_index_iterator(iter, board_idx);
+            iter.rev().nth(0)
+        })
     }
 
     // Improvement: Less ad-hoc solution for "gluing" board index to TurnInput; use it here, in
@@ -483,7 +493,7 @@ impl AlteredGame {
         let Some(my_envoy) = self.my_id.envoy_for(board_idx) else {
             return Err(TurnError::NotPlayer);
         };
-        if self.wayback_turn_index[board_idx].is_some() {
+        if self.wayback_turn_index.is_some() {
             return Err(TurnError::WaybackIsActive);
         }
         if let Some((input_board_idx, _)) = self.partial_turn_input {
@@ -714,49 +724,31 @@ impl AlteredGame {
     }
 
     fn wayback_to(
-        &mut self, board_idx: BughouseBoard,
+        &mut self,
         get_turn_index: impl FnOnce(
-            std::iter::FilterMap<std::slice::Iter<TurnRecordExpanded>, FilterByBoardGetIndex>,
+            std::slice::Iter<TurnRecordExpanded>,
             Option<TurnIndex>,
         ) -> Option<TurnIndex>,
     ) {
         assert!(!self.is_active());
-        let turn_index_iter = self
-            .game_confirmed
-            .turn_log()
-            .iter()
-            .filter_map(FilterByBoardGetIndex { board_idx });
-        let last_turn_idx = turn_index_iter.clone().next_back();
-        let old_turn_idx = self.wayback_turn_index[board_idx].clone();
-        let new_turn_idx = get_turn_index(turn_index_iter, old_turn_idx);
-        self.wayback_turn_index[board_idx] = if new_turn_idx == last_turn_idx {
-            None
-        } else {
-            new_turn_idx
-        };
+        let old_turn_idx = self.wayback_turn_index;
+        let new_turn_idx = get_turn_index(self.game_confirmed.turn_log().iter(), old_turn_idx);
+        let at_end = new_turn_idx == self.game_confirmed.last_turn_record().map(|r| r.index);
+        self.wayback_turn_index = if at_end { None } else { new_turn_idx };
     }
 
-    fn apply_wayback_for_board(&self, game: &mut BughouseGame, board_idx: BughouseBoard) -> bool {
-        let Some(ref turn_idx) = self.wayback_turn_index[board_idx] else {
+    fn apply_wayback(&self, game: &mut BughouseGame) -> bool {
+        let Some(ref turn_idx) = self.wayback_turn_index else {
             return false;
         };
-        for turn in game.turn_log() {
-            if turn.envoy.board_idx == board_idx && turn.index() >= *turn_idx {
-                let turn_time = turn.time;
-                let board_after = turn.board_after.clone();
-                let board = game.board_mut(board_idx);
-                *board = board_after;
-                board.clock_mut().stop(turn_time);
-                break;
-            }
+        let turn = game.turn_log().iter().rev().find(|turn| turn.index <= *turn_idx).unwrap();
+        let turn_time = turn.time;
+        let boards_after = turn.boards_after.clone();
+        for (board_idx, mut board) in boards_after {
+            board.clock_mut().stop(turn_time);
+            *game.board_mut(board_idx) = board;
         }
         true
-    }
-
-    fn apply_wayback(&self, game: &mut BughouseGame) {
-        for board_idx in BughouseBoard::iter() {
-            self.apply_wayback_for_board(game, board_idx);
-        }
     }
 
     fn try_partial_turn(
@@ -839,7 +831,7 @@ impl AlteredGame {
 }
 
 fn board_turn_log_modulo_wayback(
-    game: &BughouseGame, board_idx: BughouseBoard, wayback_turn_idx: Option<&TurnIndex>,
+    game: &BughouseGame, board_idx: BughouseBoard, wayback_turn_idx: Option<TurnIndex>,
 ) -> Vec<TurnRecordExpanded> {
     let mut turn_log = game
         .turn_log()
@@ -851,7 +843,7 @@ fn board_turn_log_modulo_wayback(
         let mut wayback_turn_found = false;
         turn_log.retain(|r| {
             // The first turn with this condition should be kept, the rest should be deleted.
-            if r.index() >= *wayback_turn_idx {
+            if r.index >= wayback_turn_idx {
                 if !wayback_turn_found {
                     wayback_turn_found = true;
                     true
@@ -991,35 +983,10 @@ fn get_partial_turn_highlights(
     )
 }
 
-// Rust-upgrade (https://github.com/rust-lang/rust/issues/116380):
-//   Replace `RecordFilterByBoard` + manual iterator type with an existential type:
-//
-// type BoardRecordLogIterator<'a> = impl DoubleEndedIterator<Item = String> + 'a;
-// fn get_board_record_log_iterator(
-//     turn_log: &[TurnRecordExpanded], board_idx: BughouseBoard,
-// ) -> BoardRecordLogIterator {
-//     turn_log
-//         .iter()
-//         .filter(move |record| record.envoy.board_idx == board_idx)
-//         .map(|record| record.index())
-// }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct FilterByBoardGetIndex {
-    board_idx: BughouseBoard,
-}
-impl FnOnce<(&TurnRecordExpanded,)> for FilterByBoardGetIndex {
-    type Output = Option<TurnIndex>;
-    extern "rust-call" fn call_once(self, args: (&TurnRecordExpanded,)) -> Self::Output {
-        if args.0.envoy.board_idx == self.board_idx {
-            Some(args.0.index())
-        } else {
-            None
-        }
-    }
-}
-impl FnMut<(&TurnRecordExpanded,)> for FilterByBoardGetIndex {
-    extern "rust-call" fn call_mut(&mut self, args: (&TurnRecordExpanded,)) -> Self::Output {
-        Self::call_once(*self, args)
-    }
+fn board_turn_index_iterator<'a>(
+    iter: impl DoubleEndedIterator<Item = &'a TurnRecordExpanded> + 'a,
+    board_idx: Option<BughouseBoard>,
+) -> impl DoubleEndedIterator<Item = TurnIndex> + 'a {
+    iter.filter(move |r| board_idx.map_or(true, |b| r.envoy.board_idx == b))
+        .map(|r| r.index)
 }
