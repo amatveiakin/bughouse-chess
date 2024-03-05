@@ -958,6 +958,7 @@ impl WebClient {
         if alt_game.is_active() {
             return Ok(());
         }
+        let turn_idx = turn_idx.map(|idx| TurnIndex(idx));
         let display_board_idx = parse_board_id(board_id)?;
         let board_idx = get_board_index(display_board_idx, alt_game.perspective());
         alt_game.wayback_to_turn(board_idx, turn_idx);
@@ -1791,7 +1792,7 @@ fn update_turn_log(
     let log_node = document.get_existing_element_by_id(&turn_log_node_id(display_board_idx))?;
     log_node.remove_all_children();
     let mut prev_number = 0;
-    let mut prev_index = String::new();
+    let mut prev_index = TurnIndex(String::new());
     for record in game.turn_log().iter() {
         if record.envoy.board_idx == board_idx {
             let force = record.envoy.force;
@@ -1839,8 +1840,8 @@ fn update_turn_log(
                 "class",
                 &format!("log-turn-record log-turn-record-{} {width_class}", force_id(force)),
             )?;
-            line_node.set_attribute("data-turn-index", &index)?;
-            if Some(index.as_str()) == wayback.turn_index() {
+            line_node.set_attribute("data-turn-index", &index.0)?;
+            if Some(&index) == wayback.turn_index() {
                 if wayback.active() {
                     line_node.class_list().add_1("wayback-current-turn-active")?;
                 } else {
@@ -1873,7 +1874,7 @@ fn update_turn_log(
                 // No need to add a width class: steal records are always small.
                 line_node.set_attribute("class", "log-turn-record log-turn-record-intervention")?;
                 // Clicking on the steal will send you the previous turn on this board.
-                line_node.set_attribute("data-turn-index", &prev_index)?;
+                line_node.set_attribute("data-turn-index", &prev_index.0)?;
 
                 line_node.append_span(["log-turn-number"])?;
 
@@ -2171,8 +2172,8 @@ fn turn_log_node_id(board_idx: DisplayBoard) -> String {
     format!("turn-log-{}", board_id(board_idx))
 }
 
-fn turn_record_node_id(board_idx: DisplayBoard, index: &str) -> String {
-    format!("turn-record-{}-{index}", board_id(board_idx))
+fn turn_record_node_id(board_idx: DisplayBoard, index: &TurnIndex) -> String {
+    format!("turn-record-{}-{}", board_id(board_idx), index.0)
 }
 
 fn square_grid_layer_id(board_idx: DisplayBoard) -> String {

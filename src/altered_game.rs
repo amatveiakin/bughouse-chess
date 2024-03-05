@@ -30,7 +30,7 @@ use crate::coord::{BoardShape, Coord, SubjectiveRow};
 use crate::display::Perspective;
 use crate::game::{
     get_bughouse_force, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
-    BughouseParticipant, TurnRecord, TurnRecordExpanded,
+    BughouseParticipant, TurnIndex, TurnRecord, TurnRecordExpanded,
 };
 use crate::piece::{CastleDirection, PieceForce, PieceKind, PieceOrigin};
 use crate::rules::{BughouseRules, ChessRules, Promotion};
@@ -113,13 +113,13 @@ enum LocalTurns {
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum WaybackState {
-    Disabled,        // cannot view old turns
-    Enabled(String), // can view old turns, but currently at the last turn
-    Active(String),  // viewing a historical turn
+    Disabled,           // cannot view old turns
+    Enabled(TurnIndex), // can view old turns, but currently at the last turn
+    Active(TurnIndex),  // viewing a historical turn
 }
 
 impl WaybackState {
-    pub fn turn_index(&self) -> Option<&str> {
+    pub fn turn_index(&self) -> Option<&TurnIndex> {
         match self {
             WaybackState::Disabled => None,
             WaybackState::Enabled(index) => Some(index),
@@ -144,7 +144,7 @@ pub struct AlteredGame {
     // The turns are executed sequentially. Preturns always follow normal turns.
     local_turns: Vec<TurnRecord>,
     // Historical position that the user is currently viewing.
-    wayback_turn_index: EnumMap<BughouseBoard, Option<String>>,
+    wayback_turn_index: EnumMap<BughouseBoard, Option<TurnIndex>>,
 }
 
 impl AlteredGame {
@@ -377,7 +377,7 @@ impl AlteredGame {
             }
         }
     }
-    pub fn wayback_to_turn(&mut self, board_idx: BughouseBoard, turn_idx: Option<String>) {
+    pub fn wayback_to_turn(&mut self, board_idx: BughouseBoard, turn_idx: Option<TurnIndex>) {
         self.wayback_to(board_idx, |_, _| turn_idx)
     }
     pub fn wayback_to_previous(&mut self, board_idx: BughouseBoard) {
@@ -717,8 +717,8 @@ impl AlteredGame {
         &mut self, board_idx: BughouseBoard,
         get_turn_index: impl FnOnce(
             std::iter::FilterMap<std::slice::Iter<TurnRecordExpanded>, FilterByBoardGetIndex>,
-            Option<String>,
-        ) -> Option<String>,
+            Option<TurnIndex>,
+        ) -> Option<TurnIndex>,
     ) {
         assert!(!self.is_active());
         let turn_index_iter = self
@@ -839,7 +839,7 @@ impl AlteredGame {
 }
 
 fn board_turn_log_modulo_wayback(
-    game: &BughouseGame, board_idx: BughouseBoard, wayback_turn_idx: Option<&str>,
+    game: &BughouseGame, board_idx: BughouseBoard, wayback_turn_idx: Option<&TurnIndex>,
 ) -> Vec<TurnRecordExpanded> {
     let mut turn_log = game
         .turn_log()
@@ -851,7 +851,7 @@ fn board_turn_log_modulo_wayback(
         let mut wayback_turn_found = false;
         turn_log.retain(|r| {
             // The first turn with this condition should be kept, the rest should be deleted.
-            if r.index().as_str() >= wayback_turn_idx {
+            if r.index() >= *wayback_turn_idx {
                 if !wayback_turn_found {
                     wayback_turn_found = true;
                     true
@@ -1009,7 +1009,7 @@ struct FilterByBoardGetIndex {
     board_idx: BughouseBoard,
 }
 impl FnOnce<(&TurnRecordExpanded,)> for FilterByBoardGetIndex {
-    type Output = Option<String>;
+    type Output = Option<TurnIndex>;
     extern "rust-call" fn call_once(self, args: (&TurnRecordExpanded,)) -> Self::Output {
         if args.0.envoy.board_idx == self.board_idx {
             Some(args.0.index())

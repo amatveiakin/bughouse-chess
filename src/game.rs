@@ -60,6 +60,9 @@ pub struct TurnRecord {
     pub time: GameInstant,
 }
 
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct TurnIndex(pub String);
+
 #[derive(Clone, Debug)]
 pub struct TurnRecordExpanded {
     pub number: u32,
@@ -83,8 +86,8 @@ impl TurnRecordExpanded {
     }
 
     // Improvement potential: Can we simply use the index in the `turn_log`?
-    // Lexicographics order of indices is guaranteed to correspond to turn order.
-    pub fn index(&self) -> String {
+    // Lexicographic order of indices is guaranteed to correspond to turn order.
+    pub fn index(&self) -> TurnIndex {
         // Note. Black suffix should be lexicographically greater than white suffix.
         // Note. Not using "a"/"b" because it could be confused with board index.
         let force = match self.envoy.force {
@@ -93,7 +96,7 @@ impl TurnRecordExpanded {
         };
         let id_duck_turn = matches!(self.turn_expanded.turn, Turn::PlaceDuck(_));
         let duck_suffix = if id_duck_turn { "d" } else { "" };
-        format!("{:08}-{}{}", self.number, force, duck_suffix)
+        TurnIndex(format!("{:08}-{}{}", self.number, force, duck_suffix))
     }
 }
 

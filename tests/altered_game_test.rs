@@ -8,7 +8,7 @@ use bughouse_chess::clock::GameInstant;
 use bughouse_chess::coord::Coord;
 use bughouse_chess::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
-    BughousePlayer,
+    BughousePlayer, TurnIndex,
 };
 use bughouse_chess::player::Team;
 use bughouse_chess::role::Role;
@@ -409,7 +409,7 @@ fn wayback_turn_highlight() {
     alt_game.apply_remote_turn(envoy!(Black A), &alg("Nf6"), T0).unwrap();
     alt_game.set_status(BughouseGameStatus::Victory(Team::Red, VictoryReason::Resignation), T0);
 
-    alt_game.wayback_to_turn(A, Some("00000002-w".to_owned()));
+    alt_game.wayback_to_turn(A, Some(TurnIndex("00000002-w".to_owned())));
     // ... but we do if we're waybacking.
     assert_eq!(turn_highlights_sorted(&alt_game), vec![
         turn_highlight!(A B1 : BelowFog LatestTurn MoveFrom),
@@ -438,6 +438,6 @@ fn wayback_affects_fog_of_war() {
         BughouseGameStatus::Victory(Team::Red, VictoryReason::Checkmate)
     );
     assert!(!alt_game.fog_of_war_area(A).contains(&Coord::D8));
-    alt_game.wayback_to_turn(A, Some("00000002-w".to_owned()));
+    alt_game.wayback_to_turn(A, Some(TurnIndex("00000002-w".to_owned())));
     assert!(alt_game.fog_of_war_area(A).contains(&Coord::D8));
 }
