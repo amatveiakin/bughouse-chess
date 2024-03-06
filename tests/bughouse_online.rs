@@ -1403,7 +1403,7 @@ fn pgn_standard() {
     world[cl1].make_turn("0-0").unwrap();
     world.process_all_events();
 
-    world[cl1].state.request_export(pgn::BughouseExportFormat {});
+    world[cl1].state.request_export(pgn::BpgnExportFormat::default());
     world.process_all_events();
     while let Some(event) = world[cl1].state.next_notable_event() {
         if let client::NotableEvent::GameExportReady(content) = event {

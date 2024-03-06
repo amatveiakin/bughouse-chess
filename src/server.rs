@@ -31,7 +31,7 @@ use crate::game::{
 use crate::half_integer::HalfU32;
 use crate::iterable_mut::IterableMut;
 use crate::lobby::{assign_boards, fix_teams_if_needed, verify_participants, Teaming};
-use crate::pgn::{self, BughouseExportFormat};
+use crate::pgn::{self, BpgnExportFormat};
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Faction, Participant};
 use crate::role::Role;
@@ -1311,7 +1311,7 @@ impl Match {
     }
 
     fn process_request_export(
-        &self, ctx: &mut Context, client_id: ClientId, format: BughouseExportFormat,
+        &self, ctx: &mut Context, client_id: ClientId, format: BpgnExportFormat,
     ) -> EventResult {
         let Some(GameState { ref game, .. }) = self.game_state else {
             // No error: the next game could've started.

@@ -22,7 +22,7 @@ use crate::game::{
     BughousePlayer, PlayerInGame, PlayerRelation, TurnRecord, TurnRecordExpanded,
 };
 use crate::meter::{Meter, MeterBox, MeterStats};
-use crate::pgn::BughouseExportFormat;
+use crate::pgn::BpgnExportFormat;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Faction, Participant};
 use crate::role::Role;
@@ -365,7 +365,7 @@ impl ClientState {
                 stats,
             }));
     }
-    pub fn request_export(&mut self, format: BughouseExportFormat) {
+    pub fn request_export(&mut self, format: BpgnExportFormat) {
         self.connection.send(BughouseClientEvent::RequestExport { format });
     }
 

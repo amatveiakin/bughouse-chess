@@ -16,15 +16,38 @@ use crate::game::{
 use crate::player::Team;
 use crate::rules::{ChessVariant, StartingPosition};
 
+// Other possible formats:
+//
+//   - Storing timestamp with the original precision is an obvious choice, but nanoseconds are
+//     noisy and I don't think we ever really need this. The best reason for original precision
+//     is that it guarantees perfect correspondence between in-game and post-game replayes. In
+//     practice it seems feasible to completely avoid rounding mismatches: `time_breakdown` test
+//     in `clock.rs` verifies that.
+//
+//   - https://bughousedb.com/Lieven_BPGN_Standard.txt shows remaining clock time as whole
+//     seconds in braces like this:
+//       1A. d4 {298} 1a. e6 {298} 2A. e4 {296} 2a. Nf6 {297}
+//     I don't really like it because seconds precision is too low and syntax is ambiguous.
+//
+//   - chess.com shows remaining clock in pretty printed format like this:
+//       {[%clk 0:00:07.9]}
+//
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum BpgnTimeFormat {
+    NoTime,
+
+    // Seconds since the start of the game with milliseconds precision. Example:
+    //   {[ts=185.070]}
+    Timestamp,
+}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct BughouseExportFormat {
-    // TODO: Support time export and allow to choose format here:
-    //   - as described in https://bughousedb.com/Lieven_BPGN_Standard.txt, but export
-    //       with milliseconds precision, like https://bughousedb.com itself does.
-    //   - as in chess.com, e.g. "{[%clk 0:00:07.9]}"
-    //   - precise
-    //   - none
+pub struct BpgnExportFormat {
+    pub time_format: BpgnTimeFormat,
+}
+
+impl Default for BpgnExportFormat {
+    fn default() -> Self { BpgnExportFormat { time_format: BpgnTimeFormat::Timestamp } }
 }
 
 const LINE_WIDTH: usize = 80;
@@ -174,6 +197,25 @@ fn envoy_notation(envoy: BughouseEnvoy) -> &'static str {
     }
 }
 
+fn turn_to_pgn(format: BpgnExportFormat, game: &BughouseGame, turn: &TurnRecordExpanded) -> String {
+    let TurnRecordExpanded {
+        local_number, envoy, turn_expanded, time, ..
+    } = turn;
+    let mut s = format!(
+        "{}{}. {}",
+        local_number,
+        envoy_notation(*envoy),
+        turn_expanded.algebraic.format(game.board_shape(), AlgebraicCharset::Ascii),
+    );
+    match format.time_format {
+        BpgnTimeFormat::NoTime => {}
+        BpgnTimeFormat::Timestamp => {
+            s.push_str(&format!(" {{[ts={:.3}]}}", time.to_pgn_timestamp()));
+        }
+    }
+    s
+}
+
 // Exports to BPGN (Bughouse Portable Game Notation) - format designed specifically for
 // bughouse. Doc: https://bughousedb.com/Lieven_BPGN_Standard.txt
 // Based on PGN (Portable Game Notation), the de-facto standard plain format for recording
@@ -183,18 +225,12 @@ fn envoy_notation(envoy: BughouseEnvoy) -> &'static str {
 //   - "Variant" - follow chess.com example;
 //   - "Outcome" - human-readable game result description; this is addition to "Result"
 //     and "Termination" fields, which follow PGN standard, but are less informative.
-pub fn export_to_bpgn(_format: BughouseExportFormat, game: &BughouseGame, round: usize) -> String {
+//   - "Promotion", "DropAggression", "PawnDropRanks" - bughouse-specific rules.
+pub fn export_to_bpgn(format: BpgnExportFormat, game: &BughouseGame, round: usize) -> String {
     let header = make_bughouse_bpng_header(game, round);
     let mut doc = TextDocument::new();
     for turn_record in game.turn_log() {
-        let TurnRecordExpanded { local_number, envoy, turn_expanded, .. } = turn_record;
-        let turn_notation = format!(
-            "{}{}. {}",
-            local_number,
-            envoy_notation(*envoy),
-            turn_expanded.algebraic.format(game.board_shape(), AlgebraicCharset::Ascii),
-        );
-        doc.push_word(&turn_notation);
+        doc.push_word(&turn_to_pgn(format, game, &turn_record));
     }
     format!("{}{}", header, doc.render())
 }

@@ -102,6 +102,16 @@ impl GameInstant {
             .checked_sub(d)
             .map(|elapsed_since_start| GameInstant { elapsed_since_start })
     }
+
+    pub fn to_pgn_timestamp(self) -> String {
+        // Do not use `as_secs_f64()`, make sure to round down. This keeps clock showing stable
+        // after PGN export (see `time_breakdown` test).
+        format!("{:.3}", self.elapsed_since_start.as_millis() as f64 / 1000.0)
+    }
+    pub fn from_pgn_timestamp(s: &str) -> Self {
+        let elapsed_since_start = Duration::from_secs_f64(s.parse().unwrap());
+        GameInstant { elapsed_since_start }
+    }
 }
 
 
@@ -365,52 +375,94 @@ impl Clock {
 mod tests {
     use super::*;
 
-    fn time_from_nanos(nanos: u64) -> TimeBreakdown { Duration::from_nanos(nanos).into() }
-    fn diff_from_nanos(nanos: u64) -> TimeDifferenceBreakdown { Duration::from_nanos(nanos).into() }
-
     #[test]
     fn time_breakdown() {
         use TimeBreakdown::*;
-        assert_eq!(time_from_nanos(0), LowTime { seconds: 0, deciseconds: 0 });
-        assert_eq!(time_from_nanos(1), LowTime { seconds: 0, deciseconds: 1 });
-        assert_eq!(time_from_nanos(100_000_000), LowTime { seconds: 0, deciseconds: 1 });
-        assert_eq!(time_from_nanos(100_000_001), LowTime { seconds: 0, deciseconds: 2 });
-        assert_eq!(time_from_nanos(900_000_000), LowTime { seconds: 0, deciseconds: 9 });
-        assert_eq!(time_from_nanos(900_000_001), LowTime { seconds: 1, deciseconds: 0 });
-        assert_eq!(time_from_nanos(1_000_000_000), LowTime { seconds: 1, deciseconds: 0 });
-        assert_eq!(time_from_nanos(1_000_000_001), LowTime { seconds: 1, deciseconds: 1 });
-        assert_eq!(time_from_nanos(19_900_000_000), LowTime { seconds: 19, deciseconds: 9 });
-        assert_eq!(time_from_nanos(19_900_000_001), NormalTime { minutes: 0, seconds: 20 });
-        assert_eq!(time_from_nanos(20_000_000_000), NormalTime { minutes: 0, seconds: 20 });
-        assert_eq!(time_from_nanos(20_000_000_001), NormalTime { minutes: 0, seconds: 21 });
-        assert_eq!(time_from_nanos(59_000_000_000), NormalTime { minutes: 0, seconds: 59 });
-        assert_eq!(time_from_nanos(59_000_000_001), NormalTime { minutes: 1, seconds: 0 });
-        assert_eq!(time_from_nanos(60_000_000_000), NormalTime { minutes: 1, seconds: 0 });
-        assert_eq!(time_from_nanos(60_000_000_001), NormalTime { minutes: 1, seconds: 1 });
-        assert_eq!(time_from_nanos(119_000_000_000), NormalTime { minutes: 1, seconds: 59 });
-        assert_eq!(time_from_nanos(119_000_000_001), NormalTime { minutes: 2, seconds: 0 });
+        let inf = Duration::from_nanos(1_000_000_000_000);
+        let cases: &[(u64, TimeBreakdown)] = &[
+            (0, LowTime { seconds: 0, deciseconds: 0 }),
+            (1, LowTime { seconds: 0, deciseconds: 1 }),
+            (100_000_000, LowTime { seconds: 0, deciseconds: 1 }),
+            (100_000_001, LowTime { seconds: 0, deciseconds: 2 }),
+            (900_000_000, LowTime { seconds: 0, deciseconds: 9 }),
+            (900_000_001, LowTime { seconds: 1, deciseconds: 0 }),
+            (1_000_000_000, LowTime { seconds: 1, deciseconds: 0 }),
+            (1_000_000_001, LowTime { seconds: 1, deciseconds: 1 }),
+            (19_900_000_000, LowTime { seconds: 19, deciseconds: 9 }),
+            (19_900_000_001, NormalTime { minutes: 0, seconds: 20 }),
+            (20_000_000_000, NormalTime { minutes: 0, seconds: 20 }),
+            (20_000_000_001, NormalTime { minutes: 0, seconds: 21 }),
+            (59_000_000_000, NormalTime { minutes: 0, seconds: 59 }),
+            (59_000_000_001, NormalTime { minutes: 1, seconds: 0 }),
+            (60_000_000_000, NormalTime { minutes: 1, seconds: 0 }),
+            (60_000_000_001, NormalTime { minutes: 1, seconds: 1 }),
+            (119_000_000_000, NormalTime { minutes: 1, seconds: 59 }),
+            (119_000_000_001, NormalTime { minutes: 2, seconds: 0 }),
+        ];
+        for &(nanos, breakdown) in cases {
+            let time_left = Duration::from_nanos(nanos);
+            assert_eq!(TimeBreakdown::from(time_left), breakdown);
+
+            // Make sure clock showings are not altered by precision loss during PGN export.
+            let timestamp = inf - time_left;
+            let pgn_timestamp = GameInstant::from_pgn_timestamp(
+                &GameInstant::from_duration(timestamp).to_pgn_timestamp(),
+            )
+            .elapsed_since_start();
+            let pgn_time_left = inf - pgn_timestamp;
+            assert_eq!(
+                TimeBreakdown::from(pgn_time_left),
+                breakdown,
+                "{:?} ~> {:?}",
+                time_left,
+                pgn_time_left
+            );
+        }
     }
 
     #[test]
     fn time_difference_breakdown() {
         use TimeDifferenceBreakdown::*;
-        assert_eq!(diff_from_nanos(0), Subseconds { seconds: 0, deciseconds: 0 });
-        assert_eq!(diff_from_nanos(1), Subseconds { seconds: 0, deciseconds: 1 });
-        assert_eq!(diff_from_nanos(100_000_000), Subseconds { seconds: 0, deciseconds: 1 });
-        assert_eq!(diff_from_nanos(100_000_001), Subseconds { seconds: 0, deciseconds: 2 });
-        assert_eq!(diff_from_nanos(900_000_000), Subseconds { seconds: 0, deciseconds: 9 });
-        assert_eq!(diff_from_nanos(900_000_001), Subseconds { seconds: 1, deciseconds: 0 });
-        assert_eq!(diff_from_nanos(1_000_000_000), Subseconds { seconds: 1, deciseconds: 0 });
-        assert_eq!(diff_from_nanos(1_000_000_001), Subseconds { seconds: 1, deciseconds: 1 });
-        assert_eq!(diff_from_nanos(2_000_000_000), Subseconds { seconds: 2, deciseconds: 0 });
-        assert_eq!(diff_from_nanos(2_000_000_001), Subseconds { seconds: 2, deciseconds: 1 });
-        assert_eq!(diff_from_nanos(9_900_000_000), Subseconds { seconds: 9, deciseconds: 9 });
-        assert_eq!(diff_from_nanos(9_900_000_001), Seconds { seconds: 10 });
-        assert_eq!(diff_from_nanos(59_000_000_000), Seconds { seconds: 59 });
-        assert_eq!(diff_from_nanos(59_000_000_001), Minutes { minutes: 1, seconds: 0 });
-        assert_eq!(diff_from_nanos(60_000_000_000), Minutes { minutes: 1, seconds: 0 });
-        assert_eq!(diff_from_nanos(60_000_000_001), Minutes { minutes: 1, seconds: 1 });
-        assert_eq!(diff_from_nanos(119_000_000_000), Minutes { minutes: 1, seconds: 59 });
-        assert_eq!(diff_from_nanos(119_000_000_001), Minutes { minutes: 2, seconds: 0 });
+        let cases: &[(u64, TimeDifferenceBreakdown)] = &[
+            (0, Subseconds { seconds: 0, deciseconds: 0 }),
+            (1, Subseconds { seconds: 0, deciseconds: 1 }),
+            (100_000_000, Subseconds { seconds: 0, deciseconds: 1 }),
+            (100_000_001, Subseconds { seconds: 0, deciseconds: 2 }),
+            (900_000_000, Subseconds { seconds: 0, deciseconds: 9 }),
+            (900_000_001, Subseconds { seconds: 1, deciseconds: 0 }),
+            (1_000_000_000, Subseconds { seconds: 1, deciseconds: 0 }),
+            (1_000_000_001, Subseconds { seconds: 1, deciseconds: 1 }),
+            (2_000_000_000, Subseconds { seconds: 2, deciseconds: 0 }),
+            (2_000_000_001, Subseconds { seconds: 2, deciseconds: 1 }),
+            (9_900_000_000, Subseconds { seconds: 9, deciseconds: 9 }),
+            (9_900_000_001, Seconds { seconds: 10 }),
+            (59_000_000_000, Seconds { seconds: 59 }),
+            (59_000_000_001, Minutes { minutes: 1, seconds: 0 }),
+            (60_000_000_000, Minutes { minutes: 1, seconds: 0 }),
+            (60_000_000_001, Minutes { minutes: 1, seconds: 1 }),
+            (119_000_000_000, Minutes { minutes: 1, seconds: 59 }),
+            (119_000_000_001, Minutes { minutes: 2, seconds: 0 }),
+        ];
+        for &(nanos, breakdown) in cases {
+            let diff = Duration::from_nanos(nanos);
+            assert_eq!(TimeDifferenceBreakdown::from(diff), breakdown);
+        }
+    }
+
+    #[test]
+    fn pgn_timestamp_format() {
+        let cases: &[(u64, _)] = &[
+            (0, "0.000"),
+            (999_999, "0.000"),
+            (1_000_000, "0.001"),
+            (123_456_789, "0.123"),
+            (12_345_678_900, "12.345"),
+        ];
+        for &(nanos, pgn) in cases {
+            assert_eq!(
+                GameInstant::from_duration(Duration::from_nanos(nanos)).to_pgn_timestamp(),
+                pgn
+            );
+        }
     }
 }

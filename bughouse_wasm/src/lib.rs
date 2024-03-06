@@ -371,7 +371,7 @@ impl WebClient {
     pub fn next_faction(&mut self) { self.change_faction(|f| f + 1); }
     pub fn previous_faction(&mut self) { self.change_faction(|f| f - 1); }
     pub fn request_export(&mut self) -> JsResult<()> {
-        let format = pgn::BughouseExportFormat {};
+        let format = pgn::BpgnExportFormat::default();
         self.state.request_export(format);
         Ok(())
     }

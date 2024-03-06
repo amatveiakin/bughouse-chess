@@ -9,7 +9,7 @@ use crate::chat::{ChatMessage, OutgoingChatMessage};
 use crate::clock::GameInstant;
 use crate::game::{BughouseBoard, BughouseGameStatus, PlayerInGame, TurnRecord};
 use crate::meter::MeterStats;
-use crate::pgn::BughouseExportFormat;
+use crate::pgn::BpgnExportFormat;
 use crate::player::{Faction, Participant};
 use crate::rules::Rules;
 use crate::scores::Scores;
@@ -168,7 +168,7 @@ pub enum BughouseClientEvent {
         drawing: ChalkDrawing,
     },
     RequestExport {
-        format: BughouseExportFormat,
+        format: BpgnExportFormat,
     },
     ReportPerformace(BughouseClientPerformance),
     ReportError(BughouseClientErrorReport),

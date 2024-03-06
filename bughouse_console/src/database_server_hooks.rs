@@ -64,7 +64,7 @@ impl<DB: DatabaseWriter> DatabaseServerHooks<DB> {
             player_blue_a: get_player(Team::Blue, BughouseBoard::A),
             player_blue_b: get_player(Team::Blue, BughouseBoard::B),
             result,
-            game_pgn: pgn::export_to_bpgn(pgn::BughouseExportFormat {}, game, round),
+            game_pgn: pgn::export_to_bpgn(pgn::BpgnExportFormat::default(), game, round),
             rated: game.match_rules().rated,
         })
     }
