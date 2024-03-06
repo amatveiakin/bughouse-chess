@@ -8,7 +8,6 @@ use bughouse_chess::clock::{ClockShowing, GameInstant, TimeBreakdown, TimeDiffer
 use bughouse_chess::coord::Coord;
 use bughouse_chess::force::Force;
 use bughouse_chess::game::{BughouseBoard, BughouseGame, BughouseGameStatus};
-use bughouse_chess::once_cell_regex;
 use bughouse_chess::piece::PieceKind;
 use bughouse_chess::player::Team;
 use bughouse_chess::role::Role;
@@ -16,7 +15,6 @@ use bughouse_chess::rules::{ChessRules, FairyPieces, MatchRules, Promotion, Rule
 use bughouse_chess::test_util::*;
 use common::*;
 use enum_map::EnumMap;
-use itertools::Itertools;
 use rand::Rng;
 use strum::IntoEnumIterator;
 
@@ -50,31 +48,8 @@ fn make_turn(
     Ok(())
 }
 
-fn replay_log(game: &mut BughouseGame, log: &str) -> Result<(), TurnError> {
-    let turn_number_re = once_cell_regex!(r"^(?:[0-9]+([AaBb])\.)?(.*)$");
-    let mut words = log.split_whitespace().rev().collect_vec();
-    while let Some(word) = words.pop() {
-        use BughouseBoard::*;
-        use Force::*;
-        let caps = turn_number_re.captures(word).unwrap();
-        let player_notation = caps.get(1).unwrap().as_str();
-        let mut turn_notation = caps.get(2).unwrap().as_str();
-        if turn_notation.is_empty() {
-            // There was a whitespace after turn number.
-            turn_notation = words.pop().unwrap();
-        }
-        let (board_idx, force) = match player_notation {
-            "A" => (A, White),
-            "a" => (A, Black),
-            "B" => (B, White),
-            "b" => (B, Black),
-            _ => panic!("Unexpected bughouse player notation: {}", player_notation),
-        };
-        assert_eq!(game.board(board_idx).active_force(), force);
-        let turn_input = TurnInput::Algebraic(turn_notation.to_owned());
-        game.try_turn(board_idx, &turn_input, TurnMode::Normal, T0)?;
-    }
-    Ok(())
+pub fn replay_log(game: &mut BughouseGame, log: &str) -> Result<(), TurnError> {
+    replay_bughouse_log(game, log, Duration::ZERO)
 }
 
 fn replay_log_symmetric(game: &mut BughouseGame, log: &str) -> Result<(), TurnError> {

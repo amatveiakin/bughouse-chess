@@ -1,11 +1,12 @@
 mod common;
 
-use bughouse_chess::board::{ChessGameStatus, TurnError, TurnInput, TurnMode, VictoryReason};
+use std::time::Duration;
+
+use bughouse_chess::board::{ChessGameStatus, TurnError, TurnMode, VictoryReason};
 use bughouse_chess::clock::GameInstant;
 use bughouse_chess::coord::Coord;
 use bughouse_chess::force::Force;
 use bughouse_chess::game::ChessGame;
-use bughouse_chess::once_cell_regex;
 use bughouse_chess::piece::PieceKind;
 use bughouse_chess::role::Role;
 use bughouse_chess::rules::{ChessRules, MatchRules, Rules, StartingPosition};
@@ -49,17 +50,8 @@ fn chess960_from_short_fen(pieces: &str) -> ChessGame {
     )
 }
 
-// Improvement potential: Allow whitespace after turn number.
-fn replay_log(game: &mut ChessGame, log: &str) -> Result<(), TurnError> {
-    let turn_number_re = once_cell_regex!(r"^(?:[0-9]+\.)?(.*)$");
-    let now = GameInstant::game_start();
-    for turn_notation in log.split_whitespace() {
-        let turn_notation =
-            turn_number_re.captures(turn_notation).unwrap().get(1).unwrap().as_str();
-        let turn_input = TurnInput::Algebraic(turn_notation.to_owned());
-        game.try_turn(&turn_input, TurnMode::Normal, now)?;
-    }
-    Ok(())
+pub fn replay_log(game: &mut ChessGame, log: &str) -> Result<(), TurnError> {
+    replay_chess_log(game, log, Duration::ZERO)
 }
 
 fn replay_log_from_start(log: &str) -> Result<(), TurnError> {

@@ -239,3 +239,75 @@ pub fn export_to_bpgn(
     }
     format!("{}{}", header, doc.render())
 }
+
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use indoc::indoc;
+    use pretty_assertions::assert_eq;
+    use time::macros::datetime;
+
+    use super::*;
+    use crate::role::Role;
+    use crate::rules::{ChessRules, MatchRules, Rules};
+    use crate::test_util::{replay_bughouse_log, sample_bughouse_players};
+
+    #[test]
+    fn pgn_golden() {
+        let rules = Rules {
+            match_rules: MatchRules::unrated(),
+            chess_rules: ChessRules::bughouse_chess_com(),
+        };
+        let mut game =
+            BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());
+        replay_bughouse_log(
+            &mut game,
+            "
+                1A.e4 1a.Nc6 1B.d4 2A.Nc3 1b.Nf6 2a.Nf6 2B.d5 3A.d4 2b.e6 3a.d5 3B.dxe6 4A.e5
+                3b.dxe6 4B.Qxd8 4a.Ne4 4b.Kxd8 5B.Bg5 5A.Nxe4 5a.dxe4 5b.Be7 6A.Nh3 6B.Nc3
+                6a.Bxh3 6b.N@d4 7A.gxh3 7a.Nxd4 7B.O-O-O 8A.P@e6 7b.Nbc6 8B.Bxf6 8a.N@f3 9A.Qxf3
+                8b.Bxf6 9a.Nxf3 10A.Ke2 9B.e3 10a.Q@d2 11A.Bxd2 11a.Qxd2
+            ",
+            Duration::from_millis(100),
+        )
+        .unwrap();
+        let game_start_time = UtcDateTime::from(datetime!(2024-03-06 13:37));
+        let bpgn = export_to_bpgn(BpgnExportFormat::default(), &game, game_start_time, 1);
+        assert_eq!(
+            bpgn,
+            indoc!(
+                r#"
+                [Event "Unrated Bughouse Match"]
+                [Site "bughouse.pro"]
+                [UTCDate "2024.03.06"]
+                [UTCTime "13:37:00"]
+                [Round "1"]
+                [WhiteA "Alice"]
+                [BlackA "Bob"]
+                [WhiteB "Charlie"]
+                [BlackB "Dave"]
+                [TimeControl "300"]
+                [Variant "Bughouse"]
+                [Promotion "Upgrade"]
+                [DropAggression "Mate allowed"]
+                [PawnDropRanks "2-7"]
+                [Result "0-1"]
+                [Termination "normal"]
+                [Outcome "Bob & Charlie won: Alice & Dave checkmated"]
+                1A. e4 {[ts=0.0]} 1a. Nc6 {[ts=0.1]} 1B. d4 {[ts=0.2]} 2A. Nc3 {[ts=0.3]}
+                1b. Nf6 {[ts=0.4]} 2a. Nf6 {[ts=0.5]} 2B. d5 {[ts=0.6]} 3A. d4 {[ts=0.7]}
+                2b. e6 {[ts=0.8]} 3a. d5 {[ts=0.9]} 3B. xe6 {[ts=1.0]} 4A. e5 {[ts=1.1]}
+                3b. dxe6 {[ts=1.2]} 4B. Qxd8 {[ts=1.3]} 4a. Ne4 {[ts=1.4]} 4b. Kxd8 {[ts=1.5]}
+                5B. Bg5 {[ts=1.6]} 5A. Nxe4 {[ts=1.7]} 5a. xe4 {[ts=1.8]} 5b. Be7 {[ts=1.9]}
+                6A. Nh3 {[ts=2.0]} 6B. Nc3 {[ts=2.1]} 6a. Bxh3 {[ts=2.2]} 6b. N@d4 {[ts=2.3]}
+                7A. xh3 {[ts=2.4]} 7a. Nxd4 {[ts=2.5]} 7B. O-O-O {[ts=2.6]} 8A. P@e6 {[ts=2.7]}
+                7b. N8c6 {[ts=2.8]} 8B. Bxf6 {[ts=2.9]} 8a. N@f3 {[ts=3.0]} 9A. Qxf3 {[ts=3.1]}
+                8b. Bxf6 {[ts=3.2]} 9a. Nxf3 {[ts=3.3]} 10A. Ke2 {[ts=3.4]} 9B. e3 {[ts=3.5]}
+                10a. Q@d2 {[ts=3.6]} 11A. Bxd2 {[ts=3.7]} 11a. Qxd2 {[ts=3.8]}
+                "#
+            )
+        );
+    }
+}

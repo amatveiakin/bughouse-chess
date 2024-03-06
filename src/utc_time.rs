@@ -13,6 +13,10 @@ impl UtcDateTime {
     }
 }
 
+impl From<PrimitiveDateTime> for UtcDateTime {
+    fn from(pdt: PrimitiveDateTime) -> Self { Self(pdt) }
+}
+
 impl From<UtcDateTime> for OffsetDateTime {
     fn from(udt: UtcDateTime) -> Self { udt.0.assume_utc() }
 }
