@@ -1,7 +1,7 @@
 mod common;
 use bughouse_chess::altered_game::{
     AlteredGame, PieceDragStart, TurnHighlight, TurnHighlightFamily, TurnHighlightItem,
-    TurnHighlightLayer,
+    TurnHighlightLayer, WaybackDestination,
 };
 use bughouse_chess::board::{TurnError, TurnInput, VictoryReason};
 use bughouse_chess::clock::GameInstant;
@@ -399,6 +399,59 @@ fn duck_visible_in_the_fog() {
 }
 
 #[test]
+fn wayback_navigation() {
+    use WaybackDestination::*;
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), default_game());
+    alt_game.apply_remote_turn(envoy!(White A), &alg("a4"), T0).unwrap(); // TurnIndex == 0
+    alt_game.apply_remote_turn(envoy!(White B), &alg("h4"), T0).unwrap(); // TurnIndex == 1
+    alt_game.apply_remote_turn(envoy!(Black A), &alg("a5"), T0).unwrap(); // TurnIndex == 2
+    alt_game.apply_remote_turn(envoy!(White A), &alg("b4"), T0).unwrap(); // TurnIndex == 3
+    alt_game.apply_remote_turn(envoy!(Black B), &alg("h5"), T0).unwrap(); // TurnIndex == 4
+    alt_game.apply_remote_turn(envoy!(Black A), &alg("b5"), T0).unwrap(); // TurnIndex == 5
+    alt_game.set_status(BughouseGameStatus::Victory(Team::Red, VictoryReason::Resignation), T0);
+
+    assert_eq!(alt_game.wayback_state().turn_index(), None);
+    assert_eq!(alt_game.wayback_state().display_turn_index(), Some(TurnIndex(5)));
+
+    assert_eq!(alt_game.wayback_to(Previous, None), Some(TurnIndex(4)));
+    assert_eq!(alt_game.wayback_to(Previous, None), Some(TurnIndex(3)));
+    assert_eq!(alt_game.wayback_to(Next, None), Some(TurnIndex(4)));
+    assert_eq!(alt_game.wayback_to(First, None), Some(TurnIndex(0)));
+    assert_eq!(alt_game.wayback_to(Previous, None), Some(TurnIndex(0)));
+    assert_eq!(alt_game.wayback_to(Last, None), None);
+    assert_eq!(alt_game.wayback_to(Next, None), None);
+
+    assert_eq!(alt_game.wayback_to(Previous, Some(A)), Some(TurnIndex(3)));
+    assert_eq!(alt_game.wayback_to(Previous, Some(A)), Some(TurnIndex(2)));
+    assert_eq!(alt_game.wayback_to(Previous, Some(A)), Some(TurnIndex(0)));
+    assert_eq!(alt_game.wayback_to(Next, Some(A)), Some(TurnIndex(2)));
+    assert_eq!(alt_game.wayback_to(First, Some(A)), Some(TurnIndex(0)));
+    assert_eq!(alt_game.wayback_to(Previous, Some(A)), Some(TurnIndex(0)));
+    assert_eq!(alt_game.wayback_to(Last, Some(A)), None);
+    assert_eq!(alt_game.wayback_to(Next, Some(A)), None);
+
+    assert_eq!(alt_game.wayback_to(Index(Some(TurnIndex(4))), None), Some(TurnIndex(4)));
+    assert_eq!(alt_game.wayback_to(Previous, Some(B)), Some(TurnIndex(1)));
+    assert_eq!(alt_game.wayback_to(Next, Some(B)), Some(TurnIndex(4)));
+    assert_eq!(alt_game.wayback_to(First, Some(B)), Some(TurnIndex(1)));
+    assert_eq!(alt_game.wayback_to(Previous, Some(B)), Some(TurnIndex(1)));
+    assert_eq!(alt_game.wayback_to(Last, Some(B)), Some(TurnIndex(4)));
+    assert_eq!(alt_game.wayback_to(Next, Some(B)), Some(TurnIndex(4)));
+
+    // Check what happens when going to a turn on a given board while starting with a turn on
+    // another board. Particularly interesting is the behavior of `Previous`, see a comment in
+    // `AltGame::wayback_to`.
+    assert_eq!(alt_game.wayback_to(Last, None), None);
+    assert_eq!(alt_game.wayback_to(Previous, Some(B)), Some(TurnIndex(1)));
+    assert_eq!(alt_game.wayback_to(First, None), Some(TurnIndex(0)));
+    assert_eq!(alt_game.wayback_to(Next, Some(B)), Some(TurnIndex(1)));
+    assert_eq!(alt_game.wayback_to(Index(Some(TurnIndex(1))), None), Some(TurnIndex(1)));
+    assert_eq!(alt_game.wayback_to(Next, Some(A)), Some(TurnIndex(2)));
+    assert_eq!(alt_game.wayback_to(Index(Some(TurnIndex(4))), None), Some(TurnIndex(4)));
+    assert_eq!(alt_game.wayback_to(Previous, Some(A)), Some(TurnIndex(2)));
+}
+
+#[test]
 fn wayback_turn_highlight() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), default_game());
     alt_game.apply_remote_turn(envoy!(White A), &alg("e4"), T0).unwrap();
@@ -409,7 +462,7 @@ fn wayback_turn_highlight() {
     alt_game.apply_remote_turn(envoy!(Black A), &alg("Nf6"), T0).unwrap();
     alt_game.set_status(BughouseGameStatus::Victory(Team::Red, VictoryReason::Resignation), T0);
 
-    alt_game.wayback_to_turn(Some(TurnIndex(2)));
+    alt_game.wayback_to(WaybackDestination::Index(Some(TurnIndex(2))), None);
     // ... but we do if we're waybacking.
     assert_eq!(turn_highlights_sorted(&alt_game), vec![
         turn_highlight!(A B1 : BelowFog LatestTurn MoveFrom),
@@ -438,6 +491,6 @@ fn wayback_affects_fog_of_war() {
         BughouseGameStatus::Victory(Team::Red, VictoryReason::Checkmate)
     );
     assert!(!alt_game.fog_of_war_area(A).contains(&Coord::D8));
-    alt_game.wayback_to_turn(Some(TurnIndex(2)));
+    alt_game.wayback_to(WaybackDestination::Index(Some(TurnIndex(2))), None);
     assert!(alt_game.fog_of_war_area(A).contains(&Coord::D8));
 }

@@ -26,7 +26,7 @@ use crate::event::{
 };
 use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughousePlayer, PlayerInGame,
-    TurnRecord,
+    TurnIndex, TurnRecord,
 };
 use crate::half_integer::HalfU32;
 use crate::iterable_mut::IterableMut;
@@ -135,6 +135,7 @@ pub struct GameState {
     // attemping to drop an as-of-yet-missing piece.
     turn_requests: Vec<TurnRequest>,
     chalkboard: Chalkboard,
+    shared_wayback_turn_index: Option<TurnIndex>,
 }
 
 
@@ -863,6 +864,9 @@ impl Match {
             BughouseClientEvent::UpdateChalkDrawing { drawing } => {
                 self.process_update_chalk_drawing(ctx, client_id, drawing)
             }
+            BughouseClientEvent::SetSharedWayback { turn_index } => {
+                self.process_set_shared_wayback(ctx, turn_index)
+            }
             BughouseClientEvent::RequestExport { format } => {
                 self.process_request_export(ctx, client_id, format)
             }
@@ -969,8 +973,12 @@ impl Match {
             self.send_lobby_updated(ctx);
             ctx.clients[client_id].send(self.make_game_start_event(ctx.now, Some(participant_id)));
             self.send_messages(ctx, Some(client_id), self.chat.all_messages());
-            let chalkboard = game_state.chalkboard.clone();
-            ctx.clients[client_id].send(BughouseServerEvent::ChalkboardUpdated { chalkboard });
+            ctx.clients[client_id].send(BughouseServerEvent::ChalkboardUpdated {
+                chalkboard: game_state.chalkboard.clone(),
+            });
+            ctx.clients[client_id].send(BughouseServerEvent::SharedWaybackUpdated {
+                turn_index: game_state.shared_wayback_turn_index,
+            });
             Ok(())
         } else {
             let existing_participant_id = self.participants.find_by_name(&player_name);
@@ -1312,6 +1320,18 @@ impl Match {
         Ok(())
     }
 
+    fn process_set_shared_wayback(
+        &mut self, ctx: &mut Context, turn_index: Option<TurnIndex>,
+    ) -> EventResult {
+        let Some(GameState { ref mut shared_wayback_turn_index, .. }) = self.game_state else {
+            // No error: the next game could've started.
+            return Ok(());
+        };
+        *shared_wayback_turn_index = turn_index;
+        self.broadcast(ctx, &BughouseServerEvent::SharedWaybackUpdated { turn_index });
+        Ok(())
+    }
+
     fn export_current_game(&self, format: BpgnExportFormat) -> Option<String> {
         let Some(GameState {
             game_index,
@@ -1474,6 +1494,7 @@ impl Match {
             updates: Vec::new(),
             turn_requests: Vec::new(),
             chalkboard: Chalkboard::new(),
+            shared_wayback_turn_index: None,
         });
         self.broadcast(ctx, &self.make_game_start_event(ctx.now, None));
         self.send_lobby_updated(ctx); // update readiness flags
@@ -1769,6 +1790,7 @@ fn event_name(event: &IncomingEvent) -> &'static str {
             BughouseClientEvent::LeaveServer => "Client_LeaveServer",
             BughouseClientEvent::SendChatMessage { .. } => "Client_SendChatMessage",
             BughouseClientEvent::UpdateChalkDrawing { .. } => "Client_UpdateChalkDrawing",
+            BughouseClientEvent::SetSharedWayback { .. } => "Client_SetSharedWayback",
             BughouseClientEvent::RequestExport { .. } => "Client_RequestExport",
             BughouseClientEvent::ReportPerformace(_) => "Client_ReportPerformace",
             BughouseClientEvent::ReportError(_) => "Client_ReportError",

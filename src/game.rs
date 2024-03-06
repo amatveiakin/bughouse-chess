@@ -61,7 +61,8 @@ pub struct TurnRecord {
     pub time: GameInstant,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct TurnIndex(pub usize);
 
 #[derive(Clone, Debug)]

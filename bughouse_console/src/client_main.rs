@@ -252,6 +252,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                 NotableEvent::MyReserveRestocked(..) => {}
                 NotableEvent::PieceStolen => {}
                 NotableEvent::LowTime(..) => {}
+                NotableEvent::WaybackStateUpdated(..) => {}
                 NotableEvent::GameExportReady(..) => {
                     // Improvement potential: Implement.
                 }

@@ -721,6 +721,10 @@ impl WebClient {
                 pan: self.get_game_audio_pan(board_idx)?,
             }
             .into()),
+            Some(NotableEvent::WaybackStateUpdated(wayback)) => {
+                scroll_to_wayback_turn(wayback);
+                Ok(JsEventNoop {}.into())
+            }
             Some(NotableEvent::GameExportReady(content)) => {
                 Ok(JsEventGameExportReady { content }.into())
             }
@@ -751,7 +755,7 @@ impl WebClient {
         let board_shape = alt_game.board_shape();
         let my_id = alt_game.my_id();
         let perspective = alt_game.perspective();
-        let wayback = alt_game.wayback();
+        let wayback = alt_game.wayback_state();
         update_scores(&mtch.scores, &mtch.participants, game.status())?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |piece_force| {
@@ -949,52 +953,37 @@ impl WebClient {
             .join("\n")
     }
 
+    pub fn shared_wayback_enabled(&self) -> bool { self.state.shared_wayback_enabled() }
+    pub fn toggle_shared_wayback(&mut self) {
+        self.state.set_shared_wayback(!self.shared_wayback_enabled());
+    }
+
     pub fn wayback_to_turn(&mut self, turn_idx: Option<String>) -> JsResult<()> {
-        let Some(alt_game) = self.state.alt_game_mut() else {
-            return Ok(());
-        };
-        if alt_game.is_active() {
-            return Ok(());
-        }
         let turn_idx = turn_idx.map(|idx| TurnIndex::from_str(&idx).unwrap());
-        alt_game.wayback_to_turn(turn_idx);
+        self.state.wayback_to(WaybackDestination::Index(turn_idx), None);
         Ok(())
     }
 
     pub fn on_vertical_arrow_key_down(
         &mut self, key: &str, ctrl: bool, shift: bool, alt: bool,
     ) -> JsResult<()> {
-        let Some(alt_game) = self.state.alt_game_mut() else {
+        let Some(GameState { alt_game, .. }) = self.state.game_state() else {
             return Ok(());
         };
-        if alt_game.is_active() {
-            return Ok(());
-        }
         let display_board_idx = match (shift, alt) {
             (false, false) => None,
             (true, false) => Some(DisplayBoard::Primary),
             (_, true) => Some(DisplayBoard::Secondary),
         };
         let board_idx = display_board_idx.map(|idx| get_board_index(idx, alt_game.perspective()));
-        match (key, ctrl) {
-            ("ArrowDown", false) => alt_game.wayback_to_next(board_idx),
-            ("ArrowDown", true) => alt_game.wayback_to_last(board_idx),
-            ("ArrowUp", false) => alt_game.wayback_to_previous(board_idx),
-            ("ArrowUp", true) => alt_game.wayback_to_first(board_idx),
-            _ => {}
+        let destination = match (key, ctrl) {
+            ("ArrowDown", false) => WaybackDestination::Next,
+            ("ArrowDown", true) => WaybackDestination::Last,
+            ("ArrowUp", false) => WaybackDestination::Previous,
+            ("ArrowUp", true) => WaybackDestination::First,
+            _ => return Ok(()),
         };
-        for turn_record_board in TurnRecordBoard::iter() {
-            let node = alt_game.wayback().turn_index().and_then(|index| {
-                web_document().get_element_by_id(&turn_record_node_id(index, turn_record_board))
-            });
-            if let Some(node) = node {
-                node.scroll_into_view_with_scroll_into_view_options(
-                    ScrollIntoViewOptions::new()
-                        .behavior(ScrollBehavior::Instant)
-                        .block(ScrollLogicalPosition::Nearest),
-                );
-            }
-        }
+        self.state.wayback_to(destination, board_idx);
         Ok(())
     }
 
@@ -1803,7 +1792,7 @@ fn update_turn_log(
     for record in game.turn_log().iter() {
         let index = record.index;
         let line_node = document.create_element("div")?;
-        if Some(index) == wayback.turn_index() {
+        if Some(index) == wayback.display_turn_index() {
             if wayback.active() {
                 line_node.class_list().add_1("wayback-current-turn-active")?;
             } else {
@@ -1919,6 +1908,21 @@ fn update_turn_log(
     //     but the snap range is too large (especially in Firefox), so it becomes very hard to browse
     //     the log.
     Ok(())
+}
+
+fn scroll_to_wayback_turn(wayback: WaybackState) {
+    for turn_record_board in TurnRecordBoard::iter() {
+        let node = wayback.display_turn_index().and_then(|index| {
+            web_document().get_element_by_id(&turn_record_node_id(index, turn_record_board))
+        });
+        if let Some(node) = node {
+            node.scroll_into_view_with_scroll_into_view_options(
+                ScrollIntoViewOptions::new()
+                    .behavior(ScrollBehavior::Instant)
+                    .block(ScrollLogicalPosition::Nearest),
+            );
+        }
+    }
 }
 
 fn setup_participation_mode(participant_id: BughouseParticipant) -> JsResult<()> {

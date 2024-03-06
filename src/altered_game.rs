@@ -118,8 +118,24 @@ pub enum WaybackState {
     Active(TurnIndex),  // viewing a historical turn
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum WaybackDestination {
+    Index(Option<TurnIndex>),
+    Previous,
+    Next,
+    First,
+    Last,
+}
+
 impl WaybackState {
     pub fn turn_index(&self) -> Option<TurnIndex> {
+        match self {
+            WaybackState::Disabled => None,
+            WaybackState::Enabled(_) => None,
+            WaybackState::Active(index) => Some(*index),
+        }
+    }
+    pub fn display_turn_index(&self) -> Option<TurnIndex> {
         match self {
             WaybackState::Disabled => None,
             WaybackState::Enabled(index) => Some(*index),
@@ -242,8 +258,8 @@ impl AlteredGame {
         let my_id = self.my_id;
         let game = self.local_game();
         let mut highlights = vec![];
-        let wayback = self.wayback();
-        let wayback_turn_idx = wayback.turn_index();
+        let wayback = self.wayback_state();
+        let wayback_turn_idx = wayback.display_turn_index();
 
         for board_idx in BughouseBoard::iter() {
             if wayback.active() {
@@ -366,7 +382,7 @@ impl AlteredGame {
         Ok(mode)
     }
 
-    pub fn wayback(&self) -> WaybackState {
+    pub fn wayback_state(&self) -> WaybackState {
         if self.is_active() {
             WaybackState::Disabled
         } else if let Some(index) = self.wayback_turn_index {
@@ -379,42 +395,48 @@ impl AlteredGame {
             }
         }
     }
-    pub fn wayback_to_turn(&mut self, turn_idx: Option<TurnIndex>) {
-        self.wayback_to(|_, _| turn_idx)
-    }
-    pub fn wayback_to_previous(&mut self, board_idx: Option<BughouseBoard>) {
-        self.wayback_to(|iter, current| {
-            let iter = board_turn_index_iterator(iter, board_idx);
-            if let Some(current) = current {
-                iter.rev().find_or_last(|index| *index < current)
-            } else {
-                iter.rev().nth(1)
+    // Navigates game history allowing to view historical state. `board_idx` allows to navigate to
+    // the previous/next/first/last turn on a specific board; it is ignored when `destination` is
+    // `Index`.
+    pub fn wayback_to(
+        &mut self, destination: WaybackDestination, board_idx: Option<BughouseBoard>,
+    ) -> Option<TurnIndex> {
+        assert!(!self.is_active());
+        let Some(old_index) = self
+            .wayback_turn_index
+            .or_else(|| self.game_confirmed.last_turn_record().map(|r| r.index))
+        else {
+            return None;
+        };
+        let mut iter = self
+            .game_confirmed
+            .turn_log()
+            .iter()
+            .filter(move |r| board_idx.map_or(true, |b| r.envoy.board_idx == b))
+            .map(|r| r.index);
+        let new_index = match destination {
+            WaybackDestination::Index(index) => index,
+            WaybackDestination::Previous => {
+                // Going to the previous turn is a bit peculiar. A simple implementation would be
+                //   iter_rev.find_or_last(|index| *index <= old_index)
+                // It works fine when `board_idx` is `None` or when the current turn is already on
+                // the target board. But when the current turn is on the other board, it find the
+                // largest smaller turn on the target board, which is the turn that the user already
+                // sees. Hence the custom logic to make sure we actually update the target board.
+                let mut iter_rev = iter.clone().rev();
+                let candidate = match iter_rev.find(|index| *index <= old_index) {
+                    Some(local_index) => iter_rev.find(|index| *index < local_index),
+                    None => iter_rev.last(),
+                };
+                candidate.or(iter.nth(0))
             }
-        })
-    }
-    pub fn wayback_to_next(&mut self, board_idx: Option<BughouseBoard>) {
-        self.wayback_to(|iter, current| {
-            let mut iter = board_turn_index_iterator(iter, board_idx);
-            if let Some(current) = current {
-                iter.find(|index| *index > current)
-            } else {
-                // Logically no wayback means turn iterator is in the end, so there is no going
-                // forward. Alternatively could've wrapped around and go to the first entry.
-                None
-            }
-        })
-    }
-    pub fn wayback_to_first(&mut self, board_idx: Option<BughouseBoard>) {
-        self.wayback_to(|iter, _| {
-            let mut iter = board_turn_index_iterator(iter, board_idx);
-            iter.nth(0)
-        })
-    }
-    pub fn wayback_to_last(&mut self, board_idx: Option<BughouseBoard>) {
-        self.wayback_to(|iter, _| {
-            let iter = board_turn_index_iterator(iter, board_idx);
-            iter.rev().nth(0)
-        })
+            WaybackDestination::Next => iter.find_or_last(|index| *index > old_index),
+            WaybackDestination::First => iter.nth(0),
+            WaybackDestination::Last => iter.rev().nth(0),
+        };
+        let at_end = new_index == self.game_confirmed.last_turn_record().map(|r| r.index);
+        self.wayback_turn_index = if at_end { None } else { new_index };
+        self.wayback_turn_index
     }
 
     // Improvement: Less ad-hoc solution for "gluing" board index to TurnInput; use it here, in
@@ -723,20 +745,6 @@ impl AlteredGame {
         num_preturns
     }
 
-    fn wayback_to(
-        &mut self,
-        get_turn_index: impl FnOnce(
-            std::slice::Iter<TurnRecordExpanded>,
-            Option<TurnIndex>,
-        ) -> Option<TurnIndex>,
-    ) {
-        assert!(!self.is_active());
-        let old_turn_idx = self.wayback_turn_index;
-        let new_turn_idx = get_turn_index(self.game_confirmed.turn_log().iter(), old_turn_idx);
-        let at_end = new_turn_idx == self.game_confirmed.last_turn_record().map(|r| r.index);
-        self.wayback_turn_index = if at_end { None } else { new_turn_idx };
-    }
-
     fn apply_wayback(&self, game: &mut BughouseGame) -> bool {
         let Some(ref turn_idx) = self.wayback_turn_index else {
             return false;
@@ -981,12 +989,4 @@ fn get_partial_turn_highlights(
         board_idx,
         fog_of_war_area,
     )
-}
-
-fn board_turn_index_iterator<'a>(
-    iter: impl DoubleEndedIterator<Item = &'a TurnRecordExpanded> + 'a,
-    board_idx: Option<BughouseBoard>,
-) -> impl DoubleEndedIterator<Item = TurnIndex> + 'a {
-    iter.filter(move |r| board_idx.map_or(true, |b| r.envoy.board_idx == b))
-        .map(|r| r.index)
 }

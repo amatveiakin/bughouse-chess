@@ -6,7 +6,7 @@ use instant::Instant;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
 
-use crate::altered_game::AlteredGame;
+use crate::altered_game::{AlteredGame, WaybackDestination, WaybackState};
 use crate::board::{TurnError, TurnInput, TurnMode};
 use crate::chalk::{ChalkCanvas, ChalkMark, Chalkboard};
 use crate::chat::{ChatMessage, ChatRecipient};
@@ -19,7 +19,7 @@ use crate::event::{
 };
 use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
-    BughousePlayer, PlayerInGame, PlayerRelation, TurnRecord, TurnRecordExpanded,
+    BughousePlayer, PlayerInGame, PlayerRelation, TurnIndex, TurnRecord, TurnRecordExpanded,
 };
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::BpgnExportFormat;
@@ -51,6 +51,7 @@ pub enum NotableEvent {
     MyReserveRestocked(BughouseBoard),
     PieceStolen,
     LowTime(BughouseBoard),
+    WaybackStateUpdated(WaybackState),
     GameExportReady(String),
 }
 
@@ -87,6 +88,11 @@ pub struct GameState {
     pub chalkboard: Chalkboard,
     // Canvas for the current client to draw on.
     pub chalk_canvas: ChalkCanvas,
+    // Whether wayback state is shared with other players who enabled sharing.
+    shared_wayback_enabled: bool,
+    // Turn index seen by those who enabled shared wayback state (regardless of whether it is
+    // enabled for this client).
+    shared_wayback_turn_index: Option<TurnIndex>,
     // The number of `GameUpdate`s applied so far.
     updates_applied: usize,
     // Index of the next warning in `LOW_TIME_WARNING_THRESHOLDS`.
@@ -603,6 +609,7 @@ impl ClientState {
                 self.process_chat_messages(messages, confirmed_local_message_id)
             }
             ChalkboardUpdated { chalkboard } => self.process_chalkboard_updated(chalkboard),
+            SharedWaybackUpdated { turn_index } => self.process_shared_wayback_updated(turn_index),
             GameExportReady { content } => self.process_game_export_ready(content),
             Pong => self.process_pong(),
         }
@@ -814,6 +821,8 @@ impl ClientState {
             time_pair,
             chalkboard: Chalkboard::new(),
             chalk_canvas: ChalkCanvas::new(board_shape, perspective),
+            shared_wayback_enabled: false,
+            shared_wayback_turn_index: None,
             updates_applied: 0,
             next_low_time_warning_idx: enum_map! { _ => 0 },
         });
@@ -857,6 +866,17 @@ impl ClientState {
         let mtch = self.mtch_mut().ok_or_else(|| internal_event_error!())?;
         let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_event_error!())?;
         game_state.chalkboard = chalkboard;
+        Ok(())
+    }
+    fn process_shared_wayback_updated(
+        &mut self, turn_index: Option<TurnIndex>,
+    ) -> Result<(), EventError> {
+        let mtch = self.mtch_mut().ok_or_else(|| internal_event_error!())?;
+        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_event_error!())?;
+        game_state.shared_wayback_turn_index = turn_index;
+        if game_state.shared_wayback_enabled {
+            self.wayback_to_local(WaybackDestination::Index(turn_index), None);
+        }
         Ok(())
     }
     fn process_game_export_ready(&mut self, content: String) -> Result<(), EventError> {
@@ -1006,6 +1026,45 @@ impl ClientState {
         }
         let drawing = game_state.chalkboard.drawings_by(&mtch.my_name).cloned().unwrap_or_default();
         self.connection.send(BughouseClientEvent::UpdateChalkDrawing { drawing })
+    }
+
+    pub fn shared_wayback_enabled(&self) -> bool {
+        self.game_state().map_or(false, |s| s.shared_wayback_enabled)
+    }
+    pub fn set_shared_wayback(&mut self, enabled: bool) {
+        let mut wayback_to_turn = None;
+        if let Some(ref mut game_state) = self.game_state_mut() {
+            game_state.shared_wayback_enabled = enabled;
+            if enabled {
+                wayback_to_turn = Some(game_state.shared_wayback_turn_index);
+            }
+        }
+        if let Some(index) = wayback_to_turn {
+            self.wayback_to_local(WaybackDestination::Index(index), None);
+        }
+    }
+    pub fn wayback_to(
+        &mut self, destination: WaybackDestination, board_idx: Option<BughouseBoard>,
+    ) {
+        let turn_index = self.wayback_to_local(destination, board_idx);
+        let Some(ref mut game_state) = self.game_state_mut() else {
+            return;
+        };
+        if game_state.shared_wayback_enabled {
+            game_state.shared_wayback_turn_index = turn_index;
+            self.connection.send(BughouseClientEvent::SetSharedWayback { turn_index });
+        }
+    }
+    fn wayback_to_local(
+        &mut self, destination: WaybackDestination, board_idx: Option<BughouseBoard>,
+    ) -> Option<TurnIndex> {
+        let Some(ref mut game_state) = self.game_state_mut() else {
+            return None;
+        };
+        let turn_index = game_state.alt_game.wayback_to(destination, board_idx);
+        let wayback = game_state.alt_game.wayback_state();
+        self.notable_event_queue.push_back(NotableEvent::WaybackStateUpdated(wayback));
+        turn_index
     }
 
     fn check_connection(&mut self) {

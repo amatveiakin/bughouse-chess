@@ -149,6 +149,7 @@ const resign_button = document.getElementById("resign-button");
 const rules_button = document.getElementById("rules-button");
 const export_button = document.getElementById("export-button");
 const volume_button = document.getElementById("volume-button");
+const shared_wayback_button = document.getElementById("shared-wayback-button");
 
 const svg_defs = document.getElementById("svg-defs");
 
@@ -304,6 +305,7 @@ resign_button.addEventListener("click", request_resign);
 rules_button.addEventListener("click", () => execute_input("/rules"));
 export_button.addEventListener("click", () => execute_input("/save"));
 volume_button.addEventListener("click", next_volume);
+shared_wayback_button.addEventListener("click", toggle_shared_wayback);
 
 accept_essential_cookies_button.addEventListener("click", on_accept_essential_cookies);
 accept_all_cookies_button.addEventListener("click", on_accept_all_cookies);
@@ -513,6 +515,11 @@ function get_args(args_array, expected_args) {
   } else {
     throw usage_error(args_array, expected_args);
   }
+}
+
+// TODO: Update all code to use this.
+function set_displayed(element, value) {
+  element.style.display = value ? null : "none";
 }
 
 function on_document_keydown(event) {
@@ -775,27 +782,38 @@ function update_connection_status() {
   }
 }
 
+function update_shared_wayback_button() {
+  const shared_wayback = wasm_client().shared_wayback_enabled();
+  set_displayed(document.getElementById("wayback-together"), shared_wayback);
+  set_displayed(document.getElementById("wayback-alone"), !shared_wayback);
+  shared_wayback_button.title = shared_wayback
+    ? "Viewing the same moment together with other players when navigating game log via mouse or ↑↓ arrow keys. Click to toggle"
+    : "Viewing game history independently from other players when navigating game log via mouse or ↑↓ arrow keys. Click to toggle";
+}
+
 function update_buttons() {
-  const SHOW = null;
-  const HIDE = "none";
   const observer_status = wasm_client().observer_status();
   const game_status = wasm_client().game_status();
   switch (game_status) {
     case "active":
-      resign_button.style.display = observer_status == "no" ? SHOW : HIDE;
-      ready_button.style.display = HIDE;
+      set_displayed(resign_button, observer_status == "no");
+      set_displayed(ready_button, false);
+      set_displayed(shared_wayback_button, false);
       break;
     case "over":
-      resign_button.style.display = HIDE;
-      ready_button.style.display = observer_status == "permanently" ? HIDE : SHOW;
+      set_displayed(resign_button, false);
+      set_displayed(ready_button, observer_status != "permanently");
+      set_displayed(shared_wayback_button, true);
       break;
     case "none":
-      resign_button.style.display = HIDE;
-      ready_button.style.display = HIDE;
+      set_displayed(resign_button, false);
+      set_displayed(ready_button, false);
+      set_displayed(shared_wayback_button, false);
       break;
     default:
       throw new Error(`Unknown game status: ${game_status}`);
   }
+  update_shared_wayback_button();
 }
 
 async function request_resign() {
@@ -1692,6 +1710,13 @@ function update_chat_reference_tooltip() {
       200
     );
   }
+}
+
+function toggle_shared_wayback() {
+  with_error_handling(function () {
+    wasm_client().toggle_shared_wayback();
+    update();
+  });
 }
 
 function set_volume(volume) {

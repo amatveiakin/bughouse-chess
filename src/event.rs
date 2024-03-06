@@ -7,7 +7,7 @@ use crate::board::TurnInput;
 use crate::chalk::{ChalkDrawing, Chalkboard};
 use crate::chat::{ChatMessage, OutgoingChatMessage};
 use crate::clock::GameInstant;
-use crate::game::{BughouseBoard, BughouseGameStatus, PlayerInGame, TurnRecord};
+use crate::game::{BughouseBoard, BughouseGameStatus, PlayerInGame, TurnIndex, TurnRecord};
 use crate::meter::MeterStats;
 use crate::pgn::BpgnExportFormat;
 use crate::player::{Faction, Participant};
@@ -102,6 +102,9 @@ pub enum BughouseServerEvent {
     ChalkboardUpdated {
         chalkboard: Chalkboard,
     },
+    SharedWaybackUpdated {
+        turn_index: Option<TurnIndex>,
+    },
     GameExportReady {
         content: String,
     },
@@ -166,6 +169,9 @@ pub enum BughouseClientEvent {
     },
     UpdateChalkDrawing {
         drawing: ChalkDrawing,
+    },
+    SetSharedWayback {
+        turn_index: Option<TurnIndex>,
     },
     RequestExport {
         format: BpgnExportFormat,

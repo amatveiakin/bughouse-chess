@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops;
 use std::sync::{Arc, Mutex};
 
-use bughouse_chess::altered_game::AlteredGame;
+use bughouse_chess::altered_game::{AlteredGame, WaybackDestination};
 use bughouse_chess::board::{Board, TurnError, TurnInput, VictoryReason};
 use bughouse_chess::chat::ChatRecipient;
 use bughouse_chess::clock::GameInstant;
@@ -20,7 +20,7 @@ use bughouse_chess::event::{BughouseClientEvent, BughouseServerEvent};
 use bughouse_chess::force::Force;
 use bughouse_chess::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
-    BughousePlayer, PlayerInGame,
+    BughousePlayer, PlayerInGame, TurnIndex,
 };
 use bughouse_chess::half_integer::HalfU32;
 use bughouse_chess::piece::PieceKind;
@@ -1372,6 +1372,20 @@ fn no_score_for_observers() {
             ("p5".to_owned(), HalfU32::whole(0)),
         ])
     );
+}
+
+#[test]
+fn shared_wayback() {
+    let mut world = World::new();
+    let (_, cl1, cl2, cl3, _cl4) = world.default_clients();
+    world.replay_white_checkmates_black(cl1, cl3);
+    world[cl1].state.set_shared_wayback(true);
+    world[cl2].state.set_shared_wayback(true);
+    world[cl1].state.wayback_to(WaybackDestination::Index(Some(TurnIndex(3))), None);
+    world.process_all_events();
+    assert_eq!(world[cl1].alt_game().wayback_state().turn_index(), Some(TurnIndex(3)));
+    assert_eq!(world[cl2].alt_game().wayback_state().turn_index(), Some(TurnIndex(3)));
+    assert_eq!(world[cl3].alt_game().wayback_state().turn_index(), None);
 }
 
 // Verify conformity to PGN standard.
