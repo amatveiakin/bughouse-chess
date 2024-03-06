@@ -15,6 +15,7 @@ use crate::game::{
 };
 use crate::player::Team;
 use crate::rules::{ChessVariant, StartingPosition};
+use crate::utc_time::UtcDateTime;
 
 // Other possible formats:
 //
@@ -137,10 +138,12 @@ fn make_termination_string(game: &BughouseGame) -> &'static str {
 //   https://duckchess.com/#:~:text=Finally%2C%20the%20standard%20notation%20for,duck%20being%20placed%20at%20g5.
 // Note that it interacts questionably with bughouse, because it reuses the '@' symbol.
 // On the other hand, it's still unambiguous, so maybe it's ok.
-fn make_bughouse_bpng_header(game: &BughouseGame, round: usize) -> String {
+fn make_bughouse_bpng_header(
+    game: &BughouseGame, game_start_time: UtcDateTime, round: u64,
+) -> String {
     use BughouseBoard::*;
     use Force::*;
-    let now = time::OffsetDateTime::now_utc(); // TODO: Save game start time instead.
+    let now = time::OffsetDateTime::from(game_start_time);
     let event = make_event(game);
     let variants = iter::once("Bughouse")
         .chain(game.chess_rules().variants().into_iter().map(ChessVariant::to_pgn))
@@ -226,8 +229,10 @@ fn turn_to_pgn(format: BpgnExportFormat, game: &BughouseGame, turn: &TurnRecordE
 //   - "Outcome" - human-readable game result description; this is addition to "Result"
 //     and "Termination" fields, which follow PGN standard, but are less informative.
 //   - "Promotion", "DropAggression", "PawnDropRanks" - bughouse-specific rules.
-pub fn export_to_bpgn(format: BpgnExportFormat, game: &BughouseGame, round: usize) -> String {
-    let header = make_bughouse_bpng_header(game, round);
+pub fn export_to_bpgn(
+    format: BpgnExportFormat, game: &BughouseGame, game_start_time: UtcDateTime, round: u64,
+) -> String {
+    let header = make_bughouse_bpng_header(game, game_start_time, round);
     let mut doc = TextDocument::new();
     for turn_record in game.turn_log() {
         doc.push_word(&turn_to_pgn(format, game, &turn_record));

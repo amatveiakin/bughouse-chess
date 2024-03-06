@@ -122,11 +122,11 @@ pub struct GameState {
     // generated and presented to the users.
     game_creation: Instant,
     // `game_start` is the time when the clock started after a player made their
-    // first turn. We need both an Instant and an OffsetDateTime: the instant
-    // time is used for monotonic in-game time tracking, and the offset time is
-    // used for communication with outside world about absolute moments in time.
+    // first turn. We need both an Instant and an UTC time: the instant time is
+    // used for monotonic in-game time tracking, and the UTC time is used for
+    // communication with outside world about absolute moments in time.
     game_start: Option<Instant>,
-    game_start_offset_time: Option<time::OffsetDateTime>,
+    game_start_utc_time: Option<UtcDateTime>,
     game_end: Option<Instant>,
     // All game updates. Mostly duplicates turn log. Used for reconnection.
     updates: Vec<GameUpdate>,
@@ -135,11 +135,6 @@ pub struct GameState {
     // attemping to drop an as-of-yet-missing piece.
     turn_requests: Vec<TurnRequest>,
     chalkboard: Chalkboard,
-}
-
-impl GameState {
-    pub fn game(&self) -> &BughouseGame { &self.game }
-    pub fn start_offset_time(&self) -> Option<time::OffsetDateTime> { self.game_start_offset_time }
 }
 
 
@@ -317,15 +312,22 @@ enum MatchActivity {
 }
 
 #[derive(Debug)]
+struct GameHistoryRecord {
+    game_index: u64,
+    game: BughouseGame, // final game state
+    game_start_utc_time: UtcDateTime,
+}
+
+#[derive(Debug)]
 struct Match {
     match_id: MatchId,
     match_creation: Instant,
     rules: Rules,
     participants: Participants,
     chat: ServerChat,
-    teaming: Option<Teaming>,         // `Some` since the first game begins
-    scores: Option<Scores>,           // `Some` since the first game begins
-    match_history: Vec<BughouseGame>, // final game states; TODO: rename to `game history`
+    teaming: Option<Teaming>, // `Some` since the first game begins
+    scores: Option<Scores>,   // `Some` since the first game begins
+    game_history: Vec<GameHistoryRecord>,
     first_game_countdown_since: Option<Instant>,
     next_board_assignment: Option<Vec<PlayerInGame>>,
     game_state: Option<GameState>, // active game or latest game
@@ -521,7 +523,7 @@ impl CoreServerState {
             chat: ServerChat::new(),
             teaming: None,
             scores: None,
-            match_history: Vec::new(),
+            game_history: Vec::new(),
             first_game_countdown_since: None,
             next_board_assignment: None,
             game_state: None,
@@ -773,7 +775,7 @@ impl Match {
         let Some(GameState {
             game_index,
             game_start,
-            game_start_offset_time,
+            ref mut game_start_utc_time,
             ref mut game_end,
             ref mut game,
             ref mut turn_requests,
@@ -802,7 +804,7 @@ impl Match {
                 &mut self.next_board_assignment,
                 &mut self.chat,
                 game_over_time,
-                game_start_offset_time,
+                game_start_utc_time,
                 game_end,
             );
             self.add_game_updates(ctx, vec![update]);
@@ -1071,7 +1073,7 @@ impl Match {
         let Some(GameState {
             game_index,
             ref mut game_start,
-            ref mut game_start_offset_time,
+            ref mut game_start_utc_time,
             ref mut game_end,
             ref mut game,
             ref mut turn_requests,
@@ -1103,7 +1105,7 @@ impl Match {
             turns.push(turn_event);
             if game_start.is_none() {
                 *game_start = Some(ctx.now);
-                *game_start_offset_time = Some(time::OffsetDateTime::now_utc());
+                *game_start_utc_time = Some(UtcDateTime::now());
             }
             if !game.is_active() {
                 let game_now = GameInstant::from_now_game_active(game_start.unwrap(), ctx.now);
@@ -1118,7 +1120,7 @@ impl Match {
                     &mut self.next_board_assignment,
                     &mut self.chat,
                     game_now,
-                    *game_start_offset_time,
+                    game_start_utc_time,
                     game_end,
                 ));
                 break;
@@ -1164,7 +1166,7 @@ impl Match {
             ref mut game,
             ref mut turn_requests,
             game_start,
-            game_start_offset_time,
+            ref mut game_start_utc_time,
             ref mut game_end,
             ..
         }) = self.game_state
@@ -1196,7 +1198,7 @@ impl Match {
             &mut self.next_board_assignment,
             &mut self.chat,
             game_now,
-            game_start_offset_time,
+            game_start_utc_time,
             game_end,
         );
         self.add_game_updates(ctx, vec![update]);
@@ -1310,17 +1312,29 @@ impl Match {
         Ok(())
     }
 
+    fn export_current_game(&self, format: BpgnExportFormat) -> Option<String> {
+        let Some(GameState {
+            game_index,
+            ref game,
+            game_start_utc_time,
+            ..
+        }) = self.game_state
+        else {
+            return None;
+        };
+        // If there is no start time, there is nothing meaningful to export.
+        let game_start_utc_time = game_start_utc_time?;
+        Some(pgn::export_to_bpgn(format, &game, game_start_utc_time, game_index + 1))
+    }
+
     fn process_request_export(
         &self, ctx: &mut Context, client_id: ClientId, format: BpgnExportFormat,
     ) -> EventResult {
-        let Some(GameState { ref game, .. }) = self.game_state else {
-            // No error: the next game could've started.
-            return Ok(());
-        };
-        let all_games = self.match_history.iter().chain(iter::once(game));
-        let content = all_games
-            .enumerate()
-            .map(|(round, game)| pgn::export_to_bpgn(format, game, round + 1))
+        let content = self
+            .game_history
+            .iter()
+            .map(|r| pgn::export_to_bpgn(format, &r.game, r.game_start_utc_time, r.game_index + 1))
+            .chain(self.export_current_game(format).into_iter())
             .join("\n");
         ctx.clients[client_id].send(BughouseServerEvent::GameExportReady { content });
         Ok(())
@@ -1395,12 +1409,23 @@ impl Match {
                 self.reset_readiness();
                 return;
             }
-            if let Some(GameState { ref game, .. }) = self.game_state {
+            if let Some(GameState {
+                game_index,
+                ref game,
+                game_start_utc_time,
+                ..
+            }) = self.game_state
+            {
                 assert!(
                     !game.is_active(),
                     "Players must not be allowed to set is_ready flag while the game is active"
                 );
-                self.match_history.push(game.clone());
+                let game_start_utc_time = game_start_utc_time.unwrap_or(ctx.utc_now);
+                self.game_history.push(GameHistoryRecord {
+                    game_index,
+                    game: game.clone(),
+                    game_start_utc_time,
+                });
                 self.start_game(ctx);
             } else if self.first_game_countdown_since.is_none() {
                 // Show final teams when countdown begins.
@@ -1438,13 +1463,13 @@ impl Match {
             .take()
             .unwrap_or_else(|| assign_boards(self.participants.iter(), &mut rand::thread_rng()));
         let game = BughouseGame::new(self.rules.clone(), Role::ServerOrStandalone, &players);
-        let game_index = self.match_history.len() as u64;
+        let game_index = self.game_history.len() as u64;
         self.game_state = Some(GameState {
             game_index,
             game,
             game_creation: ctx.now,
             game_start: None,
-            game_start_offset_time: None,
+            game_start_utc_time: None,
             game_end: None,
             updates: Vec::new(),
             turn_requests: Vec::new(),
@@ -1625,7 +1650,7 @@ fn update_on_game_over(
     ctx: &mut Context, teaming: Teaming, game_index: u64, game: &BughouseGame,
     turn_requests: &mut Vec<TurnRequest>, participants: &mut Participants, scores: &mut Scores,
     next_board_assignment: &mut Option<Vec<PlayerInGame>>, chat: &mut ServerChat,
-    game_now: GameInstant, game_start_offset_time: Option<time::OffsetDateTime>,
+    game_now: GameInstant, game_start_utc_time: &mut Option<UtcDateTime>,
     game_end: &mut Option<Instant>,
 ) -> GameUpdate {
     assert!(game_end.is_none());
@@ -1667,8 +1692,10 @@ fn update_on_game_over(
             }
         }
     }
-    let round = game_index as usize + 1;
-    ctx.hooks.on_game_over(game, game_start_offset_time, round);
+    let final_game_start_utc_time = game_start_utc_time.unwrap_or(ctx.utc_now);
+    *game_start_utc_time = Some(final_game_start_utc_time);
+    let round = game_index + 1;
+    ctx.hooks.on_game_over(game, final_game_start_utc_time, ctx.utc_now, round);
     let next_players = assign_boards(participants.iter(), &mut rand::thread_rng());
     *next_board_assignment = Some(next_players.clone());
 
