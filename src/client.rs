@@ -875,7 +875,7 @@ impl ClientState {
         let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_event_error!())?;
         game_state.shared_wayback_turn_index = turn_index;
         if game_state.shared_wayback_enabled {
-            self.wayback_to_local(WaybackDestination::Index(turn_index), None);
+            _ = self.wayback_to_local(WaybackDestination::Index(turn_index), None);
         }
         Ok(())
     }
@@ -1040,13 +1040,15 @@ impl ClientState {
             }
         }
         if let Some(index) = wayback_to_turn {
-            self.wayback_to_local(WaybackDestination::Index(index), None);
+            _ = self.wayback_to_local(WaybackDestination::Index(index), None);
         }
     }
     pub fn wayback_to(
         &mut self, destination: WaybackDestination, board_idx: Option<BughouseBoard>,
     ) {
-        let turn_index = self.wayback_to_local(destination, board_idx);
+        let Ok(turn_index) = self.wayback_to_local(destination, board_idx) else {
+            return;
+        };
         let Some(ref mut game_state) = self.game_state_mut() else {
             return;
         };
@@ -1057,14 +1059,17 @@ impl ClientState {
     }
     fn wayback_to_local(
         &mut self, destination: WaybackDestination, board_idx: Option<BughouseBoard>,
-    ) -> Option<TurnIndex> {
+    ) -> Result<Option<TurnIndex>, ()> {
         let Some(ref mut game_state) = self.game_state_mut() else {
-            return None;
+            return Err(());
         };
+        if game_state.alt_game.is_active() {
+            return Err(());
+        }
         let turn_index = game_state.alt_game.wayback_to(destination, board_idx);
         let wayback = game_state.alt_game.wayback_state();
         self.notable_event_queue.push_back(NotableEvent::WaybackStateUpdated(wayback));
-        turn_index
+        Ok(turn_index)
     }
 
     fn check_connection(&mut self) {
