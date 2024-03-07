@@ -328,9 +328,6 @@ impl AlteredGame {
         if !self.chess_rules().fog_of_war {
             return HashSet::new();
         }
-        let BughouseParticipant::Player(my_player_id) = self.my_id else {
-            return HashSet::new();
-        };
 
         // Don't use `local_game`: preturns and drags should not reveal new areas. Even this logic
         // is not 100% safe: in some game variants local in-order turns could be reverted, e.g. when
@@ -342,7 +339,10 @@ impl AlteredGame {
 
         let board_shape = self.board_shape();
         let wayback_active = self.apply_wayback(&mut game);
-        let force = get_bughouse_force(my_player_id.team(), board_idx);
+        let force = match self.my_id {
+            BughouseParticipant::Player(id) => get_bughouse_force(id.team(), board_idx),
+            BughouseParticipant::Observer => game.board(board_idx).active_force(),
+        };
         let mut visible = game.board(board_idx).fog_free_area(force);
         // Still, do show preturn pieces themselves:
         if !wayback_active {
