@@ -213,7 +213,7 @@ fn turn_to_pgn(format: BpgnExportFormat, game: &BughouseGame, turn: &TurnRecordE
     match format.time_format {
         BpgnTimeFormat::NoTime => {}
         BpgnTimeFormat::Timestamp => {
-            s.push_str(&format!(" {{[ts={:.3}]}}", time.to_pgn_timestamp()));
+            s.push_str(&format!(" {{[ts={}]}}", time.to_pgn_timestamp()));
         }
     }
     s
@@ -296,16 +296,19 @@ mod tests {
                 [Result "0-1"]
                 [Termination "normal"]
                 [Outcome "Bob & Charlie won: Alice & Dave checkmated"]
-                1A. e4 {[ts=0.0]} 1a. Nc6 {[ts=0.1]} 1B. d4 {[ts=0.2]} 2A. Nc3 {[ts=0.3]}
-                1b. Nf6 {[ts=0.4]} 2a. Nf6 {[ts=0.5]} 2B. d5 {[ts=0.6]} 3A. d4 {[ts=0.7]}
-                2b. e6 {[ts=0.8]} 3a. d5 {[ts=0.9]} 3B. xe6 {[ts=1.0]} 4A. e5 {[ts=1.1]}
-                3b. dxe6 {[ts=1.2]} 4B. Qxd8 {[ts=1.3]} 4a. Ne4 {[ts=1.4]} 4b. Kxd8 {[ts=1.5]}
-                5B. Bg5 {[ts=1.6]} 5A. Nxe4 {[ts=1.7]} 5a. xe4 {[ts=1.8]} 5b. Be7 {[ts=1.9]}
-                6A. Nh3 {[ts=2.0]} 6B. Nc3 {[ts=2.1]} 6a. Bxh3 {[ts=2.2]} 6b. N@d4 {[ts=2.3]}
-                7A. xh3 {[ts=2.4]} 7a. Nxd4 {[ts=2.5]} 7B. O-O-O {[ts=2.6]} 8A. P@e6 {[ts=2.7]}
-                7b. N8c6 {[ts=2.8]} 8B. Bxf6 {[ts=2.9]} 8a. N@f3 {[ts=3.0]} 9A. Qxf3 {[ts=3.1]}
-                8b. Bxf6 {[ts=3.2]} 9a. Nxf3 {[ts=3.3]} 10A. Ke2 {[ts=3.4]} 9B. e3 {[ts=3.5]}
-                10a. Q@d2 {[ts=3.6]} 11A. Bxd2 {[ts=3.7]} 11a. Qxd2 {[ts=3.8]}
+                1A. e4 {[ts=0.000]} 1a. Nc6 {[ts=0.100]} 1B. d4 {[ts=0.200]}
+                2A. Nc3 {[ts=0.300]} 1b. Nf6 {[ts=0.400]} 2a. Nf6 {[ts=0.500]}
+                2B. d5 {[ts=0.600]} 3A. d4 {[ts=0.700]} 2b. e6 {[ts=0.800]} 3a. d5 {[ts=0.900]}
+                3B. xe6 {[ts=1.000]} 4A. e5 {[ts=1.100]} 3b. dxe6 {[ts=1.200]}
+                4B. Qxd8 {[ts=1.300]} 4a. Ne4 {[ts=1.400]} 4b. Kxd8 {[ts=1.500]}
+                5B. Bg5 {[ts=1.600]} 5A. Nxe4 {[ts=1.700]} 5a. xe4 {[ts=1.800]}
+                5b. Be7 {[ts=1.900]} 6A. Nh3 {[ts=2.000]} 6B. Nc3 {[ts=2.100]}
+                6a. Bxh3 {[ts=2.200]} 6b. N@d4 {[ts=2.300]} 7A. xh3 {[ts=2.400]}
+                7a. Nxd4 {[ts=2.500]} 7B. O-O-O {[ts=2.600]} 8A. P@e6 {[ts=2.700]}
+                7b. N8c6 {[ts=2.800]} 8B. Bxf6 {[ts=2.900]} 8a. N@f3 {[ts=3.000]}
+                9A. Qxf3 {[ts=3.100]} 8b. Bxf6 {[ts=3.200]} 9a. Nxf3 {[ts=3.300]}
+                10A. Ke2 {[ts=3.400]} 9B. e3 {[ts=3.500]} 10a. Q@d2 {[ts=3.600]}
+                11A. Bxd2 {[ts=3.700]} 11a. Qxd2 {[ts=3.800]}
                 "#
             )
         );
