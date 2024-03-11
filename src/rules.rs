@@ -46,14 +46,6 @@ pub enum FairyPieces {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub enum DropAggression {
-    NoCheck,
-    NoChessMate,
-    NoBughouseMate,
-    MateAllowed,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Promotion {
     // Classic rules. When captured, promoted pieces go back as pawns.
     Upgrade,
@@ -70,6 +62,20 @@ pub enum Promotion {
     //   - In regicide mode there are no limitation on king exposure.
     // The very same rules apply to you teammate's king.
     Steal,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct PawnDropRanks {
+    pub min: SubjectiveRow,
+    pub max: SubjectiveRow,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum DropAggression {
+    NoCheck,
+    NoChessMate,
+    NoBughouseMate,
+    MateAllowed,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -160,8 +166,7 @@ pub struct ChessRules {
 pub struct BughouseRules {
     pub koedem: bool,
     pub promotion: Promotion,
-    pub min_pawn_drop_rank: SubjectiveRow,
-    pub max_pawn_drop_rank: SubjectiveRow, // TODO: Update it when board shape changes
+    pub pawn_drop_ranks: PawnDropRanks, // TODO: Update when board shape changes
     pub drop_aggression: DropAggression,
 }
 
@@ -171,7 +176,7 @@ pub struct Rules {
     pub chess_rules: ChessRules,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, EnumIter, Serialize, Deserialize)]
 pub enum ChessVariant {
     Accolade,
     FischerRandom,
@@ -267,8 +272,8 @@ impl ChessRules {
     pub fn verify(&self) -> Result<(), String> {
         if let Some(bughouse_rules) = &self.bughouse_rules {
             let num_ranks = self.board_shape().num_rows as i8;
-            let min_pawn_drop_rank = bughouse_rules.min_pawn_drop_rank.to_one_based();
-            let max_pawn_drop_rank = bughouse_rules.max_pawn_drop_rank.to_one_based();
+            let min_pawn_drop_rank = bughouse_rules.pawn_drop_ranks.min.to_one_based();
+            let max_pawn_drop_rank = bughouse_rules.pawn_drop_ranks.max.to_one_based();
             if !chmp!(1 <= min_pawn_drop_rank <= max_pawn_drop_rank < num_ranks) {
                 return Err(format!(
                     "Invalid pawn drop ranks: {min_pawn_drop_rank}-{max_pawn_drop_rank}"
@@ -289,37 +294,12 @@ impl BughouseRules {
         Self {
             koedem: false,
             promotion: Promotion::Upgrade,
-            min_pawn_drop_rank: SubjectiveRow::from_one_based(2),
-            max_pawn_drop_rank: SubjectiveRow::from_one_based(board_shape.num_rows as i8 - 1),
+            pawn_drop_ranks: PawnDropRanks {
+                min: SubjectiveRow::from_one_based(2),
+                max: SubjectiveRow::from_one_based(board_shape.num_rows as i8 - 1),
+            },
             drop_aggression: DropAggression::MateAllowed,
         }
-    }
-}
-
-impl BughouseRules {
-    pub fn promotion_string(&self) -> &'static str {
-        match self.promotion {
-            Promotion::Upgrade => "Upgrade",
-            Promotion::Discard => "Discard",
-            Promotion::Steal => "Steal",
-        }
-    }
-
-    pub fn drop_aggression_string(&self) -> &'static str {
-        match self.drop_aggression {
-            DropAggression::NoCheck => "No check",
-            DropAggression::NoChessMate => "No chess mate",
-            DropAggression::NoBughouseMate => "No bughouse mate",
-            DropAggression::MateAllowed => "Mate allowed",
-        }
-    }
-
-    pub fn pawn_drop_ranks_string(&self) -> String {
-        format!(
-            "{}-{}",
-            self.min_pawn_drop_rank.to_one_based(),
-            self.max_pawn_drop_rank.to_one_based()
-        )
     }
 }
 
@@ -332,6 +312,61 @@ impl Rules {
     }
 
     pub fn verify(&self) -> Result<(), String> { self.chess_rules.verify() }
+}
+
+impl Promotion {
+    pub fn to_pgn(&self) -> &'static str {
+        match self {
+            Promotion::Upgrade => "Upgrade",
+            Promotion::Discard => "Discard",
+            Promotion::Steal => "Steal",
+        }
+    }
+    pub fn from_pgn(s: &str) -> Option<Self> {
+        match s {
+            "Upgrade" => Some(Promotion::Upgrade),
+            "Discard" => Some(Promotion::Discard),
+            "Steal" => Some(Promotion::Steal),
+            _ => None,
+        }
+    }
+    pub fn to_human_readable(&self) -> &'static str { self.to_pgn() }
+}
+
+impl DropAggression {
+    // Q. Is it ok that we use spaces for PGN values?
+    pub fn to_pgn(&self) -> &'static str {
+        match self {
+            DropAggression::NoCheck => "No check",
+            DropAggression::NoChessMate => "No chess mate",
+            DropAggression::NoBughouseMate => "No bughouse mate",
+            DropAggression::MateAllowed => "Mate allowed",
+        }
+    }
+    pub fn from_pgn(s: &str) -> Option<Self> {
+        match s {
+            "No check" => Some(DropAggression::NoCheck),
+            "No chess mate" => Some(DropAggression::NoChessMate),
+            "No bughouse mate" => Some(DropAggression::NoBughouseMate),
+            "Mate allowed" => Some(DropAggression::MateAllowed),
+            _ => None,
+        }
+    }
+    pub fn to_human_readable(&self) -> &'static str { self.to_pgn() }
+}
+
+impl PawnDropRanks {
+    pub fn to_pgn(&self) -> String {
+        format!("{}-{}", self.min.to_one_based(), self.max.to_one_based())
+    }
+    pub fn from_pgn(s: &str) -> Option<Self> {
+        let (min, max) = s.split_once('-')?;
+        Some(Self {
+            min: SubjectiveRow::from_one_based(min.parse().ok()?),
+            max: SubjectiveRow::from_one_based(max.parse().ok()?),
+        })
+    }
+    pub fn to_human_readable(&self) -> String { self.to_pgn() }
 }
 
 impl ChessVariant {
@@ -353,6 +388,19 @@ impl ChessVariant {
             // confusing. If renaming, don't forget to update existing PGNs!
             ChessVariant::FogOfWar => "DarkChess",
             ChessVariant::Koedem => "Koedem",
+        }
+    }
+
+    // Parses chess variant: as written by `to_pgn` or an alternative/historical name.
+    pub fn from_pgn(s: &str) -> Option<Self> {
+        match s {
+            "Accolade" => Some(ChessVariant::Accolade),
+            "Chess960" => Some(ChessVariant::FischerRandom),
+            "DuckChess" => Some(ChessVariant::DuckChess),
+            "Atomic" => Some(ChessVariant::AtomicChess),
+            "DarkChess" | "FogOfWar" => Some(ChessVariant::FogOfWar),
+            "Koedem" => Some(ChessVariant::Koedem),
+            _ => None,
         }
     }
 

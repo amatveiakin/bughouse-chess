@@ -26,7 +26,7 @@ use crate::pgn::BpgnExportFormat;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Faction, Participant};
 use crate::role::Role;
-use crate::rules::{ChessRules, DropAggression, Promotion, Rules, FIRST_GAME_COUNTDOWN_DURATION};
+use crate::rules::{ChessRules, DropAggression, Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
 use crate::session::Session;
 use crate::starter::EffectiveStartingPosition;
@@ -1154,13 +1154,8 @@ fn turn_error_message(err: TurnError, rules: &ChessRules) -> Option<String> {
     // We return `None` for errors that are either internal or trivial.
     // Improvement potential. Show even trivial errors (like PathBlocked) when making a turn via
     //   algebraic notation.
-    let promotion = || match rules.promotion() {
-        Promotion::Upgrade => "upgrade",
-        Promotion::Discard => "discard",
-        Promotion::Steal => "steal",
-    };
-    let pawn_drop_ranks = || rules.bughouse_rules.as_ref().unwrap().pawn_drop_ranks_string();
-    let drop_aggression = || match rules.bughouse_rules.as_ref().unwrap().drop_aggression {
+    let bughouse_rules = || rules.bughouse_rules.as_ref().unwrap();
+    let drop_aggression = || match bughouse_rules().drop_aggression {
         DropAggression::NoCheck => "Cannot drop pieces with a check",
         DropAggression::NoChessMate => {
             "Cannot drop pieces with a checkmate (according to chess rules)"
@@ -1186,18 +1181,20 @@ fn turn_error_message(err: TurnError, rules: &ChessRules) -> Option<String> {
         TurnError::UnprotectedKing => Some("King is unprotected.".to_owned()),
         TurnError::CastlingPieceHasMoved => Some("Cannot castle: piece has moved.".to_owned()),
         TurnError::CannotCastleDroppedKing => Some("Cannot castle: king was dropped.".to_owned()),
-        TurnError::BadPromotionType => {
-            Some(format!("Bad promotion type, expected “{}”", promotion()))
-        }
+        TurnError::BadPromotionType => Some(format!(
+            "Bad promotion type, expected “{}”",
+            rules.promotion().to_human_readable()
+        )),
         TurnError::MustPromoteHere => Some("Missing pawn promotion".to_owned()),
         TurnError::CannotPromoteHere => Some("Cannot promote here".to_owned()),
         TurnError::InvalidUpgradePromotionTarget => Some("Invalid promotion target".to_owned()),
         TurnError::InvalidStealPromotionTarget => Some("Invalid steal target".to_owned()),
         TurnError::DropRequiresBughouse => None,
         TurnError::DropPieceMissing => Some("Reserve piece is missing.".to_owned()),
-        TurnError::InvalidPawnDropRank => {
-            Some(format!("Pawns must be dropped on ranks {} from the player", pawn_drop_ranks()))
-        }
+        TurnError::InvalidPawnDropRank => Some(format!(
+            "Pawns must be dropped on ranks {} from the player",
+            bughouse_rules().pawn_drop_ranks.to_human_readable()
+        )),
         TurnError::DropBlocked => None,
         TurnError::DropAggression => Some(drop_aggression().to_owned()),
         TurnError::StealTargetMissing => Some("Steal target is missing.".to_owned()),

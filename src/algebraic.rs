@@ -17,14 +17,14 @@ pub enum AlgebraicDetails {
     LongAlgebraic,  // always include starting rol/col, e.g. "e2e4"
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum AlgebraicPromotionTarget {
     Upgrade(PieceKind),
     Discard,
     Steal((PieceKind, Coord)), // target piece and coord on the other board
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct AlgebraicMove {
     pub piece_kind: PieceKind,
     pub from_col: Option<Col>,
@@ -34,7 +34,7 @@ pub struct AlgebraicMove {
     pub promote_to: Option<AlgebraicPromotionTarget>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct AlgebraicDrop {
     pub piece_kind: PieceKind,
     pub to: Coord,
@@ -42,7 +42,7 @@ pub struct AlgebraicDrop {
 
 // Parsed algebraic notations. Conversion between `AlgebraicStructured` and string can be done
 // without a board. Conversion between `AlgebraicStructured` and `Turn` requries a board.
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum AlgebraicTurn {
     Move(AlgebraicMove),
     Drop(AlgebraicDrop),
@@ -55,6 +55,9 @@ impl AlgebraicTurn {
     pub fn parse(notation: &str) -> Option<Self> {
         let notation = notation.trim();
         const PIECE_RE: &str = r"[A-Z]";
+        // TODO: Choose another notation for discard promotion:
+        //   PGN considers period character to be a special kind of token:
+        //   http://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm#c7
         let move_re = once_cell_regex!(&format!(
             r"^({piece})?([a-h])?([1-8])?([x×:])?([a-h][1-8])(?:[=/]?(?:({piece})|(\.)|({piece})([a-h][1-8])))?([+†#‡]?)$",
             piece = PIECE_RE

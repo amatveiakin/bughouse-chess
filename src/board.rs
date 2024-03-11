@@ -198,7 +198,7 @@ fn legal_move_destinations(
 // by 3 or more cols, but we exclude this to reduce clutter.
 // TODO: Exclude moves when the path is blocked.
 fn legal_castling_destinations(
-    grid: &Grid, from: Coord, castling_rights: &EnumMap<Force, CastlingRights>,
+    grid: &Grid, from: Coord, castling_rights: &BoardCastlingRights,
 ) -> Vec<Coord> {
     let Some(piece) = grid[from] else {
         return vec![];
@@ -502,7 +502,7 @@ fn piece_to_captured(pos: Coord, piece: PieceOnBoard) -> impl Iterator<Item = Ca
     })
 }
 
-fn initial_castling_rights(starting_position: &EffectiveStartingPosition) -> CastlingRights {
+fn initial_castling_rights(starting_position: &EffectiveStartingPosition) -> EnvoyCastlingRights {
     let row = starting_piece_row(starting_position);
     let king_pos = row.iter().position(|&p| p == PieceKind::King).unwrap();
     let king_col = Col::from_zero_based(king_pos.try_into().unwrap());
@@ -519,7 +519,7 @@ fn initial_castling_rights(starting_position: &EffectiveStartingPosition) -> Cas
     rights
 }
 
-fn remove_castling_right(castling_rights: &mut CastlingRights, col: Col) {
+fn remove_castling_right(castling_rights: &mut EnvoyCastlingRights, col: Col) {
     for (_, col_rights) in castling_rights.iter_mut() {
         if *col_rights == Some(col) {
             *col_rights = None;
@@ -564,14 +564,14 @@ pub struct TurnFacts {
     pub steals: Vec<Steal>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Capture {
     pub from: Option<Coord>,
     pub piece_kind: PieceKind,
     pub force: PieceForce,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Steal {
     pub piece_id: PieceId,
     pub piece_kind: PieceKind,
@@ -650,7 +650,7 @@ pub enum TurnInput {
 }
 
 // Turn annotated with additional information for highlights and log beautification.
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TurnExpanded {
     pub turn: Turn,
     pub algebraic: AlgebraicTurn,
@@ -756,7 +756,8 @@ pub enum TurnError {
 
 pub type Reserve = EnumMap<PieceKind, u8>;
 
-pub type CastlingRights = EnumMap<CastleDirection, Option<Col>>;
+pub type EnvoyCastlingRights = EnumMap<CastleDirection, Option<Col>>;
+pub type BoardCastlingRights = EnumMap<Force, EnvoyCastlingRights>;
 
 // In classic chess, positions are compared for threefold repetition using FIDE rules:
 //
@@ -777,7 +778,7 @@ pub type CastlingRights = EnumMap<CastleDirection, Option<Col>>;
 struct PositionForRepetitionDraw {
     grid: GridForRepetitionDraw,
     active_force: Force,
-    castling_rights: EnumMap<Force, CastlingRights>,
+    castling_rights: BoardCastlingRights,
     en_passant_target: Option<Coord>,
     total_drops: u32,
 }
@@ -788,7 +789,7 @@ impl Reachability {
 }
 
 // Improvement potential: Don't store players here since they don't affect game process.
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Board {
     rules: Rc<Rules>,
     #[allow(dead_code)]
@@ -801,7 +802,7 @@ pub struct Board {
     // allowed when the rook stands in the first row at specified columns. If the
     // king has moved then the list is empty. Not affected by temporary limitations
     // (e.g. the king being checked).
-    castling_rights: EnumMap<Force, CastlingRights>,
+    castling_rights: BoardCastlingRights,
     en_passant_target: Option<Coord>,
     reserves: EnumMap<Force, Reserve>,
     total_drops: u32, // total number of drops from both sides
@@ -890,7 +891,7 @@ impl Board {
     pub fn shape(&self) -> BoardShape { self.grid.shape() }
     pub fn grid(&self) -> &Grid { &self.grid }
     pub fn grid_mut(&mut self) -> &mut Grid { &mut self.grid }
-    pub fn castling_rights(&self) -> &EnumMap<Force, CastlingRights> { &self.castling_rights }
+    pub fn castling_rights(&self) -> &BoardCastlingRights { &self.castling_rights }
     pub fn en_passant_target(&self) -> Option<Coord> { self.en_passant_target }
     pub fn reserve(&self, force: Force) -> &Reserve { &self.reserves[force] }
     pub fn reserve_mut(&mut self, force: Force) -> &mut Reserve { &mut self.reserves[force] }
@@ -1439,8 +1440,8 @@ impl Board {
                 }
                 let to_subjective_row = SubjectiveRow::from_row(self.shape(), drop.to.row, force);
                 if drop.piece_kind == PieceKind::Pawn
-                    && (to_subjective_row < bughouse_rules.min_pawn_drop_rank
-                        || to_subjective_row > bughouse_rules.max_pawn_drop_rank)
+                    && (to_subjective_row < bughouse_rules.pawn_drop_ranks.min
+                        || to_subjective_row > bughouse_rules.pawn_drop_ranks.max)
                 {
                     return Err(TurnError::InvalidPawnDropRank);
                 }

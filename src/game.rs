@@ -25,6 +25,7 @@
 
 #![allow(unused_parens)]
 
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -41,6 +42,7 @@ use crate::board::{
 use crate::clock::GameInstant;
 use crate::coord::BoardShape;
 use crate::force::Force;
+use crate::once_cell_regex;
 use crate::piece::PieceKind;
 use crate::player::Team;
 use crate::role::Role;
@@ -65,7 +67,7 @@ pub struct TurnRecord {
 #[serde(transparent)]
 pub struct TurnIndex(pub usize);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TurnRecordExpanded {
     pub index: TurnIndex,  // global unique turn index
     pub local_number: u32, // logical turn number within the board
@@ -180,7 +182,7 @@ impl BughouseGameStatus {
 }
 
 impl GameOutcome {
-    pub fn to_readable_string(&self, rules: &ChessRules) -> String {
+    pub fn to_pgn(&self, rules: &ChessRules) -> String {
         use BughouseGameStatus::*;
         use DrawReason::*;
         use VictoryReason::*;
@@ -210,6 +212,80 @@ impl GameOutcome {
             Draw(SimultaneousFlag) => "Draw: simultaneous flags".to_owned(),
             Draw(ThreefoldRepetition) => "Draw: threefold repetition".to_owned(),
         }
+    }
+
+    pub fn from_pgn(players: &[PlayerInGame], s: &str) -> Result<Self, String> {
+        use BughouseGameStatus::*;
+        use DrawReason::*;
+        use VictoryReason::*;
+        let checkmate_victory_re =
+            once_cell_regex!("^(.+) won: (.+) (?:lost all kings|lost a king|checkmated)$");
+        let flag_victory_re = once_cell_regex!("^(.+) won: (.+) lost on time$");
+        let resignation_victory_re = once_cell_regex!("^(.+) won: (.+) resigned$");
+        let simultaneous_checkmate_draw_re =
+            once_cell_regex!("^Draw: both kings lost|Draw: both players checkmated$");
+        let simultaneous_flag_draw_re = once_cell_regex!("^Draw: simultaneous flags$");
+        let threefold_repetition_draw_re = once_cell_regex!("^Draw: threefold repetition$");
+
+        if s == "Unterminated" {
+            return Ok(GameOutcome {
+                status: Active,
+                winners: vec![],
+                losers: vec![],
+            });
+        }
+        for (regex, reason) in [
+            (checkmate_victory_re, Checkmate),
+            (flag_victory_re, Flag),
+            (resignation_victory_re, Resignation),
+        ] {
+            if let Some(captures) = regex.captures(s) {
+                let make_players =
+                    |s: &str| s.split('&').map(|s| s.trim().to_owned()).collect_vec();
+                let winners = make_players(captures.get(1).unwrap().as_str());
+                let losers = make_players(captures.get(2).unwrap().as_str());
+                let winner_team = Self::get_winner_team(players, &winners, &losers)
+                    .ok_or_else(|| "winner/loser set does not match player set".to_owned())?;
+                return Ok(GameOutcome {
+                    status: Victory(winner_team, reason),
+                    winners,
+                    losers,
+                });
+            }
+        }
+        for (regex, reason) in [
+            (simultaneous_checkmate_draw_re, SimultaneousCheckmate),
+            (simultaneous_flag_draw_re, SimultaneousFlag),
+            (threefold_repetition_draw_re, ThreefoldRepetition),
+        ] {
+            if regex.is_match(s) {
+                return Ok(GameOutcome {
+                    status: Draw(reason),
+                    winners: vec![],
+                    losers: vec![],
+                });
+            }
+        }
+        Err(format!("unrecognized game outcome: {}", s))
+    }
+
+    pub fn to_readable_string(&self, rules: &ChessRules) -> String { self.to_pgn(rules) }
+
+    fn get_winner_team(
+        players: &[PlayerInGame], winners: &[String], losers: &[String],
+    ) -> Option<Team> {
+        let winners: HashSet<_> = winners.iter().collect();
+        let losers: HashSet<_> = losers.iter().collect();
+        let mut team_players = enum_map! { _ => HashSet::new() };
+        for p in players {
+            team_players[p.id.team()].insert(&p.name);
+        }
+        for team in Team::iter() {
+            if team_players[team] == winners && team_players[team.opponent()] == losers {
+                return Some(team);
+            }
+        }
+        None
     }
 }
 
@@ -392,7 +468,7 @@ impl BughouseParticipant {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct BughouseGame {
     rules: Rc<Rules>,
     role: Role,

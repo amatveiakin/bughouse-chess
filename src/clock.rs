@@ -108,9 +108,9 @@ impl GameInstant {
         // after PGN export (see `time_breakdown` test).
         format!("{:.3}", self.elapsed_since_start.as_millis() as f64 / 1000.0)
     }
-    pub fn from_pgn_timestamp(s: &str) -> Self {
-        let elapsed_since_start = Duration::from_secs_f64(s.parse().unwrap());
-        GameInstant { elapsed_since_start }
+    pub fn from_pgn_timestamp(s: &str) -> Result<Self, ()> {
+        let elapsed_since_start = Duration::from_secs_f64(s.parse().map_err(|_| ())?);
+        Ok(GameInstant { elapsed_since_start })
     }
 }
 
@@ -245,7 +245,7 @@ impl From<Duration> for TimeDifferenceBreakdown {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Clock {
     #[allow(dead_code)]
     control: TimeControl,
@@ -408,6 +408,7 @@ mod tests {
             let pgn_timestamp = GameInstant::from_pgn_timestamp(
                 &GameInstant::from_duration(timestamp).to_pgn_timestamp(),
             )
+            .unwrap()
             .elapsed_since_start();
             let pgn_time_left = inf - pgn_timestamp;
             assert_eq!(

@@ -26,7 +26,7 @@ use bughouse_chess::half_integer::HalfU32;
 use bughouse_chess::piece::PieceKind;
 use bughouse_chess::player::{Faction, Team};
 use bughouse_chess::rules::{
-    BughouseRules, ChessRules, DropAggression, MatchRules, Promotion, Rules,
+    BughouseRules, ChessRules, DropAggression, MatchRules, PawnDropRanks, Promotion, Rules,
 };
 use bughouse_chess::scores::Scores;
 use bughouse_chess::server::{ServerInfo, ServerOptions};
@@ -48,8 +48,10 @@ fn default_chess_rules() -> ChessRules {
         bughouse_rules: Some(BughouseRules {
             koedem: false,
             promotion: Promotion::Upgrade,
-            min_pawn_drop_rank: SubjectiveRow::from_one_based(2),
-            max_pawn_drop_rank: SubjectiveRow::from_one_based(6),
+            pawn_drop_ranks: PawnDropRanks {
+                min: SubjectiveRow::from_one_based(2),
+                max: SubjectiveRow::from_one_based(6),
+            },
             drop_aggression: DropAggression::NoChessMate,
         }),
         ..ChessRules::chess_blitz()

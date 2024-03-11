@@ -835,16 +835,16 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
         };
         rule_rows.push((
             "Promotion",
-            bughouse_rules.promotion_string().to_owned(),
+            bughouse_rules.promotion.to_human_readable().to_owned(),
             Some(combine_elements(promotion_tooltip)?),
         ));
         rule_rows.push((
             "Pawn drop ranks",
-            bughouse_rules.pawn_drop_ranks_string(),
+            bughouse_rules.pawn_drop_ranks.to_human_readable(),
             Some(combine_elements(pawn_drop_rank_specific_tooltip(
                 rules.chess_rules.board_shape(),
-                bughouse_rules.min_pawn_drop_rank,
-                bughouse_rules.max_pawn_drop_rank,
+                bughouse_rules.pawn_drop_ranks.min,
+                bughouse_rules.pawn_drop_ranks.max,
             )?)?),
         ));
     }
@@ -864,7 +864,7 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
             };
             rule_rows.push((
                 "Drop aggression",
-                bughouse_rules.drop_aggression_string().to_owned(),
+                bughouse_rules.drop_aggression.to_human_readable().to_owned(),
                 Some(combine_elements(drop_aggression_tooltip)?),
             ));
         }

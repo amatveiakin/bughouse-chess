@@ -5,7 +5,7 @@ use itertools::Itertools;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::board::{CastlingRights, Reserve};
+use crate::board::{BoardCastlingRights, Reserve};
 use crate::coord::{BoardShape, Col, Coord, Row};
 use crate::force::Force;
 use crate::game::BughouseBoard;
@@ -14,17 +14,17 @@ use crate::piece::{PieceForce, PieceId, PieceKind, PieceOnBoard, PieceOrigin};
 use crate::rules::{ChessRules, StartingPosition};
 
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct BoardSetup {
     pub grid: Grid,
     pub next_piece_id: PieceId,
-    pub castling_rights: EnumMap<Force, CastlingRights>,
+    pub castling_rights: BoardCastlingRights,
     pub en_passant_target: Option<Coord>,
     pub reserves: EnumMap<Force, Reserve>,
     pub active_force: Force,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum EffectiveStartingPosition {
     Classic,
     FischerRandom(Vec<PieceKind>),

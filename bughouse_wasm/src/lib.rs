@@ -341,8 +341,10 @@ impl WebClient {
             bughouse_rules: Some(BughouseRules {
                 koedem,
                 promotion,
-                min_pawn_drop_rank,
-                max_pawn_drop_rank,
+                pawn_drop_ranks: PawnDropRanks {
+                    min: min_pawn_drop_rank,
+                    max: max_pawn_drop_rank,
+                },
                 drop_aggression,
             }),
         };
