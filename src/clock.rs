@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
-use std::fmt;
 use std::time::Duration;
+use std::{fmt, iter, ops};
 
 use enum_map::{enum_map, EnumMap};
 use instant::Instant;
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use crate::force::Force;
-use crate::util::Relax;
+use crate::nanable::Nanable;
 
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -25,6 +25,9 @@ impl fmt::Display for TimeControl {
         format_duration_to_mss(self.starting_time, f)
     }
 }
+
+const MILLIS_PER_SEC: u64 = 1000;
+const MILLIS_PER_DECI: u64 = MILLIS_PER_SEC / 10;
 
 pub fn duration_to_mss(d: Duration) -> String {
     let mut ret = String::new();
@@ -49,18 +52,144 @@ pub enum TimeMeasurement {
     Approximate,
 }
 
-// Time since game start.
+// Class similar to `std::time::Duration`, but with milliseconds precision. This is the precision we
+// use in BPGN files. By rounding all game time to milliseconds we ensure that BPGN replays are 100%
+// accurate, without any weird roundnig effects.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
+pub struct MillisDuration {
+    ms: u64,
+}
+
+// Duration class with milliseconds precision (see `MillisDuration` for the reasoning), which also
+// allows unknown values. Unknown values are used when loading BPGN files without timestamps.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct GameDuration {
+    ms: Nanable<u64>,
+}
+
+// Time since game start.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct GameInstant {
-    elapsed_since_start: Duration,
+    elapsed_since_start: GameDuration,
+}
+
+impl MillisDuration {
+    pub const ZERO: Self = MillisDuration { ms: 0 };
+    pub const MIN_POSITIVE: Self = MillisDuration { ms: 1 };
+
+    pub fn from_millis(ms: u64) -> Self { MillisDuration { ms } }
+    pub fn from_secs_f64(s: f64) -> Self {
+        MillisDuration::from_millis((s * MILLIS_PER_SEC as f64) as u64)
+    }
+
+    pub fn is_zero(self) -> bool { self.ms == 0 }
+    pub fn as_millis(self) -> u64 { self.ms }
+    pub fn subsec_millis(self) -> u64 { self.ms % MILLIS_PER_SEC }
+    pub fn checked_sub(self, other: Self) -> Option<Self> {
+        Some(MillisDuration { ms: self.ms.checked_sub(other.ms)? })
+    }
+    pub fn saturating_sub(self, other: Self) -> Self {
+        MillisDuration { ms: self.ms.saturating_sub(other.ms) }
+    }
+}
+
+impl GameDuration {
+    pub const ZERO: Self = GameDuration { ms: Nanable::Regular(0) };
+    pub const MIN_POSITIVE: Self = GameDuration { ms: Nanable::Regular(1) };
+    pub const UNKNOWN: Self = GameDuration { ms: Nanable::NaN };
+
+    pub fn from_millis(ms: u64) -> Self { GameDuration { ms: Nanable::Regular(ms) } }
+    pub fn from_secs_f64(s: f64) -> Self { GameDuration::from_millis((s * 1000.0) as u64) }
+
+    pub fn is_zero(self) -> bool { self.ms == Nanable::Regular(0) }
+    pub fn is_unknown(self) -> bool { self.ms.is_nan() }
+    pub fn as_millis(self) -> Nanable<u64> { self.ms }
+    pub fn subsec_millis(self) -> Nanable<u64> { self.ms % MILLIS_PER_SEC.into() }
+    pub fn checked_sub(self, other: Self) -> Option<Self> {
+        Some(GameDuration {
+            ms: self.ms.combine(other.ms, |a, b| a.checked_sub(b)).transpose()?,
+        })
+    }
+    pub fn saturating_sub(self, other: Self) -> Self {
+        GameDuration {
+            ms: self.ms.combine(other.ms, |a, b| a.saturating_sub(b)),
+        }
+    }
+}
+
+impl ops::Add for MillisDuration {
+    type Output = Self;
+    fn add(self, other: Self) -> Self { MillisDuration { ms: self.ms + other.ms } }
+}
+impl ops::Sub for MillisDuration {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self { MillisDuration { ms: self.ms - other.ms } }
+}
+impl iter::Sum for MillisDuration {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(MillisDuration::ZERO, ops::Add::add)
+    }
+}
+
+impl ops::Add for GameDuration {
+    type Output = Self;
+    fn add(self, other: Self) -> Self { GameDuration { ms: self.ms + other.ms } }
+}
+impl ops::Sub for GameDuration {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self { GameDuration { ms: self.ms - other.ms } }
+}
+impl iter::Sum for GameDuration {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(GameDuration::ZERO, ops::Add::add)
+    }
+}
+
+impl From<MillisDuration> for GameDuration {
+    fn from(d: MillisDuration) -> Self { GameDuration { ms: Nanable::Regular(d.ms) } }
+}
+impl TryFrom<GameDuration> for MillisDuration {
+    type Error = ();
+    fn try_from(d: GameDuration) -> Result<Self, ()> {
+        match d.ms {
+            Nanable::Regular(ms) => Ok(MillisDuration { ms }),
+            Nanable::NaN => Err(()),
+        }
+    }
+}
+
+impl From<Duration> for MillisDuration {
+    fn from(d: Duration) -> Self { MillisDuration::from_millis(d.as_millis() as u64) }
+}
+impl From<Duration> for GameDuration {
+    fn from(d: Duration) -> Self { GameDuration::from_millis(d.as_millis() as u64) }
+}
+
+impl From<MillisDuration> for Duration {
+    fn from(d: MillisDuration) -> Self { Duration::from_millis(d.as_millis() as u64) }
+}
+impl TryFrom<GameDuration> for Duration {
+    type Error = ();
+    fn try_from(d: GameDuration) -> Result<Self, ()> {
+        MillisDuration::try_from(d).map(|d| d.into())
+    }
 }
 
 impl GameInstant {
-    pub fn from_duration(elapsed_since_start: Duration) -> Self {
+    pub const UNKNOWN: Self = GameInstant {
+        elapsed_since_start: GameDuration::UNKNOWN,
+    };
+    pub fn from_game_duration(elapsed_since_start: GameDuration) -> Self {
         GameInstant { elapsed_since_start }
     }
+    pub fn from_millis_duration(elapsed_since_start: MillisDuration) -> Self {
+        GameInstant::from_game_duration(elapsed_since_start.into())
+    }
+    pub fn from_duration(elapsed_since_start: Duration) -> Self {
+        GameInstant::from_game_duration(elapsed_since_start.into())
+    }
     pub fn from_now_game_active(game_start: Instant, now: Instant) -> Self {
-        GameInstant { elapsed_since_start: now - game_start }
+        GameInstant::from_duration(now - game_start)
     }
     pub fn from_now_game_maybe_active(game_start: Option<Instant>, now: Instant) -> GameInstant {
         match game_start {
@@ -70,7 +199,7 @@ impl GameInstant {
     }
     pub fn from_pair_game_active(pair: WallGameTimePair, now: Instant) -> GameInstant {
         GameInstant {
-            elapsed_since_start: (now - pair.world_t) + pair.game_t.elapsed_since_start,
+            elapsed_since_start: pair.game_t.elapsed_since_start + (now - pair.world_t).into(),
         }
     }
     // TODO: Fix: due to the `None` branch, the users have to call `.approximate()` even in places
@@ -84,9 +213,11 @@ impl GameInstant {
         }
     }
 
-    pub const fn game_start() -> Self { GameInstant { elapsed_since_start: Duration::ZERO } }
-    pub fn elapsed_since_start(self) -> Duration { self.elapsed_since_start }
-    pub fn duration_since(self, earlier: GameInstant, measurement: TimeMeasurement) -> Duration {
+    pub const fn game_start() -> Self { GameInstant { elapsed_since_start: GameDuration::ZERO } }
+    pub fn elapsed_since_start(self) -> GameDuration { self.elapsed_since_start }
+    pub fn duration_since(
+        self, earlier: GameInstant, measurement: TimeMeasurement,
+    ) -> GameDuration {
         match measurement {
             TimeMeasurement::Exact => {
                 self.elapsed_since_start.checked_sub(earlier.elapsed_since_start).unwrap()
@@ -97,19 +228,20 @@ impl GameInstant {
         }
     }
 
-    pub fn checked_sub(self, d: Duration) -> Option<Self> {
+    pub fn checked_sub(self, d: GameDuration) -> Option<Self> {
         self.elapsed_since_start
             .checked_sub(d)
             .map(|elapsed_since_start| GameInstant { elapsed_since_start })
     }
 
-    pub fn to_pgn_timestamp(self) -> String {
+    pub fn to_pgn_timestamp(self) -> Option<String> {
         // Do not use `as_secs_f64()`, make sure to round down. This keeps clock showing stable
         // after PGN export (see `time_breakdown` test).
-        format!("{:.3}", self.elapsed_since_start.as_millis() as f64 / 1000.0)
+        let millis = self.elapsed_since_start.as_millis().into_inner()?;
+        Some(format!("{:.3}", millis as f64 / 1000.0))
     }
     pub fn from_pgn_timestamp(s: &str) -> Result<Self, ()> {
-        let elapsed_since_start = Duration::from_secs_f64(s.parse().map_err(|_| ())?);
+        let elapsed_since_start = GameDuration::from_secs_f64(s.parse().map_err(|_| ())?);
         Ok(GameInstant { elapsed_since_start })
     }
 }
@@ -120,6 +252,7 @@ impl GameInstant {
 // when reconnecting to existing game, but this could panic because Rust doesn't
 // allow for negative durations. So this class can be used to sync game clock and
 // real-world clock instead.
+// TODO: Should we allow negative `GameDuration`s instead?
 #[derive(Clone, Copy, Debug)]
 pub struct WallGameTimePair {
     world_t: Instant,
@@ -146,6 +279,7 @@ pub struct ClockShowing {
 pub enum TimeBreakdown {
     NormalTime { minutes: u32, seconds: u32 },
     LowTime { seconds: u32, deciseconds: u32 },
+    Unknown,
 }
 
 // Difference between player's and their diagonal opponent's clocks.
@@ -160,6 +294,7 @@ pub enum TimeDifferenceBreakdown {
     Minutes { minutes: u32, seconds: u32 },
     Seconds { seconds: u32 },
     Subseconds { seconds: u32, deciseconds: u32 },
+    Unknown,
 }
 
 impl ClockShowing {
@@ -173,12 +308,13 @@ impl ClockShowing {
             TimeBreakdown::LowTime { seconds, deciseconds } => {
                 format!("{:02}{}{} ", seconds, separator("."), deciseconds)
             }
+            TimeBreakdown::Unknown => "-:--".to_string(),
         }
     }
 }
 
 impl ClockDifference {
-    pub fn ui_string(&self) -> String {
+    pub fn ui_string(&self) -> Option<String> {
         let sign = match self.comparison {
             Ordering::Less => '−', // U+2212 Minus Sign
             Ordering::Equal => '=',
@@ -186,34 +322,34 @@ impl ClockDifference {
         };
         match self.time_breakdown {
             TimeDifferenceBreakdown::Minutes { minutes, seconds } => {
-                format!("{}{}:{:02}", sign, minutes, seconds)
+                Some(format!("{}{}:{:02}", sign, minutes, seconds))
             }
-            TimeDifferenceBreakdown::Seconds { seconds } => {
-                format!("{}{:02}", sign, seconds)
-            }
+            TimeDifferenceBreakdown::Seconds { seconds } => Some(format!("{}{:02}", sign, seconds)),
             TimeDifferenceBreakdown::Subseconds { seconds, deciseconds } => {
-                format!("{}{}.{}", sign, seconds, deciseconds)
+                Some(format!("{}{}.{}", sign, seconds, deciseconds))
             }
+            TimeDifferenceBreakdown::Unknown => None,
         }
     }
 }
 
-impl From<Duration> for TimeBreakdown {
-    fn from(time: Duration) -> Self {
+impl From<GameDuration> for TimeBreakdown {
+    fn from(time: GameDuration) -> Self {
         // Always round the time up, so that we never show "0.00" for a player who has not lost by
         // flag. Also in the beginning of the game rounding up ensures that the first tick happens
         // one second after the game starts rather than immediately, which seems nice (although not
         // as important).
-        const NANOS_PER_SEC: u128 = 1_000_000_000;
-        const NANOS_PER_DECI: u128 = NANOS_PER_SEC / 10;
-        let nanos = time.as_nanos();
-        let ds_ceil = nanos.div_ceil(NANOS_PER_DECI);
+        let millis = match time.as_millis() {
+            Nanable::Regular(ms) => ms,
+            Nanable::NaN => return TimeBreakdown::Unknown,
+        };
+        let ds_ceil = millis.div_ceil(MILLIS_PER_DECI);
         if ds_ceil < 200 {
             let seconds = (ds_ceil / 10).try_into().unwrap();
             let deciseconds = (ds_ceil % 10).try_into().unwrap();
             TimeBreakdown::LowTime { seconds, deciseconds }
         } else {
-            let s_ceil = nanos.div_ceil(NANOS_PER_SEC);
+            let s_ceil = millis.div_ceil(MILLIS_PER_SEC);
             let minutes = (s_ceil / 60).try_into().unwrap();
             let seconds = (s_ceil % 60).try_into().unwrap();
             TimeBreakdown::NormalTime { minutes, seconds }
@@ -221,14 +357,12 @@ impl From<Duration> for TimeBreakdown {
     }
 }
 
-impl From<Duration> for TimeDifferenceBreakdown {
-    fn from(time: Duration) -> Self {
-        const NANOS_PER_SEC: u128 = 1_000_000_000;
-        const NANOS_PER_DECI: u128 = NANOS_PER_SEC / 10;
-        let nanos = time.as_nanos();
+impl From<MillisDuration> for TimeDifferenceBreakdown {
+    fn from(time: MillisDuration) -> Self {
+        let millis = time.as_millis();
         // Ceil for consistency with `TimeBreakdown`.
-        let ds_ceil = nanos.div_ceil(NANOS_PER_DECI);
-        let s_ceil = nanos.div_ceil(NANOS_PER_SEC);
+        let ds_ceil = millis.div_ceil(MILLIS_PER_DECI);
+        let s_ceil = millis.div_ceil(MILLIS_PER_SEC);
         if ds_ceil < 100 {
             let seconds = (ds_ceil / 10).try_into().unwrap();
             let deciseconds = (ds_ceil % 10).try_into().unwrap();
@@ -251,12 +385,12 @@ pub struct Clock {
     control: TimeControl,
     measurement: TimeMeasurement,
     turn_state: Option<(Force, GameInstant)>, // force, start time
-    remaining_time: EnumMap<Force, Duration>,
+    remaining_time: EnumMap<Force, GameDuration>,
 }
 
 impl Clock {
     pub fn new(control: TimeControl, measurement: TimeMeasurement) -> Self {
-        let remaining_time = enum_map! { _ => control.starting_time };
+        let remaining_time = enum_map! { _ => control.starting_time.into() };
         Self {
             control,
             measurement,
@@ -269,7 +403,7 @@ impl Clock {
     pub fn active_force(&self) -> Option<Force> { self.turn_state.map(|st| st.0) }
     pub fn turn_start(&self) -> Option<GameInstant> { self.turn_state.map(|st| st.1) }
 
-    pub fn time_left(&self, force: Force, now: GameInstant) -> Duration {
+    pub fn time_left(&self, force: Force, now: GameInstant) -> GameDuration {
         let mut ret = self.remaining_time[force];
         if let Some((current_force, current_start)) = self.turn_state {
             if force == current_force {
@@ -279,7 +413,7 @@ impl Clock {
         ret
     }
     // Effectively `time_left` with the opposite sign. `Some` only when `time_left` is zero.
-    pub fn time_excess(&self, force: Force, now: GameInstant) -> Option<Duration> {
+    pub fn time_excess(&self, force: Force, now: GameInstant) -> Option<GameDuration> {
         if let Some((current_force, current_start)) = self.turn_state {
             if force == current_force {
                 return now
@@ -287,7 +421,9 @@ impl Clock {
                     .checked_sub(self.remaining_time[force]);
             }
         } else if self.remaining_time[force].is_zero() {
-            return Some(Duration::ZERO);
+            return Some(GameDuration::ZERO);
+        } else if self.remaining_time[force].is_unknown() {
+            return Some(GameDuration::UNKNOWN);
         }
         None
     }
@@ -302,16 +438,17 @@ impl Clock {
         // user they've run out of time until the server confirms game result, because the
         // game may have ended earlier on the other board.
         let out_of_time = !is_active && time.is_zero();
-        if !out_of_time {
-            time.relax_max(Duration::from_nanos(1));
+        if !out_of_time && time.is_zero() {
+            time = GameDuration::MIN_POSITIVE;
         }
 
         let time_breakdown = time.into();
 
         let show_separator = match (is_active, time_breakdown) {
             (false, _) => true,
-            (true, TimeBreakdown::NormalTime { .. }) => time.subsec_millis() >= 500,
+            (true, TimeBreakdown::NormalTime { .. }) => time.subsec_millis().unwrap_or(0) >= 500,
             (true, TimeBreakdown::LowTime { .. }) => true,
+            (true, TimeBreakdown::Unknown) => true,
         };
 
         ClockShowing {
@@ -327,8 +464,17 @@ impl Clock {
     pub fn difference_for(
         &self, force: Force, other_clock: &Clock, now: GameInstant,
     ) -> ClockDifference {
-        let my_time = self.time_left(force, now);
-        let other_time = other_clock.time_left(force, now);
+        let (Ok(my_time), Ok(other_time)) = (
+            MillisDuration::try_from(self.time_left(force, now)),
+            MillisDuration::try_from(other_clock.time_left(force, now)),
+        ) else {
+            return ClockDifference {
+                comparison: Ordering::Equal,
+                time_breakdown: TimeDifferenceBreakdown::Unknown,
+            };
+        };
+        // let Ok(my_time) = GameDuration::from(self.time_left(force, now)) else
+        // let Ok(other_time) = GameDuration::from(other_clock.time_left(force, now)) else
         let comparison = my_time.cmp(&other_time);
         let time_breakdown = match comparison {
             Ordering::Less => (other_time - my_time).into(),
@@ -338,10 +484,12 @@ impl Clock {
         ClockDifference { comparison, time_breakdown }
     }
 
-    pub fn total_time_elapsed(&self) -> Duration {
+    pub fn total_time_elapsed(&self) -> GameDuration {
         // Note. This assumes no time increments, delays, etc.
         Force::iter()
-            .map(|force| self.control.starting_time - self.remaining_time[force])
+            .map(|force| {
+                GameDuration::from(self.control.starting_time) - self.remaining_time[force]
+            })
             .sum()
     }
 
@@ -353,7 +501,7 @@ impl Clock {
                 TimeMeasurement::Exact => {
                     // On the server or in offline game this should always hold true:
                     // otherwise game should've already finished by flag.
-                    assert!(remaining > Duration::ZERO);
+                    assert!(!remaining.is_zero());
                 }
                 TimeMeasurement::Approximate => {}
             }
@@ -378,35 +526,35 @@ mod tests {
     #[test]
     fn time_breakdown() {
         use TimeBreakdown::*;
-        let inf = Duration::from_nanos(1_000_000_000_000);
-        let cases: &[(u64, TimeBreakdown)] = &[
+        let inf = GameDuration::from_millis(1_000_000);
+        let cases = [
             (0, LowTime { seconds: 0, deciseconds: 0 }),
             (1, LowTime { seconds: 0, deciseconds: 1 }),
-            (100_000_000, LowTime { seconds: 0, deciseconds: 1 }),
-            (100_000_001, LowTime { seconds: 0, deciseconds: 2 }),
-            (900_000_000, LowTime { seconds: 0, deciseconds: 9 }),
-            (900_000_001, LowTime { seconds: 1, deciseconds: 0 }),
-            (1_000_000_000, LowTime { seconds: 1, deciseconds: 0 }),
-            (1_000_000_001, LowTime { seconds: 1, deciseconds: 1 }),
-            (19_900_000_000, LowTime { seconds: 19, deciseconds: 9 }),
-            (19_900_000_001, NormalTime { minutes: 0, seconds: 20 }),
-            (20_000_000_000, NormalTime { minutes: 0, seconds: 20 }),
-            (20_000_000_001, NormalTime { minutes: 0, seconds: 21 }),
-            (59_000_000_000, NormalTime { minutes: 0, seconds: 59 }),
-            (59_000_000_001, NormalTime { minutes: 1, seconds: 0 }),
-            (60_000_000_000, NormalTime { minutes: 1, seconds: 0 }),
-            (60_000_000_001, NormalTime { minutes: 1, seconds: 1 }),
-            (119_000_000_000, NormalTime { minutes: 1, seconds: 59 }),
-            (119_000_000_001, NormalTime { minutes: 2, seconds: 0 }),
+            (100, LowTime { seconds: 0, deciseconds: 1 }),
+            (101, LowTime { seconds: 0, deciseconds: 2 }),
+            (900, LowTime { seconds: 0, deciseconds: 9 }),
+            (901, LowTime { seconds: 1, deciseconds: 0 }),
+            (1_000, LowTime { seconds: 1, deciseconds: 0 }),
+            (1_001, LowTime { seconds: 1, deciseconds: 1 }),
+            (19_900, LowTime { seconds: 19, deciseconds: 9 }),
+            (19_901, NormalTime { minutes: 0, seconds: 20 }),
+            (20_000, NormalTime { minutes: 0, seconds: 20 }),
+            (20_001, NormalTime { minutes: 0, seconds: 21 }),
+            (59_000, NormalTime { minutes: 0, seconds: 59 }),
+            (59_001, NormalTime { minutes: 1, seconds: 0 }),
+            (60_000, NormalTime { minutes: 1, seconds: 0 }),
+            (60_001, NormalTime { minutes: 1, seconds: 1 }),
+            (119_000, NormalTime { minutes: 1, seconds: 59 }),
+            (119_001, NormalTime { minutes: 2, seconds: 0 }),
         ];
-        for &(nanos, breakdown) in cases {
-            let time_left = Duration::from_nanos(nanos);
+        for (millis, breakdown) in cases {
+            let time_left = GameDuration::from_millis(millis);
             assert_eq!(TimeBreakdown::from(time_left), breakdown);
 
             // Make sure clock showings are not altered by precision loss during PGN export.
             let timestamp = inf - time_left;
             let pgn_timestamp = GameInstant::from_pgn_timestamp(
-                &GameInstant::from_duration(timestamp).to_pgn_timestamp(),
+                &GameInstant::from_game_duration(timestamp).to_pgn_timestamp().unwrap(),
             )
             .unwrap()
             .elapsed_since_start();
@@ -424,28 +572,28 @@ mod tests {
     #[test]
     fn time_difference_breakdown() {
         use TimeDifferenceBreakdown::*;
-        let cases: &[(u64, TimeDifferenceBreakdown)] = &[
+        let cases = [
             (0, Subseconds { seconds: 0, deciseconds: 0 }),
             (1, Subseconds { seconds: 0, deciseconds: 1 }),
-            (100_000_000, Subseconds { seconds: 0, deciseconds: 1 }),
-            (100_000_001, Subseconds { seconds: 0, deciseconds: 2 }),
-            (900_000_000, Subseconds { seconds: 0, deciseconds: 9 }),
-            (900_000_001, Subseconds { seconds: 1, deciseconds: 0 }),
-            (1_000_000_000, Subseconds { seconds: 1, deciseconds: 0 }),
-            (1_000_000_001, Subseconds { seconds: 1, deciseconds: 1 }),
-            (2_000_000_000, Subseconds { seconds: 2, deciseconds: 0 }),
-            (2_000_000_001, Subseconds { seconds: 2, deciseconds: 1 }),
-            (9_900_000_000, Subseconds { seconds: 9, deciseconds: 9 }),
-            (9_900_000_001, Seconds { seconds: 10 }),
-            (59_000_000_000, Seconds { seconds: 59 }),
-            (59_000_000_001, Minutes { minutes: 1, seconds: 0 }),
-            (60_000_000_000, Minutes { minutes: 1, seconds: 0 }),
-            (60_000_000_001, Minutes { minutes: 1, seconds: 1 }),
-            (119_000_000_000, Minutes { minutes: 1, seconds: 59 }),
-            (119_000_000_001, Minutes { minutes: 2, seconds: 0 }),
+            (100, Subseconds { seconds: 0, deciseconds: 1 }),
+            (101, Subseconds { seconds: 0, deciseconds: 2 }),
+            (900, Subseconds { seconds: 0, deciseconds: 9 }),
+            (901, Subseconds { seconds: 1, deciseconds: 0 }),
+            (1_000, Subseconds { seconds: 1, deciseconds: 0 }),
+            (1_001, Subseconds { seconds: 1, deciseconds: 1 }),
+            (2_000, Subseconds { seconds: 2, deciseconds: 0 }),
+            (2_001, Subseconds { seconds: 2, deciseconds: 1 }),
+            (9_900, Subseconds { seconds: 9, deciseconds: 9 }),
+            (9_901, Seconds { seconds: 10 }),
+            (59_000, Seconds { seconds: 59 }),
+            (59_001, Minutes { minutes: 1, seconds: 0 }),
+            (60_000, Minutes { minutes: 1, seconds: 0 }),
+            (60_001, Minutes { minutes: 1, seconds: 1 }),
+            (119_000, Minutes { minutes: 1, seconds: 59 }),
+            (119_001, Minutes { minutes: 2, seconds: 0 }),
         ];
-        for &(nanos, breakdown) in cases {
-            let diff = Duration::from_nanos(nanos);
+        for (millis, breakdown) in cases {
+            let diff = MillisDuration::from_millis(millis);
             assert_eq!(TimeDifferenceBreakdown::from(diff), breakdown);
         }
     }
@@ -461,7 +609,9 @@ mod tests {
         ];
         for &(nanos, pgn) in cases {
             assert_eq!(
-                GameInstant::from_duration(Duration::from_nanos(nanos)).to_pgn_timestamp(),
+                GameInstant::from_duration(Duration::from_nanos(nanos))
+                    .to_pgn_timestamp()
+                    .unwrap(),
                 pgn
             );
         }

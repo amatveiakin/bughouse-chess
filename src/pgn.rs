@@ -441,7 +441,7 @@ fn total_game_duration(game: &BughouseGame) -> Option<GameInstant> {
     if game.status().is_active() {
         return None;
     }
-    Some(GameInstant::from_duration(
+    Some(GameInstant::from_game_duration(
         BughouseBoard::iter()
             .map(|board_idx| game.board(board_idx).clock().total_time_elapsed())
             .all_equal_value()
@@ -493,7 +493,9 @@ fn make_bughouse_bpng_header(
     h.push_tag("Termination", make_termination_string(game.status()));
     h.push_tag("Outcome", game.outcome().to_readable_string(game.chess_rules()));
     if let Some(d) = total_game_duration(game) {
-        h.push_tag("GameDuration", d.to_pgn_timestamp());
+        if let Some(ts) = d.to_pgn_timestamp() {
+            h.push_tag("GameDuration", ts);
+        }
     }
     h
 }
@@ -520,7 +522,9 @@ pub fn export_to_bpgn(
             match format.time_format {
                 BpgnTimeFormat::NoTime => {}
                 BpgnTimeFormat::Timestamp => {
-                    addenda.push(("ts".to_owned(), r.time.to_pgn_timestamp()));
+                    if let Some(ts) = r.time.to_pgn_timestamp() {
+                        addenda.push(("ts".to_owned(), ts));
+                    }
                 }
             }
             BpgnTurn {
@@ -686,10 +690,7 @@ fn apply_turn(game: &mut BughouseGame, turn: BpgnTurn) -> Result<(), String> {
         Some((_, ts)) => {
             GameInstant::from_pgn_timestamp(ts).map_err(|_| "invalid turn timestamp".to_owned())?
         }
-        None => {
-            // TODO: Support games without timestamps.
-            return Err("missing turn timestamp".to_owned());
-        }
+        None => GameInstant::UNKNOWN,
     };
     game.try_turn_by_envoy(
         turn.envoy,
@@ -720,9 +721,7 @@ pub fn import_from_bpgn(s: &str, role: Role) -> Result<BughouseGame, String> {
         apply_turn(&mut game, turn)?;
     }
     if !status.is_active() {
-        // TODO: Support games without timestamps instead.
-        let game_duration =
-            parse_game_duration(&tags).unwrap_or_else(|_| total_game_duration(&game).unwrap());
+        let game_duration = parse_game_duration(&tags).unwrap_or_else(|_| GameInstant::UNKNOWN);
         game.set_status(status, game_duration);
     }
     Ok(game)

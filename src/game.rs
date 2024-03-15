@@ -39,7 +39,7 @@ use crate::board::{
     Board, ChessGameStatus, DrawReason, Reserve, Turn, TurnError, TurnExpanded, TurnFacts,
     TurnInput, TurnMode, VictoryReason,
 };
-use crate::clock::GameInstant;
+use crate::clock::{GameInstant, MillisDuration};
 use crate::coord::BoardShape;
 use crate::force::Force;
 use crate::once_cell_regex;
@@ -619,12 +619,14 @@ impl BughouseGame {
         use BughouseGameStatus::*;
         use VictoryReason::Flag;
         assert_eq!(self.status, Active);
-        let now = BughouseBoard::iter()
+        let game_duration = BughouseBoard::iter()
             .filter_map(|board| self.boards[board].flag_defeat_moment(now))
+            .filter_map(|d| MillisDuration::try_from(d.elapsed_since_start()).ok())
             .min();
-        let Some(game_over_time) = now else {
+        let Some(game_duration) = game_duration else {
             return None;
         };
+        let game_over_time = GameInstant::from_millis_duration(game_duration);
         self.boards[A].test_flag(game_over_time);
         self.boards[B].test_flag(game_over_time);
         let status_a = self.game_status_for_board(A);

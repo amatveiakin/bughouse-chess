@@ -1627,7 +1627,7 @@ fn current_game_time(game_state: &GameState, now: Instant) -> Option<GameInstant
             .map(|board_idx| game_state.game.board(board_idx).clock().total_time_elapsed())
             .all_equal_value()
             .unwrap();
-        Some(GameInstant::from_duration(elapsed_since_start))
+        Some(GameInstant::from_game_duration(elapsed_since_start))
     }
 }
 

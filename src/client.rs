@@ -11,7 +11,7 @@ use crate::board::{TurnError, TurnInput, TurnMode};
 use crate::chalk::{ChalkCanvas, ChalkMark, Chalkboard};
 use crate::chat::{ChatMessage, ChatRecipient};
 use crate::client_chat::{ClientChat, SystemMessageClass};
-use crate::clock::{duration_to_mss, GameInstant, WallGameTimePair};
+use crate::clock::{duration_to_mss, GameDuration, GameInstant, WallGameTimePair};
 use crate::display::{get_board_index, DisplayBoard};
 use crate::event::{
     BughouseClientEvent, BughouseClientPerformance, BughouseServerEvent, BughouseServerRejection,
@@ -1108,6 +1108,9 @@ impl ClientState {
             let Some(time_left) = my_time_left(alt_game, board_idx, game_now) else {
                 return;
             };
+            let Ok(time_left) = Duration::try_from(time_left) else {
+                return;
+            };
             let idx = &mut next_low_time_warning_idx[board_idx];
             while *idx < LOW_TIME_WARNING_THRESHOLDS.len()
                 && time_left <= LOW_TIME_WARNING_THRESHOLDS[*idx]
@@ -1142,7 +1145,7 @@ fn participant_reserve_restocked(
 
 fn my_time_left(
     alt_game: &AlteredGame, board_idx: BughouseBoard, now: GameInstant,
-) -> Option<Duration> {
+) -> Option<GameDuration> {
     alt_game
         .my_id()
         .envoy_for(board_idx)

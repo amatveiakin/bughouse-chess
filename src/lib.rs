@@ -38,6 +38,7 @@ pub mod iterable_mut;
 pub mod janitor;
 pub mod lobby;
 pub mod meter;
+pub mod nanable;
 pub mod pgn;
 pub mod piece;
 pub mod ping_pong;

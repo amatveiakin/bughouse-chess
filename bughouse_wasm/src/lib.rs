@@ -1671,7 +1671,9 @@ fn render_clock(
         &clock_node,
     )?;
     diff_node.class_list().add_1("clock-difference")?;
-    if let Some(diff) = diff {
+    if let Some(diff) = diff
+        && let Some(diff_ui_string) = diff.ui_string()
+    {
         match player_idx {
             DisplayPlayer::Top => diff_node.class_list().add_1("clock-difference-top")?,
             DisplayPlayer::Bottom => diff_node.class_list().add_1("clock-difference-bot")?,
@@ -1685,7 +1687,7 @@ fn render_clock(
         diff_node
             .class_list()
             .toggle_with_force("clock-difference-gt", diff.comparison == Ordering::Greater)?;
-        diff_node.set_text_content(Some(&diff.ui_string()));
+        diff_node.set_text_content(Some(&diff_ui_string));
         diff_node.class_list().toggle_with_force("display-none", false)?;
     } else {
         diff_node.class_list().toggle_with_force("display-none", true)?;

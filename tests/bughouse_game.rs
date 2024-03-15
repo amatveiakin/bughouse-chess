@@ -79,6 +79,7 @@ fn time_breakdown_to_duration(time_breakdown: TimeBreakdown) -> Duration {
         TimeBreakdown::LowTime { seconds, deciseconds } => {
             Duration::from_millis((seconds * 1000 + deciseconds * 100).into())
         }
+        TimeBreakdown::Unknown => panic!(),
     }
 }
 
@@ -91,6 +92,7 @@ fn time_difference_breakdown_to_duration(time_breakdown: TimeDifferenceBreakdown
         TimeDifferenceBreakdown::Subseconds { seconds, deciseconds } => {
             Duration::from_millis((seconds * 1000 + deciseconds * 100).into())
         }
+        TimeDifferenceBreakdown::Unknown => panic!(),
     }
 }
 
@@ -606,7 +608,7 @@ fn clock_showings_match() {
                     "{} - {}  vs  {}",
                     force_separator(showing_a).ui_string(),
                     force_separator(showing_b).ui_string(),
-                    diff.ui_string()
+                    diff.ui_string().unwrap()
                 );
             }
 
