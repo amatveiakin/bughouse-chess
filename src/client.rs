@@ -715,9 +715,10 @@ impl ClientState {
                 MatchState::Creating { my_name } => my_name.clone(),
                 MatchState::Joining { match_id: id, my_name } => {
                     if match_id != *id {
-                        return Err(internal_event_error!(
-                            "Expected match {id}, but got {match_id}"
-                        ));
+                        // Ignore: on a slow internet connection it is possible that we tried to
+                        // connect to one match, went back and tried to connect to another match
+                        // while the first request was still being processed.
+                        return Ok(());
                     }
                     my_name.clone()
                 }
@@ -747,7 +748,14 @@ impl ClientState {
         &mut self, participants: Vec<Participant>, countdown_elapsed: Option<Duration>,
     ) -> Result<(), EventError> {
         let now = Instant::now();
-        let mtch = self.mtch_mut().ok_or_else(|| internal_event_error!())?;
+        let Some(mtch) = self.mtch_mut() else {
+            // This could happen if we connected to a new match and the server is still sending
+            // events from the old match.
+            // TODO: Find robust solution that works with all events, e.g.:
+            //   - Always wait for join/leave confirmation;
+            //   - Annotate each event with a unique match ID.
+            return Ok(());
+        };
         // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
         //   (e.g. is_ready from another player) arrived before is_ready update from this
         //   client reached the server. Same for `my_team`.

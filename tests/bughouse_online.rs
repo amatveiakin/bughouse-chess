@@ -1063,6 +1063,21 @@ fn hot_reconnect_game_over() {
     );
 }
 
+// Regression test: client used to report match id mismatch when trying to join a match on slow
+// internet and then trying to join another match before the first request was processed.
+#[test]
+fn join_match_reconsider() {
+    let mut world = World::new();
+    let [cl1, cl2, cl3] = world.new_clients();
+
+    let mtch1 = world.new_match(cl1, "p1");
+    let mtch2 = world.new_match(cl2, "p2");
+    world[cl3].join(&mtch1, "p3");
+    world[cl3].join(&mtch2, "p3");
+    world.process_all_events();
+    assert_eq!(world[cl3].state.match_id(), Some(&mtch2));
+}
+
 // Regression test: server should not panic when a client tries to make a turn after the
 // game was over on another board.
 #[test]
