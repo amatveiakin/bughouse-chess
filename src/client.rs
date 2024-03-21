@@ -15,7 +15,7 @@ use crate::clock::{duration_to_mss, GameDuration, GameInstant, WallGameTimePair}
 use crate::display::{get_board_index, DisplayBoard};
 use crate::event::{
     BughouseClientEvent, BughouseClientPerformance, BughouseServerEvent, BughouseServerRejection,
-    GameUpdate,
+    FinishedGameDescription, GameUpdate, SubjectiveGameResult,
 };
 use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
@@ -33,14 +33,6 @@ use crate::starter::EffectiveStartingPosition;
 use crate::{my_git_version, once_cell_regex};
 
 
-#[derive(Clone, Copy, Debug)]
-pub enum SubjectiveGameResult {
-    Victory,
-    Defeat,
-    Draw,
-    Observation,
-}
-
 #[derive(Clone, Debug)]
 pub enum NotableEvent {
     SessionUpdated,
@@ -53,6 +45,7 @@ pub enum NotableEvent {
     LowTime(BughouseBoard),
     WaybackStateUpdated(WaybackState),
     GameExportReady(String),
+    GotArchiveGameList(Vec<FinishedGameDescription>),
 }
 
 #[derive(Clone, Debug)]
@@ -611,6 +604,7 @@ impl ClientState {
             ChalkboardUpdated { chalkboard } => self.process_chalkboard_updated(chalkboard),
             SharedWaybackUpdated { turn_index } => self.process_shared_wayback_updated(turn_index),
             GameExportReady { content } => self.process_game_export_ready(content),
+            ArchiveGameList { games } => self.process_archive_game_list(games),
             Pong => self.process_pong(),
         }
     }
@@ -660,6 +654,12 @@ impl ClientState {
                 "Guests cannot join rated matches. Please register an account and join again."
                     .to_owned(),
             ),
+            BughouseServerRejection::MustRegisterForGameArchive => {
+                EventError::Ignorable("Please log in to view your game history.".to_owned())
+            }
+            BughouseServerRejection::ErrorFetchingGameList { message } => {
+                EventError::Ignorable(format!("Error fetching game history: {message}"))
+            }
             BughouseServerRejection::ShuttingDown => EventError::Fatal(
                 "The server is shutting down for maintenance. \
                 We'll be back soon (usually within 15 minutes). \
@@ -891,6 +891,12 @@ impl ClientState {
         self.notable_event_queue.push_back(NotableEvent::GameExportReady(content));
         Ok(())
     }
+    fn process_archive_game_list(
+        &mut self, games: Vec<FinishedGameDescription>,
+    ) -> Result<(), EventError> {
+        self.notable_event_queue.push_back(NotableEvent::GotArchiveGameList(games));
+        Ok(())
+    }
     fn process_pong(&mut self) -> Result<(), EventError> {
         let now = Instant::now();
         if let Some(ping_duration) = self.connection.health_monitor.register_pong(now) {
@@ -1078,6 +1084,10 @@ impl ClientState {
         let wayback = game_state.alt_game.wayback_state();
         self.notable_event_queue.push_back(NotableEvent::WaybackStateUpdated(wayback));
         Ok(turn_index)
+    }
+
+    pub fn view_game_archive(&mut self) {
+        self.connection.send(BughouseClientEvent::GetArchiveGameList);
     }
 
     fn check_connection(&mut self) {

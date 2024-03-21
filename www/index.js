@@ -118,6 +118,7 @@ const menu_create_match_name_page = document.getElementById("menu-create-match-n
 const menu_create_match_page = document.getElementById("menu-create-match-page");
 const menu_join_match_page = document.getElementById("menu-join-match-page");
 const menu_lobby_page = document.getElementById("menu-lobby-page");
+const menu_game_archive_game = document.getElementById("menu-game-archive-page");
 const menu_pages = document.getElementsByClassName("menu-page");
 
 const cookie_banner = document.getElementById("cookie-banner");
@@ -143,6 +144,7 @@ const join_match_button = document.getElementById("join-match-button");
 const jc_match_id = document.getElementById("jc-match-id");
 const jc_confirm_button = document.getElementById("jc-confirm-button");
 const lobby_leave_button = document.getElementById("lobby-leave-button");
+const game_archive_button = document.getElementById("game-archive-button");
 
 const ready_button = document.getElementById("ready-button");
 const resign_button = document.getElementById("resign-button");
@@ -338,6 +340,7 @@ menu_create_match_name_page.addEventListener("submit", create_match_as_guest);
 menu_create_match_page.addEventListener("submit", on_create_match_confirm);
 menu_join_match_page.addEventListener("submit", on_join_match_confirm);
 lobby_leave_button.addEventListener("click", leave_match);
+game_archive_button.addEventListener("click", view_game_archive);
 
 for (const button of document.querySelectorAll(".back-button")) {
   button.addEventListener("click", pop_menu_page);
@@ -1430,10 +1433,14 @@ function update_session() {
     if (ready_to_play) {
       if (is_registered_user) {
         create_rated_match_button.disabled = false;
+        game_archive_button.disabled = false;
         set_tooltip(create_rated_match_button, null);
+        set_tooltip(game_archive_button, null);
       } else {
         create_rated_match_button.disabled = true;
+        game_archive_button.disabled = true;
         set_tooltip(create_rated_match_button, "Please sign in to play rated games");
+        set_tooltip(game_archive_button, "Please sign in to view your game history");
       }
       create_unrated_match_button.disabled = false;
       join_match_button.disabled = false;
@@ -1445,6 +1452,7 @@ function update_session() {
       join_match_button.disabled = true;
       authorization_button.disabled = true;
       jc_confirm_button.disabled = true;
+      game_archive_button.disabled = true;
     }
     for (const node of document.querySelectorAll(".logged-in-as-account")) {
       node.classList.toggle("account-user", is_registered_user);
@@ -1655,6 +1663,13 @@ function leave_match() {
     url.searchParams.delete(SearchParams.match_id);
     window.history.pushState({}, "", url);
     reset_menu();
+  });
+}
+
+function view_game_archive() {
+  with_error_handling(function () {
+    wasm_client().view_game_archive();
+    push_menu_page(menu_game_archive_game);
   });
 }
 

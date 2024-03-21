@@ -256,6 +256,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                 NotableEvent::GameExportReady(..) => {
                     // Improvement potential: Implement.
                 }
+                NotableEvent::GotArchiveGameList(..) => {}
             }
         }
         render(&mut stdout, app_start_time, &client_state, &keyboard_input, &command_error)?;

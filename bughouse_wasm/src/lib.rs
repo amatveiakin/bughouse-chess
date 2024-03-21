@@ -40,6 +40,8 @@ use html_collection_iterator::IntoHtmlCollectionIterator;
 use instant::Instant;
 use itertools::Itertools;
 use strum::{EnumIter, IntoEnumIterator};
+use time::macros::{format_description, offset};
+use time::{OffsetDateTime, UtcOffset};
 use wasm_bindgen::prelude::*;
 use web_document::{web_document, WebDocument};
 use web_element_ext::WebElementExt;
@@ -730,6 +732,10 @@ impl WebClient {
             Some(NotableEvent::GameExportReady(content)) => {
                 Ok(JsEventGameExportReady { content }.into())
             }
+            Some(NotableEvent::GotArchiveGameList(games)) => {
+                render_archive_game_list(Some(games))?;
+                Ok(JsEventNoop {}.into())
+            }
             None => Ok(JsValue::NULL),
         }
     }
@@ -998,6 +1004,11 @@ impl WebClient {
         node.append_new_element("hr")?;
         node.append_element(rules_ui::make_readonly_rules_body(&mtch.rules)?)?;
         Ok(node)
+    }
+
+    pub fn view_game_archive(&mut self) {
+        // TODO: Add some sort of a loading indicator when updating an existing list.
+        self.state.view_game_archive();
     }
 
     fn change_faction(&mut self, faction_modifier: impl Fn(i32) -> i32) {
@@ -1629,6 +1640,7 @@ fn render_starting() -> JsResult<()> {
             )?;
         }
     }
+    render_archive_game_list(None)?;
     Ok(())
 }
 
@@ -2062,6 +2074,85 @@ fn render_board(
         // Note that reserve height is also encoded in CSS.
         reserve_container.set_attribute("viewBox", &format!("0 0 {num_cols} {RESERVE_HEIGHT}"))?;
         reserve_container.append_child(&reserve)?;
+    }
+    Ok(())
+}
+
+fn render_archive_game_list(games: Option<Vec<FinishedGameDescription>>) -> JsResult<()> {
+    let document = web_document();
+    let table = document.get_existing_element_by_id("archive-game-table")?;
+    table.remove_all_children();
+    {
+        let thead = table.append_new_element("thead")?;
+        let tr = thead.append_new_element("tr")?;
+        tr.append_new_element("th")?.with_text_content("Game time");
+        tr.append_new_element("th")?
+            .with_text_content("R")
+            .with_attribute("title", "Whether the game was rated")?;
+        tr.append_new_element("th")?.with_text_content("Teammates");
+        tr.append_new_element("th")?.with_text_content("Opponents");
+        tr.append_new_element("th")?.with_text_content("Result");
+    }
+    let tbody = table.append_new_element("tbody")?;
+    let Some(games) = games else {
+        tbody
+            .append_new_element("div")?
+            .with_classes(["game-archive-placeholder-message"])?
+            .with_text_content("Loading ")
+            .append_animated_dots()?;
+        return Ok(());
+    };
+    if games.is_empty() {
+        tbody
+            .append_new_element("div")?
+            .with_classes(["game-archive-placeholder-message"])?
+            .with_text_content("You games will appear here.");
+    }
+    for game in games {
+        let tr = tbody.append_new_element("tr")?;
+        let time_offset = UtcOffset::current_local_offset().unwrap_or(offset!(UTC));
+        let start_time = OffsetDateTime::from(game.game_start_time).to_offset(time_offset);
+        let today = OffsetDateTime::now_utc().to_offset(time_offset);
+        let start_time = if start_time.date() == today.date() {
+            start_time.format(format_description!("[hour]:[minute]")).unwrap()
+        } else {
+            start_time.format(format_description!("[year]-[month]-[day]")).unwrap()
+        };
+        tr.append_new_element("td")?.set_text_content(Some(&start_time));
+        {
+            let rated_td = tr.append_new_element("td")?;
+            if game.rated {
+                rated_td.set_text_content(Some("⚔️"));
+            }
+        }
+        {
+            let teammates = tr.append_new_element("td")?;
+            teammates.append_text_span("Me", ["game-archive-me"])?;
+            if game.partners.is_empty() {
+                teammates.append_text_span(&format!(" ×2"), ["game-archive-double-play"])?;
+            } else {
+                for p in game.partners {
+                    teammates.append_text_span(&format!(", {p}"), [])?;
+                }
+            }
+        }
+        {
+            let opponents = tr.append_new_element("td")?;
+            if game.opponents.len() == 1 {
+                opponents.append_text_span(&game.opponents[0], [])?;
+                opponents.append_text_span(&format!(" ×2"), ["game-archive-double-play"])?;
+            } else {
+                opponents.set_text_content(Some(&game.opponents.iter().join(", ")));
+            }
+        }
+        let (result, result_class) = match game.result {
+            SubjectiveGameResult::Victory => ("Won", "game-archive-result-victory"),
+            SubjectiveGameResult::Defeat => ("Lost", "game-archive-result-defeat"),
+            SubjectiveGameResult::Draw => ("Draw", "game-archive-result-draw"),
+            SubjectiveGameResult::Observation => ("—", "game-archive-result-observation"),
+        };
+        tr.append_new_element("td")?.set_text_content(Some(result));
+        tr.class_list().add_1(result_class)?;
     }
     Ok(())
 }

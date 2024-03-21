@@ -6,6 +6,7 @@ use crate::web_error_handling::JsResult;
 
 pub trait WebElementExt {
     fn with_text_content(self, text: &str) -> web_sys::Element;
+    fn with_attribute(self, name: &str, value: &str) -> JsResult<web_sys::Element>;
     fn with_classes(self, classes: impl IntoIterator<Item = &str>) -> JsResult<web_sys::Element>;
 
     fn remove_all_children(&self);
@@ -26,12 +27,18 @@ pub trait WebElementExt {
     fn append_span(&self, classes: impl IntoIterator<Item = &str>) -> JsResult<web_sys::Element>;
     fn append_text_span(&self, text: &str, classes: impl IntoIterator<Item = &str>)
         -> JsResult<()>;
+    fn append_animated_dots(&self) -> JsResult<()>;
 }
 
 impl WebElementExt for web_sys::Element {
     fn with_text_content(self, text: &str) -> web_sys::Element {
         self.set_text_content(Some(text));
         self
+    }
+
+    fn with_attribute(self, name: &str, value: &str) -> JsResult<web_sys::Element> {
+        self.set_attribute(name, value)?;
+        Ok(self)
     }
 
     fn with_classes(self, classes: impl IntoIterator<Item = &str>) -> JsResult<web_sys::Element> {
@@ -94,6 +101,13 @@ impl WebElementExt for web_sys::Element {
     ) -> JsResult<()> {
         let span = self.append_span(classes)?;
         span.set_text_content(Some(text));
+        Ok(())
+    }
+
+    fn append_animated_dots(&self) -> JsResult<()> {
+        for _ in 0..3 {
+            self.append_new_element("span")?.with_classes(["dot"])?.with_text_content(".");
+        }
         Ok(())
     }
 }

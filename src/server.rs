@@ -219,6 +219,15 @@ impl Client {
     fn send_rejection(&mut self, rejection: BughouseServerRejection) {
         self.send(BughouseServerEvent::Rejection(rejection));
     }
+    fn registered_user_name<'a>(
+        &self, session_store: &'a MutexGuard<'_, SessionStore>,
+    ) -> Option<&'a String> {
+        self.session_id
+            .as_ref()
+            .and_then(|id| session_store.get(id))
+            .and_then(Session::user_info)
+            .map(|u| &u.user_name)
+    }
 }
 
 #[derive(Debug)]
@@ -566,6 +575,10 @@ impl CoreServerState {
 
         // First, process events that don't require a match.
         match &event {
+            BughouseClientEvent::GetArchiveGameList => {
+                process_get_archive_game_list(ctx, client_id);
+                return;
+            }
             BughouseClientEvent::ReportPerformace(perf) => {
                 ctx.hooks.on_client_performance_report(perf);
                 return;
@@ -870,15 +883,12 @@ impl Match {
             BughouseClientEvent::RequestExport { format } => {
                 self.process_request_export(ctx, client_id, format)
             }
-            BughouseClientEvent::ReportPerformace(..) => {
-                unreachable!("Match-independent event must be processed separately");
-            }
-            BughouseClientEvent::ReportError(..) => {
-                unreachable!("Match-independent event must be processed separately");
-            }
-            BughouseClientEvent::Ping => {
-                unreachable!("Match-independent event must be processed separately");
-            }
+            // Match-independent events must be processed separately. Keep the event entities
+            // separate, so that we know which one it was if it crashes.
+            BughouseClientEvent::GetArchiveGameList => unreachable!(),
+            BughouseClientEvent::ReportPerformace(..) => unreachable!(),
+            BughouseClientEvent::ReportError(..) => unreachable!(),
+            BughouseClientEvent::Ping => unreachable!(),
         };
         if let Err(err) = result {
             ctx.clients[client_id].send_rejection(err);
@@ -892,12 +902,7 @@ impl Match {
         assert!(ctx.clients[client_id].match_id.is_none());
         assert!(ctx.clients[client_id].participant_id.is_none());
 
-        let registered_user_name = ctx.clients[client_id]
-            .session_id
-            .as_ref()
-            .and_then(|id| ctx.session_store.get(id))
-            .and_then(Session::user_info)
-            .map(|u| &u.user_name);
+        let registered_user_name = ctx.clients[client_id].registered_user_name(ctx.session_store);
         let is_registered_user = registered_user_name.is_some();
         if let Some(registered_user_name) = registered_user_name {
             if player_name != *registered_user_name {
@@ -1754,6 +1759,18 @@ fn player_turn_requests(
         .collect()
 }
 
+fn process_get_archive_game_list(ctx: &mut Context, client_id: ClientId) {
+    let Some(user_name) = ctx.clients[client_id].registered_user_name(ctx.session_store) else {
+        ctx.clients[client_id].send_rejection(BughouseServerRejection::MustRegisterForGameArchive);
+        return;
+    };
+    match ctx.hooks.get_games_by_user(user_name) {
+        Ok(games) => ctx.clients[client_id].send(BughouseServerEvent::ArchiveGameList { games }),
+        Err(message) => ctx.clients[client_id]
+            .send_rejection(BughouseServerRejection::ErrorFetchingGameList { message }),
+    }
+}
+
 fn process_report_error(ctx: &Context, client_id: ClientId, report: &BughouseClientErrorReport) {
     // TODO: Save errors to DB.
     let logging_id = &ctx.clients[client_id].logging_id;
@@ -1792,6 +1809,7 @@ fn event_name(event: &IncomingEvent) -> &'static str {
             BughouseClientEvent::UpdateChalkDrawing { .. } => "Client_UpdateChalkDrawing",
             BughouseClientEvent::SetSharedWayback { .. } => "Client_SetSharedWayback",
             BughouseClientEvent::RequestExport { .. } => "Client_RequestExport",
+            BughouseClientEvent::GetArchiveGameList { .. } => "Client_GetArchiveGameList",
             BughouseClientEvent::ReportPerformace(_) => "Client_ReportPerformace",
             BughouseClientEvent::ReportError(_) => "Client_ReportError",
             BughouseClientEvent::Ping => "Client_Ping",

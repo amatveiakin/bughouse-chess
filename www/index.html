@@ -395,7 +395,7 @@
         <button data-suburl="/dyn/history" class="flex-grow">Rating history</button>
       </div>
       <div class="flex-row-full">
-        <button data-suburl="/dyn/games" class="flex-grow">Game archive</button>
+        <button id="game-archive-button" class="flex-grow tooltip-right">Game archive</button>
         <button data-suburl="/about.html" class="flex-grow">About</button>
       </div>
     </div>
@@ -718,6 +718,17 @@
         <div id="lobby-countdown-progressbar"></div>
       </div>
     </div>
+
+    <form id="menu-game-archive-page" class="menu-page" action="javascript:;">
+      <div class="flex-row-full">
+        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <div>My Game Archive</div>
+      </div>
+      <div style="height: 0.4em"></div>
+      <div class="fixed-head-table">
+        <table id="archive-game-table" class="embossed-table"></table>
+      </div>
+    </form>
   </dialog>
 </body>
 

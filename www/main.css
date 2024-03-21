@@ -1473,6 +1473,66 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   filter: saturate(0.9) contrast(0.7) brightness(1.1);
 }
 
+.fixed-head-table {
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  max-height: 75vh;
+}
+.fixed-head-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.embossed-table {
+  min-width: 36em;
+  min-height: 20em;
+  border-spacing: 0;
+  border-collapse: separate;  /* required for sticky scrolling */
+  background-color: #00000008;
+}
+.embossed-table td,
+.embossed-table th {
+  padding: 0.2em 0.5em;
+}
+.embossed-table th {
+  border-left: 0.1em solid #00000040; /* no border from the scrollbar side */
+  border-top: 0.1em solid #00000040;
+  border-bottom: 0.1em solid #00000040;
+}
+.embossed-table tbody td {
+  border-left: 0.1em solid #00000020; /* no border from the scrollbar side */
+  border-bottom: 0.1em solid #00000020; /* top border handled by header */
+}
+.embossed-table thead th {
+  /* must use non-transparent color because of sticky scrolling */
+  background-color: oklch(from var(--color-dialog-background) calc(l * 0.85) c h);
+}
+
+#archive-game-table {
+  font-size: 90%;
+}
+.game-archive-placeholder-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.game-archive-result-victory {
+  background-color: #00ff001a;
+}
+.game-archive-result-defeat {
+  background-color: #ff000016;
+}
+.game-archive-you {
+  font-style: italic;
+}
+.game-archive-double-play {
+  font-weight: bold;
+  font-size: 90%;
+  color: #202020;
+}
+
 .dot {
   display: inline-block;
   animation-name: bouncing;

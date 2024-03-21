@@ -15,6 +15,7 @@ use crate::rules::Rules;
 use crate::scores::Scores;
 use crate::session::Session;
 use crate::starter::EffectiveStartingPosition;
+use crate::utc_time::UtcDateTime;
 
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -33,6 +34,10 @@ pub enum BughouseServerRejection {
     NameClashWithRegisteredUser,
     // Trying to participate in a rated match with a guest account.
     GuestInRatedMatch,
+    // Only registered users can view personal game history.
+    MustRegisterForGameArchive,
+    // Server couldn't fetch game list. Probably transient DB error.
+    ErrorFetchingGameList { message: String },
     // Server is shutting down for maintenance.
     ShuttingDown,
     // Internal error. Should be investigated.
@@ -53,6 +58,24 @@ pub enum GameUpdate {
         game_status: BughouseGameStatus,
         scores: Scores,
     },
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum SubjectiveGameResult {
+    Victory,
+    Defeat,
+    Draw,
+    Observation,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FinishedGameDescription {
+    pub game_id: i64,
+    pub game_start_time: UtcDateTime,
+    pub partners: Vec<String>,
+    pub opponents: Vec<String>,
+    pub result: SubjectiveGameResult,
+    pub rated: bool,
 }
 
 // Improvement potential. Automatically bundle all event generated during a single cycle into one
@@ -107,6 +130,9 @@ pub enum BughouseServerEvent {
     },
     GameExportReady {
         content: String,
+    },
+    ArchiveGameList {
+        games: Vec<FinishedGameDescription>,
     },
     Pong,
 }
@@ -176,6 +202,7 @@ pub enum BughouseClientEvent {
     RequestExport {
         format: BpgnExportFormat,
     },
+    GetArchiveGameList,
     ReportPerformace(BughouseClientPerformance),
     ReportError(BughouseClientErrorReport),
     Ping,
