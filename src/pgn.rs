@@ -804,7 +804,7 @@ mod tests {
 
     #[test]
     fn pgn_parse() {
-        let source = indoc!(
+        let source_regular = indoc!(
             r#"
             [Event "Unrated Bughouse Match"]
             [Site "bughouse.pro"]
@@ -865,10 +865,91 @@ mod tests {
             24a. B@g2 {[ts=384.951]} 33b. cxd6 {[ts=387.394]} 34B. Qxe7 {[ts=390.375]}
             "#
         );
-        let game = import_from_bpgn(source, Role::ServerOrStandalone).unwrap();
-        let serialized = export_to_bpgn(BpgnExportFormat::default(), &game, UtcDateTime::now(), 1);
-        let game2 = import_from_bpgn(&serialized, Role::ServerOrStandalone).unwrap();
-        assert_eq!(game, game2);
+        let source_duck_accolade = indoc!(
+            r#"
+            [Event "Rated Bughouse Match"]
+            [Site "bughouse.pro"]
+            [UTCDate "2024.03.18"]
+            [UTCTime "21:01:37"]
+            [Round "5"]
+            [WhiteA "Санёк"]
+            [BlackA "Andrei"]
+            [WhiteB "km"]
+            [BlackB "Alex"]
+            [TimeControl "300"]
+            [Variant "Bughouse Accolade Chess960 DuckChess"]
+            [Promotion "Steal"]
+            [DropAggression "Mate allowed"]
+            [PawnDropRanks "2-6"]
+            [SetUp "1"]
+            [FEN "nnrbbqkr/pppppppp/8/8/8/8/PPPPPPPP/NNRBBQKR w CHch - 0 1 | nnrbbqkr/pppppppp/8/8/8/8/PPPPPPPP/NNRBBQKR w CHch - 0 1"]
+            [Result "0-1"]
+            [Termination "normal"]
+            [Outcome "Andrei & km won: Санёк & Alex lost a king"]
+            1B. e4 {[ts=0.000]} 1B. @e6 {[ts=0.500]} 1A. Rb1 {[ts=1.505]}
+            1A. @e6 {[ts=2.821]} 1b. d6 {[ts=3.359]} 1a. d5 {[ts=4.380]}
+            1b. @e2 {[ts=4.803]} 1a. @d3 {[ts=5.662]} 2B. d4 {[ts=7.992]}
+            2B. @e5 {[ts=8.471]} 2b. Bb5 {[ts=11.518]} 2b. @c4 {[ts=12.799]}
+            2A. e3 {[ts=14.519]} 2A. @e6 {[ts=14.934]} 3B. Qe2 {[ts=15.735]}
+            3B. @d3 {[ts=16.118]} 2a. Nc6 {[ts=17.790]} 2a. @e2 {[ts=18.315]}
+            3b. e5 {[ts=20.090]} 3b. @c4 {[ts=21.787]} 3A. d4 {[ts=23.624]}
+            3A. @b4 {[ts=24.041]} 3a. Nb6 {[ts=28.441]} 3a. @e2 {[ts=28.981]}
+            4B. d5 {[ts=31.080]} 4B. @d2 {[ts=34.692]} 4A. Nb3 {[ts=35.446]}
+            4A. @c4 {[ts=35.826]} 4b. Bxe2 {[ts=37.375]} 4a. Bc6 {[ts=38.911]}
+            4a. @e2 {[ts=39.488]} 4b. @e7 {[ts=42.676]} 5B. Bxe2 {[ts=44.193]}
+            5B. @b6 {[ts=46.102]} 5b. Bg5 {[ts=48.691]} 5b. @f4 {[ts=49.712]}
+            6B. O-O {[ts=51.663]} 6B. @e3 {[ts=52.256]} 5A. Bd2 {[ts=57.576]}
+            5A. @e1 {[ts=58.134]} 6b. Nb6 {[ts=60.838]} 5a. Nc4 {[ts=61.426]}
+            5a. @e2 {[ts=61.898]} 6b. @d2 {[ts=62.573]} 7B. Rb1 {[ts=66.388]}
+            7B. @d7 {[ts=68.596]} 7b. h5 {[ts=80.353]} 7b. @f3 {[ts=81.417]}
+            8B. Ea3 {[ts=83.046]} 8B. @h4 {[ts=84.242]} 8b. a6 {[ts=95.655]}
+            8b. @f3 {[ts=96.828]} 6A. c3 {[ts=98.558]} 6A. @d3 {[ts=99.595]}
+            9B. Nb3 {[ts=113.332]} 9B. @g4 {[ts=114.354]} 9b. N8d7 {[ts=122.088]}
+            9b. @f3 {[ts=123.139]} 10B. Nd2 {[ts=125.771]} 10B. @f4 {[ts=126.182]}
+            10b. h4 {[ts=137.939]} 10b. @f3 {[ts=138.551]} 6a. e5 {[ts=140.818]}
+            6a. @e2 {[ts=141.910]} 11B. Bd2 {[ts=145.990]} 11B. @f4 {[ts=146.476]}
+            7A. Bc2 {[ts=150.602]} 7A. @d3 {[ts=151.800]} 11b. Nc5 {[ts=153.406]}
+            11b. @e3 {[ts=154.516]} 7a. e4 {[ts=159.227]} 7a. @e2 {[ts=159.606]}
+            12B. Cf3 {[ts=163.930]} 12B. @f4 {[ts=164.673]} 8A. Nc5 {[ts=173.061]}
+            8A. @d3 {[ts=173.490]} 12b. f6 {[ts=175.740]} 12b. @g4 {[ts=180.723]}
+            8a. Qe7 {[ts=187.596]} 8a. @d7 {[ts=188.141]} 13B. b4 {[ts=192.970]}
+            13B. @d7 {[ts=193.553]} 9A. Ba4 {[ts=199.988]} 9A. @b5 {[ts=200.364]}
+            13b. N5a4 {[ts=212.658]} 13b. @g4 {[ts=216.419]} 9a. B@d3 {[ts=221.181]}
+            9a. @d7 {[ts=221.727]} 14B. c4 {[ts=228.051]} 14B. @h3 {[ts=231.791]}
+            10A. Bxc6 {[ts=243.063]} 10A. @e2 {[ts=243.962]} 10a. Bxb1 {[ts=247.588]}
+            10a. @d7 {[ts=248.488]} 14b. N@f4 {[ts=249.742]} 14b. @g4 {[ts=250.683]}
+            11A. Bxd5 {[ts=252.713]} 11A. @d3 {[ts=253.139]} 11a. Nxd2 {[ts=257.338]}
+            11a. @e6 {[ts=257.930]} 15B. B@e6 {[ts=260.131]} 15B. @f7 {[ts=260.552]}
+            15b. Nxe6 {[ts=268.086]} 15b. @g4 {[ts=269.272]} 12A. Qd1 {[ts=270.638]}
+            12A. @d3 {[ts=271.019]} 16B. xe6 {[ts=274.128]} 16B. @h3 {[ts=274.930]}
+            16b. B@h5 {[ts=282.728]} 16b. @g4 {[ts=283.312]} 17B. Ce1 {[ts=297.969]}
+            17B. @f3 {[ts=298.716]} 12a. N@f3 {[ts=301.402]} 12a. @e2 {[ts=301.814]}
+            13A. xf3 {[ts=315.029]} 13A. @g2 {[ts=315.552]} 13a. Nxf3 {[ts=315.552]}
+            13a. @e2 {[ts=315.552]} 17b. N@f4 {[ts=318.939]} 14A. Kf1 {[ts=320.317]}
+            14A. @d2 {[ts=320.755]} 17b. @g4 {[ts=321.534]} 18B. N@c3 {[ts=338.906]}
+            18B. @f3 {[ts=339.488]} 14a. Bd3 {[ts=341.295]} 14a. @e2 {[ts=341.663]}
+            18b. Nxc3 {[ts=347.026]} 15A. Kg2 {[ts=349.069]} 15A. @e1 {[ts=349.466]}
+            18b. @b3 {[ts=349.977]} 19B. Cxc3 {[ts=352.042]} 19B. @f3 {[ts=352.637]}
+            19b. h3 {[ts=356.567]} 19b. @g4 {[ts=357.480]} 15a. N@h4 {[ts=365.102]}
+            15a. @h3 {[ts=365.446]} 16A. Kg3 {[ts=390.036]} 16A. @e2 {[ts=391.371]}
+            16a. Qg5 {[ts=396.467]} 16a. @g4 {[ts=396.844]} 17A. Kh3 {[ts=408.858]}
+            17A. @g3 {[ts=409.228]} 20B. xh3 {[ts=416.108]} 20B. @f3 {[ts=416.624]}
+            20b. Nxh3 {[ts=418.236]} 17a. Ng5 {[ts=418.876]} 20b. @h1 {[ts=419.398]}
+            21B. Kg2 {[ts=421.967]} 17a. @g2 {[ts=422.297]} 21B. @f4 {[ts=422.431]}
+            18A. Kg3 {[ts=425.537]} 18A. @g4 {[ts=425.876]} 18a. Nf5 {[ts=432.474]}
+            18a. @g2 {[ts=432.976]} 21b. P@f3 {[ts=438.727]} 21b. @h1 {[ts=439.460]}
+            22B. Bxf3 {[ts=441.773]} 22B. @g4 {[ts=442.135]} 22b. Nf4 {[ts=446.451]}
+            22b. @h1 {[ts=447.570]} 19A. f4 {[ts=503.226]} 19A. @g4 {[ts=503.639]}
+            19a. Nxg3 {[ts=505.827]}
+            "#
+        );
+        for source in [source_regular, source_duck_accolade] {
+            let game = import_from_bpgn(source, Role::ServerOrStandalone).unwrap();
+            let serialized =
+                export_to_bpgn(BpgnExportFormat::default(), &game, UtcDateTime::now(), 1);
+            let game2 = import_from_bpgn(&serialized, Role::ServerOrStandalone).unwrap();
+            assert_eq!(game, game2);
+        }
     }
 
     // TODO: Test game without timestamps when it's supported.

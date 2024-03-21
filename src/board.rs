@@ -822,10 +822,7 @@ impl Board {
         let grid = generate_starting_grid(board_shape, starting_position, &mut next_piece_id);
         let each_castling_rights = initial_castling_rights(starting_position);
         let castling_rights = enum_map! { _ => each_castling_rights };
-        let mut reserves = enum_map! { _ => enum_map!{ _ => 0 } };
-        if rules.chess_rules.duck_chess {
-            reserves[Force::White][PieceKind::Duck] += 1;
-        }
+        let reserves = enum_map! { _ => enum_map!{ _ => 0 } };
         let setup = BoardSetup {
             grid,
             next_piece_id,
@@ -845,6 +842,14 @@ impl Board {
             Role::ServerOrStandalone => TimeMeasurement::Exact,
             Role::Client => TimeMeasurement::Approximate,
         };
+        let mut reserves = setup.reserves;
+        if rules.chess_rules.duck_chess {
+            let has_duck = reserves.iter().any(|(_, r)| r[PieceKind::Duck] > 0)
+                || find_piece(&setup.grid, |p| p.kind == PieceKind::Duck).is_some();
+            if !has_duck {
+                reserves[Force::White][PieceKind::Duck] = 1;
+            }
+        }
         let mut board = Board {
             rules,
             role,
@@ -854,7 +859,7 @@ impl Board {
             next_piece_id: setup.next_piece_id,
             castling_rights: setup.castling_rights,
             en_passant_target: setup.en_passant_target,
-            reserves: setup.reserves,
+            reserves,
             total_drops: 0,
             position_count: HashMap::new(),
             clock: Clock::new(time_control, time_measurement),
