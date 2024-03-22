@@ -1,9 +1,11 @@
+use core::panic;
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
 use enum_map::{enum_map, EnumMap};
 use instant::Instant;
 use itertools::Itertools;
+use lru::LruCache;
 use strum::IntoEnumIterator;
 
 use crate::altered_game::{AlteredGame, WaybackDestination, WaybackState};
@@ -21,8 +23,9 @@ use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
     BughousePlayer, PlayerInGame, PlayerRelation, TurnIndex, TurnRecord, TurnRecordExpanded,
 };
+use crate::half_integer::HalfU32;
 use crate::meter::{Meter, MeterBox, MeterStats};
-use crate::pgn::BpgnExportFormat;
+use crate::pgn::import_from_bpgn;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Faction, Participant};
 use crate::role::Role;
@@ -32,6 +35,8 @@ use crate::session::Session;
 use crate::starter::EffectiveStartingPosition;
 use crate::{my_git_version, once_cell_regex};
 
+
+const GAME_ARCHIVE_CACHE_SIZE: usize = 1000;
 
 #[derive(Clone, Debug)]
 pub enum NotableEvent {
@@ -44,12 +49,12 @@ pub enum NotableEvent {
     PieceStolen,
     LowTime(BughouseBoard),
     WaybackStateUpdated(WaybackState),
-    GameExportReady(String),
     GotArchiveGameList(Vec<FinishedGameDescription>),
+    ArchiveGameLoaded(i64),
 }
 
 #[derive(Clone, Debug)]
-pub enum EventError {
+pub enum ClientError {
     // An action has failed. Inform the user and continue.
     Ignorable(String),
     // The client has been kicked from the match, but can rejoin.
@@ -92,9 +97,15 @@ pub struct GameState {
     next_low_time_warning_idx: EnumMap<BughouseBoard, usize>,
 }
 
+#[derive(Clone, Debug)]
+pub enum MatchOrigin {
+    ActiveMatch(String), // Match ID
+    ArchiveGame(i64),    // Game ID
+}
+
 #[derive(Debug)]
 pub struct Match {
-    pub match_id: String,
+    pub origin: MatchOrigin,
     pub my_name: String,
     pub my_faction: Faction,
     // Rules applied in every game of the match.
@@ -118,12 +129,36 @@ enum MatchState {
     NotConnected,
     Creating { my_name: String },
     Joining { match_id: String, my_name: String },
+    LoadingArchiveGame { game_id: i64 },
     Connected(Match),
 }
 
 struct Connection {
     outgoing_events: VecDeque<BughouseClientEvent>,
     health_monitor: ActiveConnectionMonitor,
+}
+
+impl Match {
+    pub fn is_active_match(&self) -> bool { matches!(self.origin, MatchOrigin::ActiveMatch(_)) }
+    pub fn is_archive_game_view(&self) -> bool {
+        matches!(self.origin, MatchOrigin::ArchiveGame(_))
+    }
+    pub fn match_id(&self) -> Option<&String> {
+        match &self.origin {
+            MatchOrigin::ActiveMatch(match_id) => Some(match_id),
+            MatchOrigin::ArchiveGame(_) => None,
+        }
+    }
+    pub fn archive_game_id(&self) -> Option<i64> {
+        match &self.origin {
+            MatchOrigin::ActiveMatch(_) => None,
+            MatchOrigin::ArchiveGame(game_id) => Some(*game_id),
+        }
+    }
+    pub fn has_started(&self) -> bool { self.game_state.is_some() }
+    pub fn has_active_game(&self) -> bool {
+        self.game_state.as_ref().map_or(false, |s| s.alt_game.is_active())
+    }
 }
 
 impl Connection {
@@ -135,11 +170,6 @@ impl Connection {
     }
 
     fn send(&mut self, event: BughouseClientEvent) { self.outgoing_events.push_back(event); }
-
-    fn reset(&mut self) {
-        self.outgoing_events.clear();
-        self.health_monitor.reset();
-    }
 }
 
 pub struct ClientState {
@@ -153,6 +183,7 @@ pub struct ClientState {
     ping_meter: Meter,
     session: Session,
     guest_player_name: Option<String>, // used only to create/join match
+    game_archive_cache: LruCache<i64, String>, // game_id -> BPGN
 }
 
 const LOW_TIME_WARNING_THRESHOLDS: &[Duration] = &[
@@ -164,9 +195,9 @@ const LOW_TIME_WARNING_THRESHOLDS: &[Duration] = &[
     Duration::from_secs(1),
 ];
 
-macro_rules! internal_event_error {
+macro_rules! internal_client_error {
     ($($arg:tt)*) => {
-        EventError::Internal($crate::internal_error_message!($($arg)*))
+        ClientError::Internal($crate::internal_error_message!($($arg)*))
     };
 }
 
@@ -186,6 +217,7 @@ impl ClientState {
             ping_meter,
             session: Session::Unknown,
             guest_player_name: None,
+            game_archive_cache: LruCache::new(GAME_ARCHIVE_CACHE_SIZE.try_into().unwrap()),
         }
     }
 
@@ -205,8 +237,10 @@ impl ClientState {
             None
         }
     }
+    fn is_active_match(&self) -> bool { self.mtch().map_or(false, |mtch| mtch.is_active_match()) }
     pub fn is_ready(&self) -> Option<bool> { self.mtch().map(|m| m.is_ready) }
-    pub fn match_id(&self) -> Option<&String> { self.mtch().map(|m| &m.match_id) }
+    pub fn match_id(&self) -> Option<&String> { self.mtch().and_then(|m| m.match_id()) }
+    pub fn archive_game_id(&self) -> Option<i64> { self.mtch().and_then(|m| m.archive_game_id()) }
     pub fn game_state(&self) -> Option<&GameState> {
         self.mtch().and_then(|m| m.game_state.as_ref())
     }
@@ -227,6 +261,7 @@ impl ClientState {
             MatchState::NotConnected { .. } => None,
             MatchState::Creating { my_name } => Some(my_name),
             MatchState::Joining { my_name, .. } => Some(my_name),
+            MatchState::LoadingArchiveGame { .. } => None,
             MatchState::Connected(Match { my_name, .. }) => Some(my_name),
         }
     }
@@ -317,36 +352,74 @@ impl ClientState {
     pub fn hot_reconnect(&mut self) {
         self.server_options = None;
         self.notable_event_queue.clear();
-        self.connection.reset();
-        if let Some(match_id) = self.match_id() {
-            let my_name = self.my_name().unwrap().to_owned();
-            self.connection.send(BughouseClientEvent::HotReconnect {
-                match_id: match_id.clone(),
-                player_name: my_name,
-            });
-        }
+        self.connection.outgoing_events.retain(|message| match message {
+            // Remove events that have anything to do with the active match.
+            BughouseClientEvent::NewMatch { .. }
+            | BughouseClientEvent::Join { .. }
+            | BughouseClientEvent::HotReconnect { .. }
+            | BughouseClientEvent::SetFaction { .. }
+            | BughouseClientEvent::SetTurns { .. }
+            | BughouseClientEvent::MakeTurn { .. }
+            | BughouseClientEvent::CancelPreturn { .. }
+            | BughouseClientEvent::Resign
+            | BughouseClientEvent::SetReady { .. }
+            | BughouseClientEvent::LeaveMatch
+            | BughouseClientEvent::LeaveServer
+            | BughouseClientEvent::SendChatMessage { .. }
+            | BughouseClientEvent::UpdateChalkDrawing { .. }
+            | BughouseClientEvent::SetSharedWayback { .. }
+            | BughouseClientEvent::Ping => false,
+            BughouseClientEvent::GetArchiveGameList
+            | BughouseClientEvent::GetArchiveGameBpgn { .. }
+            | BughouseClientEvent::ReportPerformace(_)
+            | BughouseClientEvent::ReportError(_) => true,
+        });
+        self.connection.health_monitor.reset();
+        let Some(mtch) = self.mtch() else {
+            return;
+        };
+        let Some(match_id) = mtch.match_id() else {
+            return;
+        };
+        let my_name = self.my_name().unwrap().to_owned();
+        self.connection.send(BughouseClientEvent::HotReconnect {
+            match_id: match_id.clone(),
+            player_name: my_name,
+        });
     }
     pub fn set_faction(&mut self, faction: Faction) {
-        if let Some(mtch) = self.mtch_mut() {
-            mtch.my_faction = faction;
-            self.connection.send(BughouseClientEvent::SetFaction { faction });
+        let Some(mtch) = self.mtch_mut() else {
+            return;
+        };
+        if !mtch.is_active_match() || mtch.has_started() {
+            return;
         }
+        mtch.my_faction = faction;
+        self.connection.send(BughouseClientEvent::SetFaction { faction });
     }
     pub fn resign(&mut self) {
-        // TODO: Display an error message if trying to resign as an observer via console.
-        if self.my_faction().is_some_and(|f| f.is_player()) {
-            self.connection.send(BughouseClientEvent::Resign);
+        let Some(game_state) = self.game_state() else {
+            return;
+        };
+        if !game_state.alt_game.my_id().is_player() {
+            return;
         }
+        self.connection.send(BughouseClientEvent::Resign);
     }
     pub fn set_ready(&mut self, is_ready: bool) {
-        if let Some(mtch) = self.mtch_mut() {
-            mtch.is_ready = is_ready;
-            self.connection.send(BughouseClientEvent::SetReady { is_ready });
+        let Some(mtch) = self.mtch_mut() else {
+            return;
+        };
+        if !mtch.is_active_match() || mtch.has_active_game() {
+            return;
         }
+        mtch.is_ready = is_ready;
+        self.connection.send(BughouseClientEvent::SetReady { is_ready });
     }
     pub fn leave_match(&mut self) {
         if self.mtch().is_some() {
             self.connection.send(BughouseClientEvent::LeaveMatch);
+            self.match_state = MatchState::NotConnected;
         }
     }
     pub fn leave_server(&mut self) {
@@ -363,9 +436,6 @@ impl ClientState {
                 time_zone: self.time_zone.clone(),
                 stats,
             }));
-    }
-    pub fn request_export(&mut self, format: BpgnExportFormat) {
-        self.connection.send(BughouseClientEvent::RequestExport { format });
     }
 
     pub fn refresh(&mut self) {
@@ -521,7 +591,7 @@ impl ClientState {
                 // Note. If we ever allow to double-play while having a fixed team with 2+ people,
                 // then message should also go to team chat by default in this case.
                 BughouseParticipant::Player(BughousePlayer::DoublePlayer(_)) => false,
-                BughouseParticipant::Observer => false,
+                BughouseParticipant::Observer(_) => false,
             }
         } else {
             false
@@ -536,6 +606,9 @@ impl ClientState {
         let Some(mtch) = self.mtch_mut() else {
             return;
         };
+        if !mtch.is_active_match() {
+            return;
+        }
         match &recipient {
             ChatRecipient::All => {}
             ChatRecipient::Team => {
@@ -568,7 +641,7 @@ impl ClientState {
         });
     }
 
-    pub fn process_server_event(&mut self, event: BughouseServerEvent) -> Result<(), EventError> {
+    pub fn process_server_event(&mut self, event: BughouseServerEvent) -> Result<(), ClientError> {
         use BughouseServerEvent::*;
         match event {
             Rejection(rejection) => self.process_rejection(rejection),
@@ -603,8 +676,8 @@ impl ClientState {
             }
             ChalkboardUpdated { chalkboard } => self.process_chalkboard_updated(chalkboard),
             SharedWaybackUpdated { turn_index } => self.process_shared_wayback_updated(turn_index),
-            GameExportReady { content } => self.process_game_export_ready(content),
             ArchiveGameList { games } => self.process_archive_game_list(games),
+            ArchiveGameBpgn { game_id, bpgn } => self.process_archive_game_bpgn(game_id, bpgn),
             Pong => self.process_pong(),
         }
     }
@@ -616,11 +689,11 @@ impl ClientState {
         self.notable_event_queue.pop_front()
     }
 
-    fn process_rejection(&mut self, rejection: BughouseServerRejection) -> Result<(), EventError> {
+    fn process_rejection(&mut self, rejection: BughouseServerRejection) -> Result<(), ClientError> {
         // TODO: Fix the messages containing "browser tab" for the console client.
         let error = match rejection {
             BughouseServerRejection::MaxStartingTimeExceeded { allowed, .. } => {
-                EventError::Ignorable(format!(
+                ClientError::Ignorable(format!(
                     "Maximum allowed starting time is {}. \
                     This is a technical limitation that we hope to relax in the future. \
                     But for now it is what it is.",
@@ -628,59 +701,59 @@ impl ClientState {
                 ))
             }
             BughouseServerRejection::NoSuchMatch { match_id } => {
-                EventError::Ignorable(format!("Match {match_id} does not exist."))
+                ClientError::Ignorable(format!("Match {match_id} does not exist."))
             }
             BughouseServerRejection::PlayerAlreadyExists { player_name } => {
-                EventError::Ignorable(format!(
+                ClientError::Ignorable(format!(
                     "Cannot join: player {player_name} already exists. If this is you, \
                     make sure you are not connected to the same game in another browser tab. \
                     If you still can't connect, please try again in a few seconds."
                 ))
             }
             BughouseServerRejection::InvalidPlayerName { player_name, reason } => {
-                EventError::Ignorable(format!("Name {player_name} is invalid: {reason}"))
+                ClientError::Ignorable(format!("Name {player_name} is invalid: {reason}"))
             }
-            BughouseServerRejection::JoinedInAnotherClient => EventError::KickedFromMatch(
+            BughouseServerRejection::JoinedInAnotherClient => ClientError::KickedFromMatch(
                 "You have joined the match in another browser tab. Only one tab per \
                 match can be active at a time."
                     .to_owned(),
             ),
-            BughouseServerRejection::NameClashWithRegisteredUser => EventError::KickedFromMatch(
+            BughouseServerRejection::NameClashWithRegisteredUser => ClientError::KickedFromMatch(
                 "A registered user with the same name has joined. Registered users have \
                 priority over name selection. Please choose another name and join again."
                     .to_owned(),
             ),
-            BughouseServerRejection::GuestInRatedMatch => EventError::Ignorable(
+            BughouseServerRejection::GuestInRatedMatch => ClientError::Ignorable(
                 "Guests cannot join rated matches. Please register an account and join again."
                     .to_owned(),
             ),
             BughouseServerRejection::MustRegisterForGameArchive => {
-                EventError::Ignorable("Please log in to view your game history.".to_owned())
+                ClientError::Ignorable("Please log in to view your game history.".to_owned())
             }
-            BughouseServerRejection::ErrorFetchingGameList { message } => {
-                EventError::Ignorable(format!("Error fetching game history: {message}"))
+            BughouseServerRejection::ErrorFetchingData { message } => {
+                ClientError::Ignorable(format!("Error fetching data: {message}"))
             }
-            BughouseServerRejection::ShuttingDown => EventError::Fatal(
+            BughouseServerRejection::ShuttingDown => ClientError::Fatal(
                 "The server is shutting down for maintenance. \
                 We'll be back soon (usually within 15 minutes). \
                 Please come back later!"
                     .to_owned(),
             ),
-            BughouseServerRejection::UnknownError { message } => EventError::Internal(message),
+            BughouseServerRejection::UnknownError { message } => ClientError::Internal(message),
         };
-        if matches!(error, EventError::KickedFromMatch(_)) {
+        if matches!(error, ClientError::KickedFromMatch(_)) {
             self.match_state = MatchState::NotConnected;
         }
         Err(error)
     }
     fn process_server_welcome(
         &mut self, expected_git_version: Option<String>, max_starting_time: Option<Duration>,
-    ) -> Result<(), EventError> {
+    ) -> Result<(), ClientError> {
         if let Some(expected_git_version) = expected_git_version {
             let my_version = my_git_version!();
             if expected_git_version != my_version {
                 // TODO: Send to server for logging.
-                return Err(EventError::Fatal(format!(
+                return Err(ClientError::Fatal(format!(
                     "Client version ({my_version}) does not match \
                     server version ({expected_git_version}). Please refresh the page. \
                     If the problem persists, try to do a hard refresh \
@@ -694,17 +767,19 @@ impl ClientState {
         self.notable_event_queue.push_back(NotableEvent::SessionUpdated);
         Ok(())
     }
-    fn process_update_session(&mut self, session: Session) -> Result<(), EventError> {
+    fn process_update_session(&mut self, session: Session) -> Result<(), ClientError> {
         self.session = session;
         self.notable_event_queue.push_back(NotableEvent::SessionUpdated);
         Ok(())
     }
-    fn process_match_welcome(&mut self, match_id: String, rules: Rules) -> Result<(), EventError> {
-        if let Some(mtch) = self.mtch_mut() {
-            if mtch.match_id != match_id {
-                return Err(internal_event_error!(
+    fn process_match_welcome(&mut self, match_id: String, rules: Rules) -> Result<(), ClientError> {
+        if let Some(mtch) = self.mtch_mut()
+            && let Some(current_match_id) = mtch.match_id()
+        {
+            if *current_match_id != match_id {
+                return Err(internal_client_error!(
                     "Expected match {}, but got {match_id}",
-                    mtch.match_id
+                    current_match_id
                 ));
             }
             assert_eq!(mtch.rules, rules);
@@ -722,7 +797,7 @@ impl ClientState {
                     }
                     my_name.clone()
                 }
-                _ => return Err(internal_event_error!()),
+                _ => return Err(internal_client_error!()),
             };
             self.notable_event_queue.push_back(NotableEvent::MatchStarted(match_id.clone()));
             // `Observer` is a safe faction default that wouldn't allow us to try acting as
@@ -730,7 +805,7 @@ impl ClientState {
             // in a `LobbyUpdated` event.
             let my_faction = Faction::Observer;
             self.match_state = MatchState::Connected(Match {
-                match_id,
+                origin: MatchOrigin::ActiveMatch(match_id),
                 my_name,
                 my_faction,
                 rules,
@@ -746,7 +821,7 @@ impl ClientState {
     }
     fn process_lobby_updated(
         &mut self, participants: Vec<Participant>, countdown_elapsed: Option<Duration>,
-    ) -> Result<(), EventError> {
+    ) -> Result<(), ClientError> {
         let now = Instant::now();
         let Some(mtch) = self.mtch_mut() else {
             // This could happen if we connected to a new match and the server is still sending
@@ -770,9 +845,9 @@ impl ClientState {
         &mut self, game_index: u64, starting_position: EffectiveStartingPosition,
         players: Vec<PlayerInGame>, time: Option<GameInstant>, updates: Vec<GameUpdate>,
         preturns: Vec<(BughouseBoard, TurnInput)>, scores: Scores,
-    ) -> Result<(), EventError> {
+    ) -> Result<(), ClientError> {
         let now = Instant::now();
-        let mtch = self.mtch_mut().ok_or_else(|| internal_event_error!())?;
+        let mtch = self.mtch_mut().ok_or_else(|| internal_client_error!())?;
         if let Some(game_state) = mtch.game_state.as_mut() {
             if game_state.game_index == game_index {
                 // This is a hot reconnect.
@@ -818,7 +893,8 @@ impl ClientState {
         );
         let my_id = match game.find_player(&mtch.my_name) {
             Some(id) => BughouseParticipant::Player(id),
-            None => BughouseParticipant::Observer,
+            // TODO: Support choosing which player to observe.
+            None => BughouseParticipant::default_observer(),
         };
         let alt_game = AlteredGame::new(my_id, game);
         let board_shape = alt_game.board_shape();
@@ -854,7 +930,7 @@ impl ClientState {
         self.update_low_time_warnings(false);
         Ok(())
     }
-    fn process_game_updated(&mut self, updates: Vec<GameUpdate>) -> Result<(), EventError> {
+    fn process_game_updated(&mut self, updates: Vec<GameUpdate>) -> Result<(), ClientError> {
         for update in updates {
             self.apply_game_update(update, true)?;
         }
@@ -862,42 +938,47 @@ impl ClientState {
     }
     fn process_chat_messages(
         &mut self, messages: Vec<ChatMessage>, confirmed_local_message_id: u64,
-    ) -> Result<(), EventError> {
-        let mtch = self.mtch_mut().ok_or_else(|| internal_event_error!())?;
+    ) -> Result<(), ClientError> {
+        let mtch = self.mtch_mut().ok_or_else(|| internal_client_error!())?;
         mtch.chat.remove_confirmed_local(confirmed_local_message_id);
         for message in messages {
             mtch.chat.add_static(message);
         }
         Ok(())
     }
-    fn process_chalkboard_updated(&mut self, chalkboard: Chalkboard) -> Result<(), EventError> {
-        let mtch = self.mtch_mut().ok_or_else(|| internal_event_error!())?;
-        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_event_error!())?;
+    fn process_chalkboard_updated(&mut self, chalkboard: Chalkboard) -> Result<(), ClientError> {
+        let mtch = self.mtch_mut().ok_or_else(|| internal_client_error!())?;
+        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_client_error!())?;
         game_state.chalkboard = chalkboard;
         Ok(())
     }
     fn process_shared_wayback_updated(
         &mut self, turn_index: Option<TurnIndex>,
-    ) -> Result<(), EventError> {
-        let mtch = self.mtch_mut().ok_or_else(|| internal_event_error!())?;
-        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_event_error!())?;
+    ) -> Result<(), ClientError> {
+        let mtch = self.mtch_mut().ok_or_else(|| internal_client_error!())?;
+        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_client_error!())?;
         game_state.shared_wayback_turn_index = turn_index;
         if game_state.shared_wayback_enabled {
             _ = self.wayback_to_local(WaybackDestination::Index(turn_index), None);
         }
         Ok(())
     }
-    fn process_game_export_ready(&mut self, content: String) -> Result<(), EventError> {
-        self.notable_event_queue.push_back(NotableEvent::GameExportReady(content));
-        Ok(())
-    }
     fn process_archive_game_list(
         &mut self, games: Vec<FinishedGameDescription>,
-    ) -> Result<(), EventError> {
+    ) -> Result<(), ClientError> {
         self.notable_event_queue.push_back(NotableEvent::GotArchiveGameList(games));
         Ok(())
     }
-    fn process_pong(&mut self) -> Result<(), EventError> {
+    fn process_archive_game_bpgn(&mut self, game_id: i64, bpgn: String) -> Result<(), ClientError> {
+        if let MatchState::LoadingArchiveGame { game_id: id, .. } = &self.match_state {
+            if *id == game_id {
+                self.load_archive_game_bpng(game_id, &bpgn)?;
+            }
+        }
+        self.game_archive_cache.put(game_id, bpgn);
+        Ok(())
+    }
+    fn process_pong(&mut self) -> Result<(), ClientError> {
         let now = Instant::now();
         if let Some(ping_duration) = self.connection.health_monitor.register_pong(now) {
             self.ping_meter.record_duration(ping_duration);
@@ -907,8 +988,8 @@ impl ClientState {
 
     fn apply_game_update(
         &mut self, update: GameUpdate, generate_notable_events: bool,
-    ) -> Result<(), EventError> {
-        let game_state = self.game_state_mut().ok_or_else(|| internal_event_error!())?;
+    ) -> Result<(), ClientError> {
+        let game_state = self.game_state_mut().ok_or_else(|| internal_client_error!())?;
         game_state.updates_applied += 1;
         match update {
             GameUpdate::TurnMade { turn_record } => {
@@ -922,15 +1003,15 @@ impl ClientState {
 
     fn apply_remote_turn(
         &mut self, turn_record: TurnRecord, generate_notable_events: bool,
-    ) -> Result<(), EventError> {
+    ) -> Result<(), ClientError> {
         let TurnRecord { envoy, turn_input, time } = turn_record;
         let MatchState::Connected(mtch) = &mut self.match_state else {
-            return Err(internal_event_error!());
+            return Err(internal_client_error!());
         };
-        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_event_error!())?;
+        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_client_error!())?;
         let GameState { ref mut alt_game, ref mut time_pair, .. } = game_state;
         if !alt_game.is_active() {
-            return Err(internal_event_error!("Cannot make turn {:?}: game over", turn_input));
+            return Err(internal_client_error!("Cannot make turn {:?}: game over", turn_input));
         }
         let is_my_turn = alt_game.my_id().plays_for(envoy);
         let now = Instant::now();
@@ -940,7 +1021,7 @@ impl ClientState {
             *time_pair = Some(WallGameTimePair::new(now, game_start));
         }
         let turn_record = alt_game.apply_remote_turn(envoy, &turn_input, time).map_err(|err| {
-            internal_event_error!(
+            internal_client_error!(
                 "Got impossible turn from server: {:?}, error: {:?}",
                 turn_input,
                 err
@@ -966,9 +1047,9 @@ impl ClientState {
     fn apply_game_over(
         &mut self, game_now: GameInstant, game_status: BughouseGameStatus, scores: Scores,
         generate_notable_events: bool,
-    ) -> Result<(), EventError> {
-        let mtch = self.mtch_mut().ok_or_else(|| internal_event_error!())?;
-        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_event_error!())?;
+    ) -> Result<(), ClientError> {
+        let mtch = self.mtch_mut().ok_or_else(|| internal_client_error!())?;
+        let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_client_error!())?;
         let GameState { ref mut alt_game, .. } = game_state;
 
         mtch.scores = Some(scores);
@@ -978,7 +1059,7 @@ impl ClientState {
             alt_game.set_status(game_status, game_now);
         } else {
             if game_status != alt_game.status() {
-                return Err(internal_event_error!(
+                return Err(internal_client_error!(
                     "Expected game status {:?}, got {:?}",
                     game_status,
                     alt_game.status()
@@ -1032,6 +1113,9 @@ impl ClientState {
         let Some(mtch) = self.mtch_mut() else {
             return;
         };
+        if !mtch.is_active_match() {
+            return;
+        }
         let Some(ref mut game_state) = mtch.game_state else {
             return;
         };
@@ -1046,6 +1130,9 @@ impl ClientState {
         self.game_state().map_or(false, |s| s.shared_wayback_enabled)
     }
     pub fn set_shared_wayback(&mut self, enabled: bool) {
+        if !self.is_active_match() {
+            return;
+        }
         let mut wayback_to_turn = None;
         if let Some(ref mut game_state) = self.game_state_mut() {
             game_state.shared_wayback_enabled = enabled;
@@ -1086,8 +1173,95 @@ impl ClientState {
         Ok(turn_index)
     }
 
-    pub fn view_game_archive(&mut self) {
+    pub fn view_archive_game_list(&mut self) {
         self.connection.send(BughouseClientEvent::GetArchiveGameList);
+    }
+
+    pub fn view_archive_game_content(&mut self, game_id: i64) -> Result<(), ClientError> {
+        let bpgn = self.game_archive_cache.get(&game_id).cloned();
+        if let Some(bpgn) = bpgn {
+            self.load_archive_game_bpng(game_id, &bpgn)
+        } else {
+            self.match_state = MatchState::LoadingArchiveGame { game_id };
+            self.connection.send(BughouseClientEvent::GetArchiveGameBpgn { game_id });
+            Ok(())
+        }
+    }
+
+    pub fn get_game_bpgn(&mut self) -> Option<String> {
+        let mtch = self.mtch()?;
+        let game_id = mtch.archive_game_id()?;
+        self.game_archive_cache.get(&game_id).cloned()
+    }
+
+    fn load_archive_game_bpng(&mut self, game_id: i64, bpgn: &str) -> Result<(), ClientError> {
+        let game = import_from_bpgn(bpgn, Role::Client).map_err(|err| {
+            ClientError::Internal(format!("Error parsing BPGN for game {game_id}: {err}"))
+        })?;
+
+        let rules = game.rules().clone();
+        let players = game.players();
+        let participants = players
+            .iter()
+            .map(|p| Participant {
+                name: p.name.clone(),
+                is_registered_user: false,
+                faction: Faction::Fixed(p.id.team()),
+                games_played: 0,
+                double_games_played: 0,
+                is_online: true,
+                is_ready: false,
+            })
+            .collect_vec();
+        let mut team_score = enum_map! { _ => HalfU32::ZERO };
+        match game.status() {
+            BughouseGameStatus::Active => {}
+            BughouseGameStatus::Victory(team, _) => {
+                team_score[team] = HalfU32::whole(1);
+            }
+            BughouseGameStatus::Draw(_) => {
+                team_score = enum_map! { _ => HalfU32::HALF };
+            }
+        }
+        let scores = Scores::PerTeam(team_score);
+
+        let my_player = self
+            .session()
+            .user_name()
+            .and_then(|name| players.iter().find(|p| p.name == name));
+        let my_id = match my_player {
+            Some(p) => p.id.observe(),
+            None => BughouseParticipant::default_observer(),
+        };
+        let alt_game = AlteredGame::new(my_id, game);
+        let board_shape = alt_game.board_shape();
+        let perspective = alt_game.perspective();
+        let game_state = GameState {
+            game_index: 0, // index within match, not game id
+            alt_game,
+            time_pair: None,
+            chalkboard: Chalkboard::new(),
+            chalk_canvas: ChalkCanvas::new(board_shape, perspective),
+            shared_wayback_enabled: false,
+            shared_wayback_turn_index: None,
+            updates_applied: 0,
+            next_low_time_warning_idx: enum_map! { _ => 0 },
+        };
+
+        self.match_state = MatchState::Connected(Match {
+            origin: MatchOrigin::ArchiveGame(game_id),
+            my_name: String::new(),
+            my_faction: Faction::Observer,
+            rules,
+            participants,
+            scores: Some(scores),
+            is_ready: false,
+            first_game_countdown_since: None,
+            game_state: Some(game_state),
+            chat: ClientChat::new(),
+        });
+        self.notable_event_queue.push_back(NotableEvent::ArchiveGameLoaded(game_id));
+        Ok(())
     }
 
     fn check_connection(&mut self) {

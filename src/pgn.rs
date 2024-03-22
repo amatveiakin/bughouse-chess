@@ -562,10 +562,11 @@ fn parse_variants(s: &str) -> Result<HashSet<ChessVariant>, String> {
 }
 
 fn parse_rules(tags: &TagMap) -> Result<Rules, String> {
-    let rated = match tags.get("Event")? {
+    let event = tags.get("Event")?;
+    let rated = match event {
         "Rated Bughouse Match" => true,
         "Unrated Bughouse Match" => false,
-        _ => return Err("unexpected Event tag".to_owned()),
+        _ => return Err(format!("unexpected Event tag: \"{event}\"")),
     };
     let time_control = parse_time_control(tags.get("TimeControl")?)?;
     let variants = parse_variants(tags.get("Variant")?)?;
@@ -740,6 +741,32 @@ mod tests {
     use crate::role::Role;
     use crate::rules::{ChessRules, MatchRules, Rules};
     use crate::test_util::{replay_bughouse_log, sample_bughouse_players};
+
+    #[test]
+    fn pgn_standard_conformity() {
+        let rules = Rules {
+            match_rules: MatchRules::unrated(),
+            chess_rules: ChessRules::bughouse_chess_com(),
+        };
+        let mut game =
+            BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());
+        replay_bughouse_log(
+            &mut game,
+            "1A.e4 1a.e5 1A.Nf3 1a.Nc6 1A.g3 1a.d5 1A.Bg2 1a.Qe7 1A.Nxe5 1a.xe4 1A.0-0",
+            Duration::ZERO,
+        )
+        .unwrap();
+        let game_start_time = UtcDateTime::now();
+        let bpgn = export_to_bpgn(BpgnExportFormat::default(), &game, game_start_time, 1);
+
+        // Test: Uses short algebraic and includes capture notations.
+        assert!(bpgn.contains(" Nx"));
+        // Test: Does not contain non-ASCII characters (like "×").
+        assert!(bpgn.chars().all(|ch| ch.is_ascii()));
+        // Test: Castling is PGN-style (not FIDE-style).
+        assert!(bpgn.contains("O-O"));
+        assert!(!bpgn.contains("0-0"));
+    }
 
     #[test]
     fn pgn_golden() {

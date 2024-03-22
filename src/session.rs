@@ -43,7 +43,7 @@ pub enum Session {
     Unknown,
     #[default]
     LoggedOut,
-    GoogleOAuthRegistering(GoogleOAuthRegistrationInfo),
+    GoogleOAuthRegistering(GoogleOAuthRegistrationInfo), // in the midst of Google OAuth signup
     LoggedIn(UserInfo),
 }
 
@@ -55,5 +55,6 @@ impl Session {
             Session::LoggedIn(user_info) => Some(user_info),
         }
     }
+    pub fn user_name(&self) -> Option<&str> { self.user_info().map(|info| info.user_name.as_str()) }
     pub fn logout(&mut self) { *self = Session::LoggedOut; }
 }

@@ -5,6 +5,7 @@ use crate::web_error_handling::JsResult;
 
 
 pub trait WebElementExt {
+    fn with_id(self, value: &str) -> web_sys::Element;
     fn with_text_content(self, text: &str) -> web_sys::Element;
     fn with_attribute(self, name: &str, value: &str) -> JsResult<web_sys::Element>;
     fn with_classes(self, classes: impl IntoIterator<Item = &str>) -> JsResult<web_sys::Element>;
@@ -31,6 +32,11 @@ pub trait WebElementExt {
 }
 
 impl WebElementExt for web_sys::Element {
+    fn with_id(self, value: &str) -> web_sys::Element {
+        self.set_id(value);
+        self
+    }
+
     fn with_text_content(self, text: &str) -> web_sys::Element {
         self.set_text_content(Some(text));
         self

@@ -31,7 +31,6 @@ use crate::game::{
 use crate::half_integer::HalfU32;
 use crate::iterable_mut::IterableMut;
 use crate::lobby::{assign_boards, fix_teams_if_needed, verify_participants, Teaming};
-use crate::pgn::{self, BpgnExportFormat};
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Faction, Participant};
 use crate::role::Role;
@@ -321,6 +320,8 @@ enum MatchActivity {
     Past(Instant),
 }
 
+// TODO: Do we need match game history in RAM?
+#[allow(dead_code)]
 #[derive(Debug)]
 struct GameHistoryRecord {
     game_index: u64,
@@ -577,6 +578,10 @@ impl CoreServerState {
         match &event {
             BughouseClientEvent::GetArchiveGameList => {
                 process_get_archive_game_list(ctx, client_id);
+                return;
+            }
+            BughouseClientEvent::GetArchiveGameBpgn { game_id } => {
+                process_get_archive_game_bpng(ctx, client_id, *game_id);
                 return;
             }
             BughouseClientEvent::ReportPerformace(perf) => {
@@ -880,12 +885,10 @@ impl Match {
             BughouseClientEvent::SetSharedWayback { turn_index } => {
                 self.process_set_shared_wayback(ctx, turn_index)
             }
-            BughouseClientEvent::RequestExport { format } => {
-                self.process_request_export(ctx, client_id, format)
-            }
             // Match-independent events must be processed separately. Keep the event entities
             // separate, so that we know which one it was if it crashes.
             BughouseClientEvent::GetArchiveGameList => unreachable!(),
+            BughouseClientEvent::GetArchiveGameBpgn { .. } => unreachable!(),
             BughouseClientEvent::ReportPerformace(..) => unreachable!(),
             BughouseClientEvent::ReportError(..) => unreachable!(),
             BughouseClientEvent::Ping => unreachable!(),
@@ -1337,34 +1340,6 @@ impl Match {
         Ok(())
     }
 
-    fn export_current_game(&self, format: BpgnExportFormat) -> Option<String> {
-        let Some(GameState {
-            game_index,
-            ref game,
-            game_start_utc_time,
-            ..
-        }) = self.game_state
-        else {
-            return None;
-        };
-        // If there is no start time, there is nothing meaningful to export.
-        let game_start_utc_time = game_start_utc_time?;
-        Some(pgn::export_to_bpgn(format, &game, game_start_utc_time, game_index + 1))
-    }
-
-    fn process_request_export(
-        &self, ctx: &mut Context, client_id: ClientId, format: BpgnExportFormat,
-    ) -> EventResult {
-        let content = self
-            .game_history
-            .iter()
-            .map(|r| pgn::export_to_bpgn(format, &r.game, r.game_start_utc_time, r.game_index + 1))
-            .chain(self.export_current_game(format).into_iter())
-            .join("\n");
-        ctx.clients[client_id].send(BughouseServerEvent::GameExportReady { content });
-        Ok(())
-    }
-
     fn post_process(&mut self, ctx: &mut Context, execution: Execution) {
         let new_chat_messages = fetch_new_chat_messages!(self.chat);
         self.send_messages(ctx, None, new_chat_messages);
@@ -1767,7 +1742,18 @@ fn process_get_archive_game_list(ctx: &mut Context, client_id: ClientId) {
     match ctx.hooks.get_games_by_user(user_name) {
         Ok(games) => ctx.clients[client_id].send(BughouseServerEvent::ArchiveGameList { games }),
         Err(message) => ctx.clients[client_id]
-            .send_rejection(BughouseServerRejection::ErrorFetchingGameList { message }),
+            .send_rejection(BughouseServerRejection::ErrorFetchingData { message }),
+    }
+}
+
+fn process_get_archive_game_bpng(ctx: &mut Context, client_id: ClientId, game_id: i64) {
+    // TODO: Don't block server on DB read.
+    match ctx.hooks.get_game_bpgn(game_id) {
+        Ok(bpgn) => {
+            ctx.clients[client_id].send(BughouseServerEvent::ArchiveGameBpgn { game_id, bpgn })
+        }
+        Err(message) => ctx.clients[client_id]
+            .send_rejection(BughouseServerRejection::ErrorFetchingData { message }),
     }
 }
 
@@ -1808,8 +1794,8 @@ fn event_name(event: &IncomingEvent) -> &'static str {
             BughouseClientEvent::SendChatMessage { .. } => "Client_SendChatMessage",
             BughouseClientEvent::UpdateChalkDrawing { .. } => "Client_UpdateChalkDrawing",
             BughouseClientEvent::SetSharedWayback { .. } => "Client_SetSharedWayback",
-            BughouseClientEvent::RequestExport { .. } => "Client_RequestExport",
             BughouseClientEvent::GetArchiveGameList { .. } => "Client_GetArchiveGameList",
+            BughouseClientEvent::GetArchiveGameBpgn { .. } => "Client_GetArchiveGameBpgn",
             BughouseClientEvent::ReportPerformace(_) => "Client_ReportPerformace",
             BughouseClientEvent::ReportError(_) => "Client_ReportError",
             BughouseClientEvent::Ping => "Client_Ping",

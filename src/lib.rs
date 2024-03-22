@@ -3,6 +3,7 @@
 #![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(fn_traits)]
 #![feature(int_roundings)]
+#![feature(let_chains)]
 #![feature(type_alias_impl_trait)]
 #![feature(unboxed_closures)]
 // Clippy philosophy. The goal is to have zero warnings from `cargo clippy` on the main branch.

@@ -151,7 +151,7 @@ pub fn render_chat_reference_tooltip(
     lines.push(([Command("/h")].as_slice(), "more details on chat commands"));
 
     match participant_id {
-        BughouseParticipant::Observer => {}
+        BughouseParticipant::Observer(_) => {}
         BughouseParticipant::Player(BughousePlayer::SinglePlayer(_)) => {
             lines.push((
                 [Command("<"), Notation("notation")].as_slice(),

@@ -32,6 +32,7 @@ impl<DB: DatabaseReader + DatabaseWriter> ServerHooks for DatabaseServerHooks<DB
             error!("Error persisting client performance: {}", e);
         }
     }
+
     fn on_game_over(
         &mut self, game: &BughouseGame, game_start_time: UtcDateTime, game_end_time: UtcDateTime,
         round: u64,
@@ -44,6 +45,7 @@ impl<DB: DatabaseReader + DatabaseWriter> ServerHooks for DatabaseServerHooks<DB
             error!("Error persisting game result: {}", e);
         }
     }
+
     fn get_games_by_user(&self, user_name: &str) -> Result<Vec<FinishedGameDescription>, String> {
         let make_team =
             |player_a, player_b| return [player_a, player_b].into_iter().dedup().collect_vec();
@@ -95,6 +97,11 @@ impl<DB: DatabaseReader + DatabaseWriter> ServerHooks for DatabaseServerHooks<DB
             })
             .collect();
         Ok(games)
+    }
+
+    fn get_game_bpgn(&self, game_id: i64) -> Result<String, String> {
+        async_std::task::block_on(self.db.pgn(RowId { id: game_id }))
+            .map_err(|err| format!("Error fetching game BPGN: {err:?}"))
     }
 }
 

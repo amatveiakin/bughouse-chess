@@ -341,7 +341,7 @@ impl AlteredGame {
         let wayback_active = self.apply_wayback(&mut game);
         let force = match self.my_id {
             BughouseParticipant::Player(id) => get_bughouse_force(id.team(), board_idx),
-            BughouseParticipant::Observer => game.board(board_idx).active_force(),
+            BughouseParticipant::Observer(_) => game.board(board_idx).active_force(),
         };
         let mut visible = game.board(board_idx).fog_free_area(force);
         // Still, do show preturn pieces themselves:

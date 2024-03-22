@@ -34,7 +34,7 @@ use bughouse_chess::server_helpers::TestServerHelpers;
 use bughouse_chess::session::{RegistrationMethod, Session, UserInfo};
 use bughouse_chess::session_store::{SessionId, SessionStore};
 use bughouse_chess::utc_time::UtcDateTime;
-use bughouse_chess::{client, pgn, server};
+use bughouse_chess::{client, server};
 use common::*;
 use instant::Instant;
 use itertools::Itertools;
@@ -229,7 +229,7 @@ impl Client {
         }
         something_changed
     }
-    fn process_incoming_events(&mut self) -> (bool, Result<(), client::EventError>) {
+    fn process_incoming_events(&mut self) -> (bool, Result<(), client::ClientError>) {
         let mut something_changed = false;
         while let Ok(event) = self.incoming_rx.as_mut().unwrap().try_recv() {
             something_changed = true;
@@ -379,10 +379,10 @@ impl World {
     }
     fn process_incoming_events_for(
         &mut self, client_id: TestClientId,
-    ) -> (bool, Result<(), client::EventError>) {
+    ) -> (bool, Result<(), client::ClientError>) {
         self.clients[client_id.0].process_incoming_events()
     }
-    fn process_events_for(&mut self, client_id: TestClientId) -> Result<(), client::EventError> {
+    fn process_events_for(&mut self, client_id: TestClientId) -> Result<(), client::ClientError> {
         self.process_outgoing_events_for(client_id);
         self.process_incoming_events_for(client_id).1
     }
@@ -781,7 +781,7 @@ fn cold_reconnect_lobby() {
     world[cl1_new].join(&mtch, "p1");
     assert!(matches!(
         world.process_events_for(cl1_new),
-        Err(client::EventError::Ignorable(_))
+        Err(client::ClientError::Ignorable(_))
     ));
     world.process_all_events();
 
@@ -832,7 +832,7 @@ fn cold_reconnect_game_active() {
     world[cl2_new].join(&mtch, "p2");
     assert!(matches!(
         world.process_events_for(cl2_new),
-        Err(client::EventError::Ignorable(_))
+        Err(client::ClientError::Ignorable(_))
     ));
     world.process_all_events();
 
@@ -1323,7 +1323,7 @@ fn seating_assignment_is_fair() {
         }
         world.process_all_events();
         for cl in [cl1, cl2, cl3, cl4, cl5].iter() {
-            if world[*cl].my_id() != BughouseParticipant::Observer {
+            if world[*cl].my_id().is_player() {
                 world[*cl].state.resign();
                 break;
             }
@@ -1403,53 +1403,6 @@ fn shared_wayback() {
     assert_eq!(world[cl1].alt_game().wayback_state().turn_index(), Some(TurnIndex(3)));
     assert_eq!(world[cl2].alt_game().wayback_state().turn_index(), Some(TurnIndex(3)));
     assert_eq!(world[cl3].alt_game().wayback_state().turn_index(), None);
-}
-
-// Verify conformity to PGN standard.
-#[test]
-fn pgn_standard() {
-    let mut world = World::new();
-    let (_, cl1, _cl2, cl3, _cl4) = world.default_clients();
-
-    world[cl1].make_turn("e4").unwrap();
-    world.process_all_events();
-    world[cl3].make_turn("e5").unwrap();
-    world.process_all_events();
-    world[cl1].make_turn("Nf3").unwrap();
-    world.process_all_events();
-    world[cl3].make_turn("Nc6").unwrap();
-    world.process_all_events();
-    world[cl1].make_turn("g3").unwrap();
-    world.process_all_events();
-    world[cl3].make_turn("d5").unwrap();
-    world.process_all_events();
-    world[cl1].make_turn("Bg2").unwrap();
-    world.process_all_events();
-    world[cl3].make_turn("Qe7").unwrap();
-    world.process_all_events();
-    world[cl1].make_turn("Nxe5").unwrap();
-    world.process_all_events();
-    world[cl3].make_turn("xe4").unwrap();
-    world.process_all_events();
-    world[cl1].make_turn("0-0").unwrap();
-    world.process_all_events();
-
-    world[cl1].state.request_export(pgn::BpgnExportFormat::default());
-    world.process_all_events();
-    while let Some(event) = world[cl1].state.next_notable_event() {
-        if let client::NotableEvent::GameExportReady(content) = event {
-            println!("Got PGN:\n{content}");
-            // Test: Uses short algebraic and includes capture notations.
-            assert!(content.contains(" Nx"));
-            // Test: Does not contain non-ASCII characters (like "×").
-            assert!(content.chars().all(|ch| ch.is_ascii()));
-            // Test: Castling is PGN-style (not FIDE-style).
-            assert!(content.contains("O-O"));
-            assert!(!content.contains("0-0"));
-            return;
-        }
-    }
-    panic!("Did not get the PGN");
 }
 
 #[test]
@@ -1717,7 +1670,7 @@ fn registered_user_reconnect() {
     world.process_events_for(cl_new).unwrap();
     assert!(matches!(
         world.process_events_for(cl_old),
-        Err(client::EventError::KickedFromMatch(_))
+        Err(client::ClientError::KickedFromMatch(_))
     ));
     world.process_all_events();
 }
@@ -1736,7 +1689,7 @@ fn registered_user_after_guest_user() {
     world.process_events_for(cl_new).unwrap();
     assert!(matches!(
         world.process_events_for(cl_old),
-        Err(client::EventError::KickedFromMatch(_))
+        Err(client::ClientError::KickedFromMatch(_))
     ));
     world.process_all_events();
 }
@@ -1754,7 +1707,7 @@ fn guest_user_after_registered_user() {
 
     assert!(matches!(
         world.process_events_for(cl_new),
-        Err(client::EventError::Ignorable(_))
+        Err(client::ClientError::Ignorable(_))
     ));
     world.process_all_events();
 }
@@ -1773,7 +1726,7 @@ fn guest_user_reconnect_early() {
 
     assert!(matches!(
         world.process_events_for(cl_new),
-        Err(client::EventError::Ignorable(_))
+        Err(client::ClientError::Ignorable(_))
     ));
     world.process_all_events();
 }

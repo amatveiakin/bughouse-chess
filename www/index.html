@@ -43,6 +43,10 @@
         <path id="path" d="m4.047 2.5141a0.66 0.66 0 1 0-0.3186 0.0388l-0.2943 2.381-1.4189-1.2323a0.6575 0.6575 0 1 0-0.2643 0.15l0.7392 2.5343 0.7644 1.2508-0.7644 0.1352v0.99h5.0262v-0.99l-0.7742-0.1358 0.764-1.25 0.7392-2.5342a0.66 0.66 0 1 0-0.2643-0.15l-1.4189 1.232-0.294-2.381a0.66 0.66 0 1 0-0.3186-0.0388l-0.9514 2.1558z" stroke-width=".1"/>
       </symbol>
 
+      <symbol id="leave">
+        <path d="m80.2 88.8q3.56 0 6.1-2.54 2.54-2.54 2.54-6.1v-60.4q0-3.56-2.54-6.1-2.54-2.54-6.1-2.54h-30.2v8.63h30.2v60.4h-30.2v8.63zm-47.5-17.3 5.93-6.26-11-11h35.3v-8.63h-35.3l11-11-5.93-6.26-21.6 21.6z"/>
+      </symbol>
+
       <radialGradient id="faction-red-gradient" cx="3.9267" cy="3.3585" r="3.4093" gradientTransform="matrix(-.1146 .84997 -1.0222 -.13782 7.776 .43219)" gradientUnits="userSpaceOnUse">
         <stop stop-color="#ffafaf" offset="0"/>
         <stop stop-color="#cb0000" offset="1"/>
@@ -239,6 +243,11 @@
 
     <div id="button-panel">
       <div class="button-subpanel">
+        <button id="leave-match-button" class="icon-button" style="display:none" title="Leave match">
+          <svg class="icon-button-svg" viewBox="0 0 100 100">
+            <use href="#leave"/>
+          </svg>
+        </button>
         <button id="ready-button" class="icon-button" style="display:none" title="Toggle readiness for the next game">
           <svg class="icon-button-svg" viewBox="0 0 10 10">
             <path d="m4.1334 8.2689c-0.77778-0.77777-1.5556-1.5555-2.3333-2.3333 0.1493-0.1493 0.29861-0.29861 0.44792-0.44791 0.62847 0.62846 1.2569 1.2569 1.8854 1.8854 1.3333-1.3333 2.6667-2.6666 4-3.9999 0.14931 0.1493 0.29861 0.29861 0.44792 0.44791-1.4826 1.4826-2.9653 2.9652-4.4479 4.4478z"/>
@@ -284,7 +293,7 @@
             </g>
           </svg>
         </button>
-        <button id="export-button" class="icon-button" title="Export match as BPGN">
+        <button id="export-button" class="icon-button" style="display:none" title="Export game as BPGN">
           <svg class="icon-button-svg" viewBox="0 0 10 10">
             <path d="m4.5078 4.0552v1.8204h-0.84961l1.3418 1.6965 1.3418-1.6965h-0.84961v-1.8204z"/>
             <path d="m1.75 7.3965v1.8281h6.5v-1.8281h-0.69922v1.1289h-5.1016v-1.1289z"/>
@@ -697,7 +706,7 @@
         <div id="lobby-match"><span id="lobby-match-caption"></span></div>
         <button id="lobby-leave-button" type="button" class="square-button" title="Leave match">
           <svg class="square-button-icon" viewBox="0 0 100 100">
-            <path d="m80.2 88.8q3.56 0 6.1-2.54 2.54-2.54 2.54-6.1v-60.4q0-3.56-2.54-6.1-2.54-2.54-6.1-2.54h-30.2v8.63h30.2v60.4h-30.2v8.63zm-47.5-17.3 5.93-6.26-11-11h35.3v-8.63h-35.3l11-11-5.93-6.26-21.6 21.6z"/>
+            <use href="#leave"/>
           </svg>
         </button>
       </div>

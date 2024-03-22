@@ -69,16 +69,13 @@ impl Perspective {
     pub fn for_participant(participant: BughouseParticipant) -> Self {
         use BughousePlayer::*;
         match participant {
-            BughouseParticipant::Player(SinglePlayer(envoy)) => Perspective {
+            BughouseParticipant::Player(SinglePlayer(envoy))
+            | BughouseParticipant::Observer(envoy) => Perspective {
                 board_idx: envoy.board_idx,
                 force: envoy.force,
             },
             BughouseParticipant::Player(DoublePlayer(team)) => Perspective {
                 board_idx: get_bughouse_board(team, Force::White),
-                force: Force::White,
-            },
-            BughouseParticipant::Observer => Perspective {
-                board_idx: BughouseBoard::A,
                 force: Force::White,
             },
         }

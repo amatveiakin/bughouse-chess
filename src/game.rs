@@ -266,7 +266,7 @@ impl GameOutcome {
                 });
             }
         }
-        Err(format!("unrecognized game outcome: {}", s))
+        Err(format!("unrecognized game outcome: \"{}\"", s))
     }
 
     pub fn to_readable_string(&self, rules: &ChessRules) -> String { self.to_pgn(rules) }
@@ -323,7 +323,7 @@ pub enum BughousePlayer {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum BughouseParticipant {
     Player(BughousePlayer),
-    Observer,
+    Observer(BughouseEnvoy),
 }
 
 // Player in an active game.
@@ -382,6 +382,17 @@ impl BughousePlayer {
             BughousePlayer::SinglePlayer(_) => None,
             BughousePlayer::DoublePlayer(team) => Some(team),
         }
+    }
+    pub fn observe(self) -> BughouseParticipant {
+        let envoy = match self {
+            BughousePlayer::SinglePlayer(envoy) => envoy,
+            BughousePlayer::DoublePlayer(team) => {
+                let force = Force::White;
+                let board_idx = get_bughouse_board(team, force);
+                BughouseEnvoy { board_idx, force }
+            }
+        };
+        BughouseParticipant::Observer(envoy)
     }
 
     pub fn team(self) -> Team {
@@ -447,12 +458,18 @@ impl BughousePlayer {
 }
 
 impl BughouseParticipant {
+    pub fn default_observer() -> Self {
+        BughouseParticipant::Observer(BughouseEnvoy {
+            board_idx: BughouseBoard::A,
+            force: Force::White,
+        })
+    }
     pub fn is_player(self) -> bool { self.as_player().is_some() }
     pub fn is_observer(self) -> bool { !self.is_player() }
     pub fn as_player(self) -> Option<BughousePlayer> {
         match self {
             BughouseParticipant::Player(player) => Some(player),
-            BughouseParticipant::Observer => None,
+            BughouseParticipant::Observer(_) => None,
         }
     }
     pub fn envoy_for(self, board_idx: BughouseBoard) -> Option<BughouseEnvoy> {

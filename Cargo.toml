@@ -30,6 +30,7 @@ instant = { version = "0.1.12", features = ["wasm-bindgen"] }
 itertools = "0.11.0"
 lazy_static = "1.4.0"
 log = "0.4.20"
+lru = "0.12.3"
 ndarray = { version = "0.15.6", features = ["serde"] }
 prometheus = "0.13.3"
 rand = "0.8.5"

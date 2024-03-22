@@ -40,7 +40,7 @@ use html_collection_iterator::IntoHtmlCollectionIterator;
 use instant::Instant;
 use itertools::Itertools;
 use strum::{EnumIter, IntoEnumIterator};
-use time::macros::{format_description, offset};
+use time::macros::{datetime, format_description, offset};
 use time::{OffsetDateTime, UtcOffset};
 use wasm_bindgen::prelude::*;
 use web_document::{web_document, WebDocument};
@@ -122,9 +122,9 @@ pub struct JsEventPlaySound {
     pub pan: f64,
 }
 
-#[wasm_bindgen(getter_with_clone)]
-pub struct JsEventGameExportReady {
-    pub content: String,
+#[wasm_bindgen]
+pub struct JsEventArchiveGameLoaded {
+    pub game_id: i64,
 }
 
 
@@ -152,10 +152,7 @@ impl WebClient {
             LoggedIn(_) => "logged_in",
             GoogleOAuthRegistering(_) => "google_oauth_registering",
         };
-        let user_name = match self.state.session() {
-            Unknown | LoggedOut | GoogleOAuthRegistering(_) => String::new(),
-            LoggedIn(UserInfo { user_name, .. }) => user_name.clone(),
-        };
+        let user_name = self.state.session().user_name().unwrap_or("").to_string();
         let email = match self.state.session() {
             Unknown | LoggedOut => String::new(),
             LoggedIn(UserInfo { email, .. }) => email.clone().unwrap_or(String::new()),
@@ -191,7 +188,7 @@ impl WebClient {
             Faction::Observer => "permanently",
             Faction::Fixed(_) | Faction::Random => {
                 let my_id = self.state.my_id();
-                if my_id == Some(BughouseParticipant::Observer) {
+                if my_id.is_some_and(|id| !id.is_player()) {
                     "temporary"
                 } else {
                     "no"
@@ -202,16 +199,20 @@ impl WebClient {
     }
 
     pub fn game_status(&self) -> String {
-        if let Some(game_state) = self.state.game_state() {
+        let Some(mtch) = self.state.mtch() else {
+            return "none".to_owned();
+        };
+        if mtch.is_archive_game_view() {
+            "archive".to_owned()
+        } else if let Some(game_state) = &mtch.game_state {
             if game_state.alt_game.is_active() {
-                "active"
+                "active".to_owned()
             } else {
-                "over"
+                "over".to_owned()
             }
         } else {
-            "none"
+            "none".to_owned()
         }
-        .to_owned()
     }
 
     pub fn lobby_waiting_explanation(&self) -> String {
@@ -374,11 +375,6 @@ impl WebClient {
     }
     pub fn next_faction(&mut self) { self.change_faction(|f| f + 1); }
     pub fn previous_faction(&mut self) { self.change_faction(|f| f - 1); }
-    pub fn request_export(&mut self) -> JsResult<()> {
-        let format = pgn::BpgnExportFormat::default();
-        self.state.request_export(format);
-        Ok(())
-    }
     pub fn leave_match(&mut self) { self.state.leave_match(); }
 
     pub fn execute_input(&mut self, input: &str) { self.state.execute_input(input); }
@@ -649,14 +645,7 @@ impl WebClient {
     pub fn process_server_event(&mut self, event: &str) -> JsResult<bool> {
         let server_event = serde_json::from_str(event).unwrap();
         let updated_needed = !matches!(server_event, BughouseServerEvent::Pong);
-        self.state.process_server_event(server_event).map_err(|err| -> JsValue {
-            match err {
-                EventError::Ignorable(message) => IgnorableError { message }.into(),
-                EventError::KickedFromMatch(message) => KickedFromMatch { message }.into(),
-                EventError::Fatal(message) => FatalError { message }.into(),
-                EventError::Internal(message) => RustError { message }.into(),
-            }
-        })?;
+        self.state.process_server_event(server_event).map_err(client_error_to_js)?;
         Ok(updated_needed)
     }
 
@@ -729,12 +718,19 @@ impl WebClient {
                 scroll_to_wayback_turn(wayback);
                 Ok(JsEventNoop {}.into())
             }
-            Some(NotableEvent::GameExportReady(content)) => {
-                Ok(JsEventGameExportReady { content }.into())
-            }
             Some(NotableEvent::GotArchiveGameList(games)) => {
                 render_archive_game_list(Some(games))?;
+                if let Some(game_id) = self.state.archive_game_id() {
+                    highlight_archive_game_row(game_id)?;
+                }
                 Ok(JsEventNoop {}.into())
+            }
+            Some(NotableEvent::ArchiveGameLoaded(game_id)) => {
+                for display_board_idx in DisplayBoard::iter() {
+                    scroll_log_to_bottom(display_board_idx)?;
+                }
+                highlight_archive_game_row(game_id)?;
+                Ok(JsEventArchiveGameLoaded { game_id }.into())
             }
             None => Ok(JsValue::NULL),
         }
@@ -754,6 +750,10 @@ impl WebClient {
         let Some(mtch) = self.state.mtch() else {
             return Ok(());
         };
+        let hash_seed = match &mtch.origin {
+            MatchOrigin::ActiveMatch(match_id) => match_id.clone(),
+            MatchOrigin::ArchiveGame(game_id) => game_id.to_string(),
+        };
         update_observers(&mtch.participants)?;
         let Some(GameState { game_index, ref alt_game, .. }) = mtch.game_state else {
             update_lobby(mtch)?;
@@ -764,7 +764,7 @@ impl WebClient {
         let my_id = alt_game.my_id();
         let perspective = alt_game.perspective();
         let wayback = alt_game.wayback_state();
-        update_scores(&mtch.scores, &mtch.participants, game.status())?;
+        update_scores(&mtch.scores, &mtch.participants, game.status(), mtch.is_active_match())?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |piece_force| {
                 my_id
@@ -815,7 +815,7 @@ impl WebClient {
                 {
                     let node_id = fog_of_war_id(display_board_idx, coord);
                     if fog_render_area.contains(&coord) {
-                        let sq_hash = calculate_hash(&(&mtch.match_id, board_idx, coord));
+                        let sq_hash = calculate_hash(&(&hash_seed, board_idx, coord));
                         let fog_tile = sq_hash % TOTAL_FOG_TILES + 1;
                         let node = ensure_square_node(
                             display_coord,
@@ -938,7 +938,7 @@ impl WebClient {
                 let other_clock = game.board(board_idx.other()).clock();
                 let show_diff = match alt_game.my_id() {
                     BughouseParticipant::Player(player) => player.team() == team,
-                    BughouseParticipant::Observer => true,
+                    BughouseParticipant::Observer(_) => true,
                 };
                 let diff = show_diff.then(|| clock.difference_for(force, other_clock, game_now));
                 render_clock(
@@ -1006,10 +1006,18 @@ impl WebClient {
         Ok(node)
     }
 
-    pub fn view_game_archive(&mut self) {
-        // TODO: Add some sort of a loading indicator when updating an existing list.
-        self.state.view_game_archive();
+    pub fn view_archive_game_list(&mut self) {
+        // TODO: Add a loading indicator when updating an existing list.
+        self.state.view_archive_game_list();
     }
+
+    pub fn view_archive_game_content(&mut self, game_id: &str) -> JsResult<()> {
+        self.state
+            .view_archive_game_content(game_id.parse().unwrap())
+            .map_err(client_error_to_js)
+    }
+
+    pub fn get_game_bpgn(&mut self) -> Option<String> { self.state.get_game_bpgn() }
 
     fn change_faction(&mut self, faction_modifier: impl Fn(i32) -> i32) {
         let Some(mtch) = self.state.mtch() else {
@@ -1140,6 +1148,15 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
     s.finish()
 }
 
+fn client_error_to_js(err: ClientError) -> JsValue {
+    match err {
+        ClientError::Ignorable(message) => IgnorableError { message }.into(),
+        ClientError::KickedFromMatch(message) => KickedFromMatch { message }.into(),
+        ClientError::Fatal(message) => FatalError { message }.into(),
+        ClientError::Internal(message) => RustError { message }.into(),
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
 enum TurnRecordBoard {
     Main,
@@ -1172,7 +1189,7 @@ fn scroll_log_to_bottom(board_idx: DisplayBoard) -> JsResult<()> {
 pub fn init_page() -> JsResult<()> {
     generate_svg_markers()?;
     render_starting()?;
-    web_chat::render_chat_reference_tooltip(BughouseParticipant::Observer, false)?;
+    web_chat::render_chat_reference_tooltip(BughouseParticipant::default_observer(), false)?;
     web_chat::render_chat_reference_dialog()?;
     Ok(())
 }
@@ -1228,7 +1245,9 @@ fn make_match_caption_body(mtch: &Match) -> JsResult<web_sys::Element> {
     };
     let node = web_document().create_element("div")?;
     node.append_text_span(prefix, [])?;
-    node.append_text_span(&mtch.match_id, ["lobby-match-id"])?;
+    if let Some(match_id) = mtch.match_id() {
+        node.append_text_span(match_id, ["lobby-match-id"])?;
+    }
     Ok(node)
 }
 
@@ -1612,7 +1631,7 @@ fn render_upgrade_promotion_selector(
 fn render_starting() -> JsResult<()> {
     use PieceKind::*;
     let board_shape = BoardShape { num_rows: 8, num_cols: 8 };
-    let perspective = Perspective::for_participant(BughouseParticipant::Observer);
+    let perspective = Perspective::for_participant(BughouseParticipant::default_observer());
     render_boards(board_shape, perspective)?;
     let reserve = [
         (Pawn, 8),
@@ -1710,8 +1729,9 @@ fn render_clock(
 
 fn update_scores(
     scores: &Option<Scores>, participants: &[Participant], game_status: BughouseGameStatus,
+    is_active_match: bool,
 ) -> JsResult<()> {
-    let show_readiness = !game_status.is_active();
+    let show_readiness = !game_status.is_active() && is_active_match;
     let table = web_document().create_element("table")?;
     match scores {
         None => {}
@@ -1944,7 +1964,7 @@ fn scroll_to_wayback_turn(wayback: WaybackState) {
 fn setup_participation_mode(participant_id: BughouseParticipant) -> JsResult<()> {
     use BughousePlayer::*;
     let (is_symmetric, is_observer) = match participant_id {
-        BughouseParticipant::Observer => (true, true),
+        BughouseParticipant::Observer(_) => (true, true),
         BughouseParticipant::Player(SinglePlayer(_)) => (false, false),
         BughouseParticipant::Player(DoublePlayer(_)) => (true, false),
     };
@@ -2089,9 +2109,11 @@ fn render_archive_game_list(games: Option<Vec<FinishedGameDescription>>) -> JsRe
         tr.append_new_element("th")?
             .with_text_content("R")
             .with_attribute("title", "Whether the game was rated")?;
-        tr.append_new_element("th")?.with_text_content("Teammates");
+        tr.append_new_element("th")?.with_text_content("Teammate");
         tr.append_new_element("th")?.with_text_content("Opponents");
         tr.append_new_element("th")?.with_text_content("Result");
+        tr.append_new_element("th")?
+            .with_attribute("title", "Hover the icon to preview game, click to open")?;
     }
     let tbody = table.append_new_element("tbody")?;
     let Some(games) = games else {
@@ -2108,17 +2130,33 @@ fn render_archive_game_list(games: Option<Vec<FinishedGameDescription>>) -> JsRe
             .with_classes(["game-archive-placeholder-message"])?
             .with_text_content("You games will appear here.");
     }
-    for game in games {
-        let tr = tbody.append_new_element("tr")?;
-        let time_offset = UtcOffset::current_local_offset().unwrap_or(offset!(UTC));
-        let start_time = OffsetDateTime::from(game.game_start_time).to_offset(time_offset);
-        let today = OffsetDateTime::now_utc().to_offset(time_offset);
-        let start_time = if start_time.date() == today.date() {
-            start_time.format(format_description!("[hour]:[minute]")).unwrap()
-        } else {
-            start_time.format(format_description!("[year]-[month]-[day]")).unwrap()
+    for game in games.into_iter().rev() {
+        let game_view_available;
+        let (result, result_class) = match game.result {
+            SubjectiveGameResult::Victory => ("Won", "game-archive-result-victory"),
+            SubjectiveGameResult::Defeat => ("Lost", "game-archive-result-defeat"),
+            SubjectiveGameResult::Draw => ("Draw", "game-archive-result-draw"),
+            SubjectiveGameResult::Observation => ("—", "game-archive-result-observation"),
         };
-        tr.append_new_element("td")?.set_text_content(Some(&start_time));
+        let tr = tbody
+            .append_new_element("tr")?
+            .with_id(&archive_game_row_id(game.game_id))
+            .with_classes([result_class])?;
+        {
+            let time_offset = UtcOffset::current_local_offset().unwrap_or(offset!(UTC));
+            let game_start_utc = OffsetDateTime::from(game.game_start_time);
+            // There was a BPGN format change in late 2023 and the current parser doesn't support
+            // the old games.
+            game_view_available = game_start_utc >= datetime!(2024-01-01 00:00:00 UTC);
+            let game_start_local = game_start_utc.to_offset(time_offset);
+            let today = OffsetDateTime::now_utc().to_offset(time_offset);
+            let start_time = if game_start_local.date() == today.date() {
+                game_start_local.format(format_description!("[hour]:[minute]")).unwrap()
+            } else {
+                game_start_local.format(format_description!("[year]-[month]-[day]")).unwrap()
+            };
+            tr.append_new_element("td")?.set_text_content(Some(&start_time));
+        }
         {
             let rated_td = tr.append_new_element("td")?;
             if game.rated {
@@ -2126,33 +2164,45 @@ fn render_archive_game_list(games: Option<Vec<FinishedGameDescription>>) -> JsRe
             }
         }
         {
-            let teammates = tr.append_new_element("td")?;
-            teammates.append_text_span("Me", ["game-archive-me"])?;
+            let teammate_td = tr.append_new_element("td")?;
             if game.partners.is_empty() {
-                teammates.append_text_span(&format!(" ×2"), ["game-archive-double-play"])?;
+                teammate_td.append_text_span("Me", ["game-archive-me"])?;
             } else {
-                for p in game.partners {
-                    teammates.append_text_span(&format!(", {p}"), [])?;
-                }
+                teammate_td.set_text_content(Some(&game.partners.iter().join(", ")));
             }
         }
         {
-            let opponents = tr.append_new_element("td")?;
+            let opponents_td = tr.append_new_element("td")?;
             if game.opponents.len() == 1 {
-                opponents.append_text_span(&game.opponents[0], [])?;
-                opponents.append_text_span(&format!(" ×2"), ["game-archive-double-play"])?;
+                opponents_td.append_text_span(&game.opponents[0], [])?;
+                opponents_td.append_text_span(&" ×2", ["game-archive-double-play"])?;
             } else {
-                opponents.set_text_content(Some(&game.opponents.iter().join(", ")));
+                opponents_td.set_text_content(Some(&game.opponents.iter().join(", ")));
             }
         }
-        let (result, result_class) = match game.result {
-            SubjectiveGameResult::Victory => ("Won", "game-archive-result-victory"),
-            SubjectiveGameResult::Defeat => ("Lost", "game-archive-result-defeat"),
-            SubjectiveGameResult::Draw => ("Draw", "game-archive-result-draw"),
-            SubjectiveGameResult::Observation => ("—", "game-archive-result-observation"),
-        };
-        tr.append_new_element("td")?.set_text_content(Some(result));
-        tr.class_list().add_1(result_class)?;
+        {
+            tr.append_new_element("td")?.with_text_content(result);
+        }
+        {
+            let view_td = tr.append_new_element("td")?;
+            if game_view_available {
+                view_td
+                    .with_text_content("👀")
+                    .with_classes(["view-archive-game"])?
+                    .with_attribute("archive-game-id", &game.game_id.to_string())?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn highlight_archive_game_row(game_id: i64) -> JsResult<()> {
+    let document = web_document();
+    for element in document.get_elements_by_class_name("game-archive-hovered-row") {
+        element.class_list().remove_1("game-archive-hovered-row")?;
+    }
+    if let Some(row_node) = document.get_element_by_id(&archive_game_row_id(game_id)) {
+        row_node.class_list().add_1("game-archive-hovered-row")?;
     }
     Ok(())
 }
@@ -2391,6 +2441,8 @@ fn square_color_class(row: Row, col: Col) -> &'static str {
     }
 }
 
+fn archive_game_row_id(game_id: i64) -> String { format!("archive-game-row-{}", game_id) }
+
 fn piece_path(piece_kind: PieceKind, force: PieceForce) -> &'static str {
     use PieceForce::*;
     use PieceKind::*;
@@ -2434,7 +2486,7 @@ fn get_audio_pan(my_id: BughouseParticipant, display_board_idx: DisplayBoard) ->
     match (my_id, display_board_idx) {
         (Player(SinglePlayer(_)), DisplayBoard::Primary) => Ok(0.),
         (Player(SinglePlayer(_)), DisplayBoard::Secondary) => Err(rust_error!()),
-        (Player(DoublePlayer(_)) | Observer, DisplayBoard::Primary) => Ok(-1.),
-        (Player(DoublePlayer(_)) | Observer, DisplayBoard::Secondary) => Ok(1.),
+        (Player(DoublePlayer(_)) | Observer(_), DisplayBoard::Primary) => Ok(-1.),
+        (Player(DoublePlayer(_)) | Observer(_), DisplayBoard::Secondary) => Ok(1.),
     }
 }

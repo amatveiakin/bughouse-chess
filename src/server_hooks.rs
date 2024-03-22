@@ -12,6 +12,7 @@ pub trait ServerHooks {
         round: u64,
     );
     fn get_games_by_user(&self, user_name: &str) -> Result<Vec<FinishedGameDescription>, String>;
+    fn get_game_bpgn(&self, game_id: i64) -> Result<String, String>;
 }
 
 pub struct NoopServerHooks {}
@@ -24,6 +25,9 @@ impl ServerHooks for NoopServerHooks {
     ) {
     }
     fn get_games_by_user(&self, _user_name: &str) -> Result<Vec<FinishedGameDescription>, String> {
+        Err("Server hooks not available".to_owned())
+    }
+    fn get_game_bpgn(&self, _game_id: i64) -> Result<String, String> {
         Err("Server hooks not available".to_owned())
     }
 }

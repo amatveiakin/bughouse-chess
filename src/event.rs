@@ -9,7 +9,6 @@ use crate::chat::{ChatMessage, OutgoingChatMessage};
 use crate::clock::GameInstant;
 use crate::game::{BughouseBoard, BughouseGameStatus, PlayerInGame, TurnIndex, TurnRecord};
 use crate::meter::MeterStats;
-use crate::pgn::BpgnExportFormat;
 use crate::player::{Faction, Participant};
 use crate::rules::Rules;
 use crate::scores::Scores;
@@ -37,7 +36,7 @@ pub enum BughouseServerRejection {
     // Only registered users can view personal game history.
     MustRegisterForGameArchive,
     // Server couldn't fetch game list. Probably transient DB error.
-    ErrorFetchingGameList { message: String },
+    ErrorFetchingData { message: String },
     // Server is shutting down for maintenance.
     ShuttingDown,
     // Internal error. Should be investigated.
@@ -128,11 +127,12 @@ pub enum BughouseServerEvent {
     SharedWaybackUpdated {
         turn_index: Option<TurnIndex>,
     },
-    GameExportReady {
-        content: String,
-    },
     ArchiveGameList {
         games: Vec<FinishedGameDescription>,
+    },
+    ArchiveGameBpgn {
+        game_id: i64,
+        bpgn: String,
     },
     Pong,
 }
@@ -199,10 +199,10 @@ pub enum BughouseClientEvent {
     SetSharedWayback {
         turn_index: Option<TurnIndex>,
     },
-    RequestExport {
-        format: BpgnExportFormat,
-    },
     GetArchiveGameList,
+    GetArchiveGameBpgn {
+        game_id: i64,
+    },
     ReportPerformace(BughouseClientPerformance),
     ReportError(BughouseClientErrorReport),
     Ping,
