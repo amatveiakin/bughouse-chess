@@ -740,6 +740,7 @@ dependencies = [
  "serde_yaml",
  "skillratings",
  "sqlx",
+ "strum",
  "tide",
  "tide-jsx",
  "time 0.3.34",

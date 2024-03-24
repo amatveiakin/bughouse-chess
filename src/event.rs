@@ -71,8 +71,8 @@ pub enum SubjectiveGameResult {
 pub struct FinishedGameDescription {
     pub game_id: i64,
     pub game_start_time: UtcDateTime,
-    pub partners: Vec<String>,
-    pub opponents: Vec<String>,
+    pub teammates: Vec<String>, // white, then black
+    pub opponents: Vec<String>, // white, then black
     pub result: SubjectiveGameResult,
     pub rated: bool,
 }

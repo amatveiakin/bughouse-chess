@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, EnumIter, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Enum, EnumIter, Serialize, Deserialize,
+)]
 pub enum Force {
     White,
     Black,

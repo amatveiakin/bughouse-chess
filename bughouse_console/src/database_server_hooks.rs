@@ -4,6 +4,7 @@ use bughouse_chess::utc_time::UtcDateTime;
 use enum_map::enum_map;
 use itertools::Itertools;
 use log::error;
+use strum::IntoEnumIterator;
 use time::OffsetDateTime;
 
 use crate::bughouse_prelude::*;
@@ -47,8 +48,6 @@ impl<DB: DatabaseReader + DatabaseWriter> ServerHooks for DatabaseServerHooks<DB
     }
 
     fn get_games_by_user(&self, user_name: &str) -> Result<Vec<FinishedGameDescription>, String> {
-        let make_team =
-            |player_a, player_b| return [player_a, player_b].into_iter().dedup().collect_vec();
         let full_time_range = OffsetDateTime::UNIX_EPOCH..OffsetDateTime::now_utc();
         // TODO: Optimized SQL query to fetch only games by a given player.
         let rows = async_std::task::block_on(self.db.finished_games(full_time_range, false))
@@ -59,8 +58,19 @@ impl<DB: DatabaseReader + DatabaseWriter> ServerHooks for DatabaseServerHooks<DB
                 let game_id = rowid.id;
                 let game_start_time = row.game_start_time?.into();
                 let mut team_players = enum_map! { _ => vec![] };
-                team_players[Team::Red] = make_team(row.player_red_a, row.player_red_b);
-                team_players[Team::Blue] = make_team(row.player_blue_a, row.player_blue_b);
+                team_players[Team::Red].push((BughouseBoard::A, row.player_red_a));
+                team_players[Team::Red].push((BughouseBoard::B, row.player_red_b));
+                team_players[Team::Blue].push((BughouseBoard::A, row.player_blue_a));
+                team_players[Team::Blue].push((BughouseBoard::B, row.player_blue_b));
+                for team in Team::iter() {
+                    team_players[team]
+                        .sort_by_key(|&(board_idx, _)| get_bughouse_force(team, board_idx));
+                }
+                let mut team_players = team_players
+                    .map(|_, players| players.into_iter().map(|(_, name)| name).collect_vec());
+                for team in Team::iter() {
+                    team_players[team].dedup();
+                }
                 let user_team = team_players
                     .iter()
                     .find(|(_, players)| players.iter().any(|p| p == user_name))
@@ -68,10 +78,7 @@ impl<DB: DatabaseReader + DatabaseWriter> ServerHooks for DatabaseServerHooks<DB
                 let Some(user_team) = user_team else {
                     return None;
                 };
-                let partners = std::mem::take(&mut team_players[user_team])
-                    .into_iter()
-                    .filter(|p| p != user_name)
-                    .collect();
+                let teammates = std::mem::take(&mut team_players[user_team]);
                 let opponents = std::mem::take(&mut team_players[user_team.opponent()]);
                 // TODO: Log game result parsing errors.
                 let winner = game_result_str_to_winner(&row.result).ok()?;
@@ -89,7 +96,7 @@ impl<DB: DatabaseReader + DatabaseWriter> ServerHooks for DatabaseServerHooks<DB
                 Some(FinishedGameDescription {
                     game_id,
                     game_start_time,
-                    partners,
+                    teammates,
                     opponents,
                     result,
                     rated,

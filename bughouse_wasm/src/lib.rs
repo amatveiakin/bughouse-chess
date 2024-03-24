@@ -719,7 +719,8 @@ impl WebClient {
                 Ok(JsEventNoop {}.into())
             }
             Some(NotableEvent::GotArchiveGameList(games)) => {
-                render_archive_game_list(Some(games))?;
+                let user_name = self.state.session().user_name();
+                render_archive_game_list(Some(games), user_name)?;
                 if let Some(game_id) = self.state.archive_game_id() {
                     highlight_archive_game_row(game_id)?;
                 }
@@ -1659,7 +1660,7 @@ fn render_starting() -> JsResult<()> {
             )?;
         }
     }
-    render_archive_game_list(None)?;
+    render_archive_game_list(None, None)?;
     Ok(())
 }
 
@@ -2098,8 +2099,35 @@ fn render_board(
     Ok(())
 }
 
-fn render_archive_game_list(games: Option<Vec<FinishedGameDescription>>) -> JsResult<()> {
+fn render_archive_game_list(
+    games: Option<Vec<FinishedGameDescription>>, user_name: Option<&str>,
+) -> JsResult<()> {
     let document = web_document();
+    let make_player_node = |name: &str| -> JsResult<web_sys::Element> {
+        let node = document.create_element("span")?;
+        if Some(name) == user_name {
+            Ok(node.with_classes(["game-archive-me"])?.with_text_content("Me"))
+        } else {
+            Ok(node.with_text_content(name))
+        }
+    };
+    let make_team_td = |player_names: Vec<String>| -> JsResult<web_sys::Element> {
+        let td = document.create_element("td")?;
+        match player_names.len() {
+            0 => return Err(rust_error!()),
+            1 => {
+                td.append_element(make_player_node(&player_names[0])?)?;
+                td.append_text_span(&" ×2", ["game-archive-double-play"])?;
+            }
+            2 => {
+                td.append_element(make_player_node(&player_names[0])?)?;
+                td.append_text_span(", ", [])?;
+                td.append_element(make_player_node(&player_names[1])?)?;
+            }
+            _ => return Err(rust_error!()),
+        }
+        Ok(td)
+    };
     let table = document.get_existing_element_by_id("archive-game-table")?;
     table.remove_all_children();
     {
@@ -2109,8 +2137,12 @@ fn render_archive_game_list(games: Option<Vec<FinishedGameDescription>>) -> JsRe
         tr.append_new_element("th")?
             .with_text_content("R")
             .with_attribute("title", "Whether the game was rated")?;
-        tr.append_new_element("th")?.with_text_content("Teammate");
-        tr.append_new_element("th")?.with_text_content("Opponents");
+        tr.append_new_element("th")?
+            .with_text_content("Teammates")
+            .with_attribute("title", "Your team (White, Black)")?;
+        tr.append_new_element("th")?
+            .with_text_content("Opponents")
+            .with_attribute("title", "Opposing team (White, Black)")?;
         tr.append_new_element("th")?.with_text_content("Result");
         tr.append_new_element("th")?
             .with_attribute("title", "Hover the icon to preview game, click to open")?;
@@ -2163,26 +2195,9 @@ fn render_archive_game_list(games: Option<Vec<FinishedGameDescription>>) -> JsRe
                 rated_td.set_text_content(Some("⚔️"));
             }
         }
-        {
-            let teammate_td = tr.append_new_element("td")?;
-            if game.partners.is_empty() {
-                teammate_td.append_text_span("Me", ["game-archive-me"])?;
-            } else {
-                teammate_td.set_text_content(Some(&game.partners.iter().join(", ")));
-            }
-        }
-        {
-            let opponents_td = tr.append_new_element("td")?;
-            if game.opponents.len() == 1 {
-                opponents_td.append_text_span(&game.opponents[0], [])?;
-                opponents_td.append_text_span(&" ×2", ["game-archive-double-play"])?;
-            } else {
-                opponents_td.set_text_content(Some(&game.opponents.iter().join(", ")));
-            }
-        }
-        {
-            tr.append_new_element("td")?.with_text_content(result);
-        }
+        tr.append_element(make_team_td(game.teammates)?)?;
+        tr.append_element(make_team_td(game.opponents)?)?;
+        tr.append_new_element("td")?.with_text_content(result);
         {
             let view_td = tr.append_new_element("td")?;
             if game_view_available {
