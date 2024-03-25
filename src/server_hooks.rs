@@ -1,33 +1,40 @@
+use async_trait::async_trait;
+
 use crate::event::{BughouseClientPerformance, FinishedGameDescription};
 use crate::game::BughouseGame;
 use crate::utc_time::UtcDateTime;
 
 
-// TODO: Don't allow hooks to block server! Especially for `get_games_by_user`: fetch response and
-// return it when ready.
+#[async_trait]
 pub trait ServerHooks {
-    fn on_client_performance_report(&mut self, perf: &BughouseClientPerformance);
-    fn on_game_over(
-        &mut self, game: &BughouseGame, game_start_time: UtcDateTime, game_end_time: UtcDateTime,
+    async fn record_client_performance(&self, perf: &BughouseClientPerformance);
+    // TODO: Make async too.
+    fn record_finished_game(
+        &self, game: &BughouseGame, game_start_time: UtcDateTime, game_end_time: UtcDateTime,
         round: u64,
     );
-    fn get_games_by_user(&self, user_name: &str) -> Result<Vec<FinishedGameDescription>, String>;
-    fn get_game_bpgn(&self, game_id: i64) -> Result<String, String>;
+    async fn get_games_by_user(
+        &self, user_name: &str,
+    ) -> Result<Vec<FinishedGameDescription>, String>;
+    async fn get_game_bpgn(&self, game_id: i64) -> Result<String, String>;
 }
 
 pub struct NoopServerHooks {}
 
+#[async_trait]
 impl ServerHooks for NoopServerHooks {
-    fn on_client_performance_report(&mut self, _perf: &BughouseClientPerformance) {}
-    fn on_game_over(
-        &mut self, _game: &BughouseGame, _game_start_time: UtcDateTime,
-        _game_end_time: UtcDateTime, _round: u64,
+    async fn record_client_performance(&self, _perf: &BughouseClientPerformance) {}
+    fn record_finished_game(
+        &self, _game: &BughouseGame, _game_start_time: UtcDateTime, _game_end_time: UtcDateTime,
+        _round: u64,
     ) {
     }
-    fn get_games_by_user(&self, _user_name: &str) -> Result<Vec<FinishedGameDescription>, String> {
+    async fn get_games_by_user(
+        &self, _user_name: &str,
+    ) -> Result<Vec<FinishedGameDescription>, String> {
         Err("Server hooks not available".to_owned())
     }
-    fn get_game_bpgn(&self, _game_id: i64) -> Result<String, String> {
+    async fn get_game_bpgn(&self, _game_id: i64) -> Result<String, String> {
         Err("Server hooks not available".to_owned())
     }
 }

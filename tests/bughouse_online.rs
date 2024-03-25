@@ -78,7 +78,7 @@ struct Server {
     time_elapsed: Duration,
     next_session_id: usize,
     session_store: Arc<Mutex<SessionStore>>,
-    clients: Arc<Mutex<server::Clients>>,
+    clients: Arc<server::Clients>,
     state: server::ServerState,
 }
 
@@ -88,7 +88,7 @@ impl Server {
             check_git_version: false,
             max_starting_time: None,
         };
-        let clients = Arc::new(Mutex::new(server::Clients::new()));
+        let clients = Arc::new(server::Clients::new(&options));
         let session_store = Arc::new(Mutex::new(SessionStore::new()));
         let server_info = Arc::new(Mutex::new(ServerInfo::new()));
         let mut state = server::ServerState::new(
@@ -96,7 +96,7 @@ impl Server {
             Arc::clone(&clients),
             Arc::clone(&session_store),
             server_info,
-            Box::new(TestServerHelpers {}),
+            Arc::new(TestServerHelpers {}),
             None,
         );
         state.TEST_disable_countdown();
@@ -130,10 +130,7 @@ impl Server {
         &mut self, events_tx: async_std::channel::Sender<BughouseServerEvent>,
         session_id: Option<SessionId>,
     ) -> server::ClientId {
-        self.clients
-            .lock()
-            .unwrap()
-            .add_client(events_tx, session_id, "client".to_owned())
+        self.clients.add_client(events_tx, session_id, "client".to_owned())
     }
 
     fn send_network_event(&mut self, id: server::ClientId, event: BughouseClientEvent) {
@@ -328,11 +325,11 @@ impl World {
     }
     fn disconnect_client(&mut self, client_id: TestClientId) {
         let client = &mut self.clients[client_id.0];
-        self.server.clients.lock().unwrap().remove_client(client.id.unwrap()).unwrap();
+        self.server.clients.remove_client(client.id.unwrap()).unwrap();
     }
     fn reconnect_client(&mut self, client_id: TestClientId) {
         let client = &mut self.clients[client_id.0];
-        self.server.clients.lock().unwrap().remove_client(client.id.unwrap()).unwrap();
+        self.server.clients.remove_client(client.id.unwrap()).unwrap();
         client.connect(&mut self.server, None);
     }
 

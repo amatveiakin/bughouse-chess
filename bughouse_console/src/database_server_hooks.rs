@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use bughouse_chess::my_git_version;
 use bughouse_chess::server_hooks::ServerHooks;
 use bughouse_chess::utc_time::UtcDateTime;
@@ -16,8 +17,8 @@ pub struct DatabaseServerHooks<DB> {
 }
 
 impl<DB: DatabaseWriter> DatabaseServerHooks<DB> {
-    pub fn new(db: DB) -> anyhow::Result<Self> {
-        async_std::task::block_on(db.create_tables())?;
+    pub async fn new(db: DB) -> anyhow::Result<Self> {
+        db.create_tables().await?;
         Ok(Self {
             invocation_id: uuid::Uuid::new_v4().to_string(),
             db,
@@ -25,17 +26,16 @@ impl<DB: DatabaseWriter> DatabaseServerHooks<DB> {
     }
 }
 
-impl<DB: DatabaseReader + DatabaseWriter> ServerHooks for DatabaseServerHooks<DB> {
-    fn on_client_performance_report(&mut self, perf: &BughouseClientPerformance) {
-        if let Err(e) = async_std::task::block_on(
-            self.db.add_client_performance(perf, self.invocation_id.as_str()),
-        ) {
+#[async_trait]
+impl<DB: Send + Sync + DatabaseReader + DatabaseWriter> ServerHooks for DatabaseServerHooks<DB> {
+    async fn record_client_performance(&self, perf: &BughouseClientPerformance) {
+        if let Err(e) = self.db.add_client_performance(perf, self.invocation_id.as_str()).await {
             error!("Error persisting client performance: {}", e);
         }
     }
 
-    fn on_game_over(
-        &mut self, game: &BughouseGame, game_start_time: UtcDateTime, game_end_time: UtcDateTime,
+    fn record_finished_game(
+        &self, game: &BughouseGame, game_start_time: UtcDateTime, game_end_time: UtcDateTime,
         round: u64,
     ) {
         let Some(row) = self.game_result(game, game_start_time, game_end_time, round) else {
@@ -47,10 +47,15 @@ impl<DB: DatabaseReader + DatabaseWriter> ServerHooks for DatabaseServerHooks<DB
         }
     }
 
-    fn get_games_by_user(&self, user_name: &str) -> Result<Vec<FinishedGameDescription>, String> {
+    async fn get_games_by_user(
+        &self, user_name: &str,
+    ) -> Result<Vec<FinishedGameDescription>, String> {
         let full_time_range = OffsetDateTime::UNIX_EPOCH..OffsetDateTime::now_utc();
         // TODO: Optimized SQL query to fetch only games by a given player.
-        let rows = async_std::task::block_on(self.db.finished_games(full_time_range, false))
+        let rows = self
+            .db
+            .finished_games(full_time_range, false)
+            .await
             .map_err(|err| format!("Error reading game history: {err:?}"))?;
         let games = rows
             .into_iter()
@@ -106,8 +111,10 @@ impl<DB: DatabaseReader + DatabaseWriter> ServerHooks for DatabaseServerHooks<DB
         Ok(games)
     }
 
-    fn get_game_bpgn(&self, game_id: i64) -> Result<String, String> {
-        async_std::task::block_on(self.db.pgn(RowId { id: game_id }))
+    async fn get_game_bpgn(&self, game_id: i64) -> Result<String, String> {
+        self.db
+            .pgn(RowId { id: game_id })
+            .await
             .map_err(|err| format!("Error fetching game BPGN: {err:?}"))
     }
 }

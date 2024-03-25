@@ -14,6 +14,7 @@ strict = []  # treat warnings as a build error
 anyhow = "1.0.75"
 argon2 = "0.5.2"
 async-std = { version = "1.12.0", features = ["tokio1"] }
+async-trait = "0.1.79"
 async-tungstenite = "0.23.0"
 censor = "0.3.0"
 clap = { version = "4.4.5", features = ["cargo"] }

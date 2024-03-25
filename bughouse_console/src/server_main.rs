@@ -1,7 +1,6 @@
-// Improvement potential. Try to do everything via message-passing, without `Mutex`es,
-//   but also witout threading and network logic inside `ServerState`.
-//   Problem. Adding client via event is a potential race condition in case the
-//   first TCP message from the client arrives earlier.
+// TODO: The server somewhat haphazardly mixes async and non-async synchronization primitives.
+//   We should figure out a proper concurrency story: either transition fully to async code, or
+//   get systematic about how we use threads vs async tasks.
 
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -38,8 +37,7 @@ async fn handle_connection<
     S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 >(
     peer_addr: String, stream: WebSocketStream<S>, tx: mpsc::SyncSender<IncomingEvent>,
-    clients: Arc<Mutex<Clients>>, session_id: Option<SessionId>,
-    http_server_state: HttpServerState<DB>,
+    clients: Arc<Clients>, session_id: Option<SessionId>, http_server_state: HttpServerState<DB>,
 ) -> tide::Result<()> {
     let (mut stream_tx, mut stream_rx) = stream.split();
     info!("Client connected: {}", peer_addr);
@@ -58,11 +56,7 @@ async fn handle_connection<
         })
     });
 
-    let client_id =
-        clients
-            .lock()
-            .unwrap()
-            .add_client(client_tx, session_id.clone(), peer_addr.to_string());
+    let client_id = clients.add_client(client_tx, session_id.clone(), peer_addr.to_string());
     let clients_remover = Arc::clone(&clients);
     let remove_client1 = move || {
         if let (Some(session_id), Some(session_store_subscription_id)) =
@@ -74,7 +68,7 @@ async fn handle_connection<
                 .unwrap()
                 .unsubscribe(&session_id, session_store_subscription_id);
         }
-        clients_remover.lock().unwrap().remove_client(client_id)
+        clients_remover.remove_client(client_id)
     };
     let remove_client2 = remove_client1.clone();
 
@@ -121,7 +115,7 @@ async fn handle_connection<
 
 fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     config: ServerConfig, db: DB, secret_db: Box<dyn SecretDatabaseRW>,
-    session_store: Arc<Mutex<SessionStore>>, clients: Arc<Mutex<Clients>>,
+    session_store: Arc<Mutex<SessionStore>>, clients: Arc<Clients>,
     server_info: Arc<Mutex<ServerInfo>>, tx: mpsc::SyncSender<IncomingEvent>,
 ) {
     let (google_auth, auth_callback_is_https) = match config.auth_options {
@@ -282,7 +276,7 @@ pub fn run(config: ServerConfig) {
     let tx_terminate = tx.clone();
     let server_info = Arc::new(Mutex::new(ServerInfo::new()));
     let server_info_copy = Arc::clone(&server_info);
-    let clients = Arc::new(Mutex::new(Clients::new()));
+    let clients = Arc::new(Clients::new(&options));
     let clients_copy = Arc::clone(&clients);
 
     ctrlc::set_handler(move || tx_terminate.send(IncomingEvent::Terminate).unwrap())
@@ -298,15 +292,17 @@ pub fn run(config: ServerConfig) {
         DatabaseOptions::Sqlite(address) => {
             let db = database::SqlxDatabase::<sqlx::Sqlite>::new(&address)
                 .unwrap_or_else(|_| panic!("Cannot connect to SQLite DB {address}"));
-            let h = DatabaseServerHooks::new(db).expect("Cannot initialize hooks");
-            Some(Box::new(h) as Box<dyn ServerHooks + Send>)
+            let h = async_std::task::block_on(DatabaseServerHooks::new(db))
+                .expect("Cannot initialize hooks");
+            Some(Arc::new(h) as Arc<dyn ServerHooks + Send + Sync>)
         }
 
         DatabaseOptions::Postgres(address) => {
             let db = database::SqlxDatabase::<sqlx::Postgres>::new(&address)
                 .unwrap_or_else(|_| panic!("Cannot connect to Postgres DB {address}"));
-            let h = DatabaseServerHooks::new(db).expect("Cannot initialize hooks");
-            Some(Box::new(h) as Box<dyn ServerHooks + Send>)
+            let h = async_std::task::block_on(DatabaseServerHooks::new(db))
+                .expect("Cannot initialize hooks");
+            Some(Arc::new(h) as Arc<dyn ServerHooks + Send + Sync>)
         }
     };
 
@@ -356,8 +352,8 @@ pub fn run(config: ServerConfig) {
             clients_copy,
             session_store_copy,
             server_info_copy,
-            Box::new(ProdServerHelpers {}),
-            hooks.map(|h| h as Box<dyn ServerHooks>),
+            Arc::new(ProdServerHelpers {}),
+            hooks,
         );
 
         for event in rx {

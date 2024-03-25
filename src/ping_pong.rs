@@ -72,7 +72,7 @@ impl PassiveConnectionMonitor {
         self.latest_incoming = cmp::max(self.latest_incoming, now);
     }
 
-    pub fn status(&mut self, now: Instant) -> PassiveConnectionStatus {
+    pub fn status(&self, now: Instant) -> PassiveConnectionStatus {
         let d = now.saturating_duration_since(self.latest_incoming);
         if d >= OTHER_PARTY_PERMANENTLY_LOST_THRESHOLD {
             PassiveConnectionStatus::PermanentlyLost
