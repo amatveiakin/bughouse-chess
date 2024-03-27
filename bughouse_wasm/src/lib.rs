@@ -657,17 +657,7 @@ impl WebClient {
                 Ok(JsEventMatchStarted { match_id }.into())
             }
             Some(NotableEvent::GameStarted) => {
-                let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
-                    return Err(rust_error!());
-                };
-                // Improvement potential. Add an <hr> style separator between games in chat.
-                let my_id = alt_game.my_id();
-                render_boards(alt_game.board_shape(), alt_game.perspective())?;
-                setup_participation_mode(my_id)?;
-                web_chat::render_chat_reference_tooltip(my_id, self.state.team_chat_enabled())?;
-                for display_board_idx in DisplayBoard::iter() {
-                    scroll_log_to_bottom(display_board_idx)?;
-                }
+                self.init_game_view()?;
                 Ok(JsEventGameStarted {}.into())
             }
             Some(NotableEvent::GameOver(game_status)) => {
@@ -727,9 +717,8 @@ impl WebClient {
                 Ok(JsEventNoop {}.into())
             }
             Some(NotableEvent::ArchiveGameLoaded(game_id)) => {
-                for display_board_idx in DisplayBoard::iter() {
-                    scroll_log_to_bottom(display_board_idx)?;
-                }
+                // TODO: Reset when going back to main menu.
+                self.init_game_view()?;
                 highlight_archive_game_row(game_id)?;
                 Ok(JsEventArchiveGameLoaded { game_id }.into())
             }
@@ -1130,6 +1119,22 @@ impl WebClient {
             let layer = turn_highlight_layer(h.layer);
             let display_coord = to_display_coord(h.coord, board_shape, board_orientation);
             set_square_highlight(None, &class, layer, display_board_idx, Some(display_coord))?;
+        }
+        Ok(())
+    }
+
+    fn init_game_view(&self) -> JsResult<()> {
+        let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
+            return Err(rust_error!());
+        };
+        let my_id = alt_game.my_id();
+        render_boards(alt_game.board_shape(), alt_game.perspective())?;
+        setup_participation_mode(my_id)?;
+        // TODO: Actualize chat tooltip for game archive.
+        // Improvement potential. Add an <hr> style separator between games in chat.
+        web_chat::render_chat_reference_tooltip(my_id, self.state.team_chat_enabled())?;
+        for display_board_idx in DisplayBoard::iter() {
+            scroll_log_to_bottom(display_board_idx)?;
         }
         Ok(())
     }
