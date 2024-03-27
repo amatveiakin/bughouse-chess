@@ -653,6 +653,7 @@ impl WebClient {
         match self.state.next_notable_event() {
             Some(NotableEvent::SessionUpdated) => Ok(JsEventSessionUpdated {}.into()),
             Some(NotableEvent::MatchStarted(match_id)) => {
+                reset_chat()?;
                 init_lobby(&self.state.mtch().unwrap())?;
                 Ok(JsEventMatchStarted { match_id }.into())
             }
@@ -718,6 +719,7 @@ impl WebClient {
             }
             Some(NotableEvent::ArchiveGameLoaded(game_id)) => {
                 // TODO: Reset when going back to main menu.
+                reset_chat()?;
                 self.init_game_view()?;
                 highlight_archive_game_row(game_id)?;
                 Ok(JsEventArchiveGameLoaded { game_id }.into())
@@ -2101,6 +2103,12 @@ fn render_board(
         reserve_container.set_attribute("viewBox", &format!("0 0 {num_cols} {RESERVE_HEIGHT}"))?;
         reserve_container.append_child(&reserve)?;
     }
+    Ok(())
+}
+
+fn reset_chat() -> JsResult<()> {
+    let chat_node = web_document().get_existing_element_by_id("chat-text-area")?;
+    chat_node.remove_all_children();
     Ok(())
 }
 

@@ -11,7 +11,7 @@ use strum::IntoEnumIterator;
 use crate::altered_game::{AlteredGame, WaybackDestination, WaybackState};
 use crate::board::{TurnError, TurnInput, TurnMode};
 use crate::chalk::{ChalkCanvas, ChalkMark, Chalkboard};
-use crate::chat::{ChatMessage, ChatRecipient};
+use crate::chat::{ChatMessage, ChatMessageBody, ChatRecipient};
 use crate::client_chat::{ClientChat, SystemMessageClass};
 use crate::clock::{duration_to_mss, GameDuration, GameInstant, WallGameTimePair};
 use crate::display::{get_board_index, DisplayBoard};
@@ -33,6 +33,7 @@ use crate::rules::{ChessRules, DropAggression, Rules, FIRST_GAME_COUNTDOWN_DURAT
 use crate::scores::Scores;
 use crate::session::Session;
 use crate::starter::EffectiveStartingPosition;
+use crate::utc_time::UtcDateTime;
 use crate::{my_git_version, once_cell_regex};
 
 
@@ -1195,9 +1196,11 @@ impl ClientState {
     }
 
     fn load_archive_game_bpng(&mut self, game_id: i64, bpgn: &str) -> Result<(), ClientError> {
+        let now = UtcDateTime::now();
         let game = import_from_bpgn(bpgn, Role::Client).map_err(|err| {
             ClientError::Internal(format!("Error parsing BPGN for game {game_id}: {err}"))
         })?;
+        let outcome = game.outcome();
 
         let rules = game.rules().clone();
         let players = game.players();
@@ -1213,6 +1216,7 @@ impl ClientState {
                 is_ready: false,
             })
             .collect_vec();
+
         let mut team_score = enum_map! { _ => HalfU32::ZERO };
         match game.status() {
             BughouseGameStatus::Active => {}
@@ -1225,6 +1229,7 @@ impl ClientState {
         }
         let scores = Scores::PerTeam(team_score);
 
+        let game_index = 0; // index within this virtual match, not game id
         let my_player = self
             .session()
             .user_name()
@@ -1237,7 +1242,7 @@ impl ClientState {
         let board_shape = alt_game.board_shape();
         let perspective = alt_game.perspective();
         let game_state = GameState {
-            game_index: 0, // index within match, not game id
+            game_index,
             alt_game,
             time_pair: None,
             chalkboard: Chalkboard::new(),
@@ -1247,6 +1252,14 @@ impl ClientState {
             updates_applied: 0,
             next_low_time_warning_idx: enum_map! { _ => 0 },
         };
+
+        let mut chat = ClientChat::new();
+        chat.add_static(ChatMessage {
+            message_id: 0,
+            game_index: Some(game_index),
+            time: now,
+            body: ChatMessageBody::GameOver { outcome },
+        });
 
         self.match_state = MatchState::Connected(Match {
             origin: MatchOrigin::ArchiveGame(game_id),
@@ -1258,7 +1271,7 @@ impl ClientState {
             is_ready: false,
             first_game_countdown_since: None,
             game_state: Some(game_state),
-            chat: ClientChat::new(),
+            chat,
         });
         self.notable_event_queue.push_back(NotableEvent::ArchiveGameLoaded(game_id));
         Ok(())
