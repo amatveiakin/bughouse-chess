@@ -738,9 +738,13 @@ mod tests {
     use time::macros::datetime;
 
     use super::*;
+    use crate::clock::TimeBreakdown;
     use crate::role::Role;
     use crate::rules::{ChessRules, MatchRules, Rules};
     use crate::test_util::{replay_bughouse_log, sample_bughouse_players};
+    use crate::{game_d, game_t};
+
+    fn algebraic(algebraic: &str) -> TurnInput { TurnInput::Algebraic(algebraic.to_owned()) }
 
     #[test]
     fn pgn_standard_conformity() {
@@ -766,6 +770,39 @@ mod tests {
         // Test: Castling is PGN-style (not FIDE-style).
         assert!(bpgn.contains("O-O"));
         assert!(!bpgn.contains("0-0"));
+    }
+
+    #[test]
+    fn game_duration() {
+        use BughouseBoard::*;
+        use Force::*;
+        let mut rules = Rules {
+            match_rules: MatchRules::unrated(),
+            chess_rules: ChessRules::bughouse_chess_com(),
+        };
+        rules.chess_rules.time_control.starting_time = Duration::from_secs(100);
+        let mut game =
+            BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());
+        game.try_turn(A, &algebraic("e4"), TurnMode::Normal, game_t!(0)).unwrap();
+        game.try_turn(A, &algebraic("e5"), TurnMode::Normal, game_t!(10 s)).unwrap();
+        game.try_turn(B, &algebraic("e4"), TurnMode::Normal, game_t!(20 s)).unwrap();
+        game.test_flag(game_t!(999 s));
+
+        let game_start_time = UtcDateTime::now();
+        let bpgn = export_to_bpgn(BpgnExportFormat::default(), &game, game_start_time, 1);
+        let game2 = import_from_bpgn(&bpgn, Role::ServerOrStandalone).unwrap();
+
+        assert_eq!(game2.status(), BughouseGameStatus::Victory(Team::Blue, VictoryReason::Flag));
+        let game_now = game_t!(0); // doesn't matter for finished games
+        assert_eq!(game2.board(A).clock().time_left(Black, game_now), game_d!(90 s));
+        assert_eq!(game2.board(A).clock().time_left(White, game_now), game_d!(0));
+        assert_eq!(game2.board(A).clock().total_time_elapsed(), game_d!(110 s));
+        let clock_showing = game2.board(A).clock().showing_for(White, game_now);
+        assert_eq!(clock_showing.time_breakdown, TimeBreakdown::LowTime {
+            seconds: 0,
+            deciseconds: 0
+        });
+        assert!(clock_showing.out_of_time);
     }
 
     #[test]

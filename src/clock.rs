@@ -78,6 +78,7 @@ impl MillisDuration {
     pub const MIN_POSITIVE: Self = MillisDuration { ms: 1 };
 
     pub fn from_millis(ms: u64) -> Self { MillisDuration { ms } }
+    pub fn from_secs(s: u64) -> Self { MillisDuration::from_millis(s * 1000) }
     pub fn from_secs_f64(s: f64) -> Self {
         MillisDuration::from_millis((s * MILLIS_PER_SEC as f64) as u64)
     }
@@ -99,6 +100,7 @@ impl GameDuration {
     pub const UNKNOWN: Self = GameDuration { ms: Nanable::NaN };
 
     pub fn from_millis(ms: u64) -> Self { GameDuration { ms: Nanable::Regular(ms) } }
+    pub fn from_secs(s: u64) -> Self { GameDuration::from_millis(s * 1000) }
     pub fn from_secs_f64(s: f64) -> Self { GameDuration::from_millis((s * 1000.0) as u64) }
 
     pub fn is_zero(self) -> bool { self.ms == Nanable::Regular(0) }
@@ -518,6 +520,34 @@ impl Clock {
     }
 }
 
+
+#[cfg(test)]
+#[macro_export]
+macro_rules! game_d {
+    (?) => {
+        $crate::clock::GameDuration::UNKNOWN
+    };
+    (0) => {
+        $crate::clock::GameDuration::ZERO
+    };
+    ($ms:literal ms) => {
+        $crate::clock::GameDuration::from_millis($ms)
+    };
+    ($s:literal s) => {
+        $crate::clock::GameDuration::from_secs($s)
+    };
+    ($m:literal m) => {
+        $crate::clock::GameDuration::from_secs($m * 60)
+    };
+}
+
+#[cfg(test)]
+#[macro_export]
+macro_rules! game_t {
+    ($($arg:tt)*) => {
+        $crate::clock::GameInstant::from_game_duration($crate::game_d!($($arg)*))
+    };
+}
 
 #[cfg(test)]
 mod tests {
