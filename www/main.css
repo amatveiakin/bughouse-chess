@@ -511,7 +511,7 @@ body.observer .player-name {
   font-size: 75%;
 }
 .score-player-name {
-  min-width: 2em;
+  min-width: 5em;
   max-width: 10em;
   font-size: 85%;
   line-height: 110%;
@@ -1168,6 +1168,7 @@ body.game-archive-preview dialog {
 }
 .view-archive-game {
   cursor: pointer;
+  user-select: none;
 }
 
 .menu-page {
