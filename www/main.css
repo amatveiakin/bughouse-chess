@@ -523,11 +523,26 @@ body.observer .player-name {
   padding-top: 0.5em;
   padding-left: 0.5em;
   font-size: 120%;
+  text-align: right;
+}
+.individual-score-table {
+  border-spacing: 0 0.15em;
+}
+.individual-score-table td {
+  vertical-align: baseline;
 }
 .individual-score-value {
   padding-left: 0.5em;
   font-size: 105%;
-  line-height: 110%;
+  text-align: right;
+}
+.individual-score-fraction {
+  font-size: 105%;
+}
+.individual-score-total {
+  padding-left: 0.3em;
+  font-size: 80%;
+  opacity: 0.6;
 }
 body.symmetric #score-body {
     padding: 0.4em 0;

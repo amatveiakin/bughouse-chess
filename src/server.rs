@@ -813,6 +813,7 @@ impl Match {
                 game_end,
             );
             self.add_game_updates(ctx, vec![update]);
+            self.send_lobby_updated(ctx);
         }
     }
 
@@ -1152,10 +1153,15 @@ impl Match {
                 .into_iter()
                 .map(|turn_record| GameUpdate::TurnMade { turn_record })
                 .collect_vec();
+            let mut game_over = false;
             if let Some(game_over_update) = game_over_update {
+                game_over = true;
                 updates.push(game_over_update);
             }
             self.add_game_updates(ctx, updates);
+            if game_over {
+                self.send_lobby_updated(ctx);
+            }
         }
         Ok(())
     }
@@ -1221,6 +1227,7 @@ impl Match {
             game_end,
         );
         self.add_game_updates(ctx, vec![update]);
+        self.send_lobby_updated(ctx);
         Ok(())
     }
 
@@ -1644,6 +1651,8 @@ fn resolve_one_turn(
     None
 }
 
+// Must also send lobby update in order to update `games_played`.
+//
 // Improvement potential. Find a way to make this a member function instead of passing so many
 // arguments separately.
 fn update_on_game_over(

@@ -1744,6 +1744,7 @@ fn update_scores(
     match scores {
         None => {}
         Some(Scores::PerTeam(score_map)) => {
+            table.class_list().add_1("team-score-table")?;
             let mut team_players = enum_map! { _ => vec![] };
             for p in participants {
                 match p.faction {
@@ -1779,8 +1780,18 @@ fn update_scores(
             }
         }
         Some(Scores::PerPlayer(score_map)) => {
+            // TODO: More robust seat out detection to identify obscure cases like playing 1 on 3.
+            table.class_list().add_1("individual-score-table")?;
+            let players = participants.iter().filter(|p| p.faction != Faction::Observer);
+            let has_seat_out = players.clone().count() > TOTAL_ENVOYS;
+            let same_games_played = players.map(|p| p.games_played).all_equal();
+            let display_games_played = has_seat_out || !same_games_played;
             for (name, score) in score_map.iter().sorted_by_key(|(name, _)| *name) {
-                let score = score.as_f64();
+                let score = score.as_f64().to_string();
+                let (score_whole, score_fraction) = match score.split_once('.') {
+                    Some((whole, fraction)) => (whole.to_owned(), format!(".{}", fraction)),
+                    None => (score, "".to_owned()),
+                };
                 let p = participants.iter().find(|p| p.name == *name).unwrap();
                 let p_node = participant_node(p, show_readiness)?;
                 let tr = table.append_new_element("tr")?;
@@ -1789,7 +1800,15 @@ fn update_scores(
                     .append_child(&p_node)?;
                 tr.append_new_element("td")?
                     .with_classes(["individual-score-value"])?
-                    .set_text_content(Some(&score.to_string()));
+                    .with_text_content(&score_whole);
+                tr.append_new_element("td")?
+                    .with_classes(["individual-score-fraction"])?
+                    .with_text_content(&score_fraction);
+                if display_games_played {
+                    tr.append_new_element("td")?
+                        .with_classes(["individual-score-total"])?
+                        .with_text_content(&format!("/{}", p.games_played));
+                }
             }
         }
     }
