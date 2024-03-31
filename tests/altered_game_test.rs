@@ -6,6 +6,7 @@ use bughouse_chess::altered_game::{
 use bughouse_chess::board::{TurnError, TurnInput, VictoryReason};
 use bughouse_chess::clock::GameInstant;
 use bughouse_chess::coord::Coord;
+use bughouse_chess::envoy;
 use bughouse_chess::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
     BughousePlayer, TurnIndex,

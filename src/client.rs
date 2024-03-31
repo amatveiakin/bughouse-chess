@@ -24,6 +24,7 @@ use crate::game::{
     BughousePlayer, PlayerInGame, PlayerRelation, TurnIndex, TurnRecord, TurnRecordExpanded,
 };
 use crate::half_integer::HalfU32;
+use crate::lobby::Teaming;
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::import_from_bpgn;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
@@ -108,7 +109,8 @@ pub enum MatchOrigin {
 pub struct Match {
     pub origin: MatchOrigin,
     pub my_name: String,
-    pub my_faction: Faction,
+    pub my_active_faction: Faction,
+    pub my_desired_faction: Faction,
     // Rules applied in every game of the match.
     pub rules: Rules,
     // All players including those not participating in the current game.
@@ -253,7 +255,16 @@ impl ClientState {
         self.game_state_mut().map(|s| &mut s.alt_game)
     }
 
-    pub fn my_faction(&self) -> Option<Faction> { self.mtch().map(|m| m.my_faction) }
+    pub fn teaming(&self) -> Option<Teaming> {
+        self.mtch().and_then(|m| m.scores.as_ref()).map(|s| match s {
+            Scores::PerTeam(_) => Teaming::FixedTeams,
+            Scores::PerPlayer => Teaming::DynamicTeams,
+        })
+    }
+    pub fn my_active_faction(&self) -> Option<Faction> { self.mtch().map(|m| m.my_active_faction) }
+    pub fn my_desired_faction(&self) -> Option<Faction> {
+        self.mtch().map(|m| m.my_desired_faction)
+    }
     pub fn my_id(&self) -> Option<BughouseParticipant> {
         self.game_state().map(|s| s.alt_game.my_id())
     }
@@ -392,10 +403,14 @@ impl ClientState {
         let Some(mtch) = self.mtch_mut() else {
             return;
         };
-        if !mtch.is_active_match() || mtch.has_started() {
+        if !mtch.is_active_match() {
             return;
         }
-        mtch.my_faction = faction;
+        // Don't update `mtch.my_active_action` until we get a response from server. It's nice to
+        // apply changes immediately because it makes UI more responsive, but (especially in case of
+        // an ongoing match) having faction not match the official record on server is potentially
+        // problematic.
+        mtch.my_desired_faction = faction;
         self.connection.send(BughouseClientEvent::SetFaction { faction });
     }
     pub fn resign(&mut self) {
@@ -808,7 +823,8 @@ impl ClientState {
             self.match_state = MatchState::Connected(Match {
                 origin: MatchOrigin::ActiveMatch(match_id),
                 my_name,
-                my_faction,
+                my_active_faction: my_faction,
+                my_desired_faction: my_faction,
                 rules,
                 participants: Vec::new(),
                 scores: None,
@@ -837,7 +853,8 @@ impl ClientState {
         //   client reached the server. Same for `my_team`.
         let me = participants.iter().find(|p| p.name == mtch.my_name).unwrap();
         mtch.is_ready = me.is_ready;
-        mtch.my_faction = me.faction;
+        mtch.my_active_faction = me.active_faction;
+        mtch.my_desired_faction = me.desired_faction;
         mtch.participants = participants;
         mtch.first_game_countdown_since = countdown_elapsed.map(|t| now - t);
         Ok(())
@@ -1209,9 +1226,12 @@ impl ClientState {
             .map(|p| Participant {
                 name: p.name.clone(),
                 is_registered_user: false,
-                faction: Faction::Fixed(p.id.team()),
+                active_faction: Faction::Fixed(p.id.team()),
+                desired_faction: Faction::Fixed(p.id.team()),
                 games_played: 0,
+                games_missed: 0,
                 double_games_played: 0,
+                individual_score: HalfU32::ZERO,
                 is_online: true,
                 is_ready: false,
             })
@@ -1264,7 +1284,8 @@ impl ClientState {
         self.match_state = MatchState::Connected(Match {
             origin: MatchOrigin::ArchiveGame(game_id),
             my_name: String::new(),
-            my_faction: Faction::Observer,
+            my_active_faction: Faction::Observer,
+            my_desired_faction: Faction::Observer,
             rules,
             participants,
             scores: Some(scores),

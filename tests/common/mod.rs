@@ -117,16 +117,6 @@ pub fn algebraic_turn(algebraic: &str) -> TurnInput {
 }
 
 
-#[macro_export]
-macro_rules! envoy {
-    ($force:ident $board_idx:ident) => {
-        bughouse_chess::game::BughouseEnvoy {
-            board_idx: bughouse_chess::game::BughouseBoard::$board_idx,
-            force: bughouse_chess::force::Force::$force,
-        }
-    };
-}
-
 pub trait ReserveAsHashMap {
     #[allow(dead_code)]
     fn to_map(self) -> HashMap<PieceKind, u8>;

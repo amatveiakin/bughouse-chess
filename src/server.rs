@@ -32,7 +32,10 @@ use crate::game::{
 };
 use crate::half_integer::HalfU32;
 use crate::iterable_mut::IterableMut;
-use crate::lobby::{assign_boards, fix_teams_if_needed, verify_participants, Teaming};
+use crate::lobby::{
+    assign_boards, fix_teams_if_needed, verify_participants, ParticipantsStatus,
+    ParticipantsWarning, Teaming,
+};
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Faction, Participant};
 use crate::role::Role;
@@ -434,7 +437,7 @@ impl ServerState {
             if let Some(player) =
                 mtch.participants.iter().find(|p| p.name == player_assignment.name)
             {
-                if let Faction::Fixed(team) = player.faction {
+                if let Faction::Fixed(team) = player.active_faction {
                     assert_eq!(team, player_assignment.id.team());
                 }
             }
@@ -800,6 +803,7 @@ impl Match {
             assert!(!game.is_active());
             let update = update_on_game_over(
                 ctx,
+                &self.rules,
                 self.teaming.unwrap(),
                 game_index,
                 game,
@@ -966,12 +970,16 @@ impl Match {
                 }
                 // Improvement potential. Allow joining mid-game in individual mode.
                 //   Q. How to balance score in this case?
+                let faction = Faction::Observer;
                 self.participants.add_participant(Participant {
                     name: player_name,
                     is_registered_user,
-                    faction: Faction::Observer,
+                    active_faction: faction,
+                    desired_faction: faction,
                     games_played: 0,
+                    games_missed: 0,
                     double_games_played: 0,
+                    individual_score: HalfU32::ZERO,
                     is_online: true,
                     is_ready: false,
                 })
@@ -1043,12 +1051,16 @@ impl Match {
                     "Client {} join match {} as {}",
                     client_logging_id, self.match_id.0, player_name
                 );
+                let faction = Faction::Random;
                 self.participants.add_participant(Participant {
                     name: player_name,
                     is_registered_user,
-                    faction: Faction::Random,
+                    active_faction: faction,
+                    desired_faction: faction,
                     games_played: 0,
+                    games_missed: 0,
                     double_games_played: 0,
+                    individual_score: HalfU32::ZERO,
                     is_online: true,
                     is_ready: false,
                 })
@@ -1063,12 +1075,42 @@ impl Match {
     fn process_set_faction(
         &mut self, ctx: &mut Context, client_id: ClientId, faction: Faction,
     ) -> EventResult {
-        let participant_id = *self.clients.get(&client_id).ok_or_else(|| unknown_error!())?;
-        if self.game_state.is_some() {
-            return Err(unknown_error!());
+        if faction == Faction::Random && self.teaming == Some(Teaming::FixedTeams) {
+            return Err(unknown_error!("Cannot set random faction in fixed teams mode"));
         }
-        self.participants[participant_id].faction = faction;
+        let participant_id = *self.clients.get(&client_id).ok_or_else(|| unknown_error!())?;
+        let participant = &mut self.participants[participant_id];
+        let old_faction = participant.desired_faction;
+        let name = participant.name.clone();
+        participant.desired_faction = faction;
+        let is_game_active = self.game_state.as_ref().is_some_and(|s| s.game.is_active());
+        if !is_game_active {
+            participant.active_faction = faction;
+        }
         self.send_lobby_updated(ctx);
+        if let Some(GameState { game_index, ref game, .. }) = self.game_state {
+            if !game.is_active() {
+                self.chat.add(
+                    Some(game_index),
+                    ctx.utc_now,
+                    ChatRecipientExpanded::All,
+                    ChatMessageBody::FactionChanged {
+                        participant: name,
+                        old_faction,
+                        new_faction: faction,
+                    },
+                );
+                update_board_assigment(
+                    ctx,
+                    &self.rules,
+                    self.teaming.unwrap(),
+                    game_index,
+                    &self.participants,
+                    &mut self.next_board_assignment,
+                    &mut self.chat,
+                );
+            }
+        }
         Ok(())
     }
 
@@ -1133,6 +1175,7 @@ impl Match {
                 let game_now = GameInstant::from_now_game_active(game_start.unwrap(), ctx.now);
                 game_over_update = Some(update_on_game_over(
                     ctx,
+                    &self.rules,
                     self.teaming.unwrap(),
                     game_index,
                     game,
@@ -1214,6 +1257,7 @@ impl Match {
         game.set_status(status, game_now);
         let update = update_on_game_over(
             ctx,
+            &self.rules,
             self.teaming.unwrap(),
             game_index,
             game,
@@ -1294,7 +1338,7 @@ impl Match {
                                 .collect(),
                         )
                     }
-                    Teaming::FixedTeams => match sender.faction {
+                    Teaming::FixedTeams => match sender.active_faction {
                         Faction::Fixed(team) => ChatRecipientExpanded::FixedTeam(team),
                         Faction::Random => unreachable!(),
                         Faction::Observer => return Err(unknown_error!()),
@@ -1373,7 +1417,11 @@ impl Match {
                     lobby_updated = true;
                     return false;
                 }
-                if !p.faction.is_player() {
+                // whether participant was, is, or is going to be a player
+                let is_ever_player = p.games_played > 0
+                    || p.active_faction.is_player()
+                    || p.desired_faction.is_player();
+                if !is_ever_player {
                     if let Some(ref mut game_state) = self.game_state {
                         chalkboard_updated |=
                             game_state.chalkboard.clear_drawings_by_player(p.name.clone());
@@ -1398,7 +1446,7 @@ impl Match {
         }
 
         let can_start_game =
-            verify_participants(&self.rules, self.participants.iter()).error.is_none();
+            verify_participants(&self.rules, self.participants.iter()).can_start_now();
         if let Some(first_game_countdown_start) = self.first_game_countdown_since {
             if !can_start_game {
                 self.first_game_countdown_since = None;
@@ -1466,10 +1514,9 @@ impl Match {
             self.init_scores(teaming);
         }
 
-        let players = self
-            .next_board_assignment
-            .take()
-            .unwrap_or_else(|| assign_boards(self.participants.iter(), &mut rand::thread_rng()));
+        let players = self.next_board_assignment.take().unwrap_or_else(|| {
+            assign_boards(self.participants.iter(), None, &mut rand::thread_rng())
+        });
         let game = BughouseGame::new(self.rules.clone(), Role::ServerOrStandalone, &players);
         let game_index = self.game_history.len() as u64;
         self.game_state = Some(GameState {
@@ -1498,13 +1545,7 @@ impl Match {
                 self.scores = Some(Scores::PerTeam(scores));
             }
             Teaming::DynamicTeams => {
-                let mut scores = HashMap::new();
-                for p in self.participants.iter() {
-                    if p.faction.is_player() {
-                        scores.insert(p.name.clone(), HalfU32::ZERO);
-                    }
-                }
-                self.scores = Some(Scores::PerPlayer(scores));
+                self.scores = Some(Scores::PerPlayer);
             }
         }
     }
@@ -1568,13 +1609,15 @@ impl Match {
             for (recipient_expanded, m) in messages_to_send.iter() {
                 let is_sender = match &m.body {
                     ChatMessageBody::Regular { sender, .. } => &p.name == sender,
+                    ChatMessageBody::FactionChanged { .. } => false,
                     ChatMessageBody::GameOver { .. } => false,
                     ChatMessageBody::NextGamePlayers { .. } => false,
+                    ChatMessageBody::CannotStartGame { .. } => false,
                 };
                 let is_recipient = match recipient_expanded {
                     ChatRecipientExpanded::All => true,
                     ChatRecipientExpanded::FixedTeam(team) => {
-                        matches!(p.faction, Faction::Fixed(t) if t == *team)
+                        matches!(p.active_faction, Faction::Fixed(t) if t == *team)
                     }
                     ChatRecipientExpanded::Participants(names) => names.contains(&p.name),
                 };
@@ -1651,12 +1694,61 @@ fn resolve_one_turn(
     None
 }
 
-// Must also send lobby update in order to update `games_played`.
+fn update_board_assigment(
+    ctx: &mut Context, rules: &Rules, teaming: Teaming, game_index: u64,
+    participants: &Participants, next_board_assignment: &mut Option<Vec<PlayerInGame>>,
+    chat: &mut ServerChat,
+) {
+    let participants_status = verify_participants(rules, participants.iter());
+    let need_to_seat_out;
+    match participants_status {
+        ParticipantsStatus::CanStart { warning, .. } => {
+            need_to_seat_out = match warning {
+                None => false,
+                Some(ParticipantsWarning::NeedToDoublePlayAndSeatOut) => true,
+                Some(ParticipantsWarning::NeedToDoublePlay) => false,
+                Some(ParticipantsWarning::NeedToSeatOut) => true,
+            };
+        }
+        ParticipantsStatus::CannotStart(error) => {
+            *next_board_assignment = None;
+            chat.add(
+                Some(game_index),
+                ctx.utc_now,
+                ChatRecipientExpanded::All,
+                ChatMessageBody::CannotStartGame { error },
+            );
+            return;
+        }
+    }
+    let next_players = assign_boards(
+        participants.iter(),
+        next_board_assignment.as_deref(),
+        &mut rand::thread_rng(),
+    );
+    if next_board_assignment.as_ref() == Some(&next_players) {
+        return;
+    }
+    *next_board_assignment = Some(next_players.clone());
+    // Improvement potential. Remove "Next up" message when playing one vs one.
+    // Improvement potential. Add "Next up" message when transitioning from having to seat out to
+    //   not having to seat out in teams mode.
+    if need_to_seat_out || teaming == Teaming::DynamicTeams {
+        chat.add(
+            Some(game_index),
+            ctx.utc_now,
+            ChatRecipientExpanded::All,
+            ChatMessageBody::NextGamePlayers { players: next_players },
+        );
+    }
+}
+
+// Must also send lobby update in order to update `games_played` and `active_faction`.
 //
 // Improvement potential. Find a way to make this a member function instead of passing so many
 // arguments separately.
 fn update_on_game_over(
-    ctx: &mut Context, teaming: Teaming, game_index: u64, game: &BughouseGame,
+    ctx: &mut Context, rules: &Rules, teaming: Teaming, game_index: u64, game: &BughouseGame,
     turn_requests: &mut Vec<TurnRequest>, participants: &mut Participants, scores: &mut Scores,
     next_board_assignment: &mut Option<Vec<PlayerInGame>>, chat: &mut ServerChat,
     game_now: GameInstant, game_start_utc_time: &mut Option<UtcDateTime>,
@@ -1665,6 +1757,7 @@ fn update_on_game_over(
     assert!(game_end.is_none());
     *game_end = Some(ctx.now);
     turn_requests.clear();
+    let players: HashMap<_, _> = game.players().into_iter().map(|p| (p.name.clone(), p)).collect();
     let team_scores = match game.status() {
         BughouseGameStatus::Active => {
             panic!("It just so happens that the game here is only mostly over")
@@ -1682,22 +1775,11 @@ fn update_on_game_over(
                 score_map[team] += score;
             }
         }
-        Scores::PerPlayer(ref mut score_map) => {
-            for p in game.players() {
-                *score_map.entry(p.name.clone()).or_insert(HalfU32::ZERO) +=
-                    team_scores[p.id.team()];
-            }
-        }
-    }
-    let mut num_players_per_team = enum_map! { _ => 0 };
-    for p in game.players() {
-        num_players_per_team[p.id.team()] += 1;
-    }
-    for p in game.players() {
-        if let Some(id) = participants.find_by_name(&p.name) {
-            participants[id].games_played += 1;
-            if num_players_per_team[p.id.team()] == 1 {
-                participants[id].double_games_played += 1;
+        Scores::PerPlayer => {
+            for p in participants.iter_mut() {
+                if let Some(pl) = players.get(&p.name) {
+                    p.individual_score += team_scores[pl.id.team()];
+                }
             }
         }
     }
@@ -1706,26 +1788,44 @@ fn update_on_game_over(
     let round = game_index + 1;
     ctx.hooks
         .record_finished_game(game, final_game_start_utc_time, ctx.utc_now, round);
-    let next_players = assign_boards(participants.iter(), &mut rand::thread_rng());
-    *next_board_assignment = Some(next_players.clone());
-
     chat.add(
         Some(game_index),
         ctx.utc_now,
         ChatRecipientExpanded::All,
         ChatMessageBody::GameOver { outcome: game.outcome() },
     );
-    let total_players = participants.iter().filter(|p| p.faction.is_player()).count();
-    // Improvement potential. Remove "Next up" message when playing one vs one.
-    if next_players.len() < total_players || teaming == Teaming::DynamicTeams {
-        chat.add(
-            Some(game_index),
-            ctx.utc_now,
-            ChatRecipientExpanded::All,
-            ChatMessageBody::NextGamePlayers { players: next_players },
-        );
+    for p in participants.iter_mut() {
+        if let Some(pl) = players.get(&p.name) {
+            p.games_played += 1;
+            if matches!(pl.id, BughousePlayer::DoublePlayer(_)) {
+                p.double_games_played += 1;
+            }
+        } else if p.active_faction.is_player() {
+            p.games_missed += 1;
+        }
+        if p.active_faction != p.desired_faction {
+            chat.add(
+                Some(game_index),
+                ctx.utc_now,
+                ChatRecipientExpanded::All,
+                ChatMessageBody::FactionChanged {
+                    participant: p.name.clone(),
+                    old_faction: p.active_faction,
+                    new_faction: p.desired_faction,
+                },
+            );
+            p.active_faction = p.desired_faction;
+        }
     }
-
+    update_board_assigment(
+        ctx,
+        rules,
+        teaming,
+        game_index,
+        participants,
+        next_board_assignment,
+        chat,
+    );
     GameUpdate::GameOver {
         time: game_now,
         game_status: game.status(),

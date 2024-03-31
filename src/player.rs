@@ -2,6 +2,8 @@ use enum_map::Enum;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
+use crate::half_integer::HalfU32;
+
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, EnumIter, Serialize, Deserialize)]
 pub enum Team {
@@ -11,14 +13,16 @@ pub enum Team {
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Enum, Serialize, Deserialize)]
 pub enum Faction {
-    // Play for this team for an entire match. Used only in FixedTeam mode.
+    // Always play for this team.
+    //   - With FixedTeams: this is your team.
+    //   - With IndividualMode: it is still possible to have a fixed team. In this case you never
+    //     play against people with the same fixed team; and you never play together with people
+    //     with another fixed team.
+    // May seat out and observe sometimes if there are too many players.
     Fixed(Team),
 
-    // Play for a random team.
-    //   - In FixedTeams mode: Used only in lobby. Will be converted to `Fixed` when the
-    //     match starts.
-    //   - In Individual move: Used always. A player can still become an observer in any
-    //     given game if there are more than four players.
+    // Play for a random team. Possible only in IndividualMode.
+    // May seat out and observe sometimes if there are too many players.
     Random,
 
     // Always an observer. Never plays.
@@ -29,9 +33,12 @@ pub enum Faction {
 pub struct Participant {
     pub name: String,             // fixed for the entire match
     pub is_registered_user: bool, // fixed for the entire match
-    pub faction: Faction,         // fixed for the entire match
+    pub active_faction: Faction,
+    pub desired_faction: Faction,
     pub games_played: u32,
+    pub games_missed: u32, // was ready to play, but had to seat out
     pub double_games_played: u32,
+    pub individual_score: HalfU32, // meaningful for Teaming::IndividualMode
     pub is_online: bool,
     pub is_ready: bool,
 }

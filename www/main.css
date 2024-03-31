@@ -27,6 +27,8 @@ body {
   --color-dialog-scrollbar: #a18a18;
   --color-dialog-scrollbar-background: #c7bc7c;
   --color-dialog-tooltip: #c6bcad;
+
+  --participant-status-icon-space: 0.25em;
 }
 body.symmetric {
   --sq-size-primary: min(4.4vw, 7.8vh);
@@ -84,8 +86,8 @@ svg {
     ".     prim-log     .   prim-board       .      scnd-rsrv-bot  .  scr-individual  ."
     ".     prim-log     .   prim-board       .          chat       .  scr-individual  ."
     ".  prim-clock-bot  .   prim-board       .          chat       .  scr-individual  ."
-    ".  prim-name-bot   .  prim-rsrv-bot     .      button-panel   .  scr-individual  ."
-    ".        .         .  prim-rsrv-bot     .      button-panel   .  scr-individual  ."
+    ".  prim-name-bot   .  prim-rsrv-bot     .      action-panel   .  scr-individual  ."
+    ".        .         .  prim-rsrv-bot     .      action-panel   .  scr-individual  ."
   ;
   grid-template-columns:
     1fr
@@ -115,7 +117,7 @@ body.symmetric #page {
     ".  prim-clock-bot  .   prim-board       .       scnd-board    .  scnd-clock-bot  ."
     ".  prim-name-bot   .  prim-rsrv-bot     .      scnd-rsrv-bot  .   scnd-name-bot  ."
     ".        .         .  prim-rsrv-bot     .      scnd-rsrv-bot  .  scr-individual  ."
-    ".        .         .   button-panel     .          chat       .  scr-individual  ."
+    ".        .         .   action-panel     .          chat       .  scr-individual  ."
   ;
   grid-template-columns:
     1fr
@@ -156,7 +158,7 @@ body.symmetric #page {
 #turn-log-container-secondary { grid-area: scnd-log; }
 
 #chat-container { grid-area: chat; }
-#button-panel { grid-area: button-panel; }
+#action-panel { grid-area: action-panel; }
 
 .display-none {
   display: none !important;
@@ -168,12 +170,18 @@ body.symmetric #page {
 .inline-block {
   display: inline-block;
 }
+.visibility-hidden {
+  visibility: hidden;
+}
 .nowrap {
   white-space: nowrap;
 }
 .overflow-visible {
   /* Mostly used to allow tooltips to go outside of the dialog area. */
   overflow: visible;
+}
+.full-width {
+  width: 100%;
 }
 .align-left {
   width: 100%;
@@ -207,6 +215,11 @@ body.symmetric #page {
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+.flex-col-stretch {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 .flex-grow {
   flex-basis: 0;
@@ -472,6 +485,7 @@ body.observer .player-name {
 }
 
 .participant-name {
+  padding-left: var(--participant-status-icon-space);
   font-family: "Open Sans", sans-serif;
 }
 .participant-name-l ,
@@ -485,6 +499,10 @@ body.observer .player-name {
 .participant-name-xxxl {
   font-stretch: condensed;
   font-size: 80%;
+}
+.participant-status-icon {
+  position: absolute;
+  transform: translateX(calc(-50% - var(--participant-status-icon-space) - 0.15em));
 }
 
 #score-body,
@@ -511,7 +529,6 @@ body.observer .player-name {
   font-size: 75%;
 }
 .score-player-name {
-  min-width: 5em;
   max-width: 10em;
   font-size: 85%;
   line-height: 110%;
@@ -526,6 +543,7 @@ body.observer .player-name {
   text-align: right;
 }
 .individual-score-table {
+  min-width: 6em;
   border-spacing: 0 0.15em;
 }
 .individual-score-table td {
@@ -540,7 +558,7 @@ body.observer .player-name {
   font-size: 105%;
 }
 .individual-score-total {
-  padding-left: 0.3em;
+  padding-left: 0.15em;
   font-size: 80%;
   opacity: 0.6;
 }
@@ -969,12 +987,21 @@ dialog::-webkit-scrollbar-thumb {
   justify-content: space-between;
 }
 body.symmetric #button-panel {
-  align-items: center;
+  margin-top: 0;
 }
 .button-subpanel {
   display: flex;
   flex-direction: row;
   gap: 0.2em;
+}
+
+#cannot-start-alert {
+  margin-top: 0.3em;
+  color: #ffa0a0;
+  width: var(--board-size-secondary);
+}
+#cannot-start-alert::before {
+  content: "⛔ ";
 }
 
 #connection-info {

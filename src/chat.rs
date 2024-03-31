@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::game::{GameOutcome, PlayerInGame};
+use crate::lobby::ParticipantsError;
+use crate::player::Faction;
 use crate::utc_time::UtcDateTime;
 
 
@@ -21,11 +23,19 @@ pub enum ChatMessageBody {
         recipient: ChatRecipient,
         text: String,
     },
+    FactionChanged {
+        participant: String,
+        old_faction: Faction,
+        new_faction: Faction,
+    },
     GameOver {
         outcome: GameOutcome,
     },
     NextGamePlayers {
         players: Vec<PlayerInGame>,
+    },
+    CannotStartGame {
+        error: ParticipantsError,
     },
 }
 

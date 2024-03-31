@@ -1,10 +1,12 @@
 // TODO: Rename this module.
 
-use std::cmp;
+use std::collections::HashMap;
+use std::{cmp, mem};
 
 use enum_map::{enum_map, EnumMap};
 use itertools::Itertools;
 use rand::prelude::*;
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use crate::game::{
@@ -22,13 +24,11 @@ pub enum Teaming {
     DynamicTeams,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum ParticipantsError {
     NotEnoughPlayers,
-    TooManyPlayersTotal,
     EmptyTeam,
     RatedDoublePlay,
-    NotReady,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -39,14 +39,20 @@ pub enum ParticipantsWarning {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct ParticipantsStatus {
-    pub error: Option<ParticipantsError>,
-    pub warning: Option<ParticipantsWarning>,
+pub enum ParticipantsStatus {
+    CanStart {
+        players_ready: bool,
+        warning: Option<ParticipantsWarning>,
+    },
+    CannotStart(ParticipantsError),
 }
 
 impl ParticipantsStatus {
-    fn from_error(error: ParticipantsError) -> Self {
-        ParticipantsStatus { error: Some(error), warning: None }
+    pub fn can_start_when_ready(&self) -> bool {
+        matches!(self, ParticipantsStatus::CanStart { .. })
+    }
+    pub fn can_start_now(&self) -> bool {
+        matches!(self, ParticipantsStatus::CanStart { players_ready: true, .. })
     }
 }
 
@@ -55,7 +61,7 @@ pub fn num_fixed_players_per_team<'a>(
 ) -> EnumMap<Team, usize> {
     let mut num_players_per_team = enum_map! { _ => 0 };
     for p in participants {
-        if let Faction::Fixed(team) = p.faction {
+        if let Faction::Fixed(team) = p.active_faction {
             num_players_per_team[team] += 1;
         }
     }
@@ -65,18 +71,19 @@ pub fn num_fixed_players_per_team<'a>(
 pub fn verify_participants<'a>(
     rules: &Rules, participants: impl Iterator<Item = &'a Participant> + Clone,
 ) -> ParticipantsStatus {
-    let total_players = participants.clone().filter(|p| p.faction.is_player()).count();
+    let total_players = participants.clone().filter(|p| p.active_faction.is_player()).count();
     if total_players < MIN_PLAYERS {
-        return ParticipantsStatus::from_error(ParticipantsError::NotEnoughPlayers);
+        return ParticipantsStatus::CannotStart(ParticipantsError::NotEnoughPlayers);
     }
 
-    let random_players = participants.clone().filter(|p| p.faction == Faction::Random).count();
+    let random_players =
+        participants.clone().filter(|p| p.active_faction == Faction::Random).count();
     let players_per_team = num_fixed_players_per_team(participants.clone());
     let mut need_to_double_play = total_players < TOTAL_ENVOYS;
     let mut need_to_seat_out = total_players > TOTAL_ENVOYS;
     for &team_players in players_per_team.values() {
         if team_players + random_players == 0 {
-            return ParticipantsStatus::from_error(ParticipantsError::EmptyTeam);
+            return ParticipantsStatus::CannotStart(ParticipantsError::EmptyTeam);
         } else if team_players + random_players < TOTAL_ENVOYS_PER_TEAM {
             // Note. This test relies on the fact that we have exactly two teams and that
             // we've already checked total player number.
@@ -87,24 +94,17 @@ pub fn verify_participants<'a>(
     }
 
     if rules.match_rules.rated && need_to_double_play {
-        return ParticipantsStatus::from_error(ParticipantsError::RatedDoublePlay);
+        return ParticipantsStatus::CannotStart(ParticipantsError::RatedDoublePlay);
     }
 
-    let players_ready = participants.filter(|p| p.faction.is_player()).all(|p| p.is_ready);
-    let error = if players_ready {
-        None
-    } else {
-        Some(ParticipantsError::NotReady)
-    };
-
+    let players_ready = participants.filter(|p| p.active_faction.is_player()).all(|p| p.is_ready);
     let warning = match (need_to_double_play, need_to_seat_out) {
         (true, true) => Some(ParticipantsWarning::NeedToDoublePlayAndSeatOut),
         (true, false) => Some(ParticipantsWarning::NeedToDoublePlay),
         (false, true) => Some(ParticipantsWarning::NeedToSeatOut),
         (false, false) => None,
     };
-
-    ParticipantsStatus { error, warning }
+    ParticipantsStatus::CanStart { players_ready, warning }
 }
 
 // If teams are bound to be the same every game, sets a fixed team for every participant with
@@ -113,7 +113,8 @@ pub fn verify_participants<'a>(
 // Assumes `verify_participants` returns no error.
 pub fn fix_teams_if_needed(participants: &mut impl IterableMut<Participant>) -> Teaming {
     let total_players = participants.get_iter().count();
-    let random_players = participants.get_iter().filter(|p| p.faction == Faction::Random).count();
+    let random_players =
+        participants.get_iter().filter(|p| p.active_faction == Faction::Random).count();
     if random_players == 0 {
         return Teaming::FixedTeams;
     }
@@ -138,8 +139,8 @@ pub fn fix_teams_if_needed(participants: &mut impl IterableMut<Participant>) -> 
 
     if let Some(random_players_team) = random_players_team {
         for p in participants.get_iter_mut() {
-            if p.faction == Faction::Random {
-                p.faction = Faction::Fixed(random_players_team);
+            if p.active_faction == Faction::Random {
+                p.active_faction = Faction::Fixed(random_players_team);
             }
         }
         Teaming::FixedTeams
@@ -152,14 +153,42 @@ pub fn fix_teams_if_needed(participants: &mut impl IterableMut<Participant>) -> 
 //
 // Priorities (from highest to lowest):
 //   1. Don't make people double play if they don't have to.
-//   2. Balance the number of games played by each person.
-//   3. Balance the number of times people double play (if they have to).
-//   4. Uniformly randomize teams, opponents and seating out order.
+//   2. Keep stable assignments when players join active match. After next game players are
+//      announced publicly, we want to stick to the assignment.
+//   3. Balance the number of games played by each person. [*]
+//   4. Balance the number of times people double play (if they have to).
+//   5. Uniformly randomize teams, opponents and seating out order.
+//
+// [*] Actually, we balance the number of games missed. Game missed is defined as a game when a
+//     player was ready to play, but had to seat out.
+//
+// Improvement potential: With the current scheme if a player decides to seat out one game in the
+//   middle of a long match they will permanently have fewer games played and thus lower expected
+//   score. Would be nice to fix this. A radical solution is to balance by games played rather than
+//   games missed, but this has a different downside: with this approach, if a player joins in the
+//   middle of the match they are assigned to play many games in a row and other players will seat
+//   out way more often, which doesn't seem fair. So what we really seem to want is to primarily
+//   balance by games missied, but slightly skew the distribution to balance out games played.
 pub fn assign_boards<'a>(
-    participants: impl Iterator<Item = &'a Participant> + Clone, rng: &mut impl Rng,
+    participants: impl Iterator<Item = &'a Participant> + Clone,
+    current_assignment: Option<&[PlayerInGame]>, rng: &mut impl Rng,
 ) -> Vec<PlayerInGame> {
+    let current_assignment = current_assignment.map(|current| {
+        current.into_iter().map(|p| (p.name.clone(), p.id)).collect::<HashMap<_, _>>()
+    });
+    let current_assignment = current_assignment.as_ref();
+
+    let players = participants
+        .filter(|p| p.active_faction.is_player())
+        .map(|p| {
+            let high_priority =
+                current_assignment.map_or(false, |current| current.contains_key(&p.name));
+            let priority_key = (cmp::Reverse(high_priority), cmp::Reverse(p.games_missed));
+            (p, priority_key)
+        })
+        .collect_vec();
     let priority_buckets =
-        participants.sorted_by_key(|p| p.games_played).group_by(|p| p.games_played);
+        players.into_iter().sorted_by_key(|(_, key)| *key).group_by(|(_, key)| *key);
 
     // Note. Even though we randomize the team for players with `Faction::Random`, randomizing
     // the order within each bucket is still necessary for multiple reasons:
@@ -169,7 +198,7 @@ pub fn assign_boards<'a>(
     //     same order and assigned each player to a random non-full team with equal probability,
     //     then p1 and p2 would be on the same team with probability 1/2 rather than 1/3.
     let player_queue = priority_buckets.into_iter().flat_map(|(_, bucket)| {
-        let mut bucket = bucket.collect_vec();
+        let mut bucket = bucket.map(|(p, _)| p).collect_vec();
         bucket.shuffle(rng);
         bucket
     });
@@ -177,7 +206,7 @@ pub fn assign_boards<'a>(
     let mut players_per_team = enum_map! { _ => vec![] };
     let mut random_players = vec![];
     for p in player_queue {
-        match p.faction {
+        match p.active_faction {
             Faction::Fixed(team) => {
                 if players_per_team[team].len() < TOTAL_ENVOYS_PER_TEAM {
                     players_per_team[team].push(p);
@@ -186,7 +215,7 @@ pub fn assign_boards<'a>(
             Faction::Random => {
                 random_players.push(p);
             }
-            Faction::Observer => {}
+            Faction::Observer => unreachable!(),
         }
         let total_players =
             players_per_team.values().map(|v| v.len()).sum::<usize>() + random_players.len();
@@ -195,12 +224,26 @@ pub fn assign_boards<'a>(
         }
     }
 
+    if let Some(current) = current_assignment {
+        let mut i = 0;
+        while i < random_players.len() {
+            let p = random_players[i];
+            if let Some(id) = current.get(&p.name)
+                && players_per_team[id.team()].len() < TOTAL_ENVOYS_PER_TEAM
+                && (!players_per_team[id.team().opponent()].is_empty() || random_players.len() > 1)
+            {
+                players_per_team[id.team()].push(p);
+                random_players.swap_remove(i);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
     if !random_players.iter().map(|p| p.double_games_played).all_equal() {
         // Try to balance the number of times each person double plays. This usually happens
         // when we have three players (with four+ players people typically don't double play and
-        // with two people both players always double play), but we cannot assume that,
-        // epsecially given the fact that we plan to support joining and leaving the match in
-        // the middle.
+        // with two people both players always double play).
         random_players.sort_by_key(|p| cmp::Reverse(p.double_games_played));
         let smaller_team = Team::iter().min_by_key(|&team| players_per_team[team].len()).unwrap();
         let larger_team = smaller_team.opponent();
@@ -236,7 +279,7 @@ pub fn assign_boards<'a>(
             team_players.shuffle(rng);
 
             match team_players.len() {
-                0 => panic!("Empty team: {}", team_players.len()),
+                0 => panic!("Empty team: {:?}", team),
                 1 => {
                     // TODO: `assert!(!need_to_double_play);`
                     vec![PlayerInGame {
@@ -244,16 +287,30 @@ pub fn assign_boards<'a>(
                         id: BughousePlayer::DoublePlayer(team),
                     }]
                 }
-                2 => BughouseBoard::iter()
-                    .zip_eq(team_players)
-                    .map(move |(board_idx, participant)| PlayerInGame {
-                        name: participant.name.clone(),
-                        id: BughousePlayer::SinglePlayer(BughouseEnvoy {
-                            board_idx,
-                            force: get_bughouse_force(team, board_idx),
-                        }),
-                    })
-                    .collect_vec(),
+                2 => {
+                    let mut players = BughouseBoard::iter()
+                        .zip_eq(team_players)
+                        .map(move |(board_idx, participant)| PlayerInGame {
+                            name: participant.name.clone(),
+                            id: BughousePlayer::SinglePlayer(BughouseEnvoy {
+                                board_idx,
+                                force: get_bughouse_force(team, board_idx),
+                            }),
+                        })
+                        .collect_vec();
+                    let need_swap = players.iter().any(|p| {
+                        current_assignment
+                            .and_then(|current| current.get(&p.name))
+                            .map_or(false, |&id| id.is_single_player() && id != p.id)
+                    });
+                    if need_swap {
+                        let name_a = mem::take(&mut players[0].name);
+                        let name_b = mem::take(&mut players[1].name);
+                        players[0].name = name_b;
+                        players[1].name = name_a;
+                    }
+                    players
+                }
                 _ => panic!("Too many players: {:?}", team_players),
             }
         })
@@ -266,9 +323,16 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::envoy;
     use crate::force::Force;
+    use crate::game::{double_player, single_player};
+    use crate::half_integer::HalfU32;
     use crate::rules::{ChessRules, MatchRules};
     use crate::test_util::deterministic_rng;
+
+    // Number of times to run a calculation in order to make sure an invariant holds for any random
+    // input.
+    const SINGLE_TEST_ITERATIONS: usize = 10;
 
     type Participants = HashMap<String, Participant>;
 
@@ -287,9 +351,12 @@ mod tests {
             self.insert(name.to_owned(), Participant {
                 name: name.to_owned(),
                 is_registered_user: false,
-                faction,
+                active_faction: faction,
+                desired_faction: faction,
                 games_played: 0,
+                games_missed: 0,
                 double_games_played: 0,
+                individual_score: HalfU32::ZERO,
                 is_online: true,
                 is_ready: true,
             });
@@ -299,9 +366,12 @@ mod tests {
             self.insert(name.to_owned(), Participant {
                 name: name.to_owned(),
                 is_registered_user: false,
-                faction,
+                active_faction: faction,
+                desired_faction: faction,
                 games_played: 0,
+                games_missed: 0,
                 double_games_played: 0,
+                individual_score: HalfU32::ZERO,
                 is_online: true,
                 is_ready,
             });
@@ -328,14 +398,15 @@ mod tests {
     }
 
     fn simulate_play(players: &[PlayerInGame], participants: &mut Participants) {
-        for player in players {
-            let participant = participants.get_mut(&player.name).unwrap();
-            participant.games_played += 1;
-            match player.id {
-                BughousePlayer::DoublePlayer(_) => {
-                    participant.double_games_played += 1;
+        let players: HashMap<_, _> = players.into_iter().map(|p| (p.name.clone(), p)).collect();
+        for (_, p) in participants.iter_mut() {
+            if let Some(pl) = players.get(&p.name) {
+                p.games_played += 1;
+                if matches!(pl.id, BughousePlayer::DoublePlayer(_)) {
+                    p.double_games_played += 1;
                 }
-                BughousePlayer::SinglePlayer(_) => {}
+            } else if p.active_faction.is_player() {
+                p.games_missed += 1;
             }
         }
     }
@@ -373,20 +444,17 @@ mod tests {
         participants.add_with_readiness("p3", Faction::Random, false);
         assert_eq!(
             verify_participants(&make_rules(true), participants.values()),
-            ParticipantsStatus {
-                error: Some(ParticipantsError::RatedDoublePlay),
-                warning: None
-            }
+            ParticipantsStatus::CannotStart(ParticipantsError::RatedDoublePlay)
         );
         assert_eq!(
             verify_participants(&make_rules(false), participants.values()),
-            ParticipantsStatus {
-                error: Some(ParticipantsError::NotReady),
+            ParticipantsStatus::CanStart {
+                players_ready: false,
                 warning: Some(ParticipantsWarning::NeedToDoublePlay),
             }
         );
         assert_eq!(fix_teams_if_needed(&mut participants), Teaming::DynamicTeams);
-        assert!(participants.values().all(|p| p.faction == Faction::Random));
+        assert!(participants.values().all(|p| p.active_faction == Faction::Random));
     }
 
     #[test]
@@ -398,8 +466,8 @@ mod tests {
         participants.add_with_readiness("p4", Faction::Fixed(Team::Blue), true);
         assert_eq!(
             verify_participants(&make_rules(false), participants.values()),
-            ParticipantsStatus {
-                error: None,
+            ParticipantsStatus::CanStart {
+                players_ready: true,
                 warning: Some(ParticipantsWarning::NeedToDoublePlayAndSeatOut),
             }
         );
@@ -412,8 +480,8 @@ mod tests {
         participants.add("p1", Faction::Fixed(Team::Red));
         participants.add("p2", Faction::Random);
         assert_eq!(fix_teams_if_needed(&mut participants), Teaming::FixedTeams);
-        assert_eq!(participants["p1"].faction, Faction::Fixed(Team::Red));
-        assert_eq!(participants["p2"].faction, Faction::Fixed(Team::Blue));
+        assert_eq!(participants["p1"].active_faction, Faction::Fixed(Team::Red));
+        assert_eq!(participants["p2"].active_faction, Faction::Fixed(Team::Blue));
     }
 
     #[test]
@@ -423,9 +491,9 @@ mod tests {
         participants.add("p2", Faction::Fixed(Team::Red));
         participants.add("p3", Faction::Random);
         assert_eq!(fix_teams_if_needed(&mut participants), Teaming::FixedTeams);
-        assert_eq!(participants["p1"].faction, Faction::Fixed(Team::Red));
-        assert_eq!(participants["p2"].faction, Faction::Fixed(Team::Red));
-        assert_eq!(participants["p3"].faction, Faction::Fixed(Team::Blue));
+        assert_eq!(participants["p1"].active_faction, Faction::Fixed(Team::Red));
+        assert_eq!(participants["p2"].active_faction, Faction::Fixed(Team::Red));
+        assert_eq!(participants["p3"].active_faction, Faction::Fixed(Team::Blue));
     }
 
     #[test]
@@ -446,7 +514,7 @@ mod tests {
         participants.add("p4", Faction::Random);
         assert_eq!(
             verify_participants(&make_rules(false), participants.values()),
-            ParticipantsStatus { error: None, warning: None }
+            ParticipantsStatus::CanStart { players_ready: true, warning: None }
         );
         assert_eq!(fix_teams_if_needed(&mut participants), Teaming::DynamicTeams);
     }
@@ -460,13 +528,13 @@ mod tests {
         participants.add("p4", Faction::Random);
         assert_eq!(
             verify_participants(&make_rules(false), participants.values()),
-            ParticipantsStatus { error: None, warning: None }
+            ParticipantsStatus::CanStart { players_ready: true, warning: None }
         );
         assert_eq!(fix_teams_if_needed(&mut participants), Teaming::FixedTeams);
-        assert_eq!(participants["p1"].faction, Faction::Fixed(Team::Red));
-        assert_eq!(participants["p2"].faction, Faction::Fixed(Team::Blue));
-        assert_eq!(participants["p3"].faction, Faction::Fixed(Team::Blue));
-        assert_eq!(participants["p4"].faction, Faction::Fixed(Team::Red));
+        assert_eq!(participants["p1"].active_faction, Faction::Fixed(Team::Red));
+        assert_eq!(participants["p2"].active_faction, Faction::Fixed(Team::Blue));
+        assert_eq!(participants["p3"].active_faction, Faction::Fixed(Team::Blue));
+        assert_eq!(participants["p4"].active_faction, Faction::Fixed(Team::Red));
     }
 
     #[test]
@@ -476,8 +544,8 @@ mod tests {
         participants.add("p1", Faction::Fixed(Team::Red));
         participants.add("p2", Faction::Fixed(Team::Blue));
         participants.add("p3", Faction::Fixed(Team::Blue));
-        for _ in 0..10 {
-            let players = players_to_map(assign_boards(participants.values(), rng));
+        for _ in 0..SINGLE_TEST_ITERATIONS {
+            let players = players_to_map(assign_boards(participants.values(), None, rng));
             assert!(players["p1"] == BughousePlayer::DoublePlayer(Team::Red));
             let p2 = players["p2"].as_single_player().unwrap();
             let p3 = players["p3"].as_single_player().unwrap();
@@ -500,7 +568,7 @@ mod tests {
         participants.add("p5", Faction::Fixed(Team::Blue));
         participants.add("p6", Faction::Fixed(Team::Blue));
         for _ in 0..120 {
-            let players = assign_boards(participants.values(), rng);
+            let players = assign_boards(participants.values(), None, rng);
             simulate_play(&players, &mut participants);
         }
         for name in ["p1", "p2"] {
@@ -525,7 +593,7 @@ mod tests {
         participants.add("p4", Faction::Random);
         participants.add("p5", Faction::Random);
         for _ in 0..100 {
-            let players = assign_boards(participants.values(), rng);
+            let players = assign_boards(participants.values(), None, rng);
             simulate_play(&players, &mut participants);
         }
         for p in participants.values() {
@@ -542,7 +610,7 @@ mod tests {
         participants.add("p2", Faction::Random);
         participants.add("p3", Faction::Random);
         for _ in 0..120 {
-            let players = assign_boards(participants.values(), rng);
+            let players = assign_boards(participants.values(), None, rng);
             simulate_play(&players, &mut participants);
         }
         for p in participants.values() {
@@ -561,7 +629,7 @@ mod tests {
         participants.add("p4", Faction::Random);
         let mut stats = ParticipantStatsMap::new();
         for _ in 0..1000 {
-            let players = assign_boards(participants.values(), rng);
+            let players = assign_boards(participants.values(), None, rng);
             collect_stats(&players, &mut stats);
             simulate_play(&players, &mut participants);
         }
@@ -584,7 +652,7 @@ mod tests {
         participants.add("p4", Faction::Fixed(Team::Blue));
         let mut stats = ParticipantStatsMap::new();
         for _ in 0..1000 {
-            let players = assign_boards(participants.values(), rng);
+            let players = assign_boards(participants.values(), None, rng);
             collect_stats(&players, &mut stats);
             simulate_play(&players, &mut participants);
         }
@@ -604,7 +672,7 @@ mod tests {
         participants.add("p3", Faction::Random);
         let mut stats = ParticipantStatsMap::new();
         for _ in 0..2000 {
-            let players = assign_boards(participants.values(), rng);
+            let players = assign_boards(participants.values(), None, rng);
             collect_stats(&players, &mut stats);
             simulate_play(&players, &mut participants);
         }
@@ -638,7 +706,7 @@ mod tests {
         participants.add("p5", Faction::Random);
         let mut stats = ParticipantStatsMap::new();
         for _ in 0..1000 {
-            let players = assign_boards(participants.values(), rng);
+            let players = assign_boards(participants.values(), None, rng);
             collect_stats(&players, &mut stats);
             simulate_play(&players, &mut participants);
         }
@@ -651,6 +719,155 @@ mod tests {
             let st = &stats[name];
             assert_close!(st.played_for_team[Team::Red], 400, "{stats:?}");
             assert_close!(st.played_for_team[Team::Blue], 400, "{stats:?}");
+        }
+    }
+
+    #[test]
+    fn reassignment_is_idempotent_when_possible() {
+        let rng = &mut deterministic_rng();
+        let current_assignment = [
+            single_player("p1", envoy!(White A)),
+            single_player("p5", envoy!(Black B)),
+            single_player("p7", envoy!(Black A)),
+            single_player("p8", envoy!(White B)),
+        ];
+        let mut participants = Participants::new();
+        participants.add("p1", Faction::Fixed(Team::Red));
+        participants.add("p2", Faction::Fixed(Team::Red));
+        participants.add("p3", Faction::Fixed(Team::Blue));
+        participants.add("p4", Faction::Random);
+        participants.add("p5", Faction::Random);
+        participants.add("p6", Faction::Random);
+        participants.add("p7", Faction::Random);
+        participants.add("p8", Faction::Random);
+        for _ in 0..SINGLE_TEST_ITERATIONS {
+            let mut players = assign_boards(participants.values(), Some(&current_assignment), rng);
+            players.sort_by_key(|p| p.name.clone());
+            assert_eq!(players, current_assignment);
+        }
+    }
+
+    #[test]
+    fn reassignment_keeps_existing_players() {
+        let rng = &mut deterministic_rng();
+        let current_assignment = [
+            single_player("p1", envoy!(White A)),
+            single_player("p2", envoy!(Black B)),
+            single_player("p3", envoy!(Black A)),
+            single_player("p4", envoy!(White B)),
+        ];
+        let mut participants = Participants::new();
+        participants.add("p1", Faction::Random);
+        participants.add("p3", Faction::Random);
+        participants.add("p4", Faction::Random);
+        participants.add("p5", Faction::Random);
+        for _ in 0..SINGLE_TEST_ITERATIONS {
+            let mut players = assign_boards(participants.values(), Some(&current_assignment), rng);
+            players.sort_by_key(|p| p.name.clone());
+            assert_eq!(players, [
+                single_player("p1", envoy!(White A)),
+                single_player("p3", envoy!(Black A)),
+                single_player("p4", envoy!(White B)),
+                single_player("p5", envoy!(Black B)),
+            ]);
+        }
+    }
+
+    #[test]
+    fn reassignment_keeps_team_when_possible() {
+        let rng = &mut deterministic_rng();
+        let current_assignment = [single_player("p2", envoy!(White A))];
+        let mut participants = Participants::new();
+        participants.add("p1", Faction::Fixed(Team::Red));
+        participants.add("p2", Faction::Random);
+        participants.add("p3", Faction::Random);
+        for _ in 0..SINGLE_TEST_ITERATIONS {
+            let mut players = assign_boards(participants.values(), Some(&current_assignment), rng);
+            players.sort_by_key(|p| p.name.clone());
+            assert_eq!(players, [
+                single_player("p1", envoy!(Black B)),
+                single_player("p2", envoy!(White A)),
+                double_player("p3", Team::Blue),
+            ]);
+        }
+    }
+
+    #[test]
+    fn reassignment_breaks_team_if_needed() {
+        let rng = &mut deterministic_rng();
+        let current_assignment = [
+            single_player("p1", envoy!(White A)),
+            single_player("p2", envoy!(Black B)),
+            double_player("p3", Team::Blue),
+        ];
+        let mut participants = Participants::new();
+        participants.add("p1", Faction::Random);
+        participants.add("p2", Faction::Random);
+        participants.add("p3", Faction::Observer);
+        for _ in 0..SINGLE_TEST_ITERATIONS {
+            let mut players = assign_boards(participants.values(), Some(&current_assignment), rng);
+            players.sort_by_key(|p| p.name.clone());
+            for p in &players {
+                assert!(p.id.is_double_player());
+            }
+            let (p1, p2) = players.into_iter().collect_tuple().unwrap();
+            assert_ne!(p1.id.team(), p2.id.team());
+        }
+    }
+
+
+    #[test]
+    fn reassignment_changes_team_if_needed() {
+        let rng = &mut deterministic_rng();
+        let current_assignment = [
+            single_player("p1", envoy!(White A)),
+            single_player("p2", envoy!(Black B)),
+            single_player("p3", envoy!(White B)),
+            single_player("p4", envoy!(Black A)),
+        ];
+        let mut participants = Participants::new();
+        participants.add("p1", Faction::Random);
+        participants.add("p2", Faction::Random);
+        participants.add("p3", Faction::Random);
+        participants.add("p5", Faction::Fixed(Team::Red));
+        let mut stats = ParticipantStatsMap::new();
+        for _ in 0..1000 {
+            let players = assign_boards(participants.values(), Some(&current_assignment), rng);
+            collect_stats(&players, &mut stats);
+            simulate_play(&players, &mut participants);
+        }
+        assert_close!(stats["p3"].played_for_team[Team::Blue], 1000, "{stats:?}");
+        assert_close!(stats["p5"].played_for_team[Team::Red], 1000, "{stats:?}");
+        // Fixed team condition for p5 must be satisfied, so either p1 or p2 is pushed to another
+        // team.
+        for name in ["p1", "p2"] {
+            assert_close!(stats[name].played_for_team[Team::Red], 500, "{stats:?}");
+            assert_close!(stats[name].played_for_team[Team::Blue], 500, "{stats:?}");
+        }
+    }
+
+    #[test]
+    fn reassignment_adds_players_if_double_play() {
+        let rng = &mut deterministic_rng();
+        let current_assignment = [
+            single_player("p1", envoy!(White A)),
+            single_player("p2", envoy!(Black B)),
+            double_player("p3", Team::Blue),
+        ];
+        let mut participants = Participants::new();
+        participants.add("p1", Faction::Random);
+        participants.add("p2", Faction::Random);
+        participants.add("p3", Faction::Random);
+        participants.add("p4", Faction::Random);
+        participants.add("p5", Faction::Random);
+        for _ in 0..1000 {
+            let players = assign_boards(participants.values(), Some(&current_assignment), rng);
+            assert!(players.iter().all(|p| p.id.is_single_player()));
+            simulate_play(&players, &mut participants);
+        }
+        // One of the new players joins to avoid double-play when not needed.
+        for name in ["p4", "p5"] {
+            assert_close!(participants[name].games_played, 500, "{participants:?}");
         }
     }
 }

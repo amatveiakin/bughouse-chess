@@ -19,10 +19,9 @@ use bughouse_chess::display::{get_display_board_index, DisplayBoard, Perspective
 use bughouse_chess::event::{BughouseClientEvent, BughouseServerEvent};
 use bughouse_chess::force::Force;
 use bughouse_chess::game::{
-    BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
-    BughousePlayer, PlayerInGame, TurnIndex,
+    double_player, single_player, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
+    BughouseParticipant, BughousePlayer, TurnIndex,
 };
-use bughouse_chess::half_integer::HalfU32;
 use bughouse_chess::piece::PieceKind;
 use bughouse_chess::player::{Faction, Team};
 use bughouse_chess::rules::{
@@ -34,7 +33,7 @@ use bughouse_chess::server_helpers::TestServerHelpers;
 use bughouse_chess::session::{RegistrationMethod, Session, UserInfo};
 use bughouse_chess::session_store::{SessionId, SessionStore};
 use bughouse_chess::utc_time::UtcDateTime;
-use bughouse_chess::{client, server};
+use bughouse_chess::{client, envoy, server};
 use common::*;
 use instant::Instant;
 use itertools::Itertools;
@@ -55,20 +54,6 @@ fn default_chess_rules() -> ChessRules {
             drop_aggression: DropAggression::NoChessMate,
         }),
         ..ChessRules::chess_blitz()
-    }
-}
-
-fn single_player(name: &str, envoy: BughouseEnvoy) -> PlayerInGame {
-    PlayerInGame {
-        name: name.to_owned(),
-        id: BughousePlayer::SinglePlayer(envoy),
-    }
-}
-
-fn double_player(name: &str, team: Team) -> PlayerInGame {
-    PlayerInGame {
-        name: name.to_owned(),
-        id: BughousePlayer::DoublePlayer(team),
     }
 }
 
@@ -822,7 +807,7 @@ fn cold_reconnect_game_active() {
     let cl5 = world.new_client();
     world[cl5].join(&mtch, "p5");
     world.process_all_events();
-    assert_eq!(world[cl5].state.mtch().unwrap().my_faction, Faction::Observer);
+    assert_eq!(world[cl5].state.mtch().unwrap().my_active_faction, Faction::Observer);
 
     // Cannot reconnect as an active player.
     let cl2_new = world.new_client();
@@ -918,7 +903,7 @@ fn hot_reconnect_lobby() {
             .iter()
             .find(|p| p.name == "p2")
             .unwrap();
-        assert_eq!(p.faction, Faction::Fixed(Team::Red));
+        assert_eq!(p.active_faction, Faction::Fixed(Team::Red));
         assert!(!p.is_ready);
     }
 
@@ -1342,52 +1327,6 @@ fn seating_assignment_is_fair() {
     );
 }
 
-// Regression test: web client assumes there is a participant for every score entry; it used to
-// panic if an observer with a score left.
-#[test]
-fn no_score_for_observers() {
-    let mut world = World::new();
-    let [cl1, cl2, cl3, cl4, cl5] = world.new_clients();
-
-    let mtch = world.new_match(cl1, "p1");
-
-    world.server.state.TEST_override_board_assignment(mtch.clone(), vec![
-        single_player("p1", envoy!(White A)),
-        single_player("p2", envoy!(Black B)),
-        single_player("p4", envoy!(Black A)),
-        single_player("p5", envoy!(White B)),
-    ]);
-
-    world[cl2].join(&mtch, "p2");
-    world[cl3].join(&mtch, "p3");
-    world[cl4].join(&mtch, "p4");
-    world[cl5].join(&mtch, "p5");
-    world.process_all_events();
-
-    world[cl3].state.set_faction(Faction::Observer);
-    world.process_all_events();
-
-    for cl in [cl1, cl2, cl4, cl5].iter() {
-        world[*cl].state.set_ready(true);
-    }
-    world.process_all_events();
-
-    world.replay_white_checkmates_black(cl1, cl4);
-    let scores = match world[cl1].state.mtch().unwrap().scores.as_ref().unwrap() {
-        Scores::PerPlayer(scores) => scores,
-        _ => panic!(),
-    };
-    assert_eq!(
-        *scores,
-        HashMap::from_iter([
-            ("p1".to_owned(), HalfU32::whole(1)),
-            ("p2".to_owned(), HalfU32::whole(1)),
-            ("p4".to_owned(), HalfU32::whole(0)),
-            ("p5".to_owned(), HalfU32::whole(0)),
-        ])
-    );
-}
-
 #[test]
 fn shared_wayback() {
     let mut world = World::new();
@@ -1740,4 +1679,41 @@ fn guest_user_reconnect_ok() {
 
     world[cl_new].join(&mtch, "Alice");
     world.process_all_events();
+}
+
+// TODO: Midgame faction change test.
+#[test]
+fn mid_match_faction_change() {
+    let mut world = World::new();
+    let (mtch, cl1, _cl2, _cl3, _cl4) = world.default_clients();
+
+    world[cl1].make_turn("e4").unwrap();
+    world.process_all_events();
+
+    let cl5 = world.new_client();
+    world[cl5].join(&mtch, "p5");
+    world.process_all_events();
+    let p5_view = world[cl1].state.mtch().unwrap().participants.last().unwrap();
+    assert_eq!(p5_view.name, "p5");
+    assert_eq!(p5_view.active_faction, Faction::Observer);
+
+    world[cl5].state.set_faction(Faction::Fixed(Team::Red));
+    world.process_all_events();
+
+    assert!(world[cl1].chat_item_text().is_empty());
+
+    world[cl1].state.resign();
+    world.process_all_events();
+
+    world[cl1].state.set_faction(Faction::Observer);
+    world.process_all_events();
+
+    let mut chat_iter = world[cl1].chat_item_text().into_iter();
+    assert_eq!(chat_iter.next().unwrap(), "Game over! p3 & p4 won: p1 & p2 resigned.");
+    assert_eq!(chat_iter.next().unwrap(), "p5 joined team Red");
+    assert!(chat_iter.next().unwrap().starts_with("Next up:"));
+    assert_eq!(chat_iter.next().unwrap(), "p1 became an observer");
+    assert!(chat_iter.next().is_none());
+    // Ideally we would want to get another "Next up" message at this point, but this not
+    // implemented yet.
 }

@@ -5,7 +5,8 @@ use enum_map::enum_map;
 use crate::chat::{
     ChatMessage, ChatMessageBody, ChatRecipient, OutgoingChatMessage, MAX_CHAT_MESSAGES,
 };
-use crate::player::Team;
+use crate::lobby::ParticipantsError;
+use crate::player::{Faction, Team};
 use crate::rules::ChessRules;
 
 
@@ -159,6 +160,26 @@ fn static_message_to_item(
                 flash: false,
             })
         }
+        ChatMessageBody::FactionChanged { participant, new_faction, .. } => {
+            // Note. The messages are based on the fact that we allow switching to observer and
+            // back. If other faction changes are allowed, these probably need to be updated.
+            let text = match new_faction {
+                Faction::Fixed(Team::Red) => format!("{participant} joined team Red"),
+                Faction::Fixed(Team::Blue) => format!("{participant} joined team Blue"),
+                Faction::Random => format!("{participant} is going to play"),
+                Faction::Observer => format!("{participant} became an observer"),
+            };
+            Some(ChatItem {
+                id,
+                durability: ChatItemDurability::Static,
+                text,
+                sender: Some(ChatParty::System(SystemMessageClass::Info)),
+                recipient: None,
+                dimmed: old_game,
+                prominent: false,
+                flash: false,
+            })
+        }
         ChatMessageBody::GameOver { outcome } => {
             let outcome = outcome.to_readable_string(chess_rules);
             let highlight = !old_game;
@@ -198,6 +219,25 @@ fn static_message_to_item(
                 flash: false,
             })
         }
+        ChatMessageBody::CannotStartGame { error } => Some(ChatItem {
+            id,
+            durability: ChatItemDurability::Static,
+            text: cannot_start_game_message(*error).to_owned(),
+            sender: Some(ChatParty::System(SystemMessageClass::Error)),
+            recipient: None,
+            dimmed: old_game,
+            prominent: false,
+            flash: false,
+        }),
+    }
+}
+
+
+pub fn cannot_start_game_message(error: ParticipantsError) -> &'static str {
+    match error {
+        ParticipantsError::NotEnoughPlayers => "Not enough players",
+        ParticipantsError::EmptyTeam => "A team is empty",
+        ParticipantsError::RatedDoublePlay => "Cannot play on two boards in rated",
     }
 }
 

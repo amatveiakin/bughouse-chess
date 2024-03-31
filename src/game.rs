@@ -378,7 +378,7 @@ pub enum BughouseParticipant {
 }
 
 // Player in an active game.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlayerInGame {
     pub name: String,
     pub id: BughousePlayer,
@@ -422,6 +422,8 @@ impl BughouseEnvoy {
 }
 
 impl BughousePlayer {
+    pub fn is_single_player(self) -> bool { self.as_single_player().is_some() }
+    pub fn is_double_player(self) -> bool { self.as_double_player().is_some() }
     pub fn as_single_player(self) -> Option<BughouseEnvoy> {
         match self {
             BughousePlayer::SinglePlayer(envoy) => Some(envoy),
@@ -934,4 +936,31 @@ fn make_turn_expanded(turn: Turn, algebraic: AlgebraicTurn, facts: TurnFacts) ->
         captures: facts.captures,
         steals: facts.steals,
     }
+}
+
+// For tests.
+pub fn single_player(name: &str, envoy: BughouseEnvoy) -> PlayerInGame {
+    PlayerInGame {
+        name: name.to_owned(),
+        id: BughousePlayer::SinglePlayer(envoy),
+    }
+}
+
+// For tests.
+pub fn double_player(name: &str, team: Team) -> PlayerInGame {
+    PlayerInGame {
+        name: name.to_owned(),
+        id: BughousePlayer::DoublePlayer(team),
+    }
+}
+
+// For tests.
+#[macro_export]
+macro_rules! envoy {
+    ($force:ident $board_idx:ident) => {
+        $crate::game::BughouseEnvoy {
+            board_idx: $crate::game::BughouseBoard::$board_idx,
+            force: $crate::force::Force::$force,
+        }
+    };
 }

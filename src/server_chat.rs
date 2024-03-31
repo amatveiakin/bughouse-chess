@@ -62,8 +62,10 @@ impl ServerChat {
                 // check how this affects WASM size, though.
                 *text = text.chars().take(MAX_CHAT_MESSAGE_LENGTH).collect()
             }
+            ChatMessageBody::FactionChanged { .. } => {}
             ChatMessageBody::GameOver { .. } => {}
             ChatMessageBody::NextGamePlayers { .. } => {}
+            ChatMessageBody::CannotStartGame { .. } => {}
         }
         let message_id = self.next_id;
         self.next_id += 1;

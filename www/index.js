@@ -68,6 +68,8 @@ class Timer {
 class MyButton {
   static HIDE = Symbol(); // `Escape` button will hide the dialog iff `HIDE` button exists
   static DO = Symbol();
+  static OPTION_1 = Symbol();
+  static OPTION_2 = Symbol();
   constructor(label, action) {
     this.label = label;
     this.action = action;
@@ -150,6 +152,7 @@ const game_archive_button = document.getElementById("game-archive-button");
 const leave_match_button = document.getElementById("leave-match-button");
 const ready_button = document.getElementById("ready-button");
 const resign_button = document.getElementById("resign-button");
+const toggle_faction_button = document.getElementById("toggle-faction-button");
 const rules_button = document.getElementById("rules-button");
 const export_button = document.getElementById("export-button");
 const volume_button = document.getElementById("volume-button");
@@ -310,6 +313,7 @@ chat_reference_tooltip_hide.addEventListener("click", () =>
 leave_match_button.addEventListener("click", leave_match);
 ready_button.addEventListener("click", () => execute_input("/ready"));
 resign_button.addEventListener("click", request_resign);
+toggle_faction_button.addEventListener("click", toggle_faction_ingame);
 rules_button.addEventListener("click", () => execute_input("/rules"));
 export_button.addEventListener("click", () => execute_input("/save"));
 volume_button.addEventListener("click", next_volume);
@@ -360,6 +364,7 @@ set_volume(max_volume);
 
 setInterval(on_tick, 50);
 
+// TODO: Support async function and use in `toggle_faction_ingame`.
 function with_error_handling(f) {
   // Note. Re-throw all unexpected errors to get a stacktrace.
   try {
@@ -837,6 +842,16 @@ function update_connection_status() {
   }
 }
 
+function update_toggle_faction_button() {
+  const faction = wasm_client().my_desired_faction();
+  const is_observer = faction == "observer";
+  set_displayed(document.getElementById("toggle-faction-observer"), is_observer);
+  set_displayed(document.getElementById("toggle-faction-player"), !is_observer);
+  toggle_faction_button.title = is_observer
+    ? "You are observing. Click to participate starting from the next game (note that you will still seat out sometimes if there are more that four players)"
+    : "You are playing. Click to observe starting from the next game";
+}
+
 function update_shared_wayback_button() {
   const shared_wayback = wasm_client().shared_wayback_enabled();
   set_displayed(document.getElementById("wayback-together"), shared_wayback);
@@ -855,6 +870,7 @@ function update_buttons() {
       set_displayed(leave_match_button, false);
       set_displayed(resign_button, observer_status == "no");
       set_displayed(ready_button, false);
+      set_displayed(toggle_faction_button, true);
       set_displayed(export_button, false);
       set_displayed(shared_wayback_button, false);
       break;
@@ -862,6 +878,7 @@ function update_buttons() {
       set_displayed(leave_match_button, false);
       set_displayed(resign_button, false);
       set_displayed(ready_button, observer_status != "permanently");
+      set_displayed(toggle_faction_button, true);
       // TODO: Add "get game permalink" button.
       set_displayed(export_button, false);
       set_displayed(shared_wayback_button, true);
@@ -870,6 +887,7 @@ function update_buttons() {
       set_displayed(leave_match_button, true);
       set_displayed(resign_button, false);
       set_displayed(ready_button, false);
+      set_displayed(toggle_faction_button, false);
       set_displayed(export_button, true);
       set_displayed(shared_wayback_button, false); // TODO: allow watching archive games together and set to `true`
       break;
@@ -877,12 +895,14 @@ function update_buttons() {
       set_displayed(leave_match_button, false);
       set_displayed(resign_button, false);
       set_displayed(ready_button, false);
+      set_displayed(toggle_faction_button, false);
       set_displayed(export_button, false);
       set_displayed(shared_wayback_button, false);
       break;
     default:
       throw new Error(`Unknown game status: ${game_status}`);
   }
+  update_toggle_faction_button();
   update_shared_wayback_button();
 }
 
@@ -905,6 +925,33 @@ async function request_resign() {
   ]);
   if (ret == MyButton.DO) {
     execute_input("/resign");
+  }
+}
+
+async function toggle_faction_ingame() {
+  const current_faction = wasm_client().my_desired_faction();
+  if (current_faction == "none") {
+    // unavailable
+  } else if (current_faction == "observer") {
+    if (wasm_client().fixed_teams()) {
+      // TODO: Popup menu instead of a dialog.
+      // TODO: List team players. Team color is hidden from the UI.
+      const ret = await text_dialog("Which team do you want to join?", [
+        new MyButton("Cancel", MyButton.HIDE),
+        new MyButton("Team Red", MyButton.OPTION_1),
+        new MyButton("Team Blue", MyButton.OPTION_2),
+      ]);
+      if (ret == MyButton.OPTION_1) {
+        wasm_client().change_faction_ingame("team_red");
+      } else if (ret == MyButton.OPTION_2) {
+        wasm_client().change_faction_ingame("team_blue");
+      }
+    } else {
+      // Improvement potential. Allow joining as `Faction::Fixed` in `DynamicTeams` mode.
+      wasm_client().change_faction_ingame("random");
+    }
+  } else {
+    wasm_client().change_faction_ingame("observer");
   }
 }
 

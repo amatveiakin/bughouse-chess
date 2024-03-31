@@ -32,6 +32,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use bughouse_chess::client::*;
+use bughouse_chess::client_chat::cannot_start_game_message;
 use bughouse_chess::lobby::*;
 use bughouse_chess::meter::*;
 use bughouse_chess::session::*;
@@ -180,8 +181,15 @@ impl WebClient {
         self.state.current_turnaround_time().as_secs_f64()
     }
 
+    pub fn fixed_teams(&self) -> bool { self.state.teaming() == Some(Teaming::FixedTeams) }
+    pub fn my_active_faction(&self) -> String {
+        self.state.my_active_faction().map_or("none", faction_id).to_owned()
+    }
+    pub fn my_desired_faction(&self) -> String {
+        self.state.my_desired_faction().map_or("none", faction_id).to_owned()
+    }
     pub fn observer_status(&self) -> String {
-        let Some(my_faction) = self.state.my_faction() else {
+        let Some(my_faction) = self.state.my_active_faction() else {
             return "no".to_owned();
         };
         match my_faction {
@@ -219,25 +227,32 @@ impl WebClient {
         let Some(mtch) = self.state.mtch() else {
             return "".to_owned();
         };
-        type Error = ParticipantsError;
-        type Warning = ParticipantsWarning;
-        let ParticipantsStatus { error, warning } =
-            verify_participants(&mtch.rules, mtch.participants.iter());
-        match (error, warning) {
-            (Some(Error::NotEnoughPlayers), _) => "Not enough players",
-            (Some(Error::TooManyPlayersTotal), _) => "Too many players",
-            (Some(Error::EmptyTeam), _) => "A team is empty",
-            (Some(Error::RatedDoublePlay), _) =>
-                "Playing on two boards is only allowed in unrated matches",
-            (Some(Error::NotReady) | None, Some(Warning::NeedToDoublePlayAndSeatOut)) =>
-                "👉🏾 Can start, but some players will have to play on two boards while others will have to seat out",
-            (Some(Error::NotReady) | None, Some(Warning::NeedToDoublePlay)) =>
-                "👉🏾 Can start, but some players will have to play on two boards",
-            (Some(Error::NotReady) | None, Some(Warning::NeedToSeatOut)) =>
-                "👉🏾 Can start, but some players will have to seat out each game",
-            (Some(Error::NotReady), None) => "👍🏾 Will start when everyone is ready",
-            (None, None) => "",
-        }.to_owned()
+        let particpants_status = verify_participants(&mtch.rules, mtch.participants.iter());
+        match particpants_status {
+            ParticipantsStatus::CanStart { players_ready, warning } => {
+                match (players_ready, warning) {
+                    (_, Some(ParticipantsWarning::NeedToDoublePlayAndSeatOut)) => {
+                        "👉🏾 Can start, but some players will have to play on two boards while others will have to seat out"
+                    }
+                    (_, Some(ParticipantsWarning::NeedToDoublePlay)) => {
+                        "👉🏾 Can start, but some players will have to play on two boards"
+                    }
+                    (_, Some(ParticipantsWarning::NeedToSeatOut)) => {
+                        "👉🏾 Can start, but some players will have to seat out each game"
+                    }
+                    (false, None) => "👍🏾 Will start when everyone is ready",
+                    (true, None) => "",
+                }
+            }
+            ParticipantsStatus::CannotStart(error) => match error {
+                ParticipantsError::NotEnoughPlayers => "Not enough players",
+                ParticipantsError::EmptyTeam => "A team is empty",
+                ParticipantsError::RatedDoublePlay => {
+                    "Playing on two boards is only allowed in unrated matches"
+                }
+            },
+        }
+        .to_owned()
     }
     pub fn lobby_countdown_seconds_left(&self) -> Option<u32> {
         self.state.first_game_countdown_left().map(|d| d.as_secs_f64().ceil() as u32)
@@ -376,6 +391,12 @@ impl WebClient {
     pub fn next_faction(&mut self) { self.change_faction(|f| f + 1); }
     pub fn previous_faction(&mut self) { self.change_faction(|f| f - 1); }
     pub fn leave_match(&mut self) { self.state.leave_match(); }
+
+    pub fn change_faction_ingame(&mut self, faction: &str) -> JsResult<()> {
+        let faction = parse_faction_id(faction)?;
+        self.state.set_faction(faction);
+        Ok(())
+    }
 
     pub fn execute_input(&mut self, input: &str) { self.state.execute_input(input); }
     pub fn clear_ephemeral_chat_items(&mut self) { self.state.clear_ephemeral_chat_items(); }
@@ -746,7 +767,6 @@ impl WebClient {
             MatchOrigin::ActiveMatch(match_id) => match_id.clone(),
             MatchOrigin::ArchiveGame(game_id) => game_id.to_string(),
         };
-        update_observers(&mtch.participants)?;
         let Some(GameState { game_index, ref alt_game, .. }) = mtch.game_state else {
             update_lobby(mtch)?;
             return Ok(());
@@ -756,7 +776,12 @@ impl WebClient {
         let my_id = alt_game.my_id();
         let perspective = alt_game.perspective();
         let wayback = alt_game.wayback_state();
-        update_scores(&mtch.scores, &mtch.participants, game.status(), mtch.is_active_match())?;
+        update_participants_and_scores(
+            &mtch.scores,
+            &mtch.participants,
+            game.status(),
+            mtch.is_active_match(),
+        )?;
         for (board_idx, board) in game.boards() {
             let is_piece_draggable = |piece_force| {
                 my_id
@@ -907,6 +932,7 @@ impl WebClient {
             &mtch.chat.items(&mtch.my_name, game.chess_rules(), Some(game_index)),
         )?;
         self.repaint_chalk()?;
+        update_cannot_start_alert(mtch)?;
         Ok(())
     }
 
@@ -1015,7 +1041,7 @@ impl WebClient {
         let Some(mtch) = self.state.mtch() else {
             return;
         };
-        let current = ALL_FACTIONS.iter().position(|&f| f == mtch.my_faction).unwrap();
+        let current = ALL_FACTIONS.iter().position(|&f| f == mtch.my_desired_faction).unwrap();
         let new = faction_modifier(current.try_into().unwrap());
         let new = new.rem_euclid(ALL_FACTIONS.len().try_into().unwrap());
         let new: usize = new.try_into().unwrap();
@@ -1341,19 +1367,26 @@ fn clear_square_highlight_layer(layer: SquareHighlightLayer) -> JsResult<()> {
     Ok(())
 }
 
-// Improvement potential: Find a better icon for connection problems.
+// TODO: Use SVG images instead.
 // Improvement potential: Add a tooltip explaining the meaning of the icons.
-fn participant_prefix(p: &Participant, show_readiness: bool) -> &'static str {
-    if p.faction == Faction::Observer {
-        return "👀 ";
+// Improvement potential: Add small red/blue icons for fixed teams in individual mode.
+fn participant_status_icon(p: &Participant, show_readiness: bool) -> &'static str {
+    match (p.active_faction, p.is_online) {
+        (Faction::Observer, true) => "👀",
+        (Faction::Observer, false) => "⮐",
+        (Faction::Fixed(_) | Faction::Random, false) => "⚠️",
+        (Faction::Fixed(_) | Faction::Random, true) => {
+            if show_readiness {
+                if p.is_ready {
+                    "☑"
+                } else {
+                    "☐"
+                }
+            } else {
+                ""
+            }
+        }
     }
-    if !p.is_online {
-        return "⚠️ ";
-    }
-    if show_readiness {
-        return if p.is_ready { "☑ " } else { "☐ " };
-    }
-    ""
 }
 
 fn get_text_width(s: &str) -> JsResult<u32> {
@@ -1373,7 +1406,7 @@ fn participant_node(p: &Participant, show_readiness: bool) -> JsResult<web_sys::
     // measured 151px on my laptop. 'W' is usually the widest latter in common Latin, but you could
     // go wider with 'Ǆ' and even wider with non-Latin characters. So this solution might be
     // insufficient in case of complete outliers, but it should work for all realistic cases.
-    let class = match width {
+    let width_class = match width {
         140.. => "participant-name-xxxl",
         120.. => "participant-name-xxl",
         100.. => "participant-name-xl",
@@ -1381,8 +1414,8 @@ fn participant_node(p: &Participant, show_readiness: bool) -> JsResult<web_sys::
         _ => "participant-name-m",
     };
     let node = web_document().create_element("span")?.with_classes(["nowrap"])?;
-    node.append_text_span(participant_prefix(p, show_readiness), [])?;
-    node.append_text_span(&p.name, [class])?;
+    node.append_text_span(participant_status_icon(p, show_readiness), ["participant-status-icon"])?;
+    node.append_text_span(&p.name, ["participant-name", width_class])?;
     Ok(node)
 }
 
@@ -1451,7 +1484,7 @@ fn add_lobby_participant_node(
         parent.append_child(&name_node)?;
     }
     {
-        let faction_node = match p.faction {
+        let faction_node = match p.active_faction {
             Faction::Fixed(Team::Red) => make_menu_icon(&["faction-red"])?,
             Faction::Fixed(Team::Blue) => make_menu_icon(&["faction-blue"])?,
             Faction::Random => make_menu_icon(&["faction-random"])?,
@@ -1464,7 +1497,7 @@ fn add_lobby_participant_node(
         parent.append_child(&faction_node)?;
     }
     {
-        let readiness_node = match (p.faction, p.is_ready) {
+        let readiness_node = match (p.active_faction, p.is_ready) {
             (Faction::Observer, _) => make_menu_icon(&[])?,
             (_, false) => make_menu_icon(&["readiness-checkbox"])?,
             (_, true) => make_menu_icon(&["readiness-checkbox", "readiness-checkmark"])?,
@@ -1735,22 +1768,23 @@ fn render_clock(
     Ok(())
 }
 
-fn update_scores(
+fn update_participants_and_scores(
     scores: &Option<Scores>, participants: &[Participant], game_status: BughouseGameStatus,
     is_active_match: bool,
 ) -> JsResult<()> {
     let show_readiness = !game_status.is_active() && is_active_match;
     let table = web_document().create_element("table")?;
+    let mut observers = vec![];
     match scores {
         None => {}
         Some(Scores::PerTeam(score_map)) => {
             table.class_list().add_1("team-score-table")?;
             let mut team_players = enum_map! { _ => vec![] };
             for p in participants {
-                match p.faction {
+                match p.active_faction {
                     Faction::Fixed(team) => team_players[team].push(p),
                     Faction::Random => panic!("Unexpected Faction::Random with Scores::PerTeam"),
-                    Faction::Observer => {}
+                    Faction::Observer => observers.push(p),
                 }
             }
             for (team, players) in team_players {
@@ -1779,21 +1813,24 @@ fn update_scores(
                 }
             }
         }
-        Some(Scores::PerPlayer(score_map)) => {
+        Some(Scores::PerPlayer) => {
             // TODO: More robust seat out detection to identify obscure cases like playing 1 on 3.
             table.class_list().add_1("individual-score-table")?;
-            let players = participants.iter().filter(|p| p.faction != Faction::Observer);
-            let has_seat_out = players.clone().count() > TOTAL_ENVOYS;
-            let same_games_played = players.map(|p| p.games_played).all_equal();
+            let mut players;
+            (players, observers) = participants
+                .iter()
+                .partition(|p| p.games_played > 0 || p.active_faction.is_player());
+            players.sort_by_key(|p| (!p.active_faction.is_player(), p.games_played == 0));
+            let has_seat_out = players.len() > TOTAL_ENVOYS;
+            let same_games_played = players.iter().map(|p| p.games_played).all_equal();
             let display_games_played = has_seat_out || !same_games_played;
-            for (name, score) in score_map.iter().sorted_by_key(|(name, _)| *name) {
-                let score = score.as_f64().to_string();
+            for p in players {
+                let score = p.individual_score.as_f64().to_string();
                 let (score_whole, score_fraction) = match score.split_once('.') {
                     Some((whole, fraction)) => (whole.to_owned(), format!(".{}", fraction)),
                     None => (score, "".to_owned()),
                 };
-                let p = participants.iter().find(|p| p.name == *name).unwrap();
-                let p_node = participant_node(p, show_readiness)?;
+                let p_node = participant_node(&p, show_readiness)?;
                 let tr = table.append_new_element("tr")?;
                 tr.append_new_element("td")?
                     .with_classes(["score-player-name"])?
@@ -1814,18 +1851,13 @@ fn update_scores(
     }
     let score_node = web_document().get_existing_element_by_id("score-body")?;
     score_node.replace_children_with_node_1(&table);
-    Ok(())
-}
 
-fn update_observers(participants: &[Participant]) -> JsResult<()> {
     let observers_node = web_document().get_existing_element_by_id("observers")?;
     observers_node.remove_all_children();
-    for p in participants {
-        if p.faction == Faction::Observer {
-            let node = observers_node.append_new_element("div")?;
-            let p_node = participant_node(p, false)?;
-            node.append_child(&p_node)?;
-        }
+    for p in observers {
+        let node = observers_node.append_new_element("div")?;
+        let p_node = participant_node(p, false)?;
+        node.append_child(&p_node)?;
     }
     Ok(())
 }
@@ -1998,6 +2030,21 @@ fn setup_participation_mode(participant_id: BughouseParticipant) -> JsResult<()>
     let body = web_document().body()?;
     body.class_list().toggle_with_force("symmetric", is_symmetric)?;
     body.class_list().toggle_with_force("observer", is_observer)?;
+    Ok(())
+}
+
+fn update_cannot_start_alert(mtch: &Match) -> JsResult<()> {
+    let particpants_status = verify_participants(&mtch.rules, mtch.participants.iter());
+    let alert = match particpants_status {
+        ParticipantsStatus::CanStart { .. } => None,
+        ParticipantsStatus::CannotStart(error) => Some(cannot_start_game_message(error)),
+    };
+    _ = alert;
+    let alert_node = web_document().get_existing_element_by_id("cannot-start-alert")?;
+    alert_node.set_text_content(alert);
+    alert_node
+        .class_list()
+        .toggle_with_force("visibility-hidden", alert.is_none())?;
     Ok(())
 }
 
@@ -2312,6 +2359,24 @@ fn parse_board_node_id(id: &str) -> JsResult<DisplayBoard> {
         "board-primary" => Ok(DisplayBoard::Primary),
         "board-secondary" => Ok(DisplayBoard::Secondary),
         _ => Err(format!(r#"Invalid board node: "{id}""#).into()),
+    }
+}
+
+fn faction_id(faction: Faction) -> &'static str {
+    match faction {
+        Faction::Fixed(Team::Red) => "team_red",
+        Faction::Fixed(Team::Blue) => "team_blue",
+        Faction::Random => "random",
+        Faction::Observer => "observer",
+    }
+}
+fn parse_faction_id(id: &str) -> JsResult<Faction> {
+    match id {
+        "team_red" => Ok(Faction::Fixed(Team::Red)),
+        "team_blue" => Ok(Faction::Fixed(Team::Blue)),
+        "random" => Ok(Faction::Random),
+        "observer" => Ok(Faction::Observer),
+        _ => Err(format!(r#"Invalid faction: "{id}""#).into()),
     }
 }
 

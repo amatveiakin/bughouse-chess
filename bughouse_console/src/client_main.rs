@@ -74,7 +74,7 @@ fn render(
         } else {
             execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
             for p in &mtch.participants {
-                let (color, symbol) = match p.faction {
+                let (color, symbol) = match p.active_faction {
                     Faction::Fixed(Team::Red) => (style::Color::Red, '●'),
                     Faction::Fixed(Team::Blue) => (style::Color::Blue, '◆'),
                     Faction::Random => (style::Color::Reset, '?'),
