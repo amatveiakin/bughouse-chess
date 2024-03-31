@@ -569,7 +569,7 @@ function on_document_keydown(event) {
         pop_menu_page();
       }
     } else {
-      let isPrintableKey = event.key.length === 1; // https://stackoverflow.com/a/38802011/3092679
+      let isPrintableKey = event.key?.length === 1; // https://stackoverflow.com/a/38802011/3092679
       if (isPrintableKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
         chat_input.focus();
       } else if (["ArrowDown", "ArrowUp"].includes(event.key)) {
