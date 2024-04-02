@@ -212,7 +212,7 @@ impl ChessRules {
         rules
     }
 
-    pub fn board_shape(&self) -> BoardShape { BoardShape { num_rows: 8, num_cols: 8 } }
+    pub fn board_shape(&self) -> BoardShape { BoardShape::standard() }
 
     pub fn promotion(&self) -> Promotion {
         self.bughouse_rules.as_ref().map_or(Promotion::Upgrade, |r| r.promotion)
@@ -356,6 +356,14 @@ impl DropAggression {
 }
 
 impl PawnDropRanks {
+    // The most permissive pawn drop rules possible. In particular, it allows dropping pawns on the
+    // first rank, which is almost never allowed.
+    pub fn widest(board_shape: BoardShape) -> Self {
+        Self {
+            min: SubjectiveRow::from_one_based(1),
+            max: SubjectiveRow::from_one_based(board_shape.num_rows as i8 - 1),
+        }
+    }
     pub fn to_pgn(&self) -> String {
         format!("{}-{}", self.min.to_one_based(), self.max.to_one_based())
     }

@@ -2209,9 +2209,8 @@ fn render_archive_game_list(
         {
             let time_offset = UtcOffset::current_local_offset().unwrap_or(offset!(UTC));
             let game_start_utc = OffsetDateTime::from(game.game_start_time);
-            // There was a BPGN format change in late 2023 and the current parser doesn't support
-            // the old games.
-            game_view_available = game_start_utc >= datetime!(2024-01-01 00:00:00 UTC);
+            // Before this date our BPGNs didn't contain enough information to parse the game.
+            game_view_available = game_start_utc >= datetime!(2023-03-01 00:00:00 UTC);
             let game_start_local = game_start_utc.to_offset(time_offset);
             let today = OffsetDateTime::now_utc().to_offset(time_offset);
             let start_time = if game_start_local.date() == today.date() {

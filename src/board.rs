@@ -689,6 +689,7 @@ pub enum VictoryReason {
     Checkmate, // means "checkmake", "king lost" (if regicide) or "all kings lost" (if Koedem)
     Flag,
     Resignation,
+    UnknownVictory, // for parsing PGN
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -696,6 +697,7 @@ pub enum DrawReason {
     SimultaneousCheckmate, // for atomic chess
     SimultaneousFlag,      // for bughouse
     ThreefoldRepetition,
+    UnknownDraw, // for parsing PGN
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

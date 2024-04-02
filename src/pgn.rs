@@ -10,6 +10,7 @@ use time::macros::format_description;
 use crate::algebraic::AlgebraicCharset;
 use crate::board::{DrawReason, TurnInput, TurnMode, VictoryReason};
 use crate::clock::{GameInstant, TimeControl};
+use crate::coord::BoardShape;
 use crate::fen;
 use crate::force::Force;
 use crate::game::{
@@ -75,6 +76,16 @@ impl From<BughouseGameStatus> for ReducedBughouseGameStatus {
             Active => ReducedBughouseGameStatus::Active,
             Victory(team, _) => ReducedBughouseGameStatus::Victory(team),
             Draw(_) => ReducedBughouseGameStatus::Draw,
+        }
+    }
+}
+impl ReducedBughouseGameStatus {
+    pub fn to_status_unknown_reason(self) -> BughouseGameStatus {
+        use ReducedBughouseGameStatus::*;
+        match self {
+            Active => BughouseGameStatus::Active,
+            Victory(team) => BughouseGameStatus::Victory(team, VictoryReason::UnknownVictory),
+            Draw => BughouseGameStatus::Draw(DrawReason::UnknownDraw),
         }
     }
 }
@@ -350,10 +361,13 @@ impl TagMap {
             .map(|s| s.as_str())
             .ok_or_else(|| format!("missing {key} tag"))
     }
-    fn get_and_parse<T>(
-        &self, key: &str, parse: impl FnOnce(&str) -> Option<T>,
+    fn get_and_parse_or<T>(
+        &self, key: &str, parse: impl FnOnce(&str) -> Option<T>, default: T,
     ) -> Result<T, String> {
-        parse(self.get(key)?).ok_or_else(|| format!("cannot parse {key} tag"))
+        match self.map.get(key) {
+            None => Ok(default),
+            Some(tag) => parse(tag).ok_or_else(|| format!("cannot parse {key} tag")),
+        }
     }
 }
 
@@ -394,21 +408,23 @@ fn parse_game_result(result: &str) -> Result<ReducedBughouseGameStatus, String> 
     }
 }
 
-fn make_termination_string(status: BughouseGameStatus) -> &'static str {
+fn make_termination_string(status: BughouseGameStatus) -> Option<&'static str> {
     use BughouseGameStatus::*;
     use DrawReason::*;
     use VictoryReason::*;
     match status {
-        Active => "unterminated",
-        Victory(_, Checkmate) => "normal",
-        Victory(_, Flag) => "time forfeit",
+        Active => Some("unterminated"),
+        Victory(_, Checkmate) => Some("normal"),
+        Victory(_, Flag) => Some("time forfeit"),
         // There is no "resign" Termination, should use "normal" apparently:
         // https://lichess.org/forum/general-chess-discussion/how-do-i-make-it-say-that-one-side-resigned#4
-        Victory(_, Resignation) => "normal",
-        Draw(SimultaneousCheckmate) => "normal",
+        Victory(_, Resignation) => Some("normal"),
+        Victory(_, UnknownVictory) => None,
+        Draw(SimultaneousCheckmate) => Some("normal"),
         // Somehow I'm skeptical many chess engines would be prepared for a "time forfeit" draw
-        Draw(SimultaneousFlag) => "normal",
-        Draw(ThreefoldRepetition) => "normal",
+        Draw(SimultaneousFlag) => Some("normal"),
+        Draw(ThreefoldRepetition) => Some("normal"),
+        Draw(UnknownDraw) => None,
     }
 }
 
@@ -490,7 +506,9 @@ fn make_bughouse_bpng_header(
         }
     }
     h.push_tag("Result", make_result_string(game.status()));
-    h.push_tag("Termination", make_termination_string(game.status()));
+    if let Some(termination) = make_termination_string(game.status()) {
+        h.push_tag("Termination", termination);
+    }
     h.push_tag("Outcome", game.outcome().to_readable_string(game.chess_rules()));
     if let Some(d) = total_game_duration(game) {
         if let Some(ts) = d.to_pgn_timestamp() {
@@ -562,12 +580,7 @@ fn parse_variants(s: &str) -> Result<HashSet<ChessVariant>, String> {
 }
 
 fn parse_rules(tags: &TagMap) -> Result<Rules, String> {
-    let event = tags.get("Event")?;
-    let rated = match event {
-        "Rated Bughouse Match" => true,
-        "Unrated Bughouse Match" => false,
-        _ => return Err(format!("unexpected Event tag: \"{event}\"")),
-    };
+    let rated = tags.get("Event")?.starts_with("Rated");
     let time_control = parse_time_control(tags.get("TimeControl")?)?;
     let variants = parse_variants(tags.get("Variant")?)?;
     let starting_position = if variants.contains(&ChessVariant::FischerRandom) {
@@ -580,9 +593,22 @@ fn parse_rules(tags: &TagMap) -> Result<Rules, String> {
     } else {
         FairyPieces::NoFairy
     };
-    let promotion = tags.get_and_parse("Promotion", Promotion::from_pgn)?;
-    let pawn_drop_ranks = tags.get_and_parse("PawnDropRanks", PawnDropRanks::from_pgn)?;
-    let drop_aggression = tags.get_and_parse("DropAggression", DropAggression::from_pgn)?;
+    let board_shape = BoardShape::standard();
+    // Defaults logic:
+    //   - For Promotion: use Upgrade, because these are standard chess rules.
+    //   - For PawnDropRanks and DropAggression: use the most permissive setting, so that games
+    //     don't fail to parse.
+    let promotion = tags.get_and_parse_or("Promotion", Promotion::from_pgn, Promotion::Upgrade)?;
+    let pawn_drop_ranks = tags.get_and_parse_or(
+        "PawnDropRanks",
+        PawnDropRanks::from_pgn,
+        PawnDropRanks::widest(board_shape),
+    )?;
+    let drop_aggression = tags.get_and_parse_or(
+        "DropAggression",
+        DropAggression::from_pgn,
+        DropAggression::MateAllowed,
+    )?;
     Ok(Rules {
         match_rules: MatchRules { rated },
         chess_rules: ChessRules {
@@ -672,13 +698,24 @@ fn parse_players(tags: &TagMap) -> Result<Vec<PlayerInGame>, String> {
 fn parse_game_status(
     players: &[PlayerInGame], tags: &TagMap,
 ) -> Result<BughouseGameStatus, String> {
-    let outcome = GameOutcome::from_pgn(players, tags.get("Outcome")?)?;
-    let status = outcome.status;
     let result = parse_game_result(tags.get("Result")?)?;
-    if result != status.into() {
-        return Err("inconsistent Outcome and Result tags".to_owned());
+    if let Ok(outcome_text) = tags.get("Outcome") {
+        let mut status = GameOutcome::from_pgn(players, outcome_text).map(|o| o.status);
+        // The logic is similar to `Result::or_else`, but returns the first error rather than the second
+        // one.
+        if !status.is_ok() {
+            if let Ok(legacy_status) = GameOutcome::from_legacy_pgn(players, outcome_text) {
+                status = Ok(legacy_status);
+            }
+        }
+        let status = status?;
+        if result != status.into() {
+            return Err("inconsistent Outcome and Result tags".to_owned());
+        }
+        Ok(status)
+    } else {
+        Ok(result.to_status_unknown_reason())
     }
-    Ok(status)
 }
 
 fn parse_game_duration(tags: &TagMap) -> Result<GameInstant, String> {
@@ -868,6 +905,46 @@ mod tests {
 
     #[test]
     fn pgn_parse() {
+        let source_old = indoc!(
+            r#"
+            [Event "Unrated Bughouse Match"]
+            [Site "bughouse.pro"]
+            [UTCDate "2023.03.01"]
+            [UTCTime "19:33:14"]
+            [Round "1"]
+            [WhiteA "Санёк"]
+            [BlackA "km"]
+            [WhiteB "km"]
+            [BlackB "Andrei"]
+            [TimeControl "300"]
+            [Variant "Bughouse Chess960"]
+            [DropAggression "No chess mate"]
+            [PawnDropRanks "2-6"]
+            [SetUp "1"]
+            [FEN "nrbbnqkr/pppppppp/8/8/8/8/PPPPPPPP/NRBBNQKR w BHbh - 0 1 | nrbbnqkr/pppppppp/8/8/8/8/PPPPPPPP/NRBBNQKR w BHbh - 0 1"]
+            [Result "1-0"]
+            [Termination "normal"]
+            [Outcome "Санёк & Andrei won by checkmate"]
+            1A. e4 1B. e4 1b. e5 1a. b6 2B. Be2 2b. Bg5 2A. c4 2a. Bb7 3B. Nf3 3A. d3
+            3b. Bf6 4B. Nb3 3a. f5 4b. Nd6 5B. Nc5 5b. b6 4A. Bb3 4a. xe4 5A. c5 5a. e6
+            6A. xb6 6B. Nd3 6a. Nxb6 6b. Nxe4 7A. xe4 7B. Nfxe5 7a. P@d5 7b. Bxe5 8B. Nxe5
+            8b. Qe7 9B. d4 8A. xd5 8a. Bxd5 9b. P@f6 9A. P@c4 10B. Bd3 10b. Ng5 9a. Ba8
+            10A. Nac2 11B. Bxg5 11b. xg5 10a. N@g5 11A. Bxg5 11a. Bxg5 12B. Qe2 12A. c5
+            12b. P@f6 12a. Nd5 13B. Nxf7 13b. Qxe2 14B. Bxe2 14b. Kxf7 15B. Bc4 13A. B@f3
+            15b. P@e6 13a. N8f6 16B. P@f5 16b. Re8 17B. O-O 17b. Kg8 14A. N@e5 18B. xe6
+            18b. xe6 14a. P@d6 15A. Bbxd5 15a. Bxd5 16A. Bxd5 16a. Nxd5 17A. Nxd7 19B. P@f5
+            17a. Qe7 19b. N@d2 18A. Nxb8 18a. O-O 20B. xe6 20b. Nxc4 19A. Nc6 21B. B@d5
+            21b. Bxe6 22B. Bxe6 22b. Rxe6 23B. B@d5 19a. Qd7 23b. B@f7 24B. Bxc4 20A. N2d4
+            24b. Re7 25B. Bxf7 25b. Rxf7 20a. B@d2 26B. P@e6 26b. Re7 27B. B@f7 27b. Kh8
+            28B. Rfe1 28b. Rf8 21A. xd6 21a. Bxe1 22A. xc7 22a. P@h3 29B. N@f5 29b. R7xf7
+            30B. xf7 30b. Rxf7 31B. Re8 23A. Rxe1 31b. R@f8 32B. R1e1 32b. P@h3 23a. xg2
+            24A. Qxg2 24a. B@f4 33B. Rxf8 33b. Rxf8 25A. P@g3 34B. Ng3 34b. xg2 25a. Bxc7
+            35B. Kxg2 35b. P@f3 36B. Kxf3 26A. Rxe6 26a. R@e1 27A. Rxe1 36b. g4 27a. Q@d2
+            37B. Kxg4 28A. O-O 28a. Qxc6 29A. Nxc6 29a. N@e2 37b. h5 30A. Rxe2 30a. Qxe2
+            38B. Nxh5 38b. f5 31A. Qxd5 31a. B@e6 39B. Kg5 32A. Qxg5 39b. Q@h6 40B. Kh4
+            40b. R@g4 41B. Kh3 41b. Qxh5 32a. Bc4 42B. N@h4 33A. Ne7 42b. Qxh4
+        "#
+        );
         let source_regular = indoc!(
             r#"
             [Event "Unrated Bughouse Match"]
@@ -1007,7 +1084,7 @@ mod tests {
             19a. Nxg3 {[ts=505.827]}
             "#
         );
-        for source in [source_regular, source_duck_accolade] {
+        for source in [source_old, source_regular, source_duck_accolade] {
             let game = import_from_bpgn(source, Role::ServerOrStandalone).unwrap();
             let serialized =
                 export_to_bpgn(BpgnExportFormat::default(), &game, UtcDateTime::now(), 1);

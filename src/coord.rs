@@ -30,6 +30,7 @@ pub struct BoardShape {
 }
 
 impl BoardShape {
+    pub fn standard() -> Self { BoardShape { num_rows: 8, num_cols: 8 } }
     pub fn contains_row(&self, row: Row) -> bool {
         let row = row.to_zero_based();
         (0..self.num_rows as i8).contains(&row)
