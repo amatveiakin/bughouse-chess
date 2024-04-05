@@ -173,9 +173,6 @@ body.symmetric #page {
 .visibility-hidden {
   visibility: hidden;
 }
-.nowrap {
-  white-space: nowrap;
-}
 .overflow-visible {
   /* Mostly used to allow tooltips to go outside of the dialog area. */
   overflow: visible;
@@ -484,6 +481,10 @@ body.observer .player-name {
   color: #b2b2b2;
 }
 
+.participant-item {
+  white-space: nowrap;
+  position: relative; /* for `.participant-status-icon` positioning */
+}
 .participant-name {
   padding-left: var(--participant-status-icon-space);
   font-family: "Open Sans", sans-serif;
@@ -502,7 +503,8 @@ body.observer .player-name {
 }
 .participant-status-icon {
   position: absolute;
-  transform: translateX(calc(-50% - var(--participant-status-icon-space) - 0.15em));
+  left: 0;
+  transform: translateX(calc(-50% + var(--participant-status-icon-space) - 0.7em));
 }
 
 #score-body,

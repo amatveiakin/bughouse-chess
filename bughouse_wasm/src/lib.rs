@@ -1413,7 +1413,7 @@ fn participant_node(p: &Participant, show_readiness: bool) -> JsResult<web_sys::
         80.. => "participant-name-l",
         _ => "participant-name-m",
     };
-    let node = web_document().create_element("span")?.with_classes(["nowrap"])?;
+    let node = web_document().create_element("span")?.with_classes(["participant-item"])?;
     node.append_text_span(participant_status_icon(p, show_readiness), ["participant-status-icon"])?;
     node.append_text_span(&p.name, ["participant-name", width_class])?;
     Ok(node)
