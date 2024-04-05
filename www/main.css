@@ -1575,7 +1575,7 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 }
 .embossed-table thead th {
   /* must use non-transparent color because of sticky scrolling */
-  background-color: oklch(from var(--color-dialog-background) calc(l * 0.85) c h);
+  background-color: #b4a68c;
 }
 
 #archive-game-table {
