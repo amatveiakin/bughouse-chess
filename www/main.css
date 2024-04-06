@@ -850,25 +850,20 @@ dialog .chat-reference-command {
   height: 1em;
 }
 
-dialog {
+dialog * {
   scrollbar-gutter: stable;
   scrollbar-color: var(--color-dialog-scrollbar) var(--color-dialog-scrollbar-background);
-  scrollbar-width: thin;
-}
-dialog::-webkit-scrollbar {
-  width: max(3px, 0.5em);
-}
-dialog::-webkit-scrollbar-track {
-  background: var(--color-dialog-scrollbar-background);
-}
-dialog::-webkit-scrollbar-thumb {
-  background-color: var(--color-dialog-scrollbar);
+  scrollbar-width: auto;
 }
 
-#page {
-  scrollbar-gutter: stable;
-  scrollbar-color: var(--color-main-scrollbar) #ffffff00;
-  scrollbar-width: thin;
+/* Chrome prioritizes `scrollbar-...` over `::-webkit-scrollbar...`.
+   And when the first one is active, it always creates regular think scrollbars.  */
+@supports not selector(::-webkit-scrollbar) {
+  #page * {
+    scrollbar-gutter: stable;
+    scrollbar-color: var(--color-main-scrollbar) #ffffff00;
+    scrollbar-width: thin;
+  }
 }
 #page ::-webkit-scrollbar {
   width: max(2px, 0.3em);
