@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 32 32"
+   x="0px"
+   y="0px"
+   version="1.1"
+   id="svg8"
+   sodipodi:docname="duck++.svg"
+   inkscape:version="1.2.2 (732a01da63, 2022-12-09)"
+   inkscape:export-filename="C:\Andrei\bughouse-chess\assets\pieces\duck.png"
+   inkscape:export-xdpi="307"
+   inkscape:export-ydpi="307"
+   width="32"
+   height="32"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <defs
+     id="defs904">
+    <filter
+       style="color-interpolation-filters:sRGB"
+       inkscape:label="Diffuse Light"
+       id="filter987">
+      <feGaussianBlur
+         in="SourceGraphic"
+         stdDeviation="5"
+         result="blur"
+         id="feGaussianBlur977" />
+      <feDiffuseLighting
+         diffuseConstant="1"
+         surfaceScale="10"
+         lighting-color="#ffffff"
+         result="diffuse"
+         id="feDiffuseLighting981">
+        <feDistantLight
+           elevation="150"
+           azimuth="0"
+           id="feDistantLight979" />
+      </feDiffuseLighting>
+      <feComposite
+         in="diffuse"
+         in2="diffuse"
+         operator="arithmetic"
+         k1="1"
+         result="composite1"
+         id="feComposite983"
+         k2="0"
+         k3="0"
+         k4="0" />
+      <feComposite
+         in="composite1"
+         in2="SourceGraphic"
+         k1="0.8"
+         operator="arithmetic"
+         k3="1"
+         result="composite2"
+         id="feComposite985"
+         k2="0"
+         k4="0" />
+    </filter>
+    <filter
+       style="color-interpolation-filters:sRGB"
+       inkscape:label="Diffuse Light"
+       id="filter930"
+       x="-0.17356606"
+       y="-0.16614492"
+       width="1.3470117"
+       height="1.3322898">
+      <feGaussianBlur
+         in="SourceGraphic"
+         stdDeviation="5"
+         result="blur"
+         id="feGaussianBlur920" />
+      <feDiffuseLighting
+         diffuseConstant="1"
+         surfaceScale="10"
+         lighting-color="#ffffff"
+         result="diffuse"
+         id="feDiffuseLighting924">
+        <feDistantLight
+           elevation="150"
+           azimuth="0"
+           id="feDistantLight922" />
+      </feDiffuseLighting>
+      <feComposite
+         in="diffuse"
+         in2="diffuse"
+         operator="arithmetic"
+         k1="1"
+         result="composite1"
+         id="feComposite926"
+         k2="0"
+         k3="0"
+         k4="0" />
+      <feComposite
+         in="composite1"
+         in2="SourceGraphic"
+         k1="0.376471"
+         operator="arithmetic"
+         k3="1"
+         result="composite2"
+         id="feComposite928"
+         k2="0"
+         k4="0" />
+    </filter>
+  </defs>
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="2560"
+     inkscape:window-height="1476"
+     id="namedview902"
+     showgrid="false"
+     inkscape:zoom="13.010765"
+     inkscape:cx="15.756184"
+     inkscape:cy="22.135517"
+     inkscape:window-x="-12"
+     inkscape:window-y="-12"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg8"
+     inkscape:document-rotation="0"
+     inkscape:showpageshadow="2"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1" />
+  <metadata
+     id="metadata12">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <path
+     id="path906"
+     style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+     d="m 17.644783,8.5696681 c -2.43686,-1.15e-5 -4.326895,1.7348179 -4.412316,4.1701799 -0.0538,1.533888 1.071887,2.844471 1.544954,3.564202 -0.06235,-0.0012 -0.124719,-0.002 -0.187089,-0.002 -1.29205,-1.8e-5 -1.448513,2.043344 -4.7274667,1.899841 -1.3498198,-0.348469 -2.1689167,-1.698201 -3.2787,-2.564427 -0.1069871,-0.175284 -0.682131,-0.08146 -0.8522006,0.671456 -0.2480447,1.735871 0.3897893,4.429516 0.8382779,6.307567 0.742263,2.789375 3.7379794,4.537463 7.2002884,4.537493 4.071508,6.7e-5 7.372105,-2.483067 7.371909,-5.841318 -1.39e-4,-1.611831 -0.448718,-2.798382 -1.695585,-4.126789 1.10725,-0.647804 1.698221,-1.242474 2.21431,-2.377537 l 1.885399,-0.825224 c 0.332972,-0.04627 0.437974,-0.475881 0.163884,-0.670525 L 21.993286,12.237012 C 21.630419,10.118637 19.794011,8.569887 17.644783,8.5696681 Z"
+     sodipodi:nodetypes="cscccccccccccccc"
+     inkscape:export-filename="C:\Andrei\bughouse-chess\assets\pieces\duck.png"
+     inkscape:export-xdpi="307"
+     inkscape:export-ydpi="307" />
+  <path
+     sodipodi:type="star"
+     style="fill:#000000;fill-opacity:1;stroke:none;stroke-width:2.13434;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none"
+     id="path7762"
+     inkscape:flatsided="true"
+     sodipodi:sides="3"
+     sodipodi:cx="-5.9181762"
+     sodipodi:cy="0.53801602"
+     sodipodi:r1="15.654627"
+     sodipodi:r2="7.8273134"
+     sodipodi:arg1="0.52359878"
+     sodipodi:arg2="1.5707963"
+     inkscape:rounded="0"
+     inkscape:randomized="0"
+     d="m 7.6391283,8.3653295 -27.1146093,-10e-8 13.5573049,-23.4819404 z"
+     inkscape:transform-center-y="-0.90268029"
+     transform="matrix(0.19640104,-0.12387781,0.28081223,0.44521145,5.4072652,5.9969576)"
+     inkscape:transform-center-x="-0.23233153" />
+</svg>

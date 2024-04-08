@@ -783,14 +783,15 @@ impl WebClient {
             mtch.is_active_match(),
         )?;
         for (board_idx, board) in game.boards() {
+            let my_force = my_id.envoy_for(board_idx).map(|e| e.force);
+            let is_my_duck_turn = alt_game.is_my_duck_turn(board_idx);
             let is_piece_draggable = |piece_force| {
                 my_id
                     .envoy_for(board_idx)
                     .map_or(false, |e| board.can_potentially_move_piece(e.force, piece_force))
             };
-            let is_glowing_duck = |piece: PieceOnBoard| {
-                alt_game.is_my_duck_turn(board_idx) && piece.kind == PieceKind::Duck
-            };
+            let is_glowing_duck =
+                |piece: PieceOnBoard| is_my_duck_turn && piece.kind == PieceKind::Duck;
             let is_glowing_steal = |coord: Coord| {
                 let Some((input_board_idx, partial_input)) = alt_game.partial_turn_input() else {
                     return false;
@@ -813,7 +814,6 @@ impl WebClient {
             } else {
                 None
             };
-            let my_force = my_id.envoy_for(board_idx).map(|e| e.force);
             let see_though_fog = alt_game.see_though_fog();
             let empty_area = HashSet::new();
             let fog_render_area = alt_game.fog_of_war_area(board_idx);
@@ -918,6 +918,7 @@ impl WebClient {
                     game.chess_rules(),
                 )?;
             }
+            board_node.class_list().toggle_with_force("duck-turn", is_my_duck_turn)?;
             board_node.class_list().toggle_with_force("wayback", wayback.active())?;
             update_turn_log(&game, my_id, board_idx, display_board_idx, &wayback)?;
         }

@@ -247,6 +247,9 @@ impl AlteredGame {
     }
 
     pub fn is_my_duck_turn(&self, board_idx: BughouseBoard) -> bool {
+        if !self.is_active() {
+            return false;
+        }
         let Some(envoy) = self.my_id.envoy_for(board_idx) else {
             return false;
         };
