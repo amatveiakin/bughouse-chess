@@ -284,65 +284,65 @@ body.symmetric #page {
   opacity: 0.5;
 }
 
-.partial-turn-from {
+.partial-turn-from-highlight {
   fill: #94c3c0;
   opacity: 0.6;
 }
-.partial-turn-to,
-.partial-turn-drop {
+.partial-turn-to-highlight,
+.partial-turn-drop-highlight {
   fill: #70c3be;
   opacity: 0.6;
 }
 
-.partial-turn-from-above {
+.partial-turn-from-above-highlight {
   fill: #94c3c0;
   opacity: 0.5;
 }
-.partial-turn-to-above,
-.partial-turn-drop-above {
+.partial-turn-to-above-highlight,
+.partial-turn-drop-above-highlight {
   fill: #70c3be;
   opacity: 0.5;
 }
 
-.latest-turn-from {
+.latest-turn-from-highlight {
   fill: #acbd38;
   opacity: 0.5;
 }
-.latest-turn-to {
+.latest-turn-to-highlight {
   fill: #a7c000;
   opacity: 0.5;
 }
-.latest-turn-drop {
+.latest-turn-drop-highlight {
   fill: #4dcc7d;
   opacity: 0.5;
 }
 
-.pre-turn-from {
+.pre-turn-from-highlight {
   fill: #7238bd;
   opacity: 0.5;
 }
-.pre-turn-to,
-.pre-turn-drop {
+.pre-turn-to-highlight,
+.pre-turn-drop-highlight {
   fill: #5800c0;
   opacity: 0.5;
 }
 
-.latest-turn-capture {
+.latest-turn-capture-highlight {
   fill: #ff889c;
   opacity: 0.6;
 }
-.latest-turn-capture-above {
+.latest-turn-capture-above-highlight {
   fill: #ff889c;
   opacity: 0.4;
 }
 
-.partial-turn-legaldestination {
+.partial-turn-legaldestination-highlight {
   fill: url(#legal-move-gradient);
 }
-.partial-turn-dragstart {
+.partial-turn-dragstart-highlight {
   fill: url(#drag-start-gradient);
 }
-.drag-over-highlight {
+.ephemeral-dragover-highlight {
   fill: url(#drag-over-gradient);
 }
 

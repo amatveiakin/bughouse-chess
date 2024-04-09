@@ -468,8 +468,8 @@ impl WebClient {
         let display_board_idx = parse_board_id(board_id)?;
         let pos = DisplayFCoord { x, y };
         set_square_highlight(
-            Some("drag-over-highlight"),
-            "drag-over-highlight",
+            Some("ephemeral-dragover-highlight"),
+            "ephemeral-dragover-highlight",
             SquareHighlightLayer::Ephemeral,
             display_board_idx,
             pos.to_square(board_shape),
@@ -2458,7 +2458,7 @@ fn turn_highlight_class_id(h: &TurnHighlight) -> String {
         TurnHighlightLayer::AboveFog => "-above",
         TurnHighlightLayer::BelowFog => "",
     };
-    format!("{}-turn-{}{}", family, item, layer)
+    format!("{}-turn-{}{}-highlight", family, item, layer)
 }
 
 fn square_highlight_layer_id(layer: SquareHighlightLayer, board_idx: DisplayBoard) -> String {
