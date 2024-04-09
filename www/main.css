@@ -336,10 +336,10 @@ body.symmetric #page {
   opacity: 0.4;
 }
 
-.legal-move-highlight {
+.partial-turn-legaldestination {
   fill: url(#legal-move-gradient);
 }
-.drag-start-highlight {
+.partial-turn-dragstart {
   fill: url(#drag-start-gradient);
 }
 .drag-over-highlight {

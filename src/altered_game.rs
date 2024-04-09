@@ -15,6 +15,7 @@
 //   - Replace all existing read-only methods with one "get visual representation" method that
 //     contain all the information required in order to render the game.
 
+use std::cmp;
 use std::collections::HashSet;
 
 use enum_map::enum_map;
@@ -22,8 +23,8 @@ use itertools::Itertools;
 use strum::IntoEnumIterator;
 
 use crate::board::{
-    PromotionTarget, Reachability, Turn, TurnDrop, TurnError, TurnExpanded, TurnInput, TurnMode,
-    TurnMove,
+    Board, PromotionTarget, Reachability, Turn, TurnDrop, TurnError, TurnExpanded, TurnInput,
+    TurnMode, TurnMove,
 };
 use crate::clock::GameInstant;
 use crate::coord::{BoardShape, Coord, SubjectiveRow};
@@ -32,7 +33,7 @@ use crate::game::{
     get_bughouse_force, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
     BughouseParticipant, TurnIndex, TurnRecord, TurnRecordExpanded,
 };
-use crate::piece::{CastleDirection, PieceForce, PieceKind, PieceOrigin};
+use crate::piece::{CastleDirection, PieceForce, PieceId, PieceKind, PieceOnBoard, PieceOrigin};
 use crate::rules::{BughouseRules, ChessRules, Promotion};
 
 
@@ -89,10 +90,12 @@ pub enum TurnHighlightFamily {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TurnHighlightItem {
-    MoveFrom,
-    MoveTo,
-    Drop,
-    Capture,
+    MoveFrom,         // piece moved from this square to another one
+    MoveTo,           // piece moved from another square to this one
+    Drop,             // piece dropped from reserve
+    Capture,          // piece was captured here
+    DragStart,        // drag start (while dragging a piece)
+    LegalDestination, // legal moves (while dragging a piece)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -273,6 +276,7 @@ impl AlteredGame {
                 }
             }
 
+            let board = game.board(board_idx);
             let see_though_fog = self.see_though_fog();
             let empty_area = HashSet::new();
             let fog_render_area = self.fog_of_war_area(board_idx);
@@ -307,21 +311,36 @@ impl AlteredGame {
                 }
             }
 
-            if let Some((input_board_idx, ref partial_input)) = self.partial_turn_input {
+            if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
                 if input_board_idx == board_idx {
                     highlights.extend(get_partial_turn_highlights(
                         board_idx,
                         partial_input,
+                        board,
                         fog_cover_area,
                     ));
                 }
             }
         }
+        // let highlight_groups = highlights.into_iter().group_by(|h| (h.board_idx, h.coord));
+        // highlight_groups
+        //     .into_iter()
+        //     .flat_map(|(_, group)| {
+        //         group
+        //             .sorted_by_key(|h| turn_highlight_z_index(h))
+        //             .take_while_inclusive(|h| !is_turn_highlight_opaque(h))
+        //     })
+        //     .collect()
         highlights
             .into_iter()
-            .into_grouping_map_by(|h| (h.board_idx, h.coord))
-            .max_by_key(|_, h| turn_highlight_z_index(h))
-            .into_values()
+            .into_group_map_by(|h| (h.board_idx, h.coord))
+            .into_iter()
+            .flat_map(|(_, group)| {
+                group
+                    .into_iter()
+                    .sorted_by_key(|h| cmp::Reverse(turn_highlight_z_index(h)))
+                    .take_while_inclusive(|h| !is_turn_highlight_opaque(h))
+            })
             .collect()
     }
 
@@ -884,6 +903,8 @@ fn turn_highlight_z_index(highlight: &TurnHighlight) -> (u8, u8, u8) {
             TurnHighlightFamily::LatestTurn => 0,
         },
         match highlight.item {
+            TurnHighlightItem::LegalDestination => 11,
+            TurnHighlightItem::DragStart => 10,
             // Capture coincides with MoveTo (except for en-passant) and should take priority.
             // Whether MoveTo is above MoveFrom determines how sequences of preturns with a single
             // piece are rendered. The current approach if to highlight intermediate squares as
@@ -894,6 +915,15 @@ fn turn_highlight_z_index(highlight: &TurnHighlight) -> (u8, u8, u8) {
             TurnHighlightItem::MoveFrom => 0,
         },
     )
+}
+
+// For each square, we'll show the top-most opaque highlight plus all non-opaque highlights above.
+fn is_turn_highlight_opaque(highlight: &TurnHighlight) -> bool {
+    use TurnHighlightItem::*;
+    match highlight.item {
+        LegalDestination | DragStart => false,
+        Capture | MoveTo | Drop | MoveFrom => true,
+    }
 }
 
 fn make_turn_highlight(
@@ -949,17 +979,52 @@ fn get_turn_highlight_basis(turn_expanded: &TurnExpanded) -> Vec<(TurnHighlightI
 }
 
 fn get_partial_turn_highlight_basis(
-    partial_input: &PartialTurnInput,
+    partial_input: PartialTurnInput, board: &Board,
 ) -> Vec<(TurnHighlightItem, Coord)> {
+    use PieceKind::*;
     match partial_input {
-        PartialTurnInput::Drag { .. } => {
-            // Highlighted separately. (Q. Should it?)
-            vec![]
+        PartialTurnInput::Drag {
+            piece_kind,
+            piece_force,
+            piece_origin,
+            source,
+            ..
+        } => {
+            let mut highlights = vec![];
+            let from = match source {
+                PieceDragSource::Defunct => return vec![],
+                PieceDragSource::Board(coord) => coord,
+                PieceDragSource::Reserve => return vec![],
+            };
+            highlights.push((TurnHighlightItem::DragStart, from));
+
+            let mut board = board.clone();
+            board.grid_mut()[from] = Some(PieceOnBoard {
+                id: PieceId::tmp(),
+                kind: piece_kind,
+                force: piece_force,
+                origin: piece_origin,
+            });
+            // Add move hints to fairy pieces which the player may be unfamiliar with.
+            let need_move_hint = match piece_kind {
+                Pawn | Knight | Bishop | Rook | Queen | King => false,
+                Cardinal | Empress | Amazon => true,
+                Duck => false,
+            };
+            // Disable legal move destination hints in fog of war: highlighting all reachable
+            // squares would give away information. Not highlighting them could be misleading.
+            let fog_of_war = board.chess_rules().fog_of_war;
+            if need_move_hint && !fog_of_war {
+                for dest in board.legal_turn_destinations(from) {
+                    highlights.push((TurnHighlightItem::LegalDestination, dest));
+                }
+            }
+            highlights
         }
         PartialTurnInput::StealPromotion { from, to }
         | PartialTurnInput::UpgradePromotion { from, to } => vec![
-            (TurnHighlightItem::MoveFrom, *from),
-            (TurnHighlightItem::MoveTo, *to),
+            (TurnHighlightItem::MoveFrom, from),
+            (TurnHighlightItem::MoveTo, to),
         ],
     }
 }
@@ -984,10 +1049,11 @@ fn get_turn_highlights(
 }
 
 fn get_partial_turn_highlights(
-    board_idx: BughouseBoard, partial_input: &PartialTurnInput, fog_of_war_area: &HashSet<Coord>,
+    board_idx: BughouseBoard, partial_input: PartialTurnInput, board: &Board,
+    fog_of_war_area: &HashSet<Coord>,
 ) -> Vec<TurnHighlight> {
     expand_turn_highlights(
-        get_partial_turn_highlight_basis(partial_input),
+        get_partial_turn_highlight_basis(partial_input, board),
         TurnHighlightFamily::PartialTurn,
         board_idx,
         fog_of_war_area,

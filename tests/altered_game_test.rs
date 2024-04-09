@@ -13,7 +13,7 @@ use bughouse_chess::game::{
 };
 use bughouse_chess::player::Team;
 use bughouse_chess::role::Role;
-use bughouse_chess::rules::{ChessRules, MatchRules, Promotion, Rules};
+use bughouse_chess::rules::{ChessRules, FairyPieces, MatchRules, Promotion, Rules};
 use bughouse_chess::test_util::*;
 use common::*;
 use pretty_assertions::assert_eq;
@@ -48,6 +48,12 @@ fn stealing_promotion_game() -> BughouseGame {
     BughouseGame::new(rules, Role::Client, &sample_bughouse_players())
 }
 
+fn accolade_game() -> BughouseGame {
+    let mut rules = default_rules();
+    rules.chess_rules.fairy_pieces = FairyPieces::Accolade;
+    BughouseGame::new(rules, Role::Client, &sample_bughouse_players())
+}
+
 fn duck_chess_game() -> BughouseGame {
     let mut rules = default_rules();
     rules.chess_rules.duck_chess = true;
@@ -72,10 +78,13 @@ macro_rules! turn_highlight {
     };
 }
 
-fn turn_highlights_sorted(alt_game: &AlteredGame) -> Vec<TurnHighlight> {
-    let mut highlights = alt_game.turn_highlights();
+fn sort_turn_highlights(mut highlights: Vec<TurnHighlight>) -> Vec<TurnHighlight> {
     highlights.sort_by_key(|h| (h.board_idx, h.coord.row_col()));
     highlights
+}
+
+fn turn_highlights_sorted(alt_game: &AlteredGame) -> Vec<TurnHighlight> {
+    sort_turn_highlights(alt_game.turn_highlights())
 }
 
 const T0: GameInstant = GameInstant::game_start();
@@ -186,6 +195,42 @@ fn turn_highlights() {
         turn_highlight!(B E4 : BelowFog LatestTurn MoveFrom),
         turn_highlight!(B D5 : BelowFog LatestTurn Capture),
     ]);
+}
+
+#[test]
+fn multiple_turn_highlights_per_square() {
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), accolade_game());
+    alt_game.apply_remote_turn(envoy!(White A), &alg("Rg1"), T0).unwrap();
+    alt_game.try_local_turn(A, alg("Ef3"), T0).unwrap();
+    alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::F3)).unwrap();
+    assert_eq!(
+        turn_highlights_sorted(&alt_game),
+        sort_turn_highlights(vec![
+            // drag start
+            turn_highlight!(A F3 : BelowFog PartialTurn DragStart),
+            // rook moves
+            turn_highlight!(A A3 : BelowFog PartialTurn LegalDestination),
+            turn_highlight!(A B3 : BelowFog PartialTurn LegalDestination),
+            turn_highlight!(A C3 : BelowFog PartialTurn LegalDestination),
+            turn_highlight!(A D3 : BelowFog PartialTurn LegalDestination),
+            turn_highlight!(A E3 : BelowFog PartialTurn LegalDestination),
+            turn_highlight!(A G3 : BelowFog PartialTurn LegalDestination),
+            turn_highlight!(A H3 : BelowFog PartialTurn LegalDestination),
+            turn_highlight!(A F4 : BelowFog PartialTurn LegalDestination),
+            turn_highlight!(A F5 : BelowFog PartialTurn LegalDestination),
+            turn_highlight!(A F6 : BelowFog PartialTurn LegalDestination),
+            turn_highlight!(A F7 : BelowFog PartialTurn LegalDestination),
+            // knight moves
+            turn_highlight!(A G1 : BelowFog PartialTurn LegalDestination), // <--
+            turn_highlight!(A H4 : BelowFog PartialTurn LegalDestination),
+            turn_highlight!(A G5 : BelowFog PartialTurn LegalDestination),
+            turn_highlight!(A E5 : BelowFog PartialTurn LegalDestination),
+            turn_highlight!(A D4 : BelowFog PartialTurn LegalDestination),
+            // preturn highlight still active
+            turn_highlight!(A G1 : BelowFog Preturn MoveFrom), // <--
+            turn_highlight!(A F3 : BelowFog Preturn MoveTo),
+        ])
+    );
 }
 
 #[test]

@@ -441,47 +441,15 @@ impl WebClient {
     }
 
     pub fn start_drag_piece(&mut self, source: &str) -> JsResult<String> {
-        let alt_game = self.state.alt_game_mut().ok_or_else(|| rust_error!())?;
-        let board_shape = alt_game.board_shape();
-        let (display_board_idx, source) = if let Some((display_board_idx, piece)) =
-            parse_reserve_piece_id(source)
-        {
-            (display_board_idx, PieceDragStart::Reserve(piece))
-        } else if let Some((display_board_idx, coord)) = parse_square_id(source) {
-            let board_orientation =
-                get_board_orientation(display_board_idx, alt_game.perspective());
-            set_square_highlight(
-                None,
-                "drag-start-highlight",
-                SquareHighlightLayer::Drag,
-                display_board_idx,
-                Some(to_display_coord(coord, board_shape, board_orientation)),
-            )?;
-            let board_idx = get_board_index(display_board_idx, alt_game.perspective());
-            // Note. The name "nontrivial" part of `nontrivial_fairy_pieces` comes from the fact
-            // that duck is, in some sense, a fairy piece, but not a one that requires move hints.
-            // Improvement potential. More conistent legal moves highlighting. Perhaps, add a config
-            //   with "Yes" / "No" / "If fairy chess" values.
-            let rules = alt_game.chess_rules();
-            let nontrivial_fairy_pieces = match rules.fairy_pieces {
-                FairyPieces::NoFairy => false,
-                FairyPieces::Accolade => true,
+        let (display_board_idx, source) =
+            if let Some((display_board_idx, piece)) = parse_reserve_piece_id(source) {
+                (display_board_idx, PieceDragStart::Reserve(piece))
+            } else if let Some((display_board_idx, coord)) = parse_square_id(source) {
+                (display_board_idx, PieceDragStart::Board(coord))
+            } else {
+                return Err(rust_error!("Illegal drag source: {source:?}"));
             };
-            if nontrivial_fairy_pieces && !rules.fog_of_war {
-                for dest in alt_game.local_game().board(board_idx).legal_turn_destinations(coord) {
-                    set_square_highlight(
-                        None,
-                        "legal-move-highlight",
-                        SquareHighlightLayer::Drag,
-                        display_board_idx,
-                        Some(to_display_coord(dest, board_shape, board_orientation)),
-                    )?;
-                }
-            }
-            (display_board_idx, PieceDragStart::Board(coord))
-        } else {
-            return Err(rust_error!("Illegal drag source: {source:?}"));
-        };
+        let alt_game = self.state.alt_game_mut().ok_or_else(|| rust_error!())?;
         let board_idx = get_board_index(display_board_idx, alt_game.perspective());
         match alt_game.start_drag_piece(board_idx, source) {
             Ok(_) => Ok(board_id(display_board_idx).to_owned()),
@@ -502,7 +470,7 @@ impl WebClient {
         set_square_highlight(
             Some("drag-over-highlight"),
             "drag-over-highlight",
-            SquareHighlightLayer::Drag,
+            SquareHighlightLayer::Ephemeral,
             display_board_idx,
             pos.to_square(board_shape),
         )
@@ -551,7 +519,7 @@ impl WebClient {
     // also in any case where a drag could become obsolete (e.g. dragged piece was captured
     // or it's position was reverted after the game finished).
     pub fn reset_drag_highlights(&self) -> JsResult<()> {
-        clear_square_highlight_layer(SquareHighlightLayer::Drag)
+        clear_square_highlight_layer(SquareHighlightLayer::Ephemeral)
     }
 
     pub fn drag_state(&self) -> String {
@@ -1208,9 +1176,13 @@ enum ShapeRendering {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SquareHighlightLayer {
-    Turn,      // last turn, preturn
-    TurnAbove, // like `Turn`, but above the fog of war
-    Drag,      // drag start, drag hover, legal moves
+    // Last turn, preturn, partial turn input. Derived from `AlteredGame::turn_highlights`.
+    Turn,
+    // Like `Turn`, but above the fog of war. Derived from `AlteredGame::turn_highlights`.
+    TurnAbove,
+    // For things that change very quickly, to avoid going through the `AlteredGame` and updating a
+    // lot of state.
+    Ephemeral,
 }
 
 fn scroll_log_to_bottom(board_idx: DisplayBoard) -> JsResult<()> {
@@ -2154,7 +2126,7 @@ fn render_board(
     // Place drag highlight layer above pieces to allow legal move highlight for captures.
     // Note that the dragged piece will still be above the highlight.
     add_layer(
-        square_highlight_layer_id(SquareHighlightLayer::Drag, board_idx),
+        square_highlight_layer_id(SquareHighlightLayer::Ephemeral, board_idx),
         ShapeRendering::Normal,
     )?;
     add_layer(chalk_drawing_layer_id(board_idx), ShapeRendering::Normal)?;
@@ -2479,6 +2451,8 @@ fn turn_highlight_class_id(h: &TurnHighlight) -> String {
         TurnHighlightItem::MoveTo => "to",
         TurnHighlightItem::Drop => "drop",
         TurnHighlightItem::Capture => "capture",
+        TurnHighlightItem::DragStart => "dragstart",
+        TurnHighlightItem::LegalDestination => "legaldestination",
     };
     let layer = match h.layer {
         TurnHighlightLayer::AboveFog => "-above",
@@ -2491,7 +2465,7 @@ fn square_highlight_layer_id(layer: SquareHighlightLayer, board_idx: DisplayBoar
     let layer_id = match layer {
         SquareHighlightLayer::Turn => "turn",
         SquareHighlightLayer::TurnAbove => "turn-above",
-        SquareHighlightLayer::Drag => "drag",
+        SquareHighlightLayer::Ephemeral => "drag",
     };
     format!("{}-highlight-layer-{}", layer_id, board_id(board_idx))
 }
