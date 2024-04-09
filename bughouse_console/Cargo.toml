@@ -11,48 +11,48 @@ edition = "2021"
 strict = []  # treat warnings as a build error
 
 [dependencies]
-anyhow = "1.0.75"
-argon2 = "0.5.2"
+anyhow = "1.0.81"
+argon2 = "0.5.3"
 async-std = { version = "1.12.0", features = ["tokio1"] }
 async-trait = "0.1.79"
 async-tungstenite = "0.23.0"
 censor = "0.3.0"
-clap = { version = "4.4.5", features = ["cargo"] }
-console = "0.15.7"
+clap = { version = "4.5.4", features = ["cargo"] }
+console = "0.15.8"
 crossterm = "0.27.0"
-ctrlc = "3.4.1"
-enum-map = "2.6.3"
-env_logger = "0.10.0"
-futures-io = "0.3.28"
-futures-util = "0.3.28"
-http = "0.2.9"
+ctrlc = "3.4.4"
+enum-map = "2.7.3"
+env_logger = "0.11.3"
+futures-io = "0.3.30"
+futures-util = "0.3.30"
+http = "0.2.12"
 http-types = { version = "2.12.0", features = ["hyperium_http"] }
 humantime = "2.1.0"
 humantime-serde = "1.1.1"
 instant = "0.1.12"
-itertools = "0.11.0"
+itertools = "0.12.1"
 lazy_static = "1.4.0"
-log = "0.4.20"
+log = "0.4.21"
 oauth2 = "4.4.2"
 plotly = "0.8.4"
 prometheus = "0.13.3"
 rand = "0.8.5"
-reqwest = { version = "0.11.20", features = ["json"] }
+reqwest = { version = "0.12.3", features = ["json"] }
 scopeguard = "1.2.0"
-serde = "1.0.188"
-serde_json = "1.0.107"
-serde_yaml = "0.9.25"
-strum = { version = "0.25", features = ["derive"] }
-skillratings = "0.25.0"
-sqlx = { version = "0.7.1", features = ["postgres", "sqlite", "runtime-async-std-rustls", "time"] }
+serde = "1.0.197"
+serde_json = "1.0.115"
+serde_yaml = "0.9.34"
+strum = { version = "0.26", features = ["derive"] }
+skillratings = "0.26.0"
+sqlx = { version = "0.7.4", features = ["postgres", "sqlite", "runtime-async-std-rustls", "time"] }
 tide = "0.16.0"
 tide-jsx = "0.4.0"
-time = "0.3.29"
+time = "0.3.34"
 tungstenite = "0.20.1"
-unicode-normalization = "0.1.22"
-unicode-segmentation = "1.10.1"
-url = "2.4.1"
-uuid = { version = "1.4.1", features = ["v4"] }
+unicode-normalization = "0.1.23"
+unicode-segmentation = "1.11.0"
+url = "2.5.0"
+uuid = { version = "1.8.0", features = ["v4"] }
 
 bughouse_chess = { path = ".." }
 

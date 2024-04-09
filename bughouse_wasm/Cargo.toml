@@ -11,15 +11,15 @@ crate-type = ["cdylib", "rlib"]
 strict = []  # treat warnings as a build error
 
 [dependencies]
-enum-map = "2.6.3"
-getrandom = { version = "0.2.10", features = ["js"] }
+enum-map = "2.7.3"
+getrandom = { version = "0.2.14", features = ["js"] }
 instant = { version = "0.1.12", features = [ "wasm-bindgen" ] }
-itertools = "0.11.0"
-regex-lite = "0.1.0"
-serde_json = "1.0.107"
-strum = { version = "0.25", features = ["derive"] }
-time = { version = "0.3.29", features = ["formatting", "local-offset", "macros", "serde", "wasm-bindgen"] }
-wasm-bindgen = "0.2.87"
+itertools = "0.12.1"
+regex-lite = "0.1.5"
+serde_json = "1.0.115"
+strum = { version = "0.26", features = ["derive"] }
+time = { version = "0.3.34", features = ["formatting", "local-offset", "macros", "serde", "wasm-bindgen"] }
+wasm-bindgen = "0.2.92"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
@@ -30,7 +30,7 @@ console_error_panic_hook = "0.1.7"
 bughouse_chess = { path = ".." }
 
 [dependencies.web-sys]
-version = "0.3.64"
+version = "0.3.69"
 features = [
   'CanvasRenderingContext2d',
   'Document',
@@ -50,7 +50,7 @@ features = [
 ]
 
 [dev-dependencies]
-wasm-bindgen-test = "0.3.37"
+wasm-bindgen-test = "0.3.42"
 
 # Improvement potential: Optimize WASM version for size. This is blocked on the following:
 #   - profiles can only be specified in the Cargo workspace root (not here);

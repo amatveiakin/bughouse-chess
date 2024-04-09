@@ -21,29 +21,29 @@ chain-cmp = "0.2.0"
 # We don't use `chrono` ourselves, but some dependencies do. Until recently `chrono` depended
 # on `time 0.1.45`, which is affected by https://rustsec.org/advisories/RUSTSEC-2020-0071.
 # Bumping the version to fix this.
-chrono = "0.4.31"
+chrono = "0.4.37"
 dashmap = "5.5.3"
-derive-new = "0.5.9"
-enum-map = { version = "2.6.3", features = ["serde"] }
-git-version = "0.3.5"
-hdrhistogram = "7.5.2"
-indoc = "2.0.4"
+derive-new = "0.6.0"
+enum-map = { version = "2.7.3", features = ["serde"] }
+git-version = "0.3.9"
+hdrhistogram = "7.5.4"
+indoc = "2.0.5"
 instant = { version = "0.1.12", features = ["wasm-bindgen"] }
-itertools = "0.11.0"
+itertools = "0.12.1"
 lazy_static = "1.4.0"
-log = "0.4.20"
+log = "0.4.21"
 lru = "0.12.3"
 ndarray = { version = "0.15.6", features = ["serde"] }
 prometheus = "0.13.3"
 rand = "0.8.5"
 # Improvement potential: Use a static regex compiler to further reduce WASM size.
-regex-lite = "0.1.0"
+regex-lite = "0.1.5"
 scopeguard = "1.2.0"
-serde = { version = "1.0.188", features = ["derive"] }
-serde_json = "1.0.107"
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.115"
 static_assertions = "1.1.0"
-strum = { version = "0.25", features = ["derive"] }
-time = { version = "0.3.29", features = ["formatting", "macros", "serde", "wasm-bindgen"] }
+strum = { version = "0.26", features = ["derive"] }
+time = { version = "0.3.34", features = ["formatting", "macros", "serde", "wasm-bindgen"] }
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
