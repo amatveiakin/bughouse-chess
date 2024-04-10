@@ -730,6 +730,7 @@ dependencies = [
  "env_logger",
  "futures-io",
  "futures-util",
+ "hdrhistogram",
  "http 0.2.12",
  "http-types",
  "humantime",

@@ -1,4 +1,5 @@
 use bughouse_chess::meter::MeterStats;
+use hdrhistogram::Histogram;
 use itertools::Itertools;
 
 
@@ -11,17 +12,12 @@ pub struct ClientPerformanceRecord {
     pub update_state_stats: MeterStats,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct ValueWithUncertainty {
-    pub mean: f64,
-    pub std_dev: f64,
-}
-
+// TODO: What is the proper way to aggregate quantiles?
 #[derive(Clone, Debug)]
 pub struct MeterStatsWithUncertainty {
-    pub p50: ValueWithUncertainty,
-    pub p90: ValueWithUncertainty,
-    pub p99: ValueWithUncertainty,
+    pub p50s: Histogram<u64>,
+    pub p90s: Histogram<u64>,
+    pub p99s: Histogram<u64>,
 }
 
 pub struct AggregatedClientPerformancePoint {
@@ -35,24 +31,12 @@ pub struct ClientPerformanceStats {
     points: Vec<AggregatedClientPerformancePoint>,
 }
 
-impl ValueWithUncertainty {
-    pub fn from_values(values: &[f64]) -> Self {
-        let n = values.len() as f64;
-        let mean = values.iter().sum::<f64>() / n;
-        let std_dev = values.iter().map(|value| (value - mean).powi(2)).sum::<f64>().sqrt() / n;
-        Self { mean, std_dev }
-    }
-}
-
 impl MeterStatsWithUncertainty {
     pub fn from_values(values: &[MeterStats]) -> Self {
-        let p50_values: Vec<f64> = values.iter().map(|stats| stats.p50 as f64).collect();
-        let p90_values: Vec<f64> = values.iter().map(|stats| stats.p90 as f64).collect();
-        let p99_values: Vec<f64> = values.iter().map(|stats| stats.p99 as f64).collect();
-        let p50 = ValueWithUncertainty::from_values(&p50_values);
-        let p90 = ValueWithUncertainty::from_values(&p90_values);
-        let p99 = ValueWithUncertainty::from_values(&p99_values);
-        Self { p50, p90, p99 }
+        let p50s = make_histogram(values.iter().map(|stats| stats.p50));
+        let p90s = make_histogram(values.iter().map(|stats| stats.p90));
+        let p99s = make_histogram(values.iter().map(|stats| stats.p99));
+        Self { p50s, p90s, p99s }
     }
 }
 
@@ -84,12 +68,22 @@ impl ClientPerformanceStats {
     }
 }
 
+fn make_histogram(values: impl IntoIterator<Item = u64>) -> Histogram<u64> {
+    const SIGNIFICANT_DIGITS: u8 = 3;
+    let mut histogram = Histogram::<u64>::new(SIGNIFICANT_DIGITS).unwrap();
+    for value in values {
+        histogram.record(value).unwrap();
+    }
+    histogram
+}
+
 fn make_trace(
     stats: &ClientPerformanceStats, xs: &[String], name: &str,
-    get_y: impl Fn(&AggregatedClientPerformancePoint) -> ValueWithUncertainty,
-) -> Box<plotly::Scatter<String, f64>> {
-    // TODO: Take std_dev into account.
-    let ys = stats.points.iter().map(|point| get_y(point).mean).collect_vec();
+    get_y: impl Fn(&AggregatedClientPerformancePoint) -> &Histogram<u64>,
+) -> Box<plotly::Scatter<String, u64>> {
+    // TODO: Add other quantiles to see things like “how fast the game is on average for 10% slowest
+    // devices” and “what is the ~slowest case (99th percentile of the 99th percentile)”.
+    let ys = stats.points.iter().map(|p| get_y(p).value_at_quantile(0.5)).collect_vec();
     plotly::Scatter::new(xs.to_vec(), ys)
         .name(name)
         .mode(plotly::common::Mode::LinesMarkers)
@@ -103,12 +97,12 @@ pub fn performance_stats_graph_html(stats: &ClientPerformanceStats) -> String {
         .clone()
         .title("Client performance: mean time per operation (milliseconds)".into());
     plot.set_layout(layout);
-    let xs = stats.points.iter().map(|point| point.git_version.clone()).collect_vec();
-    plot.add_trace(make_trace(stats, &xs, "ping_50", |point| point.ping_stats.p50));
-    plot.add_trace(make_trace(stats, &xs, "ping_90", |point| point.ping_stats.p90));
-    plot.add_trace(make_trace(stats, &xs, "ping_99", |point| point.ping_stats.p99));
-    plot.add_trace(make_trace(stats, &xs, "update_state_50", |point| point.update_state_stats.p50));
-    plot.add_trace(make_trace(stats, &xs, "update_state_90", |point| point.update_state_stats.p90));
-    plot.add_trace(make_trace(stats, &xs, "update_state_99", |point| point.update_state_stats.p99));
+    let xs = stats.points.iter().map(|p| p.git_version.clone()).collect_vec();
+    plot.add_trace(make_trace(stats, &xs, "ping_50", |p| &p.ping_stats.p50s));
+    plot.add_trace(make_trace(stats, &xs, "ping_90", |p| &p.ping_stats.p90s));
+    plot.add_trace(make_trace(stats, &xs, "ping_99", |p| &p.ping_stats.p99s));
+    plot.add_trace(make_trace(stats, &xs, "update_state_50", |p| &p.update_state_stats.p50s));
+    plot.add_trace(make_trace(stats, &xs, "update_state_90", |p| &p.update_state_stats.p90s));
+    plot.add_trace(make_trace(stats, &xs, "update_state_99", |p| &p.update_state_stats.p99s));
     plot.to_inline_html(None)
 }
