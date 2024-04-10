@@ -4,6 +4,7 @@ use tide::utils::async_trait;
 use time::OffsetDateTime;
 
 use crate::bughouse_prelude::*;
+use crate::client_performance_stats::ClientPerformanceRecord;
 
 #[derive(Debug)]
 pub struct GameResultRow {
@@ -31,6 +32,7 @@ pub trait DatabaseReader {
         &self, game_end_time_range: Range<OffsetDateTime>, only_rated: bool,
     ) -> Result<Vec<(RowId, GameResultRow)>, anyhow::Error>;
     async fn pgn(&self, rowid: RowId) -> Result<String, anyhow::Error>;
+    async fn client_performance(&self) -> Result<Vec<ClientPerformanceRecord>, anyhow::Error>;
 }
 
 #[async_trait]

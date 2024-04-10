@@ -9,6 +9,7 @@
 // TODO: streaming support + APIs.
 use std::ops::Range;
 
+use bughouse_chess::meter::MeterStats;
 use bughouse_chess::my_git_version;
 use log::error;
 use sqlx::prelude::*;
@@ -16,7 +17,26 @@ use tide::utils::async_trait;
 use time::{OffsetDateTime, PrimitiveDateTime};
 
 use crate::bughouse_prelude::*;
+use crate::client_performance_stats::ClientPerformanceRecord;
 use crate::persistence::*;
+
+trait U64AsI64Database {
+    fn try_get_u64<'r, I>(&'r self, index: I) -> Result<u64, sqlx::Error>
+    where
+        I: sqlx::ColumnIndex<Self>;
+}
+
+impl<DB: sqlx::Database, R: sqlx::Row<Database = DB>> U64AsI64Database for R
+where
+    i64: Type<DB> + for<'q> Decode<'q, DB>,
+{
+    fn try_get_u64<'r, I>(&'r self, index: I) -> Result<u64, sqlx::Error>
+    where
+        I: sqlx::ColumnIndex<Self>,
+    {
+        self.try_get::<i64, _>(index).map(|x| x as u64)
+    }
+}
 
 pub struct UnimplementedDatabase {}
 
@@ -29,6 +49,9 @@ impl DatabaseReader for UnimplementedDatabase {
     }
     async fn pgn(&self, _: RowId) -> Result<String, anyhow::Error> {
         Err(anyhow::Error::msg("pgn() unimplemented"))
+    }
+    async fn client_performance(&self) -> Result<Vec<ClientPerformanceRecord>, anyhow::Error> {
+        Err(anyhow::Error::msg("client_performance() unimplemented"))
     }
 }
 
@@ -163,6 +186,65 @@ where
             .try_get("game_pgn")
             .map_err(anyhow::Error::from)
     }
+
+    async fn client_performance(&self) -> Result<Vec<ClientPerformanceRecord>, anyhow::Error> {
+        let rows = sqlx::query::<DB>(
+            "SELECT
+                git_version,
+                user_agent,
+                time_zone,
+                ping_p50,
+                ping_p90,
+                ping_p99,
+                ping_n,
+                update_state_p50,
+                update_state_p90,
+                update_state_p99,
+                update_state_n
+             FROM client_performance",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let (oks, errs): (Vec<_>, _) = rows
+            .into_iter()
+            .map(|row| -> Result<_, anyhow::Error> {
+                let ping_stats = MeterStats {
+                    p50: row.try_get_u64("ping_p50")?,
+                    p90: row.try_get_u64("ping_p90")?,
+                    p99: row.try_get_u64("ping_p99")?,
+                    num_values: row.try_get_u64("ping_n")?,
+                };
+                let update_state_stats = MeterStats {
+                    p50: row.try_get_u64("update_state_p50")?,
+                    p90: row.try_get_u64("update_state_p90")?,
+                    p99: row.try_get_u64("update_state_p99")?,
+                    num_values: row.try_get_u64("update_state_n")?,
+                };
+                Ok(ClientPerformanceRecord {
+                    git_version: row.try_get("git_version")?,
+                    user_agent: row.try_get("user_agent")?,
+                    time_zone: row.try_get("time_zone")?,
+                    ping_stats,
+                    update_state_stats,
+                })
+            })
+            .partition(Result::is_ok);
+        if !errs.is_empty() {
+            error!(
+                "Failed to parse rows from the DB; sample errors: {:?}",
+                errs.iter()
+                    .take(5)
+                    .map(|x| x.as_ref().err().unwrap().to_string())
+                    .collect::<Vec<_>>()
+            );
+        }
+        if oks.is_empty() && !errs.is_empty() {
+            // None of the rows parsed, return the first error.
+            Err(errs.into_iter().next().unwrap().unwrap_err())
+        } else {
+            Ok(oks.into_iter().map(Result::unwrap).collect())
+        }
+    }
 }
 
 pub trait HasRowidColumnDefinition {
@@ -271,6 +353,7 @@ where
         .await?;
         Ok(())
     }
+    // TODO: Save time when performance was recorded.
     async fn add_client_performance(
         &self, perf: &BughouseClientPerformance, invocation_id: &str,
     ) -> anyhow::Result<()> {

@@ -5,9 +5,13 @@ use tide::{Request, Response, StatusCode};
 use tide_jsx::*;
 use time::OffsetDateTime;
 
+use crate::client_performance_stats::{self, ClientPerformanceStats};
 use crate::game_stats::{ComputeMetaStats, GroupStats, RawStats};
 use crate::history_graphs;
 use crate::persistence::{self, DatabaseReader};
+
+const IMPORT_PLOTLY: &'static str =
+    r#"<script src="https://cdn.plot.ly/plotly-2.16.1.min.js"></script>"#;
 
 pub trait SuitableServerState: Sync + Send + Clone + 'static {
     type DB: Sync + Send + DatabaseReader;
@@ -34,6 +38,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
         app.at("/dyn/history/pertime")
             .get(|req| Self::handle_history(req, history_graphs::XAxis::Timestamp));
         app.at("/dyn/meta/history").get(|req| Self::handle_meta_stats_history(req));
+        app.at("/dyn/client-perf").get(|req| Self::handle_client_performance_stats(req));
 
         app.with(tide::log::LogMiddleware::new());
 
@@ -304,7 +309,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
         let h: String = html! {
             <html>
             <head>
-                {raw!(r#"<script src="https://cdn.plot.ly/plotly-2.16.1.min.js"></script>"#)}
+                {raw!(IMPORT_PLOTLY)}
             </head>
             <body>
                 {raw!(players_history_graph_html.as_str())}
@@ -333,7 +338,29 @@ impl<ST: SuitableServerState> Handlers<ST> {
         let h: String = html! {
             <html>
             <head>
-                {raw!(r#"<script src="https://cdn.plot.ly/plotly-2.16.1.min.js"></script>"#)}
+                {raw!(IMPORT_PLOTLY)}
+            </head>
+            <body>
+                {raw!(graph_html.as_str())}
+            </body>
+            </html>
+        };
+        let mut resp = Response::new(StatusCode::Ok);
+        resp.set_content_type(Mime::from("text/html; charset=UTF-8"));
+        resp.set_body(h);
+        Ok(resp)
+    }
+
+    async fn handle_client_performance_stats(req: Request<ST>) -> tide::Result {
+        let performance_records =
+            req.state().db().client_performance().await.map_err(anyhow::Error::from)?;
+        let stats = ClientPerformanceStats::from_values(performance_records);
+
+        let graph_html = client_performance_stats::performance_stats_graph_html(&stats);
+        let h: String = html! {
+            <html>
+            <head>
+                {raw!(IMPORT_PLOTLY)}
             </head>
             <body>
                 {raw!(graph_html.as_str())}

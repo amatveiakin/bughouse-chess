@@ -30,6 +30,7 @@ mod auth_handlers_tide;
 mod bughouse_prelude;
 mod censor;
 mod client_main;
+mod client_performance_stats;
 mod database;
 mod database_server_hooks;
 mod game_stats;
