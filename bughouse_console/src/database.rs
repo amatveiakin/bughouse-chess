@@ -380,7 +380,7 @@ where
                 update_state_n,
                 update_clock_p99,
                 update_drag_state_p99)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)")
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)")
                 .bind(my_git_version!().to_owned())
                 .bind(invocation_id.to_owned())
                 .bind(perf.user_agent.clone())
