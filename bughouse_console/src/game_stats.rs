@@ -116,12 +116,7 @@ fn elo_config() -> EloConfig { EloConfig { k: 10.0 } }
 
 fn default_weng_lin() -> WengLinRating { WengLinRating { rating: 1600., uncertainty: 60.2 } }
 
-fn weng_lin_config() -> WengLinConfig {
-    WengLinConfig {
-        beta: 120.4,
-        ..Default::default()
-    }
-}
+fn weng_lin_config() -> WengLinConfig { WengLinConfig { beta: 120.4, ..Default::default() } }
 
 fn process_game(
     result: &str, prior_stats: GameStats, game_end_time: Option<OffsetDateTime>,
@@ -143,8 +138,12 @@ fn process_game(
 
     let prior_red_team_rating = prior_stats.red_team.rating.unwrap_or_else(default_weng_lin);
     let prior_blue_team_rating = prior_stats.blue_team.rating.unwrap_or_else(default_weng_lin);
-    let (red_team_rating, blue_team_rating) =
-        weng_lin(&prior_red_team_rating, &prior_blue_team_rating, &red_outcome, &weng_lin_config());
+    let (red_team_rating, blue_team_rating) = weng_lin(
+        &prior_red_team_rating,
+        &prior_blue_team_rating,
+        &red_outcome,
+        &weng_lin_config(),
+    );
 
     let prior_red_players_ratings =
         prior_stats.red_players.map(|p| p.rating.unwrap_or_else(default_weng_lin));
