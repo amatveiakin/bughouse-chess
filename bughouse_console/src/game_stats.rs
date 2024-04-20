@@ -112,7 +112,11 @@ pub enum ComputeMetaStats {
 
 fn default_elo() -> EloRating { EloRating { rating: 1600.0 } }
 
-fn default_weng_lin() -> WengLinRating { WengLinRating::new() }
+fn elo_config() -> EloConfig { EloConfig { k: 10.0 } }
+
+fn default_weng_lin() -> WengLinRating { WengLinRating { rating: 1600., uncertainty: 60.2 } }
+
+fn weng_lin_config() -> WengLinConfig { WengLinConfig { beta: 120.4, ..Default::default() } }
 
 fn process_game(
     result: &str, prior_stats: GameStats, game_end_time: Option<OffsetDateTime>,
@@ -130,7 +134,7 @@ fn process_game(
     let prior_red_team_elo = prior_stats.red_team.elo.unwrap_or_else(default_elo);
     let prior_blue_team_elo = prior_stats.blue_team.elo.unwrap_or_else(default_elo);
     let (red_team_elo, blue_team_elo) =
-        elo(&prior_red_team_elo, &prior_blue_team_elo, &red_outcome, &EloConfig { k: 20.0 });
+        elo(&prior_red_team_elo, &prior_blue_team_elo, &red_outcome, &elo_config());
 
     let prior_red_team_rating = prior_stats.red_team.rating.unwrap_or_else(default_weng_lin);
     let prior_blue_team_rating = prior_stats.blue_team.rating.unwrap_or_else(default_weng_lin);
@@ -138,7 +142,7 @@ fn process_game(
         &prior_red_team_rating,
         &prior_blue_team_rating,
         &red_outcome,
-        &WengLinConfig::default(),
+        &weng_lin_config(),
     );
 
     let prior_red_players_ratings =
@@ -149,7 +153,7 @@ fn process_game(
         &prior_red_players_ratings,
         &prior_blue_players_ratings,
         &red_outcome,
-        &WengLinConfig::default(),
+        &weng_lin_config(),
     );
 
     let meta_stats = match compute_meta_stats {
@@ -173,13 +177,13 @@ fn process_game(
             let (expected_red_team_score, expected_blue_team_score) = weng_lin::expected_score(
                 &prior_red_team_rating,
                 &prior_blue_team_rating,
-                &WengLinConfig::default(),
+                &weng_lin_config(),
             );
             let (expected_red_players_score, expected_blue_players_score) =
                 weng_lin::expected_score_two_teams(
                     &prior_red_players_ratings,
                     &prior_blue_players_ratings,
-                    &WengLinConfig::default(),
+                    &weng_lin_config(),
                 );
             let mut ms = prior_stats.meta_stats.unwrap_or_default();
             ms.game_count += 1;
