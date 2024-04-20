@@ -71,8 +71,11 @@ pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxi
         .clone()
         .title("Player rating history".into())
         .y_axis(plotly::layout::Axis::new().hover_format(".0f"));
+    let mut stats: Vec<(&String, &Vec<RawStats>)> = stats.per_player.iter().collect();
+    stats.sort_by_key(|(p, _)| *p);
+
     plot.set_layout(layout);
-    for (index, (player, stats_vec)) in stats.per_player.iter().enumerate() {
+    for (index, (player, stats_vec)) in stats.iter().enumerate() {
         // Drops points where the timestamp or rating can't be determined.
         let filtered_stats = stats_vec
             .iter()
@@ -135,7 +138,9 @@ pub fn teams_elo_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxis) ->
         .title("Team Elo history".into())
         .y_axis(plotly::layout::Axis::new().hover_format(".0f"));
     plot.set_layout(layout);
-    for (index, (team, stats_vec)) in stats.per_team.iter().enumerate() {
+    let mut stats: Vec<(&[String; 2], &Vec<RawStats>)> = stats.per_team.iter().collect();
+    stats.sort_by_key(|(t, _)| *t);
+    for (index, (team, stats_vec)) in stats.iter().enumerate() {
         // Drops points where the timestamp or rating can't be determined.
         let filtered_stats =
             stats_vec.iter().filter(|stat| stat.last_update.is_some() && stat.elo.is_some());
