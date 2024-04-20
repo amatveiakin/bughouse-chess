@@ -169,8 +169,8 @@ impl<ST: SuitableServerState> Handlers<ST> {
                         <tr>
                             <td>{s.name}</td>
                             <td>{format!("{:.3}", s.pointrate)}</td>
-                            <td>{s.elo.map_or("".to_owned(), |e| format!("{:.3}", e))}</td>
-                            <td>{s.rating.map_or("".to_owned(), |r| format!("{:.3}", r))}</td>
+                            <td>{s.elo.map_or("".to_owned(), |e| format!("{:.0}", e))}</td>
+                            <td>{s.rating.map_or("".to_owned(), |r| format!("{:.0}", r))}</td>
                             <td>{s.rating_uncertainty.map_or("".to_owned(), |r| format!("{:.3}", r))}</td>
                             <td>{s.points}</td>
                             <td>{s.games}</td>
@@ -190,7 +190,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
                         <tr>
                             <td>{s.name}</td>
                             <td>{format!("{:.3}", s.pointrate)}</td>
-                            <td>{s.rating.map_or("".to_owned(), |r| format!("{:.3}", r))}</td>
+                            <td>{s.rating.map_or("".to_owned(), |r| format!("{:.0}", r))}</td>
                             <td>{s.rating_uncertainty.map_or("".to_owned(), |r| format!("{:.3}", r))}</td>
                             <td>{s.points}</td>
                             <td>{s.games}</td>
