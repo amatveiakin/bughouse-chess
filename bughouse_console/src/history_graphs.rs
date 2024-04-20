@@ -66,7 +66,11 @@ pub enum XAxis {
 
 pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxis) -> String {
     let mut plot = plotly::Plot::new();
-    let layout = plot.layout().clone().title("Player rating history".into());
+    let layout = plot
+        .layout()
+        .clone()
+        .title("Player rating history".into())
+        .y_axis(plotly::layout::Axis::new().hover_format(".0f"));
     plot.set_layout(layout);
     for (index, (player, stats_vec)) in stats.per_player.iter().enumerate() {
         // Drops points where the timestamp or rating can't be determined.
@@ -125,7 +129,11 @@ pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxi
 
 pub fn teams_elo_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxis) -> String {
     let mut plot = plotly::Plot::new();
-    let layout = plot.layout().clone().title("Team Elo history".into());
+    let layout = plot
+        .layout()
+        .clone()
+        .title("Team Elo history".into())
+        .y_axis(plotly::layout::Axis::new().hover_format(".0f"));
     plot.set_layout(layout);
     for (index, (team, stats_vec)) in stats.per_team.iter().enumerate() {
         // Drops points where the timestamp or rating can't be determined.
