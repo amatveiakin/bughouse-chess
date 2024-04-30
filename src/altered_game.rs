@@ -8,17 +8,11 @@
 // Only one preturn is allowed (for game-design reasons, this is not a technical limitation).
 // It is still possible to have two unconfirmed local turns: one normal and one preturn.
 
-// Improvement potential: Reduce the number of times large entities are recomputed
-// (e.g.`turn_highlights` recomputes `local_game` and `fog_of_war_area`, which are presumably
-// already available by the time it's used). Ideas:
-//   - Cache latest result and reevaluate when invalidated;
-//   - Replace all existing read-only methods with one "get visual representation" method that
-//     contain all the information required in order to render the game.
-
+use std::cell::{Ref, RefCell};
 use std::cmp;
 use std::collections::HashSet;
 
-use enum_map::enum_map;
+use enum_map::{enum_map, EnumMap};
 use itertools::Itertools;
 use strum::IntoEnumIterator;
 
@@ -28,6 +22,7 @@ use crate::board::{
 };
 use crate::clock::GameInstant;
 use crate::coord::{BoardShape, Coord, SubjectiveRow};
+use crate::dirty::Dirty;
 use crate::display::Perspective;
 use crate::force::Force;
 use crate::game::{
@@ -51,7 +46,7 @@ pub enum TurnInputResult {
     Error(TurnError),
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct RegularPartialTurn {
     pub piece_kind: PieceKind,
     pub piece_force: PieceForce,
@@ -59,7 +54,7 @@ pub struct RegularPartialTurn {
     pub source: PartialTurnSource,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PartialTurnInput {
     Drag(RegularPartialTurn),
     ClickMove(RegularPartialTurn),
@@ -67,7 +62,7 @@ pub enum PartialTurnInput {
     StealPromotion { from: Coord, to: Coord },
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PartialTurnSource {
     Defunct, // dragged piece captured by opponent or depends on a cancelled preturn
     Board(Coord),
@@ -126,13 +121,6 @@ pub struct TurnHighlights {
     pub reserve_piece_highlights: Vec<ReservePieceHighlight>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum LocalTurns {
-    OnlyNormal,   // normal
-    NormalAndPre, // normal + pre
-    All,          // normal + pre + partial
-}
-
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum WaybackState {
     Disabled,           // cannot view old turns
@@ -178,30 +166,50 @@ impl WaybackState {
 
 #[derive(Clone, Debug)]
 pub struct AlteredGame {
-    // All local actions are assumed to be made on behalf of this player.
+    // All local actions are assumed to be made on behalf of this player. Constant.
     my_id: BughouseParticipant,
     // State as it has been confirmed by the server.
-    game_confirmed: BughouseGame,
+    game_confirmed: Dirty<BughouseGame>,
     // Partial turn input (e.g. move of a pawn to the last rank without a promotion choice).
-    partial_turn_input: Option<(BughouseBoard, PartialTurnInput)>,
+    partial_turn_input: Dirty<Option<(BughouseBoard, PartialTurnInput)>>,
     // Local changes of two kinds:
     //   - Local turns (TurnMode::Normal) not confirmed by the server yet, but displayed on the
     //     client. Always valid turns for the `game_confirmed`.
     //   - Local preturns (TurnMode::Preturn).
     // The turns are executed sequentially. Preturns always follow normal turns.
-    local_turns: Vec<TurnRecord>,
+    local_turns: Dirty<Vec<TurnRecord>>,
     // Historical position that the user is currently viewing.
-    wayback_turn_index: Option<TurnIndex>,
+    wayback_turn_index: Dirty<Option<TurnIndex>>,
+    // Data determistically computed based on the other fields. Don't use this field directly, even
+    // internally! Use `derived_data()` instead, which ensures that the data is up-to-date.
+    derived_data: RefCell<DerivedData>,
+}
+
+#[derive(Clone, Debug)]
+struct DerivedData {
+    local_game: BughouseGame,
+    fog_of_war_area: EnumMap<BughouseBoard, HashSet<Coord>>,
 }
 
 impl AlteredGame {
     pub fn new(my_id: BughouseParticipant, game_confirmed: BughouseGame) -> Self {
+        let partial_turn_input = None;
+        let local_turns = Vec::new();
+        let wayback_turn_index = None;
+        let derived_data = compute_derived_data(
+            my_id,
+            &game_confirmed,
+            partial_turn_input,
+            &local_turns,
+            wayback_turn_index,
+        );
         AlteredGame {
             my_id,
-            game_confirmed,
-            partial_turn_input: None,
-            local_turns: Vec::new(),
-            wayback_turn_index: None,
+            game_confirmed: Dirty::new(game_confirmed),
+            partial_turn_input: Dirty::new(partial_turn_input),
+            local_turns: Dirty::new(local_turns),
+            wayback_turn_index: Dirty::new(wayback_turn_index),
+            derived_data: RefCell::new(derived_data),
         }
     }
 
@@ -220,16 +228,20 @@ impl AlteredGame {
 
     pub fn set_status(&mut self, status: BughouseGameStatus, time: GameInstant) {
         assert!(!status.is_active());
+        self.game_confirmed.get_mut().set_status(status, time);
         self.reset_local_changes();
-        self.game_confirmed.set_status(status, time);
     }
 
     pub fn apply_remote_turn(
         &mut self, envoy: BughouseEnvoy, turn_input: &TurnInput, time: GameInstant,
     ) -> Result<TurnRecordExpanded, TurnError> {
-        let mut original_game_confirmed = self.game_confirmed.clone();
-        self.game_confirmed
-            .try_turn_by_envoy(envoy, turn_input, TurnMode::Normal, time)?;
+        let mut original_game_confirmed = (*self.game_confirmed).clone();
+        self.game_confirmed.get_mut().try_turn_by_envoy(
+            envoy,
+            turn_input,
+            TurnMode::Normal,
+            time,
+        )?;
         let remote_turn_record = self.game_confirmed.turn_log().last().unwrap().clone();
 
         if !self.game_confirmed.is_active() {
@@ -243,7 +255,7 @@ impl AlteredGame {
                     original_game_confirmed.apply_turn_record(turn_record, TurnMode::Normal);
                 if local_turn == Ok(remote_turn_record.turn_expanded.turn) {
                     // The server confirmed a turn made by this player. Discard the local copy.
-                    self.local_turns.remove(turn_idx);
+                    self.local_turns.get_mut().remove(turn_idx);
                     break;
                 } else {
                     // The server sent a turn made by this player, but it's different from the local
@@ -253,7 +265,7 @@ impl AlteredGame {
                     // the server applied earlier preturn version. We don't want to apply subsequent
                     // preturns based on a different game history: if the first turn changed, the
                     // user probably wants to make different turns based on that.
-                    self.local_turns.retain(|r| r.envoy != envoy);
+                    self.local_turns.get_mut().retain(|r| r.envoy != envoy);
                     break;
                 }
             }
@@ -267,14 +279,15 @@ impl AlteredGame {
     pub fn perspective(&self) -> Perspective { Perspective::for_participant(self.my_id) }
     pub fn game_confirmed(&self) -> &BughouseGame { &self.game_confirmed }
 
-    pub fn local_game(&self) -> BughouseGame {
-        let mut game = self.game_with_local_turns(LocalTurns::All);
-        self.apply_wayback(&mut game);
-        game
+    pub fn local_game(&self) -> Ref<BughouseGame> {
+        Ref::map(self.derived_data(), |d| &d.local_game)
+    }
+    pub fn fog_of_war_area(&self, board_idx: BughouseBoard) -> Ref<HashSet<Coord>> {
+        Ref::map(self.derived_data(), |d| &d.fog_of_war_area[board_idx])
     }
 
     pub fn partial_turn_input(&self) -> Option<(BughouseBoard, PartialTurnInput)> {
-        self.partial_turn_input
+        *self.partial_turn_input
     }
     pub fn partial_turn_input_or_duck_turn(
         &self, board_idx: BughouseBoard,
@@ -287,8 +300,8 @@ impl AlteredGame {
             let Some(envoy) = self.my_id.envoy_for(board_idx) else {
                 break 'duck None;
             };
-            let game = self.game_with_local_turns(LocalTurns::All);
-            let board = game.board(board_idx);
+            let local_game = self.local_game();
+            let board = local_game.board(board_idx);
             if !board.is_duck_turn(envoy.force) {
                 break 'duck None;
             }
@@ -312,8 +325,7 @@ impl AlteredGame {
         let Some(envoy) = self.my_id.envoy_for(board_idx) else {
             return false;
         };
-        let game = self.game_with_local_turns(LocalTurns::All);
-        game.board(board_idx).is_duck_turn(envoy.force)
+        self.local_game().board(board_idx).is_duck_turn(envoy.force)
     }
 
     pub fn turn_highlights(&self) -> TurnHighlights {
@@ -399,40 +411,6 @@ impl AlteredGame {
 
     pub fn see_though_fog(&self) -> bool { !self.is_active() }
 
-    pub fn fog_of_war_area(&self, board_idx: BughouseBoard) -> HashSet<Coord> {
-        if !self.chess_rules().fog_of_war {
-            return HashSet::new();
-        }
-
-        // Don't use `local_game`: preturns and drags should not reveal new areas. Even this logic
-        // is not 100% safe: in some game variants local in-order turns could be reverted, e.g. when
-        // a piece is stolen after a pawn promotion or when you receive a king in koedem. In such
-        // cases you would be able to briefly see areas that shouldn't have been revealed. But such
-        // occasions are rare, so it seem better than waiting for server response in order to lift
-        // the fog. The latter would feel laggy.
-        let mut game = self.game_with_local_turns(LocalTurns::OnlyNormal);
-
-        let board_shape = self.board_shape();
-        let wayback_active = self.apply_wayback(&mut game);
-        let force = match self.my_id {
-            BughouseParticipant::Player(id) => get_bughouse_force(id.team(), board_idx),
-            BughouseParticipant::Observer(_) => game.board(board_idx).active_force(),
-        };
-        let mut visible = game.board(board_idx).fog_free_area(force);
-        // Still, do show preturn pieces themselves:
-        if !wayback_active {
-            let game_with_preturns = self.game_with_local_turns(LocalTurns::All);
-            for coord in board_shape.coords() {
-                if let Some(piece) = game_with_preturns.board(board_idx).grid()[coord] {
-                    if piece.force.is_owned_by_or_neutral(force) {
-                        visible.insert(coord);
-                    }
-                }
-            }
-        }
-        board_shape.coords().filter(|c| !visible.contains(c)).collect()
-    }
-
     pub fn try_local_turn(
         &mut self, board_idx: BughouseBoard, turn_input: TurnInput, time: GameInstant,
     ) -> Result<TurnMode, TurnError> {
@@ -445,22 +423,22 @@ impl AlteredGame {
         if self.num_preturns_on_board(board_idx) >= self.chess_rules().max_preturns_per_board() {
             return Err(TurnError::PreturnLimitReached);
         }
-        self.partial_turn_input = None;
-        let mut game = self.game_with_local_turns(LocalTurns::All);
+        self.partial_turn_input.set(None);
+        let mut game = self.local_game().clone();
         let mode = game.turn_mode_for_envoy(envoy)?;
         game.try_turn_by_envoy(envoy, &turn_input, mode, time)?;
         // Note: cannot use `game.turn_log().last()` here! It will change the input method, and this
         // can cause subtle differences in preturn execution. For example, when making algebraic
         // turns you can require the turn be capturing by using "x". This information will be lost
         // if using TurnInput::Explicit.
-        self.local_turns.push(TurnRecord { envoy, turn_input, time });
+        self.local_turns.get_mut().push(TurnRecord { envoy, turn_input, time });
         Ok(mode)
     }
 
     pub fn wayback_state(&self) -> WaybackState {
         if self.is_active() {
             WaybackState::Disabled
-        } else if let Some(index) = self.wayback_turn_index {
+        } else if let Some(index) = *self.wayback_turn_index {
             WaybackState::Active(index)
         } else {
             if let Some(last_turn) = self.game_confirmed.last_turn_record() {
@@ -510,12 +488,12 @@ impl AlteredGame {
             WaybackDestination::Last => iter.rev().nth(0),
         };
         let at_end = new_index == self.game_confirmed.last_turn_record().map(|r| r.index);
-        self.wayback_turn_index = if at_end { None } else { new_index };
-        self.wayback_turn_index
+        self.wayback_turn_index.set(if at_end { None } else { new_index });
+        *self.wayback_turn_index
     }
 
     pub fn choose_promotion_upgrade(&mut self, piece_kind: PieceKind) -> TurnInputResult {
-        if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
+        if let Some((input_board_idx, partial_input)) = *self.partial_turn_input {
             match partial_input {
                 PartialTurnInput::Drag { .. } => {}
                 PartialTurnInput::ClickMove { .. } => {}
@@ -525,7 +503,7 @@ impl AlteredGame {
                         to,
                         promote_to: Some(PromotionTarget::Upgrade(piece_kind)),
                     }));
-                    self.partial_turn_input = None;
+                    self.partial_turn_input.set(None);
                     return TurnInputResult::Turn((input_board_idx, full_input));
                 }
                 PartialTurnInput::StealPromotion { .. } => {}
@@ -540,7 +518,7 @@ impl AlteredGame {
         if self.wayback_turn_index.is_some() {
             return TurnInputResult::Error(TurnError::WaybackIsActive);
         }
-        if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
+        if let Some((input_board_idx, partial_input)) = *self.partial_turn_input {
             match partial_input {
                 PartialTurnInput::Drag { .. } => {
                     return TurnInputResult::Error(TurnError::PreviousTurnNotFinished)
@@ -554,7 +532,7 @@ impl AlteredGame {
                                 // Deselect reserve pieces by clicking again. Note that we don't do
                                 // this for regular pieces because the duck can be premoved back to
                                 // the original place.
-                                self.partial_turn_input = None;
+                                self.partial_turn_input.set(None);
                                 return TurnInputResult::Noop;
                             }
                         }
@@ -568,7 +546,7 @@ impl AlteredGame {
                             }
                         }
                     }
-                    self.partial_turn_input = None;
+                    self.partial_turn_input.set(None);
                     // Fallthrough: begin new move.
                 }
                 PartialTurnInput::UpgradePromotion { .. } => {
@@ -578,8 +556,8 @@ impl AlteredGame {
                     if board_idx == input_board_idx.other()
                         && let Location::Square(coord) = loc
                     {
-                        let game = self.game_with_local_turns(LocalTurns::All);
-                        if let Some(piece) = game.board(board_idx).grid()[coord] {
+                        let piece = self.local_game().board(board_idx).grid()[coord];
+                        if let Some(piece) = piece {
                             let full_input = TurnInput::DragDrop(Turn::Move(TurnMove {
                                 from,
                                 to,
@@ -589,7 +567,7 @@ impl AlteredGame {
                                     piece.id,
                                 ))),
                             }));
-                            self.partial_turn_input = None;
+                            self.partial_turn_input.set(None);
                             return TurnInputResult::Turn((input_board_idx, full_input));
                         }
                     }
@@ -607,9 +585,8 @@ impl AlteredGame {
         } else {
             match loc {
                 Location::Square(coord) => {
-                    if let Some(piece) =
-                        self.game_with_local_turns(LocalTurns::All).board(board_idx).grid()[coord]
-                    {
+                    let piece = self.local_game().board(board_idx).grid()[coord];
+                    if let Some(piece) = piece {
                         self.try_partial_turn(
                             board_idx,
                             PartialTurnInput::ClickMove(RegularPartialTurn {
@@ -642,7 +619,7 @@ impl AlteredGame {
     }
 
     pub fn piece_drag_state(&self) -> PieceDragState {
-        match self.partial_turn_input {
+        match *self.partial_turn_input {
             Some((_, PartialTurnInput::Drag(RegularPartialTurn { source, .. }))) => match source {
                 PartialTurnSource::Defunct => PieceDragState::Defunct,
                 _ => PieceDragState::Dragging,
@@ -657,17 +634,16 @@ impl AlteredGame {
         if self.wayback_turn_index.is_some() {
             return Err(TurnError::WaybackIsActive);
         }
-        if let Some((input_board_idx, _)) = self.partial_turn_input {
+        if let Some((input_board_idx, _)) = *self.partial_turn_input {
             if input_board_idx == board_idx {
                 return Err(TurnError::PreviousTurnNotFinished);
             }
         }
-        self.partial_turn_input = None;
-        let game = self.game_with_local_turns(LocalTurns::All);
-        let board = game.board(board_idx);
+        self.partial_turn_input.set(None);
         let (piece_kind, piece_force, piece_origin, source) = match loc {
             Location::Square(coord) => {
-                let piece = board.grid()[coord].ok_or(TurnError::PieceMissing)?;
+                let piece = self.local_game().board(board_idx).grid()[coord]
+                    .ok_or(TurnError::PieceMissing)?;
                 (piece.kind, piece.force, piece.origin, PartialTurnSource::Board(coord))
             }
             Location::Reserve(force, piece_kind) => {
@@ -687,8 +663,8 @@ impl AlteredGame {
     }
 
     pub fn abort_drag_piece(&mut self) {
-        if matches!(self.partial_turn_input, Some((_, PartialTurnInput::Drag { .. }))) {
-            self.partial_turn_input = None;
+        if matches!(*self.partial_turn_input, Some((_, PartialTurnInput::Drag { .. }))) {
+            self.partial_turn_input.set(None);
         }
     }
 
@@ -696,7 +672,7 @@ impl AlteredGame {
     // turn via `make_turn`.
     pub fn drag_piece_drop(&mut self, board_idx: BughouseBoard, dest: Coord) -> TurnInputResult {
         if let Some((input_board_idx, PartialTurnInput::Drag(regular_partial_turn))) =
-            self.partial_turn_input
+            *self.partial_turn_input
         {
             if input_board_idx != board_idx {
                 // TODO: Log internal error: web client should make sure that only one board is
@@ -710,7 +686,7 @@ impl AlteredGame {
     }
 
     pub fn highlight_square_on_hover(&self, board_idx: BughouseBoard) -> bool {
-        if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
+        if let Some((input_board_idx, partial_input)) = *self.partial_turn_input {
             input_board_idx == board_idx && matches!(partial_input, PartialTurnInput::ClickMove(_))
         } else {
             self.is_my_duck_turn(board_idx)
@@ -728,7 +704,7 @@ impl AlteredGame {
             piece_origin,
             source,
         } = regular_partial_turn;
-        self.partial_turn_input = None;
+        self.partial_turn_input.set(None);
 
         match source {
             PartialTurnSource::Defunct => TurnInputResult::Error(TurnError::Defunct),
@@ -803,9 +779,9 @@ impl AlteredGame {
     // Pops one action from local action queue: a partial turn input, or a preturn.
     // Returns whether a preturn was cancelled.
     pub fn cancel_preturn(&mut self, board_idx: BughouseBoard) -> bool {
-        if let Some((input_board_idx, _)) = self.partial_turn_input {
+        if let Some((input_board_idx, _)) = *self.partial_turn_input {
             if input_board_idx == board_idx {
-                self.partial_turn_input = None;
+                self.partial_turn_input.set(None);
                 return false;
             }
         }
@@ -815,7 +791,7 @@ impl AlteredGame {
         }
         for (turn_idx, turn_record) in self.local_turns.iter().enumerate().rev() {
             if turn_record.envoy.board_idx == board_idx {
-                self.local_turns.remove(turn_idx);
+                self.local_turns.get_mut().remove(turn_idx);
                 return true;
             }
         }
@@ -823,16 +799,16 @@ impl AlteredGame {
     }
 
     fn reset_local_changes(&mut self) {
-        self.local_turns.clear();
-        self.partial_turn_input = None;
+        self.local_turns.get_mut().clear();
+        self.partial_turn_input.set(None);
     }
 
     fn discard_invalid_local_turns(&mut self) {
         // Although we don't allow it currently, this function is written in a way that supports
         // turns cross-board turn dependencies.
-        let mut game = self.game_confirmed.clone();
+        let mut game = (*self.game_confirmed).clone();
         let mut is_board_ok = enum_map! { _ => true };
-        self.local_turns.retain(|turn_record| {
+        self.local_turns.get_mut().retain(|turn_record| {
             let is_ok = game
                 .turn_mode_for_envoy(turn_record.envoy)
                 .and_then(|mode| game.apply_turn_record(turn_record, mode))
@@ -843,39 +819,15 @@ impl AlteredGame {
             }
             is_board_ok[turn_record.envoy.board_idx]
         });
-        if self.apply_partial_turn(&mut game).is_err() {
+        if apply_partial_turn(*self.partial_turn_input, self.my_id, &mut game).is_err() {
             // Partial turn invalidated. Possible reasons: dragged piece was captured by opponent;
             // dragged piece depended on a (pre)turn that was cancelled.
             self.invalidate_partial_turn();
         }
     }
 
-    fn game_with_local_turns(&self, local_turns_to_include: LocalTurns) -> BughouseGame {
-        let (include_pre, include_partial) = match local_turns_to_include {
-            LocalTurns::OnlyNormal => (false, false),
-            LocalTurns::NormalAndPre => (true, false),
-            LocalTurns::All => (true, true),
-        };
-        let mut game = self.game_confirmed.clone();
-        for turn_record in self.local_turns.iter() {
-            // Note. Not calling `test_flag`, because only server records flag defeat.
-            // Unwrap ok: turn correctness (according to the `mode`) has already been verified.
-            let mode = game.turn_mode_for_envoy(turn_record.envoy).unwrap();
-            if mode == TurnMode::Preturn && !include_pre {
-                // Do not break because we can still get in-order turns on the other board.
-                continue;
-            }
-            game.apply_turn_record(turn_record, mode).unwrap();
-        }
-        if include_partial {
-            // Unwrap ok: partial turn correctness has already been verified.
-            self.apply_partial_turn(&mut game).unwrap();
-        }
-        game
-    }
-
     pub fn num_preturns_on_board(&self, board_idx: BughouseBoard) -> usize {
-        let mut game = self.game_confirmed.clone();
+        let mut game = (*self.game_confirmed).clone();
         let mut num_preturns = 0;
         for turn_record in self.local_turns.iter() {
             // Unwrap ok: turn correctness (according to the `mode`) has already been verified.
@@ -888,91 +840,20 @@ impl AlteredGame {
         num_preturns
     }
 
-    fn apply_wayback(&self, game: &mut BughouseGame) -> bool {
-        let Some(ref turn_idx) = self.wayback_turn_index else {
-            return false;
-        };
-        let turn = game.turn_log().iter().rev().find(|turn| turn.index <= *turn_idx).unwrap();
-        let turn_time = turn.time;
-        let boards_after = turn.boards_after.clone();
-        for (board_idx, mut board) in boards_after {
-            board.clock_mut().stop(turn_time);
-            *game.board_mut(board_idx) = board;
-        }
-        true
-    }
-
     fn try_partial_turn(
         &mut self, board_idx: BughouseBoard, input: PartialTurnInput,
     ) -> Result<(), TurnError> {
-        self.partial_turn_input = Some((board_idx, input));
-        let mut game = self.game_with_local_turns(LocalTurns::NormalAndPre);
-        let result = self.apply_partial_turn(&mut game);
-        if result.is_err() {
-            self.partial_turn_input = None;
+        self.partial_turn_input.set(None);
+        let mut game = self.local_game().clone();
+        let result = apply_partial_turn(Some((board_idx, input)), self.my_id, &mut game);
+        if result.is_ok() {
+            self.partial_turn_input.set(Some((board_idx, input)));
         }
         result
     }
 
-    fn apply_partial_turn(&self, game: &mut BughouseGame) -> Result<(), TurnError> {
-        let Some((board_idx, input)) = self.partial_turn_input else {
-            return Ok(());
-        };
-        let Some(envoy) = self.my_id.envoy_for(board_idx) else {
-            return Err(TurnError::NotPlayer);
-        };
-        let is_drag = matches!(input, PartialTurnInput::Drag(_));
-        match input {
-            PartialTurnInput::Drag(input) | PartialTurnInput::ClickMove(input) => {
-                if !input.piece_force.is_owned_by_or_neutral(envoy.force) {
-                    return Err(TurnError::DontControlPiece);
-                }
-                let board = game.board_mut(board_idx);
-                match input.source {
-                    PartialTurnSource::Defunct => {}
-                    PartialTurnSource::Board(coord) => {
-                        let piece = board.grid()[coord].ok_or(TurnError::PieceMissing)?;
-                        let expected = (input.piece_force, input.piece_kind, input.piece_origin);
-                        let actual = (piece.force, piece.kind, piece.origin);
-                        if expected != actual {
-                            return Err(TurnError::TurnObsolete);
-                        }
-                        if is_drag {
-                            board.grid_mut()[coord] = None;
-                        }
-                    }
-                    PartialTurnSource::Reserve => {
-                        if !input.piece_force.is_owned_by_or_neutral(envoy.force) {
-                            return Err(TurnError::DontControlPiece);
-                        }
-                        let reserve = board.reserve_mut(envoy.force);
-                        if reserve[input.piece_kind] == 0 {
-                            return Err(TurnError::DropPieceMissing);
-                        }
-                        if is_drag {
-                            reserve[input.piece_kind] -= 1;
-                        }
-                    }
-                }
-            }
-            PartialTurnInput::UpgradePromotion { from, to }
-            | PartialTurnInput::StealPromotion { from, to } => {
-                let mode = game.turn_mode_for_envoy(envoy)?;
-                let board = game.board_mut(board_idx);
-                match board.destination_reachability(from, to, mode) {
-                    Reachability::Reachable => {}
-                    Reachability::Blocked => return Err(TurnError::PathBlocked),
-                    Reachability::Impossible => return Err(TurnError::ImpossibleTrajectory),
-                }
-                let grid = board.grid_mut();
-                grid[to] = grid[from].take();
-            }
-        }
-        Ok(())
-    }
-
     fn invalidate_partial_turn(&mut self) {
-        let Some((_, ref mut input)) = self.partial_turn_input else {
+        let Some((_, ref mut input)) = self.partial_turn_input.get_mut() else {
             return;
         };
         match input {
@@ -985,9 +866,32 @@ impl AlteredGame {
             PartialTurnInput::ClickMove { .. }
             | PartialTurnInput::UpgradePromotion { .. }
             | PartialTurnInput::StealPromotion { .. } => {
-                self.partial_turn_input = None;
+                self.partial_turn_input.set(None);
             }
         }
+    }
+
+    fn derived_data(&self) -> Ref<DerivedData> {
+        // Important: take all dirt, no short-circuiting!
+        if self.game_confirmed.take_dirt()
+            | self.partial_turn_input.take_dirt()
+            | self.local_turns.take_dirt()
+            | self.wayback_turn_index.take_dirt()
+        {
+            // Note. It's possible to have a more granular approach here. We could've checked which
+            // particular dirty flags have changes and only recompute the data that depends on those
+            // fields. I've decided against it because: (a) the current approach seems sufficient in
+            // practice; (b) tracking granular dependencies manually would be error-prone and
+            // setting up a dependency tracking framework seems like an overkill.
+            self.derived_data.replace(compute_derived_data(
+                self.my_id,
+                &*self.game_confirmed,
+                *self.partial_turn_input,
+                &*self.local_turns,
+                *self.wayback_turn_index,
+            ));
+        }
+        self.derived_data.borrow()
     }
 }
 
@@ -1017,6 +921,150 @@ fn board_turn_log_modulo_wayback(
         });
     }
     turn_log
+}
+
+fn compute_derived_data(
+    my_id: BughouseParticipant, game_confirmed: &BughouseGame,
+    partial_turn_input: Option<(BughouseBoard, PartialTurnInput)>, local_turns: &Vec<TurnRecord>,
+    wayback_turn_index: Option<TurnIndex>,
+) -> DerivedData {
+    let mut local_game_full_turns = game_confirmed.clone();
+    apply_wayback(wayback_turn_index, &mut local_game_full_turns);
+    let mut preturns = vec![];
+    for turn_record in local_turns.iter() {
+        // Note. Not calling `test_flag`, because only server records flag defeat.
+        // Unwrap ok: turn correctness (according to the `mode`) has already been verified.
+        let mode = local_game_full_turns.turn_mode_for_envoy(turn_record.envoy).unwrap();
+        if mode == TurnMode::Preturn {
+            preturns.push(turn_record.clone());
+            // Do not break because we can still get in-order turns on the other board.
+            continue;
+        }
+        local_game_full_turns.apply_turn_record(turn_record, mode).unwrap();
+    }
+
+    let mut local_game = local_game_full_turns.clone();
+    for turn_record in preturns.iter() {
+        let mode = local_game_full_turns.turn_mode_for_envoy(turn_record.envoy).unwrap();
+        assert_eq!(mode, TurnMode::Preturn);
+        // Unwrap ok: turn correctness has already been verified.
+        local_game.apply_turn_record(turn_record, mode).unwrap();
+    }
+    // Unwrap ok: partial turn correctness has already been verified.
+    apply_partial_turn(partial_turn_input, my_id, &mut local_game).unwrap();
+
+    let fog_of_war_area = EnumMap::from_fn(|board_idx| {
+        compute_fog_of_war_area(&local_game_full_turns, &local_game, board_idx, my_id)
+    });
+
+    DerivedData { local_game, fog_of_war_area }
+}
+
+fn apply_partial_turn(
+    partial_turn_input: Option<(BughouseBoard, PartialTurnInput)>, my_id: BughouseParticipant,
+    game: &mut BughouseGame,
+) -> Result<(), TurnError> {
+    let Some((board_idx, input)) = partial_turn_input else {
+        return Ok(());
+    };
+    let Some(envoy) = my_id.envoy_for(board_idx) else {
+        return Err(TurnError::NotPlayer);
+    };
+    let is_drag = matches!(input, PartialTurnInput::Drag(_));
+    match input {
+        PartialTurnInput::Drag(input) | PartialTurnInput::ClickMove(input) => {
+            if !input.piece_force.is_owned_by_or_neutral(envoy.force) {
+                return Err(TurnError::DontControlPiece);
+            }
+            let board = game.board_mut(board_idx);
+            match input.source {
+                PartialTurnSource::Defunct => {}
+                PartialTurnSource::Board(coord) => {
+                    let piece = board.grid()[coord].ok_or(TurnError::PieceMissing)?;
+                    let expected = (input.piece_force, input.piece_kind, input.piece_origin);
+                    let actual = (piece.force, piece.kind, piece.origin);
+                    if expected != actual {
+                        return Err(TurnError::TurnObsolete);
+                    }
+                    if is_drag {
+                        board.grid_mut()[coord] = None;
+                    }
+                }
+                PartialTurnSource::Reserve => {
+                    if !input.piece_force.is_owned_by_or_neutral(envoy.force) {
+                        return Err(TurnError::DontControlPiece);
+                    }
+                    let reserve = board.reserve_mut(envoy.force);
+                    if reserve[input.piece_kind] == 0 {
+                        return Err(TurnError::DropPieceMissing);
+                    }
+                    if is_drag {
+                        reserve[input.piece_kind] -= 1;
+                    }
+                }
+            }
+        }
+        PartialTurnInput::UpgradePromotion { from, to }
+        | PartialTurnInput::StealPromotion { from, to } => {
+            let mode = game.turn_mode_for_envoy(envoy)?;
+            let board = game.board_mut(board_idx);
+            match board.destination_reachability(from, to, mode) {
+                Reachability::Reachable => {}
+                Reachability::Blocked => return Err(TurnError::PathBlocked),
+                Reachability::Impossible => return Err(TurnError::ImpossibleTrajectory),
+            }
+            let grid = board.grid_mut();
+            grid[to] = grid[from].take();
+        }
+    }
+    Ok(())
+}
+
+fn apply_wayback(wayback_turn_index: Option<TurnIndex>, game: &mut BughouseGame) -> bool {
+    let Some(ref turn_idx) = wayback_turn_index else {
+        return false;
+    };
+    let turn = game.turn_log().iter().rev().find(|turn| turn.index <= *turn_idx).unwrap();
+    let turn_time = turn.time;
+    let boards_after = turn.boards_after.clone();
+    for (board_idx, mut board) in boards_after {
+        board.clock_mut().stop(turn_time);
+        *game.board_mut(board_idx) = board;
+    }
+    true
+}
+
+fn compute_fog_of_war_area(
+    local_game_full_turns: &BughouseGame, local_game: &BughouseGame, board_idx: BughouseBoard,
+    my_id: BughouseParticipant,
+) -> HashSet<Coord> {
+    if !local_game.chess_rules().fog_of_war {
+        return HashSet::new();
+    }
+    let board_shape = local_game.board_shape();
+    let force = match my_id {
+        BughouseParticipant::Player(id) => get_bughouse_force(id.team(), board_idx),
+        BughouseParticipant::Observer(_) => local_game.board(board_idx).active_force(),
+    };
+
+    // Don't use `local_game`: preturns and drags should not reveal new areas. Even this logic is
+    // not 100% safe: in some game variants local in-order turns could be reverted, e.g. when a
+    // piece is stolen after a pawn promotion or when you receive a king in koedem. In such cases
+    // you would be able to briefly see areas that shouldn't have been revealed. But such occasions
+    // are rare, so it seem better than waiting for server response in order to lift the fog. The
+    // latter would feel laggy.
+    let mut visible = local_game_full_turns.board(board_idx).fog_free_area(force);
+
+    // Still, do show preturn and partial turn pieces themselves:
+    for coord in board_shape.coords() {
+        if let Some(piece) = local_game.board(board_idx).grid()[coord] {
+            if piece.force.is_owned_by_or_neutral(force) {
+                visible.insert(coord);
+            }
+        }
+    }
+
+    board_shape.coords().filter(|c| !visible.contains(c)).collect()
 }
 
 // Tuple values are compared lexicographically. Higher values overshadow lower values.

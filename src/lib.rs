@@ -27,6 +27,7 @@ pub mod client;
 pub mod client_chat;
 pub mod clock;
 pub mod coord;
+pub mod dirty;
 pub mod display;
 pub mod error;
 pub mod event;

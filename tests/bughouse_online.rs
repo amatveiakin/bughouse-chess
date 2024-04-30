@@ -6,6 +6,7 @@
 
 mod common;
 
+use std::cell::Ref;
 use std::collections::{HashMap, HashSet};
 use std::ops;
 use std::sync::{Arc, Mutex};
@@ -164,7 +165,7 @@ impl Client {
     fn alt_game(&self) -> &AlteredGame { &self.state.game_state().unwrap().alt_game }
     fn perspective(&self) -> Perspective { self.alt_game().perspective() }
     fn my_id(&self) -> BughouseParticipant { self.alt_game().my_id() }
-    fn local_game(&self) -> BughouseGame { self.alt_game().local_game() }
+    fn local_game(&self) -> Ref<BughouseGame> { self.alt_game().local_game() }
 
     fn chat_item_text(&self) -> Vec<String> {
         let my_name = self.state.my_name().unwrap();
