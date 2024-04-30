@@ -8,13 +8,13 @@ use itertools::Itertools;
 use lru::LruCache;
 use strum::IntoEnumIterator;
 
-use crate::altered_game::{AlteredGame, WaybackDestination, WaybackState};
+use crate::altered_game::{AlteredGame, TurnInputResult, WaybackDestination, WaybackState};
 use crate::board::{TurnError, TurnInput, TurnMode};
 use crate::chalk::{ChalkCanvas, ChalkMark, Chalkboard};
 use crate::chat::{ChatMessage, ChatMessageBody, ChatRecipient};
 use crate::client_chat::{ClientChat, SystemMessageClass};
 use crate::clock::{duration_to_mss, GameDuration, GameInstant, WallGameTimePair};
-use crate::display::{get_board_index, DisplayBoard};
+use crate::display::{get_board_index, get_display_board_index, DisplayBoard};
 use crate::event::{
     BughouseClientEvent, BughouseClientPerformance, BughouseServerEvent, BughouseServerRejection,
     FinishedGameDescription, GameUpdate, SubjectiveGameResult,
@@ -560,6 +560,20 @@ impl ClientState {
         let turn_result = self.make_turn_impl(display_board, turn_input);
         self.show_turn_result(turn_result);
         turn_result
+    }
+
+    pub fn apply_turn_or_error(&mut self, turn_or_error: TurnInputResult) {
+        let Some(alt_game) = self.alt_game_mut() else {
+            return;
+        };
+        match turn_or_error {
+            TurnInputResult::Turn((board_idx, turn_input)) => {
+                let display_board = get_display_board_index(board_idx, alt_game.perspective());
+                _ = self.make_turn(display_board, turn_input);
+            }
+            TurnInputResult::Noop => {}
+            TurnInputResult::Error(err) => self.show_turn_result(Err(err)),
+        }
     }
 
     pub fn cancel_preturn(&mut self, display_board: DisplayBoard) {

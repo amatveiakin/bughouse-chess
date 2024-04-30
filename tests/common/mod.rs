@@ -58,6 +58,19 @@ macro_rules! piece {
     };
 }
 
+#[macro_export]
+macro_rules! loc {
+    ($coord:ident) => {
+        bughouse_chess::altered_game::Location::Square(bughouse_chess::coord::Coord::$coord)
+    };
+    ($force:ident $kind:ident) => {
+        bughouse_chess::altered_game::Location::Reserve(
+            bughouse_chess::force::Force::$force,
+            bughouse_chess::piece::PieceKind::$kind,
+        )
+    };
+}
+
 
 pub trait AutoTurnInput {
     #[allow(dead_code)]

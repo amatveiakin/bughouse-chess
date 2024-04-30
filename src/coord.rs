@@ -194,6 +194,13 @@ impl Coord {
         format!("{}{}{}{}", row_sign, row_val, col_sign, col_val)
     }
     pub fn row_col(&self) -> (Row, Col) { (self.row, self.col) }
+    pub fn color(&self) -> Force {
+        if (self.row.to_zero_based() + self.col.to_zero_based()) % 2 == 0 {
+            Force::Black
+        } else {
+            Force::White
+        }
+    }
 
     fn from_sign_val(sign: &str, val: &str) -> Option<i8> {
         let val = val.parse::<i8>().ok()?;

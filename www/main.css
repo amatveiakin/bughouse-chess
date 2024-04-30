@@ -285,7 +285,7 @@ body.symmetric #page {
 }
 
 .partial-turn-from-highlight {
-  fill: #94c3c0;
+  fill: #7dc3bf;
   opacity: 0.6;
 }
 .partial-turn-to-highlight,
@@ -295,12 +295,12 @@ body.symmetric #page {
 }
 
 .partial-turn-from-above-highlight {
-  fill: #94c3c0;
+  fill: #a2d2cf;
   opacity: 0.5;
 }
 .partial-turn-to-above-highlight,
 .partial-turn-drop-above-highlight {
-  fill: #70c3be;
+  fill: #aafff9;
   opacity: 0.5;
 }
 
@@ -336,14 +336,20 @@ body.symmetric #page {
   opacity: 0.4;
 }
 
-.partial-turn-legaldestination-highlight {
+.partial-turn-legaldestination-above-highlight {
   fill: url(#legal-move-gradient);
 }
-.partial-turn-dragstart-highlight {
-  fill: url(#drag-start-gradient);
+.partial-turn-dragstart-above-highlight-onwhite {
+  fill: url(#drag-start-gradient-onwhite);
 }
-.ephemeral-dragover-highlight {
-  fill: url(#drag-over-gradient);
+.partial-turn-dragstart-above-highlight-onblack {
+  fill: url(#drag-start-gradient-onblack);
+}
+.ephemeral-dragover-highlight-onwhite {
+  fill: url(#drag-over-gradient-onwhite);
+}
+.ephemeral-dragover-highlight-onblack {
+  fill: url(#drag-over-gradient-onblack);
 }
 
 .draggable {
@@ -430,16 +436,16 @@ body.symmetric #page {
   user-select: none;
   touch-action: none;
 }
-.reserve {
+.reserve-piece-group {
   filter: url(#reserve-shadow);
 }
-body.observer .reserve {
+body.observer .reserve-piece-group {
   filter: url(#reserve-shadow-gray);
 }
-
-.glowing-duck {
-  filter: saturate(2) url(#glowing-duck);
+.reserve-piece-group.reserve-highlight {
+  filter: url(#reserve-highlight-shadow);
 }
+
 .glowing-steal {
   /* `sepia` + `hue-rotate` allows to colorize into a given color (in this case, blue);
      `contrast` + `saturate` + `brightness` are chosen to make both black and white pieces look ok */

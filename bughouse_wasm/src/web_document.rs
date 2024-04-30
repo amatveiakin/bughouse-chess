@@ -27,6 +27,12 @@ impl WebDocument {
     pub fn get_elements_by_class_name(&self, class_name: &str) -> HtmlCollectionIterator {
         self.0.get_elements_by_class_name(class_name).into()
     }
+    pub fn purge_class_name(&self, class_name: &str) -> JsResult<()> {
+        for element in self.get_elements_by_class_name(class_name) {
+            element.class_list().remove_1(class_name)?;
+        }
+        Ok(())
+    }
 
     pub fn create_element(&self, local_name: &str) -> JsResult<web_sys::Element> {
         self.0.create_element(local_name)

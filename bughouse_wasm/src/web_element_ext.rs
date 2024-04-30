@@ -20,6 +20,7 @@ pub trait WebElementExt {
         &self, children: impl IntoIterator<Item = impl ops::Deref<Target = web_sys::Node>>,
     ) -> JsResult<()>;
     fn append_new_element(&self, local_name: &str) -> JsResult<web_sys::Element>;
+    fn append_new_svg_element(&self, local_name: &str) -> JsResult<web_sys::Element>;
 
     // TODO: More consistent test builder API. We sometimes return `self` and sometimes the appended
     // element. This is confusing.
@@ -80,9 +81,15 @@ impl WebElementExt for web_sys::Element {
     }
 
     // Improvement potential. Check if fetching `web_document()` every time slows down functions
-    // that create a lot of elements.
+    // that create a lot of elements (here and elsewhere).
     fn append_new_element(&self, local_name: &str) -> JsResult<web_sys::Element> {
         let node = web_document().create_element(local_name)?;
+        self.append_child(&node)?;
+        Ok(node)
+    }
+
+    fn append_new_svg_element(&self, local_name: &str) -> JsResult<web_sys::Element> {
+        let node = web_document().create_svg_element(local_name)?;
         self.append_child(&node)?;
         Ok(node)
     }

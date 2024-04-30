@@ -403,6 +403,20 @@ impl WebClient {
     pub fn show_command_result(&mut self, text: String) { self.state.show_command_result(text); }
     pub fn show_command_error(&mut self, text: String) { self.state.show_command_error(text); }
 
+    // Why do we need both `click_element` and `click_board`? We need `click_element` because it is
+    // used to click on the reserve. It is also conceivable that in the future we want to allow
+    // clicking pieces that are (temporarily) shifted or oversized. We need `click_board` because
+    // the right way to click on empty squares. Introducing an element for each empty square would
+    // not work, because for example fog tiles are larger than the squares.
+    pub fn click_element(&mut self, source: &str) -> JsResult<()> {
+        let (display_board_idx, loc) = parse_location_id(source)
+            .ok_or_else(|| rust_error!("Illegal click source: {source:?}"))?;
+        let alt_game = self.state.alt_game_mut().ok_or_else(|| rust_error!())?;
+        let board_idx = get_board_index(display_board_idx, alt_game.perspective());
+        let turn_or_error = alt_game.click(board_idx, loc);
+        self.state.apply_turn_or_error(turn_or_error);
+        Ok(())
+    }
     pub fn click_board(&mut self, board_id: &str, x: f64, y: f64) -> JsResult<()> {
         // Note: cannot use "data-bughouse-location" attribute: squares are not the click targets
         // when obscured by the fog tiles.
@@ -415,40 +429,51 @@ impl WebClient {
             return Ok(());
         };
         let display_board_idx = parse_board_id(board_id)?;
+        let board_idx = get_board_index(display_board_idx, alt_game.perspective());
         let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
         let coord = from_display_coord(display_coord, board_shape, board_orientation).unwrap();
-        let board_idx = get_board_index(display_board_idx, alt_game.perspective());
-        if let Some((input_board_idx, turn_input)) = alt_game.click_square(board_idx, coord) {
-            let display_input_board_idx =
-                get_display_board_index(input_board_idx, alt_game.perspective());
-            _ = self.state.make_turn(display_input_board_idx, turn_input);
-        }
+        let turn_or_error = alt_game.click(board_idx, Location::Square(coord));
+        self.state.apply_turn_or_error(turn_or_error);
         Ok(())
     }
 
-    pub fn choose_promotion_upgrade(&mut self, board_id: &str, piece_kind: &str) -> JsResult<()> {
+    pub fn board_hover(&mut self, board_id: &str, x: f64, y: f64) -> JsResult<()> {
         let Some(alt_game) = self.state.alt_game_mut() else {
             return Ok(());
         };
         let display_board_idx = parse_board_id(board_id)?;
-        let piece_kind = PieceKind::from_algebraic(piece_kind)
-            .ok_or(rust_error!("Invalid piece kind: {piece_kind}"))?;
+        let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
+        let board_shape = alt_game.board_shape();
+        let pos = DisplayFCoord { x, y };
         let board_idx = get_board_index(display_board_idx, alt_game.perspective());
-        if let Some(turn_input) = alt_game.choose_promotion_upgrade(board_idx, piece_kind) {
-            _ = self.state.make_turn(display_board_idx, turn_input);
-        }
+        let highlight_coord = if alt_game.highlight_square_on_hover(board_idx) {
+            pos.to_square(board_shape)
+        } else {
+            None
+        };
+        set_square_drag_over_highlight(
+            display_board_idx,
+            highlight_coord,
+            board_shape,
+            board_orientation,
+        )?;
+        Ok(())
+    }
+
+    pub fn choose_promotion_upgrade(&mut self, piece_kind: &str) -> JsResult<()> {
+        let Some(alt_game) = self.state.alt_game_mut() else {
+            return Ok(());
+        };
+        let piece_kind = PieceKind::from_algebraic(piece_kind)
+            .ok_or_else(|| rust_error!("Invalid piece kind: {piece_kind}"))?;
+        let turn_or_error = alt_game.choose_promotion_upgrade(piece_kind);
+        self.state.apply_turn_or_error(turn_or_error);
         Ok(())
     }
 
     pub fn start_drag_piece(&mut self, source: &str) -> JsResult<String> {
-        let (display_board_idx, source) =
-            if let Some((display_board_idx, piece)) = parse_reserve_piece_id(source) {
-                (display_board_idx, PieceDragStart::Reserve(piece))
-            } else if let Some((display_board_idx, coord)) = parse_square_id(source) {
-                (display_board_idx, PieceDragStart::Board(coord))
-            } else {
-                return Err(rust_error!("Illegal drag source: {source:?}"));
-            };
+        let (display_board_idx, source) = parse_location_id(source)
+            .ok_or_else(|| rust_error!("Illegal drag source: {source:?}"))?;
         let alt_game = self.state.alt_game_mut().ok_or_else(|| rust_error!())?;
         let board_idx = get_board_index(display_board_idx, alt_game.perspective());
         match alt_game.start_drag_piece(board_idx, source) {
@@ -466,13 +491,13 @@ impl WebClient {
         };
         let board_shape = alt_game.board_shape();
         let display_board_idx = parse_board_id(board_id)?;
+        let board_orientation = get_board_orientation(display_board_idx, alt_game.perspective());
         let pos = DisplayFCoord { x, y };
-        set_square_highlight(
-            Some("ephemeral-dragover-highlight"),
-            "ephemeral-dragover-highlight",
-            SquareHighlightLayer::Ephemeral,
+        set_square_drag_over_highlight(
             display_board_idx,
             pos.to_square(board_shape),
+            board_shape,
+            board_orientation,
         )
     }
 
@@ -489,17 +514,8 @@ impl WebClient {
                 get_board_orientation(display_board_idx, alt_game.perspective());
             let dest_coord =
                 from_display_coord(dest_display, board_shape, board_orientation).unwrap();
-            match alt_game.drag_piece_drop(board_idx, dest_coord) {
-                Ok(None) => {
-                    // A partial turn input or a transient error.
-                }
-                Ok(Some(turn_input)) => {
-                    _ = self.state.make_turn(display_board_idx, turn_input);
-                }
-                Err(err) => {
-                    self.state.show_turn_result(Err(err));
-                }
-            };
+            let turn_or_error = alt_game.drag_piece_drop(board_idx, dest_coord);
+            self.state.apply_turn_or_error(turn_or_error);
         } else {
             alt_game.abort_drag_piece();
         }
@@ -753,13 +769,11 @@ impl WebClient {
         for (board_idx, board) in game.boards() {
             let my_force = my_id.envoy_for(board_idx).map(|e| e.force);
             let is_my_duck_turn = alt_game.is_my_duck_turn(board_idx);
-            let is_piece_draggable = |piece_force| {
+            let is_piece_draggable = |piece_force: PieceForce| {
                 my_id
                     .envoy_for(board_idx)
-                    .map_or(false, |e| board.can_potentially_move_piece(e.force, piece_force))
+                    .map_or(false, |e| piece_force.is_owned_by_or_neutral(e.force))
             };
-            let is_glowing_duck =
-                |piece: PieceOnBoard| is_my_duck_turn && piece.kind == PieceKind::Duck;
             let is_glowing_steal = |coord: Coord| {
                 let Some((input_board_idx, partial_input)) = alt_game.partial_turn_input() else {
                     return false;
@@ -828,6 +842,7 @@ impl WebClient {
                 {
                     let node_id = square_id(display_board_idx, coord);
                     let node = ensure_square_node(display_coord, &piece_layer, &node_id, 1.0)?;
+                    node.set_attribute("data-bughouse-location", &node_id)?;
                     if !fog_cover_area.contains(&coord)
                         && let Some(piece) = grid[coord]
                     {
@@ -845,8 +860,6 @@ impl WebClient {
                         node.remove_attribute("class")?;
                         node.class_list()
                             .toggle_with_force("draggable", is_piece_draggable(piece.force))?;
-                        node.class_list()
-                            .toggle_with_force("glowing-duck", is_glowing_duck(piece))?;
                         node.class_list()
                             .toggle_with_force("glowing-steal", is_glowing_steal(coord))?;
                     } else {
@@ -1100,22 +1113,43 @@ impl WebClient {
         Ok(())
     }
 
+    // Must be called after `update_reserve`, because the latter will recreate reserve nodes and
+    // thus remove highlight classes.
     fn update_turn_highlights(&self) -> JsResult<()> {
         // Optimization potential: do not reset highlights that stay in place.
+        web_document().purge_class_name("reserve-highlight")?;
         clear_square_highlight_layer(SquareHighlightLayer::Turn)?;
         clear_square_highlight_layer(SquareHighlightLayer::TurnAbove)?;
         let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
             return Ok(());
         };
         let board_shape = alt_game.board_shape();
-        for h in alt_game.turn_highlights() {
-            let class = format!("turn-highlight {}", turn_highlight_class_id(&h));
-            let display_board_idx = get_display_board_index(h.board_idx, alt_game.perspective());
-            let board_orientation =
-                get_board_orientation(display_board_idx, alt_game.perspective());
+        let perspective = alt_game.perspective();
+        let highlights = alt_game.turn_highlights();
+        for h in highlights.square_highlights {
+            let class = square_highlight_class_id(&h);
+            let display_board_idx = get_display_board_index(h.board_idx, perspective);
+            let orientation = get_board_orientation(display_board_idx, perspective);
             let layer = turn_highlight_layer(h.layer);
-            let display_coord = to_display_coord(h.coord, board_shape, board_orientation);
-            set_square_highlight(None, &class, layer, display_board_idx, Some(display_coord))?;
+            let display_coord = to_display_coord(h.coord, board_shape, orientation);
+            set_square_highlight(
+                None,
+                &class,
+                layer,
+                display_board_idx,
+                Some(display_coord),
+                board_shape,
+                orientation,
+            )?;
+        }
+        for h in highlights.reserve_piece_highlights {
+            let display_board_idx = get_display_board_index(h.board_idx, perspective);
+            let node = web_document().get_existing_element_by_id(&reserve_piece_id(
+                display_board_idx,
+                h.force,
+                h.piece_kind,
+            ))?;
+            node.class_list().add_1("reserve-highlight")?;
         }
         Ok(())
     }
@@ -1289,17 +1323,17 @@ fn ensure_square_node(
     let pos = DisplayFCoord::square_pivot(display_coord);
     node.set_attribute("x", &(pos.x - shift).to_string())?;
     node.set_attribute("y", &(pos.y - shift).to_string())?;
-    node.set_attribute("data-bughouse-location", node_id)?;
     Ok(node)
 }
 
 // Note. If present, `id` must be unique across both boards.
 fn set_square_highlight(
     id: Option<&str>, class: &str, layer: SquareHighlightLayer, board_idx: DisplayBoard,
-    coord: Option<DisplayCoord>,
+    display_coord: Option<DisplayCoord>, board_shape: BoardShape, orientation: BoardOrientation,
 ) -> JsResult<()> {
     let document = web_document();
-    if let Some(coord) = coord {
+    if let Some(display_coord) = display_coord {
+        let coord = from_display_coord(display_coord, board_shape, orientation);
         let node = id.and_then(|id| document.get_element_by_id(id));
         let highlight_layer =
             document.get_existing_element_by_id(&square_highlight_layer_id(layer, board_idx))?;
@@ -1308,15 +1342,23 @@ fn set_square_highlight(
             if let Some(id) = id {
                 node.set_attribute("id", id)?;
             }
-            node.set_attribute("class", class)?;
             node.set_attribute("width", "1")?;
             node.set_attribute("height", "1")?;
             highlight_layer.append_child(&node)?;
             Ok(node)
         })?;
-        let pos = DisplayFCoord::square_pivot(coord);
+        let pos = DisplayFCoord::square_pivot(display_coord);
         node.set_attribute("x", &pos.x.to_string())?;
         node.set_attribute("y", &pos.y.to_string())?;
+        node.set_attribute("class", "")?;
+        node.class_list().add_1(class)?;
+        if let Some(coord) = coord {
+            let color_class = match coord.color() {
+                Force::White => format!("{}-onwhite", class),
+                Force::Black => format!("{}-onblack", class),
+            };
+            node.class_list().add_1(&color_class)?;
+        }
     } else {
         let Some(id) = id else {
             return Err(rust_error!(
@@ -1328,6 +1370,21 @@ fn set_square_highlight(
         }
     }
     Ok(())
+}
+
+fn set_square_drag_over_highlight(
+    display_board_idx: DisplayBoard, display_coord: Option<DisplayCoord>, board_shape: BoardShape,
+    orientation: BoardOrientation,
+) -> JsResult<()> {
+    set_square_highlight(
+        Some("ephemeral-dragover-highlight"),
+        "ephemeral-dragover-highlight",
+        SquareHighlightLayer::Ephemeral,
+        display_board_idx,
+        display_coord,
+        board_shape,
+        orientation,
+    )
 }
 
 fn clear_square_highlight_layer(layer: SquareHighlightLayer) -> JsResult<()> {
@@ -1518,19 +1575,22 @@ fn render_reserve(
     let y = reserve_y_pos(player_idx);
     for (piece_kind, amount) in reserve_iter {
         let filename = piece_path(piece_kind, force.into());
+        let id = reserve_piece_id(board_idx, force, piece_kind);
+        let group_node = reserve_node.append_new_svg_element("g")?;
+        group_node.set_id(&id);
+        group_node.class_list().add_1("reserve-piece-group")?;
         for iter in 0..amount {
             if iter > 0 {
                 x += piece_sep;
             }
-            let node = document.create_svg_element("use")?;
+            let node = group_node.append_new_svg_element("use")?;
             node.set_attribute("href", filename)?;
-            node.set_attribute("data-bughouse-location", &reserve_piece_id(board_idx, piece_kind))?;
+            node.set_attribute("data-bughouse-location", &id)?;
             node.set_attribute("x", &x.to_string())?;
             node.set_attribute("y", &y.to_string())?;
             if draggable {
-                node.set_attribute("class", "draggable")?;
+                node.class_list().add_1("draggable")?;
             }
-            reserve_node.append_child(&node)?;
         }
         x += piece_kind_sep;
     }
@@ -2032,14 +2092,14 @@ fn render_grid(
     for row in board_shape.rows() {
         for col in board_shape.cols() {
             let sq = document.create_svg_element("rect")?;
-            let display_coord =
-                to_display_coord(Coord::new(row, col), board_shape, board_orientation);
+            let coord = Coord::new(row, col);
+            let display_coord = to_display_coord(coord, board_shape, board_orientation);
             let DisplayFCoord { x, y } = DisplayFCoord::square_pivot(display_coord);
             sq.set_attribute("x", &x.to_string())?;
             sq.set_attribute("y", &y.to_string())?;
             sq.set_attribute("width", "1")?;
             sq.set_attribute("height", "1")?;
-            sq.set_attribute("class", square_color_class(row, col))?;
+            sq.set_attribute("class", square_color_class(coord.color()))?;
             layer.append_child(&sq)?;
             if display_coord.x == 0 {
                 let caption = document.create_svg_element("text")?;
@@ -2047,7 +2107,7 @@ fn render_grid(
                 caption.set_attribute("x", &(x + text_h_padding).to_string())?;
                 caption.set_attribute("y", &(y + text_v_padding).to_string())?;
                 caption.set_attribute("dominant-baseline", "hanging")?;
-                caption.set_attribute("class", square_text_color_class(row, col))?;
+                caption.set_attribute("class", square_text_color_class(coord.color()))?;
                 layer.append_child(&caption)?;
             }
             if display_coord.y == board_shape.num_rows as i8 - 1 {
@@ -2056,7 +2116,7 @@ fn render_grid(
                 caption.set_attribute("x", &(x + 1.0 - text_h_padding).to_string())?;
                 caption.set_attribute("y", &(y + 1.0 - text_v_padding).to_string())?;
                 caption.set_attribute("text-anchor", "end")?;
-                caption.set_attribute("class", square_text_color_class(row, col))?;
+                caption.set_attribute("class", square_text_color_class(coord.color()))?;
                 layer.append_child(&caption)?;
             }
         }
@@ -2127,7 +2187,7 @@ fn render_board(
     // Note that the dragged piece will still be above the highlight.
     add_layer(
         square_highlight_layer_id(SquareHighlightLayer::Ephemeral, board_idx),
-        ShapeRendering::Normal,
+        ShapeRendering::CrispEdges,
     )?;
     add_layer(chalk_drawing_layer_id(board_idx), ShapeRendering::Normal)?;
     add_layer(promotion_target_layer_id(board_idx), ShapeRendering::Normal)?;
@@ -2264,9 +2324,7 @@ fn render_archive_game_list(
 
 fn highlight_archive_game_row(game_id: i64) -> JsResult<()> {
     let document = web_document();
-    for element in document.get_elements_by_class_name("game-archive-hovered-row") {
-        element.class_list().remove_1("game-archive-hovered-row")?;
-    }
+    document.purge_class_name("game-archive-hovered-row")?;
     if let Some(row_node) = document.get_element_by_id(&archive_game_row_id(game_id)) {
         row_node.class_list().add_1("game-archive-hovered-row")?;
     }
@@ -2301,6 +2359,13 @@ fn force_id(force: Force) -> &'static str {
     match force {
         Force::White => "white",
         Force::Black => "black",
+    }
+}
+fn parse_force_id(id: &str) -> JsResult<Force> {
+    match id {
+        "white" => Ok(Force::White),
+        "black" => Ok(Force::Black),
+        _ => Err(format!(r#"Invalid force: "{id}""#).into()),
     }
 }
 
@@ -2370,17 +2435,33 @@ fn parse_square_id(id: &str) -> Option<(DisplayBoard, Coord)> {
     Some((board_idx, coord))
 }
 
-fn reserve_piece_id(board_idx: DisplayBoard, piece_kind: PieceKind) -> String {
-    format!("reserve-{}-{}", board_id(board_idx), piece_kind.to_full_algebraic())
+fn reserve_piece_id(board_idx: DisplayBoard, force: Force, piece_kind: PieceKind) -> String {
+    format!(
+        "reserve-{}-{}-{}",
+        board_id(board_idx),
+        force_id(force),
+        piece_kind.to_full_algebraic()
+    )
 }
-fn parse_reserve_piece_id(id: &str) -> Option<(DisplayBoard, PieceKind)> {
-    let (reserve_literal, board_idx, piece_kind) = id.split('-').collect_tuple()?;
+fn parse_reserve_piece_id(id: &str) -> Option<(DisplayBoard, Force, PieceKind)> {
+    let (reserve_literal, board_idx, force, piece_kind) = id.split('-').collect_tuple()?;
     if reserve_literal != "reserve" {
         return None;
     }
     let board_idx = parse_board_id(board_idx).ok()?;
+    let force = parse_force_id(force).ok()?;
     let piece_kind = PieceKind::from_algebraic(piece_kind)?;
-    Some((board_idx, piece_kind))
+    Some((board_idx, force, piece_kind))
+}
+
+fn parse_location_id(id: &str) -> Option<(DisplayBoard, Location)> {
+    if let Some((display_board_idx, force, piece)) = parse_reserve_piece_id(id) {
+        Some((display_board_idx, Location::Reserve(force, piece)))
+    } else if let Some((display_board_idx, coord)) = parse_square_id(id) {
+        Some((display_board_idx, Location::Square(coord)))
+    } else {
+        None
+    }
 }
 
 fn fog_of_war_id(board_idx: DisplayBoard, coord: Coord) -> String {
@@ -2440,7 +2521,7 @@ fn turn_highlight_layer(layer: TurnHighlightLayer) -> SquareHighlightLayer {
         TurnHighlightLayer::BelowFog => SquareHighlightLayer::Turn,
     }
 }
-fn turn_highlight_class_id(h: &TurnHighlight) -> String {
+fn square_highlight_class_id(h: &SquareHighlight) -> String {
     let family = match h.family {
         TurnHighlightFamily::PartialTurn => "partial",
         TurnHighlightFamily::LatestTurn => "latest",
@@ -2511,19 +2592,17 @@ fn reserve_y_pos(player_idx: DisplayPlayer) -> f64 {
     }
 }
 
-fn square_text_color_class(row: Row, col: Col) -> &'static str {
-    if (row.to_zero_based() + col.to_zero_based()) % 2 == 0 {
-        "on-sq-black"
-    } else {
-        "on-sq-white"
+fn square_text_color_class(color: Force) -> &'static str {
+    match color {
+        Force::White => "on-sq-white",
+        Force::Black => "on-sq-black",
     }
 }
 
-fn square_color_class(row: Row, col: Col) -> &'static str {
-    if (row.to_zero_based() + col.to_zero_based()) % 2 == 0 {
-        "sq-black"
-    } else {
-        "sq-white"
+fn square_color_class(color: Force) -> &'static str {
+    match color {
+        Force::White => "sq-white",
+        Force::Black => "sq-black",
     }
 }
 

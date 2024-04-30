@@ -61,7 +61,7 @@ enum Action {
     PieceDragState,
     StartDragPiece {
         board_idx: BughouseBoard,
-        start: PieceDragStart,
+        start: Location,
     },
     AbortDragPiece,
     DragPieceDrop {
@@ -271,9 +271,9 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
         StartDragPiece => {
             let board_idx = random_board(rng);
             let start = if rng.gen_bool(DRAG_RESERVE_RATIO) {
-                PieceDragStart::Reserve(random_piece(rng))
+                Location::Reserve(random_force(rng), random_piece(rng))
             } else {
-                PieceDragStart::Board(random_coord(rng, board_shape))
+                Location::Square(random_coord(rng, board_shape))
             };
             Action::StartDragPiece { board_idx, start }
         }

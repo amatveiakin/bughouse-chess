@@ -29,6 +29,7 @@ use crate::board::{
 use crate::clock::GameInstant;
 use crate::coord::{BoardShape, Coord, SubjectiveRow};
 use crate::display::Perspective;
+use crate::force::Force;
 use crate::game::{
     get_bughouse_force, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
     BughouseParticipant, TurnIndex, TurnRecord, TurnRecordExpanded,
@@ -37,32 +38,37 @@ use crate::piece::{CastleDirection, PieceForce, PieceId, PieceKind, PieceOnBoard
 use crate::rules::{BughouseRules, ChessRules, Promotion};
 
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Location {
+    Square(Coord),
+    Reserve(Force, PieceKind),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum TurnInputResult {
+    Turn((BughouseBoard, TurnInput)),
+    Noop,
+    Error(TurnError),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RegularPartialTurn {
+    pub piece_kind: PieceKind,
+    pub piece_force: PieceForce,
+    pub piece_origin: PieceOrigin,
+    pub source: PartialTurnSource,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum PartialTurnInput {
-    Drag {
-        piece_kind: PieceKind,
-        piece_force: PieceForce,
-        piece_origin: PieceOrigin,
-        source: PieceDragSource,
-    },
-    UpgradePromotion {
-        from: Coord,
-        to: Coord,
-    },
-    StealPromotion {
-        from: Coord,
-        to: Coord,
-    },
+    Drag(RegularPartialTurn),
+    ClickMove(RegularPartialTurn),
+    UpgradePromotion { from: Coord, to: Coord },
+    StealPromotion { from: Coord, to: Coord },
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum PieceDragStart {
-    Board(Coord),
-    Reserve(PieceKind),
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum PieceDragSource {
+pub enum PartialTurnSource {
     Defunct, // dragged piece captured by opponent or depends on a cancelled preturn
     Board(Coord),
     Reserve,
@@ -99,12 +105,25 @@ pub enum TurnHighlightItem {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct TurnHighlight {
+pub struct SquareHighlight {
     pub board_idx: BughouseBoard,
     pub coord: Coord,
     pub layer: TurnHighlightLayer,
     pub family: TurnHighlightFamily,
     pub item: TurnHighlightItem,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ReservePieceHighlight {
+    pub board_idx: BughouseBoard,
+    pub force: Force,
+    pub piece_kind: PieceKind,
+}
+
+#[derive(Clone, Debug)]
+pub struct TurnHighlights {
+    pub square_highlights: Vec<SquareHighlight>,
+    pub reserve_piece_highlights: Vec<ReservePieceHighlight>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -128,6 +147,15 @@ pub enum WaybackDestination {
     Next,
     First,
     Last,
+}
+
+impl From<Result<(), TurnError>> for TurnInputResult {
+    fn from(result: Result<(), TurnError>) -> Self {
+        match result {
+            Ok(()) => TurnInputResult::Noop,
+            Err(e) => TurnInputResult::Error(e),
+        }
+    }
 }
 
 impl WaybackState {
@@ -248,7 +276,35 @@ impl AlteredGame {
     pub fn partial_turn_input(&self) -> Option<(BughouseBoard, PartialTurnInput)> {
         self.partial_turn_input
     }
+    pub fn partial_turn_input_or_duck_turn(
+        &self, board_idx: BughouseBoard,
+    ) -> Option<PartialTurnInput> {
+        let partial_turn = self.partial_turn_input.filter(|(b, _)| *b == board_idx).map(|(_, t)| t);
+        let duck_turn = 'duck: {
+            if !self.is_active() {
+                break 'duck None;
+            }
+            let Some(envoy) = self.my_id.envoy_for(board_idx) else {
+                break 'duck None;
+            };
+            let game = self.game_with_local_turns(LocalTurns::All);
+            let board = game.board(board_idx);
+            if !board.is_duck_turn(envoy.force) {
+                break 'duck None;
+            }
+            Some(PartialTurnInput::ClickMove(RegularPartialTurn {
+                piece_kind: PieceKind::Duck,
+                piece_force: PieceForce::Neutral,
+                piece_origin: PieceOrigin::Innate,
+                source: board
+                    .duck_position()
+                    .map_or(PartialTurnSource::Reserve, |pos| PartialTurnSource::Board(pos)),
+            }))
+        };
+        partial_turn.or(duck_turn)
+    }
 
+    // TODO: Avoid copying the game for it.
     pub fn is_my_duck_turn(&self, board_idx: BughouseBoard) -> bool {
         if !self.is_active() {
             return false;
@@ -260,10 +316,11 @@ impl AlteredGame {
         game.board(board_idx).is_duck_turn(envoy.force)
     }
 
-    pub fn turn_highlights(&self) -> Vec<TurnHighlight> {
+    pub fn turn_highlights(&self) -> TurnHighlights {
         let my_id = self.my_id;
         let game = self.local_game();
-        let mut highlights = vec![];
+        let mut square_highlights = vec![];
+        let mut reserve_piece_highlights = vec![];
         let wayback = self.wayback_state();
         let wayback_turn_idx = wayback.display_turn_index();
 
@@ -290,7 +347,7 @@ impl AlteredGame {
                     for r in
                         turn_log.iter().rev().take_while(|r| r.envoy == latest_turn_record.envoy)
                     {
-                        highlights.extend(get_turn_highlights(
+                        square_highlights.extend(get_turn_highlights(
                             TurnHighlightFamily::LatestTurn,
                             board_idx,
                             &r.turn_expanded,
@@ -302,7 +359,7 @@ impl AlteredGame {
 
             for r in turn_log.iter() {
                 if r.mode == TurnMode::Preturn {
-                    highlights.extend(get_turn_highlights(
+                    square_highlights.extend(get_turn_highlights(
                         TurnHighlightFamily::Preturn,
                         board_idx,
                         &r.turn_expanded,
@@ -311,27 +368,19 @@ impl AlteredGame {
                 }
             }
 
-            if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
-                if input_board_idx == board_idx {
-                    highlights.extend(get_partial_turn_highlights(
-                        board_idx,
-                        partial_input,
-                        board,
-                        fog_cover_area,
-                    ));
-                }
+            if let Some(partial_input) = self.partial_turn_input_or_duck_turn(board_idx) {
+                square_highlights.extend(get_partial_turn_highlights(
+                    board_idx,
+                    partial_input,
+                    board,
+                    fog_cover_area,
+                ));
+                reserve_piece_highlights
+                    .extend(get_partial_turn_reserve_highlights(board_idx, partial_input));
             }
         }
-        // let highlight_groups = highlights.into_iter().group_by(|h| (h.board_idx, h.coord));
-        // highlight_groups
-        //     .into_iter()
-        //     .flat_map(|(_, group)| {
-        //         group
-        //             .sorted_by_key(|h| turn_highlight_z_index(h))
-        //             .take_while_inclusive(|h| !is_turn_highlight_opaque(h))
-        //     })
-        //     .collect()
-        highlights
+        // Note: Don't use `group_by`: it only groups consecutive elements.
+        let square_highlights = square_highlights
             .into_iter()
             .into_group_map_by(|h| (h.board_idx, h.coord))
             .into_iter()
@@ -339,9 +388,13 @@ impl AlteredGame {
                 group
                     .into_iter()
                     .sorted_by_key(|h| cmp::Reverse(turn_highlight_z_index(h)))
-                    .take_while_inclusive(|h| !is_turn_highlight_opaque(h))
+                    .take_while_inclusive(|h| !is_turn_highlight_opaque(h.item))
             })
-            .collect()
+            .collect();
+        TurnHighlights {
+            square_highlights,
+            reserve_piece_highlights,
+        }
     }
 
     pub fn see_though_fog(&self) -> bool { !self.is_active() }
@@ -461,19 +514,70 @@ impl AlteredGame {
         self.wayback_turn_index
     }
 
+    pub fn choose_promotion_upgrade(&mut self, piece_kind: PieceKind) -> TurnInputResult {
+        if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
+            match partial_input {
+                PartialTurnInput::Drag { .. } => {}
+                PartialTurnInput::ClickMove { .. } => {}
+                PartialTurnInput::UpgradePromotion { from, to } => {
+                    let full_input = TurnInput::DragDrop(Turn::Move(TurnMove {
+                        from,
+                        to,
+                        promote_to: Some(PromotionTarget::Upgrade(piece_kind)),
+                    }));
+                    self.partial_turn_input = None;
+                    return TurnInputResult::Turn((input_board_idx, full_input));
+                }
+                PartialTurnInput::StealPromotion { .. } => {}
+            }
+        }
+        TurnInputResult::Noop
+    }
+
     // Improvement: Less ad-hoc solution for "gluing" board index to TurnInput; use it here, in
     // `drag_piece_drop` and in `BughouseClientEvent::MakeTurn`.
-    pub fn click_square(
-        &mut self, board_idx: BughouseBoard, coord: Coord,
-    ) -> Option<(BughouseBoard, TurnInput)> {
+    pub fn click(&mut self, board_idx: BughouseBoard, loc: Location) -> TurnInputResult {
+        if self.wayback_turn_index.is_some() {
+            return TurnInputResult::Error(TurnError::WaybackIsActive);
+        }
         if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
             match partial_input {
                 PartialTurnInput::Drag { .. } => {
-                    self.partial_turn_input = None;
+                    return TurnInputResult::Error(TurnError::PreviousTurnNotFinished)
                 }
-                PartialTurnInput::UpgradePromotion { .. } => {}
+                PartialTurnInput::ClickMove(regular_partial_turn) => {
+                    match loc {
+                        Location::Reserve(force, piece_kind) => {
+                            if regular_partial_turn.piece_force.is_owned_by_or_neutral(force)
+                                && piece_kind == regular_partial_turn.piece_kind
+                            {
+                                // Deselect reserve pieces by clicking again. Note that we don't do
+                                // this for regular pieces because the duck can be premoved back to
+                                // the original place.
+                                self.partial_turn_input = None;
+                                return TurnInputResult::Noop;
+                            }
+                        }
+                        Location::Square(coord) => {
+                            if board_idx == input_board_idx {
+                                return self.apply_destination_to_regular_partial_turn(
+                                    regular_partial_turn,
+                                    board_idx,
+                                    coord,
+                                );
+                            }
+                        }
+                    }
+                    self.partial_turn_input = None;
+                    // Fallthrough: begin new move.
+                }
+                PartialTurnInput::UpgradePromotion { .. } => {
+                    return TurnInputResult::Noop;
+                }
                 PartialTurnInput::StealPromotion { from, to } => {
-                    if board_idx == input_board_idx.other() {
+                    if board_idx == input_board_idx.other()
+                        && let Location::Square(coord) = loc
+                    {
                         let game = self.game_with_local_turns(LocalTurns::All);
                         if let Some(piece) = game.board(board_idx).grid()[coord] {
                             let full_input = TurnInput::DragDrop(Turn::Move(TurnMove {
@@ -486,45 +590,61 @@ impl AlteredGame {
                                 ))),
                             }));
                             self.partial_turn_input = None;
-                            return Some((input_board_idx, full_input));
+                            return TurnInputResult::Turn((input_board_idx, full_input));
                         }
                     }
+                    return TurnInputResult::Noop;
                 }
             }
-        } else if self.is_my_duck_turn(board_idx) {
-            // Improvement potential: Also allow to make regular moves in two clicks.
-            return Some((board_idx, TurnInput::DragDrop(Turn::PlaceDuck(coord))));
         }
-        None
-    }
-
-    pub fn choose_promotion_upgrade(
-        &mut self, board_idx: BughouseBoard, piece_kind: PieceKind,
-    ) -> Option<TurnInput> {
-        if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
-            match partial_input {
-                PartialTurnInput::Drag { .. } => {}
-                PartialTurnInput::UpgradePromotion { from, to } => {
-                    if board_idx == input_board_idx {
-                        let full_input = TurnInput::DragDrop(Turn::Move(TurnMove {
-                            from,
-                            to,
-                            promote_to: Some(PromotionTarget::Upgrade(piece_kind)),
-                        }));
-                        self.partial_turn_input = None;
-                        return Some(full_input);
+        if self.is_my_duck_turn(board_idx) {
+            match loc {
+                Location::Square(coord) => {
+                    TurnInputResult::Turn((board_idx, TurnInput::DragDrop(Turn::PlaceDuck(coord))))
+                }
+                Location::Reserve(..) => TurnInputResult::Noop,
+            }
+        } else {
+            match loc {
+                Location::Square(coord) => {
+                    if let Some(piece) =
+                        self.game_with_local_turns(LocalTurns::All).board(board_idx).grid()[coord]
+                    {
+                        self.try_partial_turn(
+                            board_idx,
+                            PartialTurnInput::ClickMove(RegularPartialTurn {
+                                piece_kind: piece.kind,
+                                piece_force: piece.force,
+                                piece_origin: piece.origin,
+                                source: PartialTurnSource::Board(coord),
+                            }),
+                        )
+                        .into()
+                    } else {
+                        TurnInputResult::Noop
                     }
                 }
-                PartialTurnInput::StealPromotion { .. } => {}
+                Location::Reserve(force, piece_kind) => {
+                    let piece_force = piece_kind.reserve_piece_force(force);
+                    self.try_partial_turn(
+                        board_idx,
+                        PartialTurnInput::ClickMove(RegularPartialTurn {
+                            piece_kind,
+                            piece_force,
+                            piece_origin: PieceOrigin::Dropped,
+                            source: PartialTurnSource::Reserve,
+                        }),
+                    )
+                    .into()
+                }
             }
         }
-        None
     }
 
     pub fn piece_drag_state(&self) -> PieceDragState {
         match self.partial_turn_input {
-            Some((_, PartialTurnInput::Drag { source, .. })) => match source {
-                PieceDragSource::Defunct => PieceDragState::Defunct,
+            Some((_, PartialTurnInput::Drag(RegularPartialTurn { source, .. }))) => match source {
+                PartialTurnSource::Defunct => PieceDragState::Defunct,
                 _ => PieceDragState::Dragging,
             },
             _ => PieceDragState::NoDrag,
@@ -532,11 +652,8 @@ impl AlteredGame {
     }
 
     pub fn start_drag_piece(
-        &mut self, board_idx: BughouseBoard, start: PieceDragStart,
+        &mut self, board_idx: BughouseBoard, loc: Location,
     ) -> Result<(), TurnError> {
-        let Some(my_envoy) = self.my_id.envoy_for(board_idx) else {
-            return Err(TurnError::NotPlayer);
-        };
         if self.wayback_turn_index.is_some() {
             return Err(TurnError::WaybackIsActive);
         }
@@ -548,28 +665,25 @@ impl AlteredGame {
         self.partial_turn_input = None;
         let game = self.game_with_local_turns(LocalTurns::All);
         let board = game.board(board_idx);
-        let (piece_kind, piece_force, piece_origin, source) = match start {
-            PieceDragStart::Board(coord) => {
+        let (piece_kind, piece_force, piece_origin, source) = match loc {
+            Location::Square(coord) => {
                 let piece = board.grid()[coord].ok_or(TurnError::PieceMissing)?;
-                if !board.can_potentially_move_piece(my_envoy.force, piece.force) {
-                    return Err(TurnError::DontControlPiece);
-                }
-                (piece.kind, piece.force, piece.origin, PieceDragSource::Board(coord))
+                (piece.kind, piece.force, piece.origin, PartialTurnSource::Board(coord))
             }
-            PieceDragStart::Reserve(piece_kind) => {
-                if board.reserve(my_envoy.force)[piece_kind] == 0 {
-                    return Err(TurnError::DropPieceMissing);
-                }
-                let piece_force = piece_kind.reserve_piece_force(my_envoy.force);
-                (piece_kind, piece_force, PieceOrigin::Dropped, PieceDragSource::Reserve)
+            Location::Reserve(force, piece_kind) => {
+                let piece_force = piece_kind.reserve_piece_force(force);
+                (piece_kind, piece_force, PieceOrigin::Dropped, PartialTurnSource::Reserve)
             }
         };
-        self.try_partial_turn(board_idx, PartialTurnInput::Drag {
-            piece_kind,
-            piece_force,
-            piece_origin,
-            source,
-        })
+        self.try_partial_turn(
+            board_idx,
+            PartialTurnInput::Drag(RegularPartialTurn {
+                piece_kind,
+                piece_force,
+                piece_origin,
+                source,
+            }),
+        )
     }
 
     pub fn abort_drag_piece(&mut self) {
@@ -580,36 +694,51 @@ impl AlteredGame {
 
     // Stop drag and returns turn on success. The client should then manually apply this
     // turn via `make_turn`.
-    pub fn drag_piece_drop(
-        &mut self, board_idx: BughouseBoard, dest: Coord,
-    ) -> Result<Option<TurnInput>, TurnError> {
-        let Some((
-            input_board_idx,
-            PartialTurnInput::Drag {
-                piece_kind,
-                piece_force,
-                piece_origin,
-                source,
-            },
-        )) = self.partial_turn_input
-        else {
-            // TODO: Log internal error.
-            return Err(TurnError::NoTurnInProgress);
-        };
-        self.partial_turn_input = None;
-        if input_board_idx != board_idx {
-            return Ok(None);
+    pub fn drag_piece_drop(&mut self, board_idx: BughouseBoard, dest: Coord) -> TurnInputResult {
+        if let Some((input_board_idx, PartialTurnInput::Drag(regular_partial_turn))) =
+            self.partial_turn_input
+        {
+            if input_board_idx != board_idx {
+                // TODO: Log internal error: web client should make sure that only one board is
+                // interactive while dragging.
+                return TurnInputResult::Error(TurnError::NoTurnInProgress);
+            }
+            self.apply_destination_to_regular_partial_turn(regular_partial_turn, board_idx, dest)
+        } else {
+            TurnInputResult::Error(TurnError::NoTurnInProgress)
         }
+    }
+
+    pub fn highlight_square_on_hover(&self, board_idx: BughouseBoard) -> bool {
+        if let Some((input_board_idx, partial_input)) = self.partial_turn_input {
+            input_board_idx == board_idx && matches!(partial_input, PartialTurnInput::ClickMove(_))
+        } else {
+            self.is_my_duck_turn(board_idx)
+        }
+    }
+
+    pub fn apply_destination_to_regular_partial_turn(
+        &mut self, regular_partial_turn: RegularPartialTurn, board_idx: BughouseBoard, dest: Coord,
+    ) -> TurnInputResult {
+        let make_turn = |turn_input| TurnInputResult::Turn((board_idx, turn_input));
+
+        let RegularPartialTurn {
+            piece_kind,
+            piece_force,
+            piece_origin,
+            source,
+        } = regular_partial_turn;
+        self.partial_turn_input = None;
 
         match source {
-            PieceDragSource::Defunct => Err(TurnError::Defunct),
-            PieceDragSource::Board(source_coord) => {
+            PartialTurnSource::Defunct => TurnInputResult::Error(TurnError::Defunct),
+            PartialTurnSource::Board(source_coord) => {
                 use PieceKind::*;
                 if piece_kind == PieceKind::Duck {
-                    return Ok(Some(TurnInput::DragDrop(Turn::PlaceDuck(dest))));
+                    return make_turn(TurnInput::DragDrop(Turn::PlaceDuck(dest)));
                 }
                 if source_coord == dest {
-                    return Err(TurnError::Cancelled);
+                    return TurnInputResult::Error(TurnError::Cancelled);
                 }
                 let board_shape = self.board_shape();
                 let d_col = dest.col - source_coord.col;
@@ -626,55 +755,47 @@ impl AlteredGame {
                 if is_castling {
                     use CastleDirection::*;
                     if piece_origin != PieceOrigin::Innate {
-                        return Err(TurnError::CannotCastleDroppedKing);
+                        return TurnInputResult::Error(TurnError::CannotCastleDroppedKing);
                     }
                     let dir = if d_col > 0 { HSide } else { ASide };
-                    Ok(Some(TurnInput::DragDrop(Turn::Castle(dir))))
+                    make_turn(TurnInput::DragDrop(Turn::Castle(dir)))
                 } else {
                     if is_promotion {
                         match self.bughouse_rules().promotion {
-                            Promotion::Upgrade => {
-                                self.try_partial_turn(
-                                    board_idx,
-                                    PartialTurnInput::UpgradePromotion {
-                                        from: source_coord,
-                                        to: dest,
-                                    },
-                                )?;
-                                Ok(None)
-                            }
+                            Promotion::Upgrade => self
+                                .try_partial_turn(board_idx, PartialTurnInput::UpgradePromotion {
+                                    from: source_coord,
+                                    to: dest,
+                                })
+                                .into(),
                             Promotion::Discard => {
-                                Ok(Some(TurnInput::DragDrop(Turn::Move(TurnMove {
+                                make_turn(TurnInput::DragDrop(Turn::Move(TurnMove {
                                     from: source_coord,
                                     to: dest,
                                     promote_to: Some(PromotionTarget::Discard),
-                                }))))
+                                })))
                             }
-                            Promotion::Steal => {
-                                self.try_partial_turn(
-                                    board_idx,
-                                    PartialTurnInput::StealPromotion {
-                                        from: source_coord,
-                                        to: dest,
-                                    },
-                                )?;
-                                Ok(None)
-                            }
+                            Promotion::Steal => self
+                                .try_partial_turn(board_idx, PartialTurnInput::StealPromotion {
+                                    from: source_coord,
+                                    to: dest,
+                                })
+                                .into(),
                         }
                     } else {
-                        Ok(Some(TurnInput::DragDrop(Turn::Move(TurnMove {
+                        make_turn(TurnInput::DragDrop(Turn::Move(TurnMove {
                             from: source_coord,
                             to: dest,
                             promote_to: None,
-                        }))))
+                        })))
                     }
                 }
             }
-            PieceDragSource::Reserve => {
+            PartialTurnSource::Reserve => {
                 if piece_kind == PieceKind::Duck {
-                    return Ok(Some(TurnInput::DragDrop(Turn::PlaceDuck(dest))));
+                    return make_turn(TurnInput::DragDrop(Turn::PlaceDuck(dest)));
                 }
-                Ok(Some(TurnInput::DragDrop(Turn::Drop(TurnDrop { piece_kind, to: dest }))))
+                make_turn(TurnInput::DragDrop(Turn::Drop(TurnDrop { piece_kind, to: dest })))
             }
         }
     }
@@ -800,32 +921,37 @@ impl AlteredGame {
         let Some(envoy) = self.my_id.envoy_for(board_idx) else {
             return Err(TurnError::NotPlayer);
         };
+        let is_drag = matches!(input, PartialTurnInput::Drag(_));
         match input {
-            PartialTurnInput::Drag {
-                piece_kind,
-                piece_force,
-                piece_origin,
-                source,
-            } => {
+            PartialTurnInput::Drag(input) | PartialTurnInput::ClickMove(input) => {
+                if !input.piece_force.is_owned_by_or_neutral(envoy.force) {
+                    return Err(TurnError::DontControlPiece);
+                }
                 let board = game.board_mut(board_idx);
-                match source {
-                    PieceDragSource::Defunct => {}
-                    PieceDragSource::Board(coord) => {
-                        // Note: `take` modifies the board
-                        let piece =
-                            board.grid_mut()[coord].take().ok_or(TurnError::PieceMissing)?;
-                        let expected = (piece_force, piece_kind, piece_origin);
+                match input.source {
+                    PartialTurnSource::Defunct => {}
+                    PartialTurnSource::Board(coord) => {
+                        let piece = board.grid()[coord].ok_or(TurnError::PieceMissing)?;
+                        let expected = (input.piece_force, input.piece_kind, input.piece_origin);
                         let actual = (piece.force, piece.kind, piece.origin);
                         if expected != actual {
                             return Err(TurnError::TurnObsolete);
                         }
+                        if is_drag {
+                            board.grid_mut()[coord] = None;
+                        }
                     }
-                    PieceDragSource::Reserve => {
+                    PartialTurnSource::Reserve => {
+                        if !input.piece_force.is_owned_by_or_neutral(envoy.force) {
+                            return Err(TurnError::DontControlPiece);
+                        }
                         let reserve = board.reserve_mut(envoy.force);
-                        if reserve[piece_kind] == 0 {
+                        if reserve[input.piece_kind] == 0 {
                             return Err(TurnError::DropPieceMissing);
                         }
-                        reserve[piece_kind] -= 1;
+                        if is_drag {
+                            reserve[input.piece_kind] -= 1;
+                        }
                     }
                 }
             }
@@ -850,10 +976,15 @@ impl AlteredGame {
             return;
         };
         match input {
-            PartialTurnInput::Drag { source, .. } => {
-                *source = PieceDragSource::Defunct;
+            // Note the difference between `Drag` and `ClickMove`: immediately vanishing dragged
+            // piece breaks the feeling of physicality (so we use `Defunct` here), but aborting a
+            // click move feels fine.
+            PartialTurnInput::Drag(RegularPartialTurn { source, .. }) => {
+                *source = PartialTurnSource::Defunct;
             }
-            PartialTurnInput::UpgradePromotion { .. } | PartialTurnInput::StealPromotion { .. } => {
+            PartialTurnInput::ClickMove { .. }
+            | PartialTurnInput::UpgradePromotion { .. }
+            | PartialTurnInput::StealPromotion { .. } => {
                 self.partial_turn_input = None;
             }
         }
@@ -889,7 +1020,7 @@ fn board_turn_log_modulo_wayback(
 }
 
 // Tuple values are compared lexicographically. Higher values overshadow lower values.
-fn turn_highlight_z_index(highlight: &TurnHighlight) -> (u8, u8, u8) {
+fn turn_highlight_z_index(highlight: &SquareHighlight) -> (u8, u8, u8) {
     (
         match highlight.layer {
             TurnHighlightLayer::AboveFog => 1,
@@ -918,9 +1049,9 @@ fn turn_highlight_z_index(highlight: &TurnHighlight) -> (u8, u8, u8) {
 }
 
 // For each square, we'll show the top-most opaque highlight plus all non-opaque highlights above.
-fn is_turn_highlight_opaque(highlight: &TurnHighlight) -> bool {
+fn is_turn_highlight_opaque(item: TurnHighlightItem) -> bool {
     use TurnHighlightItem::*;
-    match highlight.item {
+    match item {
         LegalDestination | DragStart => false,
         Capture | MoveTo | Drop | MoveFrom => true,
     }
@@ -929,11 +1060,16 @@ fn is_turn_highlight_opaque(highlight: &TurnHighlight) -> bool {
 fn make_turn_highlight(
     board_idx: BughouseBoard, coord: Coord, family: TurnHighlightFamily, item: TurnHighlightItem,
     fog_of_war_area: &HashSet<Coord>,
-) -> Option<TurnHighlight> {
-    // Highlights of all visible squares should be rendered below the fog. Semantically there is no
-    // difference: the highlight will be visible anyway. But visually it's more appealing because it
-    // doesn't obstruct the pieces and the edges of fog sprite extending from neighboring squares.
-    let mut layer = TurnHighlightLayer::BelowFog;
+) -> Option<SquareHighlight> {
+    // Opaque highlights of all visible squares should be rendered below the fog. Semantically there
+    // is no difference: the highlight will be visible anyway. But visually it's more appealing
+    // because it doesn't obstruct the pieces and the edges of fog sprite extending from neighboring
+    // squares.
+    let mut layer = if is_turn_highlight_opaque(item) {
+        TurnHighlightLayer::BelowFog
+    } else {
+        TurnHighlightLayer::AboveFog
+    };
 
     if fog_of_war_area.contains(&coord) {
         // Show the highlight in the fog when it doesn't give new information to the player.
@@ -952,7 +1088,7 @@ fn make_turn_highlight(
         }
     }
 
-    Some(TurnHighlight { board_idx, coord, layer, family, item })
+    Some(SquareHighlight { board_idx, coord, layer, family, item })
 }
 
 fn get_turn_highlight_basis(turn_expanded: &TurnExpanded) -> Vec<(TurnHighlightItem, Coord)> {
@@ -982,43 +1118,51 @@ fn get_partial_turn_highlight_basis(
     partial_input: PartialTurnInput, board: &Board,
 ) -> Vec<(TurnHighlightItem, Coord)> {
     use PieceKind::*;
+    let add_legal_moves = |input: RegularPartialTurn, from: Coord, highlights: &mut Vec<_>| {
+        let mut board = board.clone();
+        board.grid_mut()[from] = Some(PieceOnBoard {
+            id: PieceId::tmp(),
+            kind: input.piece_kind,
+            force: input.piece_force,
+            origin: input.piece_origin,
+        });
+        // Add move hints to fairy pieces which the player may be unfamiliar with.
+        let need_move_hint = match input.piece_kind {
+            Pawn | Knight | Bishop | Rook | Queen | King => false,
+            Cardinal | Empress | Amazon => true,
+            Duck => false,
+        };
+        // Disable legal move destination hints in fog of war: highlighting all reachable
+        // squares would give away information. Not highlighting them could be misleading.
+        let fog_of_war = board.chess_rules().fog_of_war;
+        if need_move_hint && !fog_of_war {
+            for dest in board.legal_turn_destinations(from) {
+                highlights.push((TurnHighlightItem::LegalDestination, dest));
+            }
+        }
+    };
     match partial_input {
-        PartialTurnInput::Drag {
-            piece_kind,
-            piece_force,
-            piece_origin,
-            source,
-            ..
-        } => {
+        PartialTurnInput::Drag(input) => {
             let mut highlights = vec![];
-            let from = match source {
-                PieceDragSource::Defunct => return vec![],
-                PieceDragSource::Board(coord) => coord,
-                PieceDragSource::Reserve => return vec![],
+            let from = match input.source {
+                PartialTurnSource::Defunct => return vec![],
+                PartialTurnSource::Board(coord) => coord,
+                PartialTurnSource::Reserve => return vec![],
             };
             highlights.push((TurnHighlightItem::DragStart, from));
-
-            let mut board = board.clone();
-            board.grid_mut()[from] = Some(PieceOnBoard {
-                id: PieceId::tmp(),
-                kind: piece_kind,
-                force: piece_force,
-                origin: piece_origin,
-            });
-            // Add move hints to fairy pieces which the player may be unfamiliar with.
-            let need_move_hint = match piece_kind {
-                Pawn | Knight | Bishop | Rook | Queen | King => false,
-                Cardinal | Empress | Amazon => true,
-                Duck => false,
+            add_legal_moves(input, from, &mut highlights);
+            highlights
+        }
+        PartialTurnInput::ClickMove(input) => {
+            let mut highlights = vec![];
+            let from = match input.source {
+                PartialTurnSource::Defunct => return vec![],
+                PartialTurnSource::Board(coord) => coord,
+                // Handled by `get_partial_turn_reserve_highlights`.
+                PartialTurnSource::Reserve => return vec![],
             };
-            // Disable legal move destination hints in fog of war: highlighting all reachable
-            // squares would give away information. Not highlighting them could be misleading.
-            let fog_of_war = board.chess_rules().fog_of_war;
-            if need_move_hint && !fog_of_war {
-                for dest in board.legal_turn_destinations(from) {
-                    highlights.push((TurnHighlightItem::LegalDestination, dest));
-                }
-            }
+            highlights.push((TurnHighlightItem::MoveFrom, from));
+            add_legal_moves(input, from, &mut highlights);
             highlights
         }
         PartialTurnInput::StealPromotion { from, to }
@@ -1032,7 +1176,7 @@ fn get_partial_turn_highlight_basis(
 fn expand_turn_highlights(
     basic_highlights: Vec<(TurnHighlightItem, Coord)>, family: TurnHighlightFamily,
     board_idx: BughouseBoard, fog_of_war_area: &HashSet<Coord>,
-) -> Vec<TurnHighlight> {
+) -> Vec<SquareHighlight> {
     basic_highlights
         .into_iter()
         .filter_map(|(item, coord)| {
@@ -1044,18 +1188,46 @@ fn expand_turn_highlights(
 fn get_turn_highlights(
     family: TurnHighlightFamily, board_idx: BughouseBoard, turn: &TurnExpanded,
     fog_of_war_area: &HashSet<Coord>,
-) -> Vec<TurnHighlight> {
+) -> Vec<SquareHighlight> {
     expand_turn_highlights(get_turn_highlight_basis(turn), family, board_idx, fog_of_war_area)
 }
 
 fn get_partial_turn_highlights(
     board_idx: BughouseBoard, partial_input: PartialTurnInput, board: &Board,
     fog_of_war_area: &HashSet<Coord>,
-) -> Vec<TurnHighlight> {
+) -> Vec<SquareHighlight> {
     expand_turn_highlights(
         get_partial_turn_highlight_basis(partial_input, board),
         TurnHighlightFamily::PartialTurn,
         board_idx,
         fog_of_war_area,
     )
+}
+
+fn get_partial_turn_reserve_highlights(
+    board_idx: BughouseBoard, partial_input: PartialTurnInput,
+) -> Vec<ReservePieceHighlight> {
+    match partial_input {
+        PartialTurnInput::ClickMove(input) => match input.source {
+            PartialTurnSource::Defunct => vec![],
+            PartialTurnSource::Board(_) => vec![],
+            PartialTurnSource::Reserve => {
+                use PieceKind::*;
+                let force =
+                    input.piece_force.try_into().unwrap_or_else(|_| match input.piece_kind {
+                        Duck => Force::White, // before the first move
+                        Pawn | Knight | Bishop | Rook | Queen | Cardinal | Empress | Amazon
+                        | King => panic!("Piece should never be neutral: {:?}", input.piece_kind),
+                    });
+                vec![ReservePieceHighlight {
+                    board_idx,
+                    force,
+                    piece_kind: input.piece_kind,
+                }]
+            }
+        },
+        PartialTurnInput::Drag(_)
+        | PartialTurnInput::UpgradePromotion { .. }
+        | PartialTurnInput::StealPromotion { .. } => vec![],
+    }
 }

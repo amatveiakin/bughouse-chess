@@ -907,6 +907,9 @@ impl Board {
     pub fn clock_mut(&mut self) -> &mut Clock { &mut self.clock }
     pub fn active_force(&self) -> Force { self.active_force }
     pub fn is_duck_turn(&self, force: Force) -> bool { self.is_duck_turn[force] }
+    pub fn duck_position(&self) -> Option<Coord> {
+        find_piece(&self.grid, |p| p.kind == PieceKind::Duck)
+    }
 
     pub fn is_bughouse(&self) -> bool { self.bughouse_rules().is_some() }
     pub fn turn_owner(&self, mode: TurnMode) -> Force {
@@ -934,14 +937,6 @@ impl Board {
         if self.clock.time_left(self.active_force, now).is_zero() {
             self.status =
                 ChessGameStatus::Victory(self.active_force.opponent(), VictoryReason::Flag);
-        }
-    }
-
-    // Whether a given side can move a given piece, now or later.
-    pub fn can_potentially_move_piece(&self, envoy_force: Force, piece_force: PieceForce) -> bool {
-        match Force::try_from(piece_force) {
-            Err(()) => true,
-            Ok(force) => force == envoy_force,
         }
     }
 

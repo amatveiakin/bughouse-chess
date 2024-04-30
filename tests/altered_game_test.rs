@@ -1,16 +1,19 @@
 mod common;
+
 use bughouse_chess::altered_game::{
-    AlteredGame, PieceDragStart, TurnHighlight, TurnHighlightFamily, TurnHighlightItem,
-    TurnHighlightLayer, WaybackDestination,
+    AlteredGame, ReservePieceHighlight, SquareHighlight, TurnHighlightFamily, TurnHighlightItem,
+    TurnHighlightLayer, TurnInputResult, WaybackDestination,
 };
 use bughouse_chess::board::{TurnError, TurnInput, VictoryReason};
 use bughouse_chess::clock::GameInstant;
 use bughouse_chess::coord::Coord;
 use bughouse_chess::envoy;
+use bughouse_chess::force::Force;
 use bughouse_chess::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
     BughousePlayer, TurnIndex,
 };
+use bughouse_chess::piece::PieceKind;
 use bughouse_chess::player::Team;
 use bughouse_chess::role::Role;
 use bughouse_chess::rules::{ChessRules, FairyPieces, MatchRules, Promotion, Rules};
@@ -66,9 +69,9 @@ fn fog_of_war_bughouse_game() -> BughouseGame {
     BughouseGame::new(rules, Role::Client, &sample_bughouse_players())
 }
 
-macro_rules! turn_highlight {
+macro_rules! square_highlight {
     ($board_idx:ident $coord:ident : $layer:ident $family:ident $item:ident) => {
-        TurnHighlight {
+        SquareHighlight {
             board_idx: BughouseBoard::$board_idx,
             coord: Coord::$coord,
             layer: TurnHighlightLayer::$layer,
@@ -78,13 +81,43 @@ macro_rules! turn_highlight {
     };
 }
 
-fn sort_turn_highlights(mut highlights: Vec<TurnHighlight>) -> Vec<TurnHighlight> {
+macro_rules! reserve_piece_highlight {
+    ($board_idx:ident $force:ident $piece_kind:ident) => {
+        ReservePieceHighlight {
+            board_idx: BughouseBoard::$board_idx,
+            force: Force::$force,
+            piece_kind: PieceKind::$piece_kind,
+        }
+    };
+}
+
+fn sort_square_highlights(mut highlights: Vec<SquareHighlight>) -> Vec<SquareHighlight> {
     highlights.sort_by_key(|h| (h.board_idx, h.coord.row_col()));
     highlights
 }
 
-fn turn_highlights_sorted(alt_game: &AlteredGame) -> Vec<TurnHighlight> {
-    sort_turn_highlights(alt_game.turn_highlights())
+fn sort_reserve_piece_highlights(
+    mut highlights: Vec<ReservePieceHighlight>,
+) -> Vec<ReservePieceHighlight> {
+    highlights.sort_by_key(|h| (h.board_idx, h.force, h.piece_kind));
+    highlights
+}
+
+#[track_caller]
+fn square_highlights_sorted(alt_game: &AlteredGame) -> Vec<SquareHighlight> {
+    let highlights = alt_game.turn_highlights();
+    assert!(highlights.reserve_piece_highlights.is_empty());
+    sort_square_highlights(highlights.square_highlights)
+}
+
+fn turn_highlights_sorted(
+    alt_game: &AlteredGame,
+) -> (Vec<SquareHighlight>, Vec<ReservePieceHighlight>) {
+    let highlights = alt_game.turn_highlights();
+    (
+        sort_square_highlights(highlights.square_highlights),
+        sort_reserve_piece_highlights(highlights.reserve_piece_highlights),
+    )
 }
 
 const T0: GameInstant = GameInstant::game_start();
@@ -98,9 +131,12 @@ fn drag_depends_on_preturn_to_blocked_square() {
     alt_game.apply_remote_turn(envoy!(White A), &alg("e4"), T0).unwrap();
     alt_game.apply_remote_turn(envoy!(Black A), &alg("e6"), T0).unwrap();
     alt_game.try_local_turn(A, drag_move!(E6 -> E5), T0).unwrap();
-    alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::E5)).unwrap();
+    alt_game.start_drag_piece(A, loc!(E5)).unwrap();
     alt_game.apply_remote_turn(envoy!(White A), &alg("e5"), T0).unwrap();
-    assert_eq!(alt_game.drag_piece_drop(A, Coord::E4), Err(TurnError::Defunct));
+    assert_eq!(
+        alt_game.drag_piece_drop(A, Coord::E4),
+        TurnInputResult::Error(TurnError::Defunct)
+    );
 }
 
 // Regression test: shouldn't panic if there's a drag depending on a preturn that was reverted,
@@ -111,9 +147,12 @@ fn drag_depends_on_preturn_with_captured_piece() {
     alt_game.apply_remote_turn(envoy!(White A), &alg("e4"), T0).unwrap();
     alt_game.apply_remote_turn(envoy!(Black A), &alg("d5"), T0).unwrap();
     alt_game.try_local_turn(A, drag_move!(D5 -> D4), T0).unwrap();
-    alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::D4)).unwrap();
+    alt_game.start_drag_piece(A, loc!(D4)).unwrap();
     alt_game.apply_remote_turn(envoy!(White A), &alg("xd5"), T0).unwrap();
-    assert_eq!(alt_game.drag_piece_drop(A, Coord::D3), Err(TurnError::Defunct));
+    assert_eq!(
+        alt_game.drag_piece_drop(A, Coord::D3),
+        TurnInputResult::Error(TurnError::Defunct)
+    );
 }
 
 // It is not allowed to have more than one preturn. However a player can start dragging a
@@ -124,11 +163,13 @@ fn start_drag_with_a_preturn() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), default_game());
     alt_game.try_local_turn(A, drag_move!(E2 -> E3), T0).unwrap();
     alt_game.try_local_turn(A, drag_move!(E3 -> E4), T0).unwrap();
-    alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::E4)).unwrap();
+    alt_game.start_drag_piece(A, loc!(E4)).unwrap();
     alt_game.apply_remote_turn(envoy!(White A), &alg("e3"), T0).unwrap();
     alt_game.apply_remote_turn(envoy!(Black A), &alg("Nc6"), T0).unwrap();
-    let drag_result = alt_game.drag_piece_drop(A, Coord::E5).unwrap();
-    assert_eq!(drag_result, Some(drag_move!(E4 -> E5)));
+    assert_eq!(
+        alt_game.drag_piece_drop(A, Coord::E5),
+        TurnInputResult::Turn((A, drag_move!(E4 -> E5)))
+    );
 }
 
 // Regression test: keep local preturn after getting an opponent's turn.
@@ -189,11 +230,11 @@ fn turn_highlights() {
     alt_game.apply_remote_turn(envoy!(White B), &alg("xd5"), T0).unwrap();
     alt_game.try_local_turn(A, alg("e4"), T0).unwrap();
     alt_game.try_local_turn(A, alg("xd5"), T0).unwrap();
-    assert_eq!(turn_highlights_sorted(&alt_game), vec![
-        turn_highlight!(A E4 : BelowFog Preturn MoveFrom),
-        turn_highlight!(A D5 : BelowFog Preturn MoveTo), // don't use `Capture` for preturns
-        turn_highlight!(B E4 : BelowFog LatestTurn MoveFrom),
-        turn_highlight!(B D5 : BelowFog LatestTurn Capture),
+    assert_eq!(square_highlights_sorted(&alt_game), vec![
+        square_highlight!(A E4 : BelowFog Preturn MoveFrom),
+        square_highlight!(A D5 : BelowFog Preturn MoveTo), // don't use `Capture` for preturns
+        square_highlight!(B E4 : BelowFog LatestTurn MoveFrom),
+        square_highlight!(B D5 : BelowFog LatestTurn Capture),
     ]);
 }
 
@@ -202,35 +243,65 @@ fn multiple_turn_highlights_per_square() {
     let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), accolade_game());
     alt_game.apply_remote_turn(envoy!(White A), &alg("Rg1"), T0).unwrap();
     alt_game.try_local_turn(A, alg("Ef3"), T0).unwrap();
-    alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::F3)).unwrap();
+    alt_game.start_drag_piece(A, loc!(F3)).unwrap();
     assert_eq!(
-        turn_highlights_sorted(&alt_game),
-        sort_turn_highlights(vec![
+        square_highlights_sorted(&alt_game),
+        sort_square_highlights(vec![
             // drag start
-            turn_highlight!(A F3 : BelowFog PartialTurn DragStart),
+            square_highlight!(A F3 : AboveFog PartialTurn DragStart),
             // rook moves
-            turn_highlight!(A A3 : BelowFog PartialTurn LegalDestination),
-            turn_highlight!(A B3 : BelowFog PartialTurn LegalDestination),
-            turn_highlight!(A C3 : BelowFog PartialTurn LegalDestination),
-            turn_highlight!(A D3 : BelowFog PartialTurn LegalDestination),
-            turn_highlight!(A E3 : BelowFog PartialTurn LegalDestination),
-            turn_highlight!(A G3 : BelowFog PartialTurn LegalDestination),
-            turn_highlight!(A H3 : BelowFog PartialTurn LegalDestination),
-            turn_highlight!(A F4 : BelowFog PartialTurn LegalDestination),
-            turn_highlight!(A F5 : BelowFog PartialTurn LegalDestination),
-            turn_highlight!(A F6 : BelowFog PartialTurn LegalDestination),
-            turn_highlight!(A F7 : BelowFog PartialTurn LegalDestination),
+            square_highlight!(A A3 : AboveFog PartialTurn LegalDestination),
+            square_highlight!(A B3 : AboveFog PartialTurn LegalDestination),
+            square_highlight!(A C3 : AboveFog PartialTurn LegalDestination),
+            square_highlight!(A D3 : AboveFog PartialTurn LegalDestination),
+            square_highlight!(A E3 : AboveFog PartialTurn LegalDestination),
+            square_highlight!(A G3 : AboveFog PartialTurn LegalDestination),
+            square_highlight!(A H3 : AboveFog PartialTurn LegalDestination),
+            square_highlight!(A F4 : AboveFog PartialTurn LegalDestination),
+            square_highlight!(A F5 : AboveFog PartialTurn LegalDestination),
+            square_highlight!(A F6 : AboveFog PartialTurn LegalDestination),
+            square_highlight!(A F7 : AboveFog PartialTurn LegalDestination),
             // knight moves
-            turn_highlight!(A G1 : BelowFog PartialTurn LegalDestination), // <--
-            turn_highlight!(A H4 : BelowFog PartialTurn LegalDestination),
-            turn_highlight!(A G5 : BelowFog PartialTurn LegalDestination),
-            turn_highlight!(A E5 : BelowFog PartialTurn LegalDestination),
-            turn_highlight!(A D4 : BelowFog PartialTurn LegalDestination),
+            square_highlight!(A G1 : AboveFog PartialTurn LegalDestination), // <--
+            square_highlight!(A H4 : AboveFog PartialTurn LegalDestination),
+            square_highlight!(A G5 : AboveFog PartialTurn LegalDestination),
+            square_highlight!(A E5 : AboveFog PartialTurn LegalDestination),
+            square_highlight!(A D4 : AboveFog PartialTurn LegalDestination),
             // preturn highlight still active
-            turn_highlight!(A G1 : BelowFog Preturn MoveFrom), // <--
-            turn_highlight!(A F3 : BelowFog Preturn MoveTo),
+            square_highlight!(A G1 : BelowFog Preturn MoveFrom), // <--
+            square_highlight!(A F3 : BelowFog Preturn MoveTo),
         ])
     );
+}
+
+#[test]
+fn click_moves() {
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(White A)), default_game());
+    assert_eq!(alt_game.click(A, loc!(E2)), TurnInputResult::Noop);
+    assert_eq!(square_highlights_sorted(&alt_game), vec![
+        square_highlight!(A E2 : BelowFog PartialTurn MoveFrom)
+    ]);
+    assert_eq!(alt_game.click(A, loc!(E4)), TurnInputResult::Turn((A, drag_move!(E2 -> E4))));
+    alt_game.apply_remote_turn(envoy!(White A), &alg("e4"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &alg("e5"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White B), &alg("e4"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black B), &alg("d5"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White B), &alg("Nc3"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black B), &alg("xe4"), T0).unwrap();
+    assert_eq!(alt_game.click(A, loc!(White Pawn)), TurnInputResult::Noop);
+    assert_eq!(
+        turn_highlights_sorted(&alt_game),
+        (
+            vec![
+                square_highlight!(A E5 : BelowFog LatestTurn MoveTo),
+                square_highlight!(A E7 : BelowFog LatestTurn MoveFrom),
+                square_highlight!(B E4 : BelowFog LatestTurn Capture),
+                square_highlight!(B D5 : BelowFog LatestTurn MoveFrom),
+            ],
+            vec![reserve_piece_highlight!(A White Pawn)]
+        )
+    );
+    assert_eq!(alt_game.click(A, loc!(D5)), TurnInputResult::Turn((A, drag_move!(Pawn @ D5))));
 }
 
 #[test]
@@ -278,9 +349,11 @@ fn stealing_promotion() {
     assert!(alt_game.local_game().board(A).grid()[Coord::F8].is(piece!(Black Bishop)));
     assert!(alt_game.local_game().board(B).grid()[Coord::C3].is(piece!(White Knight)));
 
-    alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::G7)).unwrap();
-    assert!(alt_game.drag_piece_drop(A, Coord::F8).unwrap().is_none());
-    let (input_board_idx, input) = alt_game.click_square(B, Coord::C3).unwrap();
+    alt_game.start_drag_piece(A, loc!(G7)).unwrap();
+    assert_eq!(alt_game.drag_piece_drop(A, Coord::F8), TurnInputResult::Noop);
+    let TurnInputResult::Turn((input_board_idx, input)) = alt_game.click(B, loc!(C3)) else {
+        panic!();
+    };
     assert_eq!(input_board_idx, A);
     alt_game.try_local_turn(input_board_idx, input, T0).unwrap();
 
@@ -303,8 +376,11 @@ fn stealing_promotion_cannot_move_pawn_onto_piece() {
     alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A4 -> A3), T0).unwrap();
     alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H6 -> G7), T0).unwrap();
     alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A3 -> B2), T0).unwrap();
-    alt_game.start_drag_piece(A, PieceDragStart::Board(Coord::G7)).unwrap();
-    assert_eq!(alt_game.drag_piece_drop(A, Coord::G8), Err(TurnError::PathBlocked));
+    alt_game.start_drag_piece(A, loc!(G7)).unwrap();
+    assert_eq!(
+        alt_game.drag_piece_drop(A, Coord::G8),
+        TurnInputResult::Error(TurnError::PathBlocked)
+    );
     assert!(alt_game.local_game().board(A).grid()[Coord::G7].is(piece!(White Pawn)));
     assert!(alt_game.local_game().board(A).grid()[Coord::G8].is(piece!(Black Knight)));
 }
@@ -399,22 +475,24 @@ fn turn_highlights_in_duck_chess() {
 
     // Highlight the first part of the megaturn as soon as it's made.
     alt_game.apply_remote_turn(envoy!(Black A), &alg("d5"), T0).unwrap();
-    assert_eq!(turn_highlights_sorted(&alt_game), vec![
-        turn_highlight!(A D5 : BelowFog LatestTurn MoveTo),
-        turn_highlight!(A D7 : BelowFog LatestTurn MoveFrom),
+    assert_eq!(square_highlights_sorted(&alt_game), vec![
+        square_highlight!(A D5 : BelowFog LatestTurn MoveTo),
+        square_highlight!(A D7 : BelowFog LatestTurn MoveFrom),
     ]);
 
     // Both the normal piece and the duck should be highlighted when the megaturn is competed.
     alt_game.apply_remote_turn(envoy!(Black A), &alg("@c3"), T0).unwrap();
-    assert_eq!(turn_highlights_sorted(&alt_game), vec![
-        turn_highlight!(A C3 : BelowFog LatestTurn MoveTo),
-        turn_highlight!(A D5 : BelowFog LatestTurn MoveTo),
-        turn_highlight!(A D7 : BelowFog LatestTurn MoveFrom),
+    assert_eq!(square_highlights_sorted(&alt_game), vec![
+        square_highlight!(A C3 : BelowFog LatestTurn MoveTo),
+        square_highlight!(A D5 : BelowFog LatestTurn MoveTo),
+        square_highlight!(A D7 : BelowFog LatestTurn MoveFrom),
     ]);
 
-    // No highlights in the midst of the current player turn.
+    // Hint that it's time to move the duck now.
     alt_game.apply_remote_turn(envoy!(White A), &alg("Nf3"), T0).unwrap();
-    assert!(turn_highlights_sorted(&alt_game).is_empty());
+    assert_eq!(square_highlights_sorted(&alt_game), vec![
+        square_highlight!(A C3 : BelowFog PartialTurn MoveFrom),
+    ]);
 }
 
 #[test]
@@ -504,15 +582,15 @@ fn wayback_turn_highlight() {
     alt_game.apply_remote_turn(envoy!(Black A), &alg("e5"), T0).unwrap();
     alt_game.apply_remote_turn(envoy!(White A), &alg("Nc3"), T0).unwrap();
     // Normally we don't highlight turns by the current player ...
-    assert!(turn_highlights_sorted(&alt_game).is_empty());
+    assert!(square_highlights_sorted(&alt_game).is_empty());
     alt_game.apply_remote_turn(envoy!(Black A), &alg("Nf6"), T0).unwrap();
     alt_game.set_status(BughouseGameStatus::Victory(Team::Red, VictoryReason::Resignation), T0);
 
     alt_game.wayback_to(WaybackDestination::Index(Some(TurnIndex(2))), None);
     // ... but we do if we're waybacking.
-    assert_eq!(turn_highlights_sorted(&alt_game), vec![
-        turn_highlight!(A B1 : BelowFog LatestTurn MoveFrom),
-        turn_highlight!(A C3 : BelowFog LatestTurn MoveTo),
+    assert_eq!(square_highlights_sorted(&alt_game), vec![
+        square_highlight!(A B1 : BelowFog LatestTurn MoveFrom),
+        square_highlight!(A C3 : BelowFog LatestTurn MoveTo),
     ]);
     // Sanity check: verify that we went to the right turn.
     assert!(alt_game.local_game().board(A).grid()[Coord::C3].is_some());
