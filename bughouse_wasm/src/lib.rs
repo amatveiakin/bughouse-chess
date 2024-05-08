@@ -1854,9 +1854,6 @@ fn update_participants_and_scores(
                 .iter()
                 .partition(|p| p.games_played > 0 || p.active_faction.is_player());
             players.sort_by_key(|p| (!p.active_faction.is_player(), p.games_played == 0));
-            let has_seat_out = players.len() > TOTAL_ENVOYS;
-            let same_games_played = players.iter().map(|p| p.games_played).all_equal();
-            let display_games_played = has_seat_out || !same_games_played;
             for p in players {
                 let score = p.individual_score.as_f64().to_string();
                 let (score_whole, score_fraction) = match score.split_once('.') {
@@ -1874,11 +1871,9 @@ fn update_participants_and_scores(
                 tr.append_new_element("td")?
                     .with_classes(["individual-score-fraction"])?
                     .with_text_content(&score_fraction);
-                if display_games_played {
-                    tr.append_new_element("td")?
-                        .with_classes(["individual-score-total"])?
-                        .with_text_content(&format!("/{}", p.games_played));
-                }
+                tr.append_new_element("td")?
+                    .with_classes(["individual-score-total"])?
+                    .with_text_content(&format!("/{}", p.games_played));
             }
         }
     }
