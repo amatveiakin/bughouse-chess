@@ -29,11 +29,8 @@ pub fn validate_player_name(name: &str) -> Result<(), String> {
     if len > MAX_NAME_LENGTH {
         return Err(format!("Maximum name length is {MAX_NAME_LENGTH}."));
     }
-    if profanity_censor().check(&name) {
-        return Err(format!("Player name must not contain profanity."));
-    }
-    if Censor::custom(["admin", "guest"]).check(&name) {
-        return Err(format!(r#"Player name must not contain words "admin" or "guest"."#));
+    if profanity_censor().check(&name) || Censor::custom(["admin", "guest"]).check(&name) {
+        return Err(format!("Please try another player name."));
     }
     Ok(())
 }
