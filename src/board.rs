@@ -794,7 +794,6 @@ impl Reachability {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Board {
     rules: Rc<Rules>,
-    #[allow(dead_code)]
     role: Role,
     player_names: EnumMap<Force, String>,
     status: ChessGameStatus,
@@ -1052,6 +1051,9 @@ impl Board {
     }
 
     fn log_position_for_repetition_draw(&mut self) {
+        if self.role == Role::Client {
+            return;
+        }
         let position_for_repetition_draw = PositionForRepetitionDraw {
             grid: self
                 .grid

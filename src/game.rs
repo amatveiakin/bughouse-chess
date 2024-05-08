@@ -760,14 +760,7 @@ impl BughouseGame {
         // and through away the copy if anything went wrong. As a bonus, this would allow to
         // simplify the abovementioned `Board::try_turn`, because it would be able to freely mutate
         // `Board` state. The problem with this solution that cloning `Board::position_count` on
-        // every turn would make application N turns take O(N^2) time. By the way, this is already
-        // the case for the client because `AlteredGame::local_game` copied the entire game state,
-        // but:
-        //   - If needed, it can be fixed by stripping away `position_count` entirely. The client is
-        //     not authorized to conclude that the game has ended anyway.
-        //   - If one client becomes slow when the users decided to play for a thosand turns, this
-        //     is not a disaster. If the entire server become irresponsive because of one such
-        //     match, this is much worse.
+        // every turn would make application N turns take O(N^2) time.
 
         // If `try_turn` succeeded, then the turn was valid. Thus conversion to algebraic must
         // have succeeded as well, because there exists an algebraic form for any valid turn.
