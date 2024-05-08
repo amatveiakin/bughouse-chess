@@ -74,6 +74,9 @@ svg {
 }
 
 #page {
+  user-select: none;
+}
+#page {
   display: grid;
   grid-template-areas:
     ".        .         .  prim-rsrv-top     .           .         .        .         ."
@@ -408,33 +411,29 @@ body.symmetric #page {
 #arrowhead-diagonal { fill: var(--color-chalk-diagonal); }
 #arrowhead-other { fill: var(--color-chalk-other); }
 
+.board,
+.reserve-container {
+  touch-action: none;
+}
 #board-primary {
   width: var(--board-size-primary);
   height: var(--board-size-primary);
-  user-select: none;
-  touch-action: none;
   z-index: 10;  /* show dragged pieces above other UI elements */
 }
 #board-secondary {
   width: var(--board-size-secondary);
   height: var(--board-size-secondary);
-  user-select: none;
-  touch-action: none;
   z-index: 9;  /* show dragged pieces above other UI elements */
 }
 #reserve-primary-top,
 #reserve-primary-bottom {
   width: var(--board-size-primary);
   height: var(--reserve-height-primary);
-  user-select: none;
-  touch-action: none;
 }
 #reserve-secondary-top,
 #reserve-secondary-bottom {
   width: var(--board-size-secondary);
   height: var(--reserve-height-secondary);
-  user-select: none;
-  touch-action: none;
 }
 .reserve-piece-group {
   filter: url(#reserve-shadow);
@@ -704,6 +703,7 @@ body.symmetric #chat-box {
   overflow-y: scroll;
   padding: 0.2em 0.4em 0.6em 0.4em;
   background-color: #00000020;
+  user-select: text;
 }
 #chat-input-container {
   position: relative;
