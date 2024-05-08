@@ -755,8 +755,6 @@ dependencies = [
  "tide-jsx",
  "time 0.3.34",
  "tungstenite",
- "unicode-normalization",
- "unicode-segmentation",
  "url",
  "uuid",
 ]
