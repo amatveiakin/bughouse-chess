@@ -316,8 +316,14 @@ where
         &mut self, game: &GameResultRow, compute_meta_stats: ComputeMetaStats,
     ) -> anyhow::Result<()> {
         self.update_index += 1;
-        let red_team = sort([game.player_red_a.clone(), game.player_red_b.clone()]);
-        let blue_team = sort([game.player_blue_a.clone(), game.player_blue_b.clone()]);
+        let red_team = sort([
+            game.player_red_a.as_user()?.to_owned(),
+            game.player_red_b.as_user()?.to_owned(),
+        ]);
+        let blue_team = sort([
+            game.player_blue_a.as_user()?.to_owned(),
+            game.player_blue_b.as_user()?.to_owned(),
+        ]);
         let new_stats = process_game(
             game.result.as_str(),
             GameStats {

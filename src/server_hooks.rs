@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 
 use crate::event::{BughouseClientPerformance, FinishedGameDescription};
@@ -10,8 +12,8 @@ pub trait ServerHooks {
     async fn record_client_performance(&self, perf: &BughouseClientPerformance);
     // TODO: Make async too.
     fn record_finished_game(
-        &self, game: &BughouseGame, game_start_time: UtcDateTime, game_end_time: UtcDateTime,
-        round: u64,
+        &self, game: &BughouseGame, registered_users: &HashSet<String>,
+        game_start_time: UtcDateTime, game_end_time: UtcDateTime, round: u64,
     );
     async fn get_games_by_user(
         &self, user_name: &str,
@@ -25,8 +27,8 @@ pub struct NoopServerHooks {}
 impl ServerHooks for NoopServerHooks {
     async fn record_client_performance(&self, _perf: &BughouseClientPerformance) {}
     fn record_finished_game(
-        &self, _game: &BughouseGame, _game_start_time: UtcDateTime, _game_end_time: UtcDateTime,
-        _round: u64,
+        &self, _game: &BughouseGame, _registered_users: &HashSet<String>,
+        _game_start_time: UtcDateTime, _game_end_time: UtcDateTime, _round: u64,
     ) {
     }
     async fn get_games_by_user(

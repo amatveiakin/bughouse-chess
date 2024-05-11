@@ -18,22 +18,18 @@ use time::{OffsetDateTime, PrimitiveDateTime};
 
 use crate::bughouse_prelude::*;
 use crate::client_performance_stats::ClientPerformanceRecord;
+use crate::competitor::Competitor;
 use crate::persistence::*;
 
 trait U64AsI64Database {
-    fn try_get_u64<'r, I>(&'r self, index: I) -> Result<u64, sqlx::Error>
-    where
-        I: sqlx::ColumnIndex<Self>;
+    fn try_get_u64(&self, index: impl sqlx::ColumnIndex<Self>) -> Result<u64, sqlx::Error>;
 }
 
 impl<DB: sqlx::Database, R: sqlx::Row<Database = DB>> U64AsI64Database for R
 where
     i64: Type<DB> + for<'q> Decode<'q, DB>,
 {
-    fn try_get_u64<'r, I>(&'r self, index: I) -> Result<u64, sqlx::Error>
-    where
-        I: sqlx::ColumnIndex<Self>,
-    {
+    fn try_get_u64(&self, index: impl sqlx::ColumnIndex<Self>) -> Result<u64, sqlx::Error> {
         self.try_get::<i64, _>(index).map(|x| x as u64)
     }
 }
@@ -99,6 +95,7 @@ where
     async fn finished_games(
         &self, game_end_time_range: Range<OffsetDateTime>, only_rated: bool,
     ) -> Result<Vec<(RowId, GameResultRow)>, anyhow::Error> {
+        let deserialize_competitor = |s: &String| Competitor::deserialize(s);
         let rows = sqlx::query::<DB>(
             "SELECT
                 rowid,
@@ -150,10 +147,10 @@ where
                             row.try_get("game_end_time")?,
                             PrimitiveDateTime::assume_utc,
                         ),
-                        player_red_a: row.try_get("player_red_a")?,
-                        player_red_b: row.try_get("player_red_b")?,
-                        player_blue_a: row.try_get("player_blue_a")?,
-                        player_blue_b: row.try_get("player_blue_b")?,
+                        player_red_a: deserialize_competitor(&row.try_get("player_red_a")?)?,
+                        player_red_b: deserialize_competitor(&row.try_get("player_red_b")?)?,
+                        player_blue_a: deserialize_competitor(&row.try_get("player_blue_a")?)?,
+                        player_blue_b: deserialize_competitor(&row.try_get("player_blue_b")?)?,
                         result: row.try_get("result")?,
                         game_pgn: String::new(),
                         rated: row.try_get("rated")?,
@@ -338,10 +335,10 @@ where
         .bind(row.invocation_id)
         .bind(row.game_start_time)
         .bind(row.game_end_time)
-        .bind(row.player_red_a)
-        .bind(row.player_red_b)
-        .bind(row.player_blue_a)
-        .bind(row.player_blue_b)
+        .bind(row.player_red_a.serialize())
+        .bind(row.player_red_b.serialize())
+        .bind(row.player_blue_a.serialize())
+        .bind(row.player_blue_b.serialize())
         .bind(row.result)
         .bind(row.game_pgn)
         .bind(row.rated)

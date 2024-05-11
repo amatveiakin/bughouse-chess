@@ -31,6 +31,7 @@ mod bughouse_prelude;
 mod censor;
 mod client_main;
 mod client_performance_stats;
+mod competitor;
 mod database;
 mod database_server_hooks;
 mod game_stats;

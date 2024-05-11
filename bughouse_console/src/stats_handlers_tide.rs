@@ -66,8 +66,10 @@ impl<ST: SuitableServerState> Handlers<ST> {
             .map(|(rowid, game)| {
                 let (start_date, start_time) = format_timestamp_date_and_time(game.game_start_time)
                     .unwrap_or(("-".into(), "-".into()));
-                let red_team = format!("{}, {}", game.player_red_a, game.player_red_b);
-                let blue_team = format!("{}, {}", game.player_blue_a, game.player_blue_b);
+                let red_team =
+                    format!("{}, {}", game.player_red_a.name(), game.player_red_b.name());
+                let blue_team =
+                    format!("{}, {}", game.player_blue_a.name(), game.player_blue_b.name());
                 let (winners, losers, drawers) = match game.result.as_str() {
                     "DRAW" => {
                         ("".to_string(), "".to_string(), format!("{}, {}", red_team, blue_team))

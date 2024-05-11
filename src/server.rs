@@ -1758,6 +1758,11 @@ fn update_on_game_over(
     *game_end = Some(ctx.now);
     turn_requests.clear();
     let players: HashMap<_, _> = game.players().into_iter().map(|p| (p.name.clone(), p)).collect();
+    let registered_users: HashSet<_> = participants
+        .iter()
+        .filter(|p| p.is_registered_user)
+        .map(|p| p.name.clone())
+        .collect();
     let team_scores = match game.status() {
         BughouseGameStatus::Active => {
             panic!("It just so happens that the game here is only mostly over")
@@ -1786,8 +1791,13 @@ fn update_on_game_over(
     let final_game_start_utc_time = game_start_utc_time.unwrap_or(ctx.utc_now);
     *game_start_utc_time = Some(final_game_start_utc_time);
     let round = game_index + 1;
-    ctx.hooks
-        .record_finished_game(game, final_game_start_utc_time, ctx.utc_now, round);
+    ctx.hooks.record_finished_game(
+        game,
+        &registered_users,
+        final_game_start_utc_time,
+        ctx.utc_now,
+        round,
+    );
     chat.add(
         Some(game_index),
         ctx.utc_now,

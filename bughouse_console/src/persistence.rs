@@ -5,6 +5,7 @@ use time::OffsetDateTime;
 
 use crate::bughouse_prelude::*;
 use crate::client_performance_stats::ClientPerformanceRecord;
+use crate::competitor::Competitor;
 
 #[derive(Debug)]
 pub struct GameResultRow {
@@ -12,10 +13,10 @@ pub struct GameResultRow {
     pub invocation_id: String,
     pub game_start_time: Option<OffsetDateTime>,
     pub game_end_time: Option<OffsetDateTime>,
-    pub player_red_a: String,
-    pub player_red_b: String,
-    pub player_blue_a: String,
-    pub player_blue_b: String,
+    pub player_red_a: Competitor,
+    pub player_red_b: Competitor,
+    pub player_blue_a: Competitor,
+    pub player_blue_b: Competitor,
     pub result: String,
     pub game_pgn: String,
     pub rated: bool,

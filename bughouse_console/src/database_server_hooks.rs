@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use bughouse_chess::my_git_version;
 use bughouse_chess::pgn::BpgnMetadata;
@@ -10,6 +12,7 @@ use strum::IntoEnumIterator;
 use time::OffsetDateTime;
 
 use crate::bughouse_prelude::*;
+use crate::competitor::Competitor;
 use crate::persistence::*;
 
 pub struct DatabaseServerHooks<DB> {
@@ -36,10 +39,12 @@ impl<DB: Send + Sync + DatabaseReader + DatabaseWriter> ServerHooks for Database
     }
 
     fn record_finished_game(
-        &self, game: &BughouseGame, game_start_time: UtcDateTime, game_end_time: UtcDateTime,
-        round: u64,
+        &self, game: &BughouseGame, registered_users: &HashSet<String>,
+        game_start_time: UtcDateTime, game_end_time: UtcDateTime, round: u64,
     ) {
-        let Some(row) = self.game_result(game, game_start_time, game_end_time, round) else {
+        let Some(row) =
+            self.game_result(game, registered_users, game_start_time, game_end_time, round)
+        else {
             error!("Error extracting game result from:\n{:#?}", game);
             return;
         };
@@ -79,7 +84,9 @@ impl<DB: Send + Sync + DatabaseReader + DatabaseWriter> ServerHooks for Database
                 }
                 let user_team = team_players
                     .iter()
-                    .find(|(_, players)| players.iter().any(|p| p == user_name))
+                    .find(|(_, players)| {
+                        players.iter().any(|p| p.as_user().is_ok_and(|name| name == user_name))
+                    })
                     .map(|(team, _)| team);
                 let Some(user_team) = user_team else {
                     return None;
@@ -102,8 +109,8 @@ impl<DB: Send + Sync + DatabaseReader + DatabaseWriter> ServerHooks for Database
                 Some(FinishedGameDescription {
                     game_id,
                     game_start_time,
-                    teammates,
-                    opponents,
+                    teammates: teammates.into_iter().map(|c| c.into_name()).collect(),
+                    opponents: opponents.into_iter().map(|c| c.into_name()).collect(),
                     result,
                     rated,
                 })
@@ -122,14 +129,20 @@ impl<DB: Send + Sync + DatabaseReader + DatabaseWriter> ServerHooks for Database
 
 impl<DB: DatabaseWriter> DatabaseServerHooks<DB> {
     fn game_result(
-        &self, game: &BughouseGame, game_start_time: UtcDateTime, game_end_time: UtcDateTime,
-        round: u64,
+        &self, game: &BughouseGame, registered_users: &HashSet<String>,
+        game_start_time: UtcDateTime, game_end_time: UtcDateTime, round: u64,
     ) -> Option<GameResultRow> {
         let result = game_result_str(game.status())?;
-        let get_player = |team, board_idx| {
-            game.board(board_idx)
+        let get_competitor = |team, board_idx| {
+            let name = game
+                .board(board_idx)
                 .player_name(get_bughouse_force(team, board_idx))
-                .to_owned()
+                .to_owned();
+            if registered_users.contains(&name) {
+                Competitor::User(name)
+            } else {
+                Competitor::Guest(name)
+            }
         };
         let bpgn_meta = BpgnMetadata { game_start_time, round };
         let game_pgn = pgn::export_to_bpgn(pgn::BpgnExportFormat::default(), game, bpgn_meta);
@@ -138,10 +151,10 @@ impl<DB: DatabaseWriter> DatabaseServerHooks<DB> {
             invocation_id: self.invocation_id.to_string(),
             game_start_time: Some(game_start_time.into()),
             game_end_time: Some(game_end_time.into()),
-            player_red_a: get_player(Team::Red, BughouseBoard::A),
-            player_red_b: get_player(Team::Red, BughouseBoard::B),
-            player_blue_a: get_player(Team::Blue, BughouseBoard::A),
-            player_blue_b: get_player(Team::Blue, BughouseBoard::B),
+            player_red_a: get_competitor(Team::Red, BughouseBoard::A),
+            player_red_b: get_competitor(Team::Red, BughouseBoard::B),
+            player_blue_a: get_competitor(Team::Blue, BughouseBoard::A),
+            player_blue_b: get_competitor(Team::Blue, BughouseBoard::B),
             result,
             game_pgn,
             rated: game.match_rules().rated,
