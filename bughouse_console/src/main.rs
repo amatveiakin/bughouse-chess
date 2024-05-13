@@ -37,6 +37,7 @@ mod game_stats;
 mod history_graphs;
 mod http_server_state;
 mod persistence;
+mod process_bpgn;
 mod prod_server_helpers;
 mod secret_database;
 mod secret_persistence;
@@ -47,6 +48,7 @@ mod stress_test;
 
 use std::io;
 
+use bughouse_chess::role::Role;
 use clap::{arg, Command};
 use server_config::ServerConfig;
 
@@ -63,23 +65,36 @@ fn main() -> io::Result<()> {
         .version(clap::crate_version!())
         .about("Bughouse chess client/server console app")
         .subcommand_required(true)
-        .subcommand(
-            Command::new("server")
-                .about("Run as server")
-                .arg(arg!(<config_file> "Path to the configuration file: yaml-serialized ServerConfig."))
-        )
+        .subcommand(Command::new("server").about("Run as server").arg(
+            arg!(<config_file> "Path to the configuration file: yaml-serialized ServerConfig."),
+        ))
         .subcommand(
             Command::new("client")
                 .about("Run as client")
                 .arg(arg!(<server_address> "Server address"))
                 .arg(arg!(<match_id> "Match ID"))
-                .arg(arg!(<player_name> "Player name"))
+                .arg(arg!(<player_name> "Player name")),
         )
         .subcommand(
             Command::new("stress-test")
-                .about("Stress test different game modes with random input. Can be used for testing or benchmarking.")
-                .arg(arg!(<target> "Internal class to test")
-                    .value_parser(["pure-game", "altered-game"]))
+                .about(concat!(
+                    "Stress test different game modes with random input. ",
+                    "Can be used for testing or benchmarking."
+                ))
+                .arg(
+                    arg!(<target> "Internal class to test")
+                        .value_parser(["pure-game", "altered-game"]),
+                ),
+        )
+        .subcommand(
+            Command::new("bpgn")
+                .about("Reads a BPGN from stdin, transforms it and writes the result to stdout.")
+                .arg(
+                    arg!(--"role" <role>)
+                        .value_parser(["server", "client"])
+                        .default_value("server"),
+                )
+                .arg(arg!(--"remove-timestamps" "Removes turn timestamps and GameDuration tag.")),
         )
         .get_matches();
 
@@ -95,6 +110,14 @@ fn main() -> io::Result<()> {
         }),
         Some(("stress-test", sub_matches)) => stress_test::run(stress_test::StressTestConfig {
             target: sub_matches.get_one::<String>("target").unwrap().clone(),
+        }),
+        Some(("bpgn", sub_matches)) => process_bpgn::run(process_bpgn::ProcessBpgnConfig {
+            role: match sub_matches.get_one::<String>("role").unwrap().as_str() {
+                "server" => Role::ServerOrStandalone,
+                "client" => Role::Client,
+                _ => panic!(),
+            },
+            remove_timestamps: sub_matches.get_flag("remove-timestamps"),
         }),
         _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),
     }

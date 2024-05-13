@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use bughouse_chess::my_git_version;
+use bughouse_chess::pgn::BpgnMetadata;
 use bughouse_chess::server_hooks::ServerHooks;
 use bughouse_chess::utc_time::UtcDateTime;
 use enum_map::enum_map;
@@ -130,8 +131,8 @@ impl<DB: DatabaseWriter> DatabaseServerHooks<DB> {
                 .player_name(get_bughouse_force(team, board_idx))
                 .to_owned()
         };
-        let game_pgn =
-            pgn::export_to_bpgn(pgn::BpgnExportFormat::default(), game, game_start_time, round);
+        let bpgn_meta = BpgnMetadata { game_start_time, round };
+        let game_pgn = pgn::export_to_bpgn(pgn::BpgnExportFormat::default(), game, bpgn_meta);
         Some(GameResultRow {
             git_version: my_git_version!().to_owned(),
             invocation_id: self.invocation_id.to_string(),

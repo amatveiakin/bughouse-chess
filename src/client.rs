@@ -1228,7 +1228,7 @@ impl ClientState {
 
     fn load_archive_game_bpng(&mut self, game_id: i64, bpgn: &str) -> Result<(), ClientError> {
         let now = UtcDateTime::now();
-        let game = import_from_bpgn(bpgn, Role::Client).map_err(|err| {
+        let (game, _) = import_from_bpgn(bpgn, Role::Client).map_err(|err| {
             ClientError::Internal(format!("Error parsing BPGN for game {game_id}: {err}"))
         })?;
         let outcome = game.outcome();

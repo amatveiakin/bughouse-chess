@@ -322,12 +322,12 @@ impl Promotion {
             Promotion::Steal => "Steal",
         }
     }
-    pub fn from_pgn(s: &str) -> Option<Self> {
+    pub fn from_pgn(s: &str) -> Result<Self, ()> {
         match s {
-            "Upgrade" => Some(Promotion::Upgrade),
-            "Discard" => Some(Promotion::Discard),
-            "Steal" => Some(Promotion::Steal),
-            _ => None,
+            "Upgrade" => Ok(Promotion::Upgrade),
+            "Discard" => Ok(Promotion::Discard),
+            "Steal" => Ok(Promotion::Steal),
+            _ => Err(()),
         }
     }
     pub fn to_human_readable(&self) -> &'static str { self.to_pgn() }
@@ -343,13 +343,13 @@ impl DropAggression {
             DropAggression::MateAllowed => "Mate allowed",
         }
     }
-    pub fn from_pgn(s: &str) -> Option<Self> {
+    pub fn from_pgn(s: &str) -> Result<Self, ()> {
         match s {
-            "No check" => Some(DropAggression::NoCheck),
-            "No chess mate" => Some(DropAggression::NoChessMate),
-            "No bughouse mate" => Some(DropAggression::NoBughouseMate),
-            "Mate allowed" => Some(DropAggression::MateAllowed),
-            _ => None,
+            "No check" => Ok(DropAggression::NoCheck),
+            "No chess mate" => Ok(DropAggression::NoChessMate),
+            "No bughouse mate" => Ok(DropAggression::NoBughouseMate),
+            "Mate allowed" => Ok(DropAggression::MateAllowed),
+            _ => Err(()),
         }
     }
     pub fn to_human_readable(&self) -> &'static str { self.to_pgn() }
@@ -367,11 +367,11 @@ impl PawnDropRanks {
     pub fn to_pgn(&self) -> String {
         format!("{}-{}", self.min.to_one_based(), self.max.to_one_based())
     }
-    pub fn from_pgn(s: &str) -> Option<Self> {
-        let (min, max) = s.split_once('-')?;
-        Some(Self {
-            min: SubjectiveRow::from_one_based(min.parse().ok()?),
-            max: SubjectiveRow::from_one_based(max.parse().ok()?),
+    pub fn from_pgn(s: &str) -> Result<Self, ()> {
+        let (min, max) = s.split_once('-').ok_or(())?;
+        Ok(Self {
+            min: SubjectiveRow::from_one_based(min.parse().map_err(|_| ())?),
+            max: SubjectiveRow::from_one_based(max.parse().map_err(|_| ())?),
         })
     }
     pub fn to_human_readable(&self) -> String { self.to_pgn() }

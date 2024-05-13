@@ -26,13 +26,15 @@ use crate::rules::{
 use crate::starter::EffectiveStartingPosition;
 use crate::utc_time::UtcDateTime;
 
+
+// Any information stored in BPGN not contained in the `BughouseGame` object.
+#[derive(Clone, Copy, Debug)]
+pub struct BpgnMetadata {
+    pub game_start_time: UtcDateTime,
+    pub round: u64,
+}
+
 // Other possible formats:
-//
-//   - Storing timestamp with the original precision is an obvious choice, but nanoseconds are
-//     noisy and I don't think we ever really need this. The best reason for original precision
-//     is that it guarantees perfect correspondence between in-game and post-game replayes. In
-//     practice it seems feasible to completely avoid rounding mismatches: `time_breakdown` test
-//     in `clock.rs` verifies that.
 //
 //   - https://bughousedb.com/Lieven_BPGN_Standard.txt shows remaining clock time as whole
 //     seconds in braces like this:
@@ -361,12 +363,20 @@ impl TagMap {
             .map(|s| s.as_str())
             .ok_or_else(|| format!("missing {key} tag"))
     }
-    fn get_and_parse_or<T>(
-        &self, key: &str, parse: impl FnOnce(&str) -> Option<T>, default: T,
+    fn get_and_parse<T, E>(
+        &self, key: &str, parse: impl FnOnce(&str) -> Result<T, E>,
+    ) -> Result<T, String> {
+        match self.map.get(key) {
+            None => Err(format!("missing {key} tag")),
+            Some(tag) => parse(tag).map_err(|_| format!("cannot parse {key} tag")),
+        }
+    }
+    fn get_and_parse_or<T, E>(
+        &self, key: &str, parse: impl FnOnce(&str) -> Result<T, E>, default: T,
     ) -> Result<T, String> {
         match self.map.get(key) {
             None => Ok(default),
-            Some(tag) => parse(tag).ok_or_else(|| format!("cannot parse {key} tag")),
+            Some(tag) => parse(tag).map_err(|_| format!("cannot parse {key} tag")),
         }
     }
 }
@@ -469,12 +479,10 @@ fn total_game_duration(game: &BughouseGame) -> Option<GameInstant> {
 //   https://duckchess.com/#:~:text=Finally%2C%20the%20standard%20notation%20for,duck%20being%20placed%20at%20g5.
 // Note that it interacts questionably with bughouse, because it reuses the '@' symbol.
 // On the other hand, it's still unambiguous, so maybe it's ok.
-fn make_bughouse_bpng_header(
-    game: &BughouseGame, game_start_time: UtcDateTime, round: u64,
-) -> BpgnHeader {
+fn make_bughouse_bpng_header(game: &BughouseGame, meta: BpgnMetadata) -> BpgnHeader {
     use BughouseBoard::*;
     use Force::*;
-    let now = time::OffsetDateTime::from(game_start_time);
+    let now = time::OffsetDateTime::from(meta.game_start_time);
     let game_at_start = game.clone_from_start();
     let variants = iter::once("Bughouse")
         .chain(game.chess_rules().variants().into_iter().map(ChessVariant::to_pgn))
@@ -485,7 +493,7 @@ fn make_bughouse_bpng_header(
     h.push_tag("Site", "bughouse.pro");
     h.push_tag("UTCDate", now.format(format_description!("[year].[month].[day]")).unwrap());
     h.push_tag("UTCTime", now.format(format_description!("[hour]:[minute]:[second]")).unwrap());
-    h.push_tag("Round", round);
+    h.push_tag("Round", meta.round);
     h.push_tag("WhiteA", game.board(A).player_name(White));
     h.push_tag("BlackA", game.board(A).player_name(Black));
     h.push_tag("WhiteB", game.board(B).player_name(White));
@@ -528,10 +536,8 @@ fn make_bughouse_bpng_header(
 //   - "Outcome" - human-readable game result description; this is addition to "Result"
 //     and "Termination" fields, which follow PGN standard, but are less informative.
 //   - "Promotion", "DropAggression", "PawnDropRanks" - bughouse-specific rules.
-pub fn export_to_bpgn(
-    format: BpgnExportFormat, game: &BughouseGame, game_start_time: UtcDateTime, round: u64,
-) -> String {
-    let header = make_bughouse_bpng_header(game, game_start_time, round);
+pub fn export_to_bpgn(format: BpgnExportFormat, game: &BughouseGame, meta: BpgnMetadata) -> String {
+    let header = make_bughouse_bpng_header(game, meta);
     let turns = game
         .turn_log()
         .iter()
@@ -559,6 +565,18 @@ pub fn export_to_bpgn(
     let body = BpgnBody { turns };
     let doc = BpgnDocument { header, body };
     doc.render()
+}
+
+fn parse_meta(tags: &TagMap) -> Result<BpgnMetadata, String> {
+    let date = tags.get_and_parse("UTCDate", |s| {
+        time::Date::parse(s, format_description!("[year].[month].[day]"))
+    })?;
+    let time = tags.get_and_parse("UTCTime", |s| {
+        time::Time::parse(s, format_description!("[hour]:[minute]:[second]"))
+    })?;
+    let game_start_time = date.with_time(time).into();
+    let round = tags.get_and_parse("Round", str::parse)?;
+    Ok(BpgnMetadata { game_start_time, round })
 }
 
 fn parse_variants(s: &str) -> Result<HashSet<ChessVariant>, String> {
@@ -726,7 +744,9 @@ fn parse_game_duration(tags: &TagMap) -> Result<GameInstant, String> {
 fn apply_turn(game: &mut BughouseGame, turn: BpgnTurn) -> Result<(), String> {
     let turn_time = match turn.addenda.iter().find(|(k, _)| k == "ts") {
         Some((_, ts)) => {
-            GameInstant::from_pgn_timestamp(ts).map_err(|_| "invalid turn timestamp".to_owned())?
+            // TODO: Return error when old games are cleaned up:
+            // GameInstant::from_pgn_timestamp(ts).map_err(|_| "invalid turn timestamp".to_owned())?
+            GameInstant::from_pgn_timestamp(ts).unwrap_or(GameInstant::UNKNOWN)
         }
         None => GameInstant::UNKNOWN,
     };
@@ -744,11 +764,12 @@ fn apply_turn(game: &mut BughouseGame, turn: BpgnTurn) -> Result<(), String> {
     Ok(())
 }
 
-pub fn import_from_bpgn(s: &str, role: Role) -> Result<BughouseGame, String> {
+pub fn import_from_bpgn(s: &str, role: Role) -> Result<(BughouseGame, BpgnMetadata), String> {
     let doc = BpgnDocument::parse(s)?;
     let tags = TagMap {
         map: doc.header.tags.into_iter().collect(),
     };
+    let meta = parse_meta(&tags)?;
     let rules = parse_rules(&tags)?;
     let starting_position = parse_starting_position(&rules.chess_rules, &tags)?;
     let players = parse_players(&tags)?;
@@ -762,7 +783,7 @@ pub fn import_from_bpgn(s: &str, role: Role) -> Result<BughouseGame, String> {
         let game_duration = parse_game_duration(&tags).unwrap_or_else(|_| GameInstant::UNKNOWN);
         game.set_status(status, game_duration);
     }
-    Ok(game)
+    Ok((game, meta))
 }
 
 
@@ -781,6 +802,13 @@ mod tests {
     use crate::test_util::{replay_bughouse_log, sample_bughouse_players};
     use crate::{game_d, game_t};
 
+    fn default_meta() -> BpgnMetadata {
+        BpgnMetadata {
+            game_start_time: UtcDateTime::now(),
+            round: 1,
+        }
+    }
+
     fn algebraic(algebraic: &str) -> TurnInput { TurnInput::Algebraic(algebraic.to_owned()) }
 
     #[test]
@@ -797,8 +825,7 @@ mod tests {
             Duration::ZERO,
         )
         .unwrap();
-        let game_start_time = UtcDateTime::now();
-        let bpgn = export_to_bpgn(BpgnExportFormat::default(), &game, game_start_time, 1);
+        let bpgn = export_to_bpgn(BpgnExportFormat::default(), &game, default_meta());
 
         // Test: Uses short algebraic and includes capture notations.
         assert!(bpgn.contains(" Nx"));
@@ -825,9 +852,8 @@ mod tests {
         game.try_turn(B, &algebraic("e4"), TurnMode::Normal, game_t!(20 s)).unwrap();
         game.test_flag(game_t!(999 s));
 
-        let game_start_time = UtcDateTime::now();
-        let bpgn = export_to_bpgn(BpgnExportFormat::default(), &game, game_start_time, 1);
-        let game2 = import_from_bpgn(&bpgn, Role::ServerOrStandalone).unwrap();
+        let bpgn = export_to_bpgn(BpgnExportFormat::default(), &game, default_meta());
+        let (game2, _) = import_from_bpgn(&bpgn, Role::ServerOrStandalone).unwrap();
 
         assert_eq!(game2.status(), BughouseGameStatus::Victory(Team::Blue, VictoryReason::Flag));
         let game_now = game_t!(0); // doesn't matter for finished games
@@ -861,8 +887,11 @@ mod tests {
             Duration::from_millis(100),
         )
         .unwrap();
-        let game_start_time = UtcDateTime::from(datetime!(2024-03-06 13:37));
-        let bpgn = export_to_bpgn(BpgnExportFormat::default(), &game, game_start_time, 1);
+        let meta = BpgnMetadata {
+            game_start_time: UtcDateTime::from(datetime!(2024-03-06 13:37)),
+            round: 1,
+        };
+        let bpgn = export_to_bpgn(BpgnExportFormat::default(), &game, meta);
         assert_eq!(
             bpgn,
             indoc!(
@@ -966,6 +995,7 @@ mod tests {
             [Result "0-1"]
             [Termination "normal"]
             [Outcome "Andrei & km won: Санёк & Санёк checkmated"]
+            [GameDuration "390.375"]
             1A. d4 {[ts=0.000]} 1B. Ne3 {[ts=0.861]} 1b. d5 {[ts=1.419]} 1a. d5 {[ts=1.495]}
             2B. Nxd5 {[ts=2.869]} 2A. Ne3 {[ts=3.355]} 2a. Nb6 {[ts=4.711]}
             2b. c6 {[ts=7.610]} 3B. Ne3 {[ts=9.853]} 3A. Bd2 {[ts=11.170]}
@@ -1027,6 +1057,7 @@ mod tests {
             [Result "0-1"]
             [Termination "normal"]
             [Outcome "Andrei & km won: Санёк & Alex lost a king"]
+            [GameDuration "505.827"]
             1B. e4 {[ts=0.000]} 1B. @e6 {[ts=0.500]} 1A. Rb1 {[ts=1.505]}
             1A. @e6 {[ts=2.821]} 1b. d6 {[ts=3.359]} 1a. d5 {[ts=4.380]}
             1b. @e2 {[ts=4.803]} 1a. @d3 {[ts=5.662]} 2B. d4 {[ts=7.992]}
@@ -1084,15 +1115,21 @@ mod tests {
             19a. Nxg3 {[ts=505.827]}
             "#
         );
-        for source in [source_old, source_regular, source_duck_accolade] {
-            let game = import_from_bpgn(source, Role::ServerOrStandalone).unwrap();
-            let serialized =
-                export_to_bpgn(BpgnExportFormat::default(), &game, UtcDateTime::now(), 1);
-            let game2 = import_from_bpgn(&serialized, Role::ServerOrStandalone).unwrap();
+        // Test that legacy style BPGNs are still parsed. Output format is expected be different, so
+        // compare game states instead.
+        for source in [source_old] {
+            let (game, meta) = import_from_bpgn(source, Role::ServerOrStandalone).unwrap();
+            let serialized = export_to_bpgn(BpgnExportFormat::default(), &game, meta);
+            let (game2, _) = import_from_bpgn(&serialized, Role::ServerOrStandalone).unwrap();
             assert_eq!(game, game2);
+        }
+        // Test that current style BPGNs are parsed. Output format is expected be identical.
+        for source in [source_regular, source_duck_accolade] {
+            let (game, meta) = import_from_bpgn(source, Role::ServerOrStandalone).unwrap();
+            let serialized = export_to_bpgn(BpgnExportFormat::default(), &game, meta);
+            assert_eq!(source, serialized);
         }
     }
 
-    // TODO: Test game without timestamps when it's supported.
     // TODO: Tests with more game variants.
 }
