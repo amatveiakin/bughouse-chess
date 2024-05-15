@@ -79,9 +79,6 @@ impl MillisDuration {
 
     pub fn from_millis(ms: u64) -> Self { MillisDuration { ms } }
     pub fn from_secs(s: u64) -> Self { MillisDuration::from_millis(s * 1000) }
-    pub fn from_secs_f64(s: f64) -> Self {
-        MillisDuration::from_millis((s * MILLIS_PER_SEC as f64) as u64)
-    }
 
     pub fn is_zero(self) -> bool { self.ms == 0 }
     pub fn as_millis(self) -> u64 { self.ms }
@@ -101,7 +98,6 @@ impl GameDuration {
 
     pub fn from_millis(ms: u64) -> Self { GameDuration { ms: Nanable::Regular(ms) } }
     pub fn from_secs(s: u64) -> Self { GameDuration::from_millis(s * 1000) }
-    pub fn from_secs_f64(s: f64) -> Self { GameDuration::from_millis((s * 1000.0) as u64) }
 
     pub fn is_zero(self) -> bool { self.ms == Nanable::Regular(0) }
     pub fn is_unknown(self) -> bool { self.ms.is_nan() }
@@ -237,13 +233,17 @@ impl GameInstant {
     }
 
     pub fn to_pgn_timestamp(self) -> Option<String> {
-        // Do not use `as_secs_f64()`, make sure to round down. This keeps clock showing stable
-        // after PGN export (see `time_breakdown` test).
         let millis = self.elapsed_since_start.as_millis().into_inner()?;
-        Some(format!("{:.3}", millis as f64 / 1000.0))
+        let secs = millis / MILLIS_PER_SEC;
+        let subsecs = millis % MILLIS_PER_SEC;
+        Some(format!("{secs}.{subsecs:03}"))
     }
     pub fn from_pgn_timestamp(s: &str) -> Result<Self, ()> {
-        let elapsed_since_start = GameDuration::from_secs_f64(s.parse().map_err(|_| ())?);
+        let (secs, subsecs) = s.split_once('.').ok_or(())?;
+        let elapsed_since_start = GameDuration::from_millis(
+            secs.parse::<u64>().map_err(|_| ())? * MILLIS_PER_SEC
+                + subsecs.parse::<u64>().map_err(|_| ())?,
+        );
         Ok(GameInstant { elapsed_since_start })
     }
 }
@@ -630,19 +630,28 @@ mod tests {
 
     #[test]
     fn pgn_timestamp_format() {
-        let cases: &[(u64, _)] = &[
+        let cases = [
             (0, "0.000"),
-            (999_999, "0.000"),
-            (1_000_000, "0.001"),
-            (123_456_789, "0.123"),
-            (12_345_678_900, "12.345"),
+            (1, "0.001"),
+            (123, "0.123"),
+            (12_345, "12.345"),
+            // Found experimentally: a value for which parsing as f64 yields different result.
+            (64_954, "64.954"),
         ];
-        for &(nanos, pgn) in cases {
+        for (millis, pgn) in cases {
             assert_eq!(
-                GameInstant::from_duration(Duration::from_nanos(nanos))
+                GameInstant::from_millis_duration(MillisDuration::from_millis(millis))
                     .to_pgn_timestamp()
                     .unwrap(),
                 pgn
+            );
+            assert_eq!(
+                GameInstant::from_pgn_timestamp(pgn)
+                    .unwrap()
+                    .elapsed_since_start
+                    .as_millis()
+                    .unwrap(),
+                millis
             );
         }
     }
