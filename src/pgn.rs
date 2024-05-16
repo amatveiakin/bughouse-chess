@@ -744,9 +744,7 @@ fn parse_game_duration(tags: &TagMap) -> Result<GameInstant, String> {
 fn apply_turn(game: &mut BughouseGame, turn: BpgnTurn) -> Result<(), String> {
     let turn_time = match turn.addenda.iter().find(|(k, _)| k == "ts") {
         Some((_, ts)) => {
-            // TODO: Return error when old games are cleaned up:
-            // GameInstant::from_pgn_timestamp(ts).map_err(|_| "invalid turn timestamp".to_owned())?
-            GameInstant::from_pgn_timestamp(ts).unwrap_or(GameInstant::UNKNOWN)
+            GameInstant::from_pgn_timestamp(ts).map_err(|_| "invalid turn timestamp".to_owned())?
         }
         None => GameInstant::UNKNOWN,
     };
