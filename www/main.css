@@ -1294,6 +1294,12 @@ dialog button:hover:enabled {
   background-color: #f37676;
 }
 
+.button-icon {
+  height: 1ex;
+  scale: 180%;
+  fill: #202020;
+}
+
 .square-button {
   padding: 0;
   height: 2em;
