@@ -5,6 +5,65 @@ members = [
     "bughouse_wasm",
 ]
 
+[workspace.dependencies]
+anyhow = "1.0.81"
+argon2 = "0.5.3"
+async-std = "1.12.0"
+async-trait = "0.1.79"
+async-tungstenite = "0.23.0"
+censor = "0.3.0"
+chain-cmp = "0.2.0"
+chrono = "0.4.37"
+clap = "4.5.4"
+console = "0.15.8"
+console_error_panic_hook = "0.1.7"
+crossterm = "0.27.0"
+ctrlc = "3.4.4"
+dashmap = "5.5.3"
+derive-new = "0.6.0"
+enum-map = "2.7.3"
+env_logger = "0.11.3"
+futures-io = "0.3.30"
+futures-util = "0.3.30"
+getrandom = "0.2.14"
+git-version = "0.3.9"
+hdrhistogram = "7.5.4"
+http = "0.2.12"
+http-types = "2.12.0"
+humantime = "2.1.0"
+humantime-serde = "1.1.1"
+indoc = "2.0.5"
+instant = "0.1.12"
+itertools = "0.12.1"
+lazy_static = "1.4.0"
+log = "0.4.21"
+lru = "0.12.3"
+ndarray = "0.15.6"
+oauth2 = "4.4.2"
+plotly = "0.8.4"
+pretty_assertions = "1.4.0"
+prometheus = "0.13.3"
+rand = "0.8.5"
+regex-lite = "0.1.5"
+reqwest = "0.12.3"
+scopeguard = "1.2.0"
+serde = "1.0.197"
+serde_json = "1.0.115"
+serde_yaml = "0.9.34"
+skillratings = "0.26.0"
+sqlx = "0.7.4"
+static_assertions = "1.1.0"
+strum = "0.26"
+tide = "0.16.0"
+tide-jsx = "0.4.0"
+time = "0.3.34"
+tungstenite = "0.20.1"
+url = "2.5.0"
+uuid = "1.8.0"
+wasm-bindgen = "0.2.92"
+wasm-bindgen-test = "0.3.42"
+web-sys = "0.3.69"
+
 [package]
 name = "bughouse_chess"
 version = "0.1.0"
@@ -15,36 +74,36 @@ edition = "2021"
 strict = []  # treat warnings as a build error
 
 [dependencies]
-async-std = "1.12.0"
-async-trait = "0.1.79"
-chain-cmp = "0.2.0"
+async-std = { workspace = true }
+async-trait = { workspace = true }
+chain-cmp = { workspace = true }
 # We don't use `chrono` ourselves, but some dependencies do. Until recently `chrono` depended
 # on `time 0.1.45`, which is affected by https://rustsec.org/advisories/RUSTSEC-2020-0071.
 # Bumping the version to fix this.
-chrono = "0.4.37"
-dashmap = "5.5.3"
-derive-new = "0.6.0"
-enum-map = { version = "2.7.3", features = ["serde"] }
-git-version = "0.3.9"
-hdrhistogram = "7.5.4"
-indoc = "2.0.5"
-instant = { version = "0.1.12", features = ["wasm-bindgen"] }
-itertools = "0.12.1"
-lazy_static = "1.4.0"
-log = "0.4.21"
-lru = "0.12.3"
-ndarray = { version = "0.15.6", features = ["serde"] }
-prometheus = "0.13.3"
-rand = "0.8.5"
+chrono = { workspace = true }
+dashmap = { workspace = true }
+derive-new = { workspace = true }
+enum-map = { workspace = true, features = ["serde"] }
+git-version = { workspace = true }
+hdrhistogram = { workspace = true }
+indoc = { workspace = true }
+instant = { workspace = true, features = ["wasm-bindgen"] }
+itertools = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+lru = { workspace = true }
+ndarray = { workspace = true, features = ["serde"] }
+prometheus = { workspace = true }
+rand = { workspace = true }
 # Improvement potential: Use a static regex compiler to further reduce WASM size.
-regex-lite = "0.1.5"
-scopeguard = "1.2.0"
-serde = { version = "1.0.197", features = ["derive"] }
-serde_json = "1.0.115"
-static_assertions = "1.1.0"
-strum = { version = "0.26", features = ["derive"] }
-time = { version = "0.3.34", features = ["formatting", "macros", "parsing", "serde", "wasm-bindgen"] }
+regex-lite = { workspace = true }
+scopeguard = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+static_assertions = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
+time = { workspace = true, features = ["formatting", "macros", "parsing", "serde", "wasm-bindgen"] }
 
 [dev-dependencies]
-pretty_assertions = "1.4.0"
-async-std = { version = "1.12.0", features = ["attributes"] }
+pretty_assertions = { workspace = true }
+async-std = { workspace = true, features = ["attributes"] }

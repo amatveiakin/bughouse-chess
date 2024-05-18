@@ -11,47 +11,47 @@ edition = "2021"
 strict = []  # treat warnings as a build error
 
 [dependencies]
-anyhow = "1.0.81"
-argon2 = "0.5.3"
-async-std = { version = "1.12.0", features = ["tokio1"] }
-async-trait = "0.1.79"
-async-tungstenite = "0.23.0"
-censor = "0.3.0"
-clap = { version = "4.5.4", features = ["cargo"] }
-console = "0.15.8"
-crossterm = "0.27.0"
-ctrlc = "3.4.4"
-enum-map = "2.7.3"
-env_logger = "0.11.3"
-futures-io = "0.3.30"
-futures-util = "0.3.30"
-hdrhistogram = "7.5.4"
-http = "0.2.12"
-http-types = { version = "2.12.0", features = ["hyperium_http"] }
-humantime = "2.1.0"
-humantime-serde = "1.1.1"
-instant = "0.1.12"
-itertools = "0.12.1"
-lazy_static = "1.4.0"
-log = "0.4.21"
-oauth2 = "4.4.2"
-plotly = "0.8.4"
-prometheus = "0.13.3"
-rand = "0.8.5"
-reqwest = { version = "0.12.3", features = ["json"] }
-scopeguard = "1.2.0"
-serde = "1.0.197"
-serde_json = "1.0.115"
-serde_yaml = "0.9.34"
-strum = { version = "0.26", features = ["derive"] }
-skillratings = "0.26.0"
-sqlx = { version = "0.7.4", features = ["postgres", "sqlite", "runtime-async-std-rustls", "time"] }
-tide = "0.16.0"
-tide-jsx = "0.4.0"
-time = "0.3.34"
-tungstenite = "0.20.1"
-url = "2.5.0"
-uuid = { version = "1.8.0", features = ["v4"] }
+anyhow = { workspace = true }
+argon2 = { workspace = true }
+async-std = { workspace = true, features = ["tokio1"] }
+async-trait = { workspace = true }
+async-tungstenite = { workspace = true }
+censor = { workspace = true }
+clap = { workspace = true, features = ["cargo"] }
+console = { workspace = true }
+crossterm = { workspace = true }
+ctrlc = { workspace = true }
+enum-map = { workspace = true }
+env_logger = { workspace = true }
+futures-io = { workspace = true }
+futures-util = { workspace = true }
+hdrhistogram = { workspace = true }
+http = { workspace = true }
+http-types = { workspace = true, features = ["hyperium_http"] }
+humantime = { workspace = true }
+humantime-serde = { workspace = true }
+instant = { workspace = true }
+itertools = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+oauth2 = { workspace = true }
+plotly = { workspace = true }
+prometheus = { workspace = true }
+rand = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
+scopeguard = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
+skillratings = { workspace = true }
+sqlx = { workspace = true, features = ["postgres", "sqlite", "runtime-async-std-rustls", "time"] }
+tide = { workspace = true }
+tide-jsx = { workspace = true }
+time = { workspace = true }
+tungstenite = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 
 bughouse_chess = { path = ".." }
 
