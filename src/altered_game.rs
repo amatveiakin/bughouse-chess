@@ -634,11 +634,6 @@ impl AlteredGame {
         if self.wayback_turn_index.is_some() {
             return Err(TurnError::WaybackIsActive);
         }
-        if let Some((input_board_idx, _)) = *self.partial_turn_input {
-            if input_board_idx == board_idx {
-                return Err(TurnError::PreviousTurnNotFinished);
-            }
-        }
         self.partial_turn_input.set(None);
         let (piece_kind, piece_force, piece_origin, source) = match loc {
             Location::Square(coord) => {

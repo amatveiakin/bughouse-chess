@@ -1209,6 +1209,14 @@ enum ShapeRendering {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum PointerEvents {
+    // Can be target of mouse and touch events.
+    Auto,
+    // Ignored by mouse and touch events.
+    None,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SquareHighlightLayer {
     // Last turn, preturn, partial turn input. Derived from `AlteredGame::turn_highlights`.
     Turn,
@@ -2138,7 +2146,10 @@ fn render_board(
     svg.set_attribute("viewBox", &format!("0 0 {num_cols} {num_rows}"))?;
     svg.remove_all_children();
 
-    let add_layer = |id: String, shape_rendering: ShapeRendering| -> JsResult<()> {
+    let add_layer = |id: String,
+                     shape_rendering: ShapeRendering,
+                     pointer_events: PointerEvents|
+     -> JsResult<()> {
         let layer = document.create_svg_element("g")?;
         layer.set_attribute("id", &id)?;
         // TODO: Less hacky way to do this.
@@ -2151,6 +2162,12 @@ fn render_board(
                 layer.set_attribute("shape-rendering", "crispEdges")?;
             }
         }
+        match pointer_events {
+            PointerEvents::Auto => {}
+            PointerEvents::None => {
+                layer.set_attribute("pointer-events", "none")?;
+            }
+        }
         svg.append_child(&layer)?;
         Ok(())
     };
@@ -2159,7 +2176,7 @@ fn render_board(
     shadow.set_attribute("class", "board-shadow")?;
     svg.append_child(&shadow)?;
 
-    add_layer(square_grid_layer_id(board_idx), ShapeRendering::CrispEdges)?;
+    add_layer(square_grid_layer_id(board_idx), ShapeRendering::CrispEdges, PointerEvents::Auto)?;
     render_grid(board_idx, board_shape, perspective)?;
 
     let border = make_board_rect(&document)?;
@@ -2169,23 +2186,34 @@ fn render_board(
     add_layer(
         square_highlight_layer_id(SquareHighlightLayer::Turn, board_idx),
         ShapeRendering::CrispEdges,
+        PointerEvents::None,
     )?;
-    add_layer(chalk_highlight_layer_id(board_idx), ShapeRendering::CrispEdges)?;
-    add_layer(piece_layer_id(board_idx), ShapeRendering::Normal)?;
-    add_layer(fog_of_war_layer_id(board_idx), ShapeRendering::Normal)?;
+    add_layer(
+        chalk_highlight_layer_id(board_idx),
+        ShapeRendering::CrispEdges,
+        PointerEvents::None,
+    )?;
+    add_layer(piece_layer_id(board_idx), ShapeRendering::Normal, PointerEvents::Auto)?;
+    add_layer(fog_of_war_layer_id(board_idx), ShapeRendering::Normal, PointerEvents::Auto)?;
     // Highlight layer for squares inside the fog of war.
     add_layer(
         square_highlight_layer_id(SquareHighlightLayer::TurnAbove, board_idx),
         ShapeRendering::CrispEdges,
+        PointerEvents::None,
     )?;
     // Place drag highlight layer above pieces to allow legal move highlight for captures.
     // Note that the dragged piece will still be above the highlight.
     add_layer(
         square_highlight_layer_id(SquareHighlightLayer::Ephemeral, board_idx),
         ShapeRendering::CrispEdges,
+        PointerEvents::None,
     )?;
-    add_layer(chalk_drawing_layer_id(board_idx), ShapeRendering::Normal)?;
-    add_layer(promotion_target_layer_id(board_idx), ShapeRendering::Normal)?;
+    add_layer(chalk_drawing_layer_id(board_idx), ShapeRendering::Normal, PointerEvents::None)?;
+    add_layer(
+        promotion_target_layer_id(board_idx),
+        ShapeRendering::Normal,
+        PointerEvents::Auto,
+    )?;
 
     for player_idx in DisplayPlayer::iter() {
         let reserve = document.create_svg_element("g")?;
