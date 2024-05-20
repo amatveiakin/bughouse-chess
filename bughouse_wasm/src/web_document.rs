@@ -56,12 +56,14 @@ impl WebDocument {
     }
     pub fn ensure_svg_node(
         &self, local_name: &str, id: &str, parent: &web_sys::Element,
+        init: impl FnOnce(&web_sys::Element) -> JsResult<()>,
     ) -> JsResult<web_sys::Element> {
         Ok(match self.get_element_by_id(id) {
             Some(v) => v,
             None => {
                 let v = self.create_svg_element(local_name)?;
                 v.set_attribute("id", id)?;
+                init(&v)?;
                 parent.append_child(&v)?;
                 v
             }

@@ -812,18 +812,20 @@ impl WebClient {
             for coord in board_shape.coords() {
                 let display_coord = to_display_coord(coord, board_shape, board_orientation);
                 {
+                    // Improvement potential: Maybe pre-create fog tiles and just show/hide them
+                    //   here?
                     let node_id = fog_of_war_id(display_board_idx, coord);
                     if fog_render_area.contains(&coord) {
-                        let sq_hash = calculate_hash(&(&hash_seed, board_idx, coord));
-                        let fog_tile = sq_hash % TOTAL_FOG_TILES + 1;
-                        let node = ensure_square_node(
-                            display_coord,
-                            &fog_of_war_layer,
-                            &node_id,
-                            FOG_TILE_SIZE,
-                        )?;
-                        node.set_attribute("href", &format!("#fog-{fog_tile}"))?;
-                        node.remove_attribute("class")?;
+                        document.ensure_svg_node("use", &node_id, &fog_of_war_layer, |node| {
+                            let sq_hash = calculate_hash(&(&hash_seed, board_idx, coord));
+                            let fog_tile = sq_hash % TOTAL_FOG_TILES + 1;
+                            let shift = (FOG_TILE_SIZE - 1.0) / 2.0;
+                            let pos = DisplayFCoord::square_pivot(display_coord);
+                            node.set_attribute("x", &(pos.x - shift).to_string())?;
+                            node.set_attribute("y", &(pos.y - shift).to_string())?;
+                            node.set_attribute("href", &format!("#fog-{fog_tile}"))?;
+                            Ok(())
+                        })?;
                         // Improvement potential. To make fog look more varied, add variants:
                         //   let variant = (sq_hash / TOTAL_FOG_TILES) % 4;
                         //   node.class_list().add_1(&format!("fog-variant-{variant}"))?;
@@ -833,16 +835,23 @@ impl WebClient {
                         //     https://stackoverflow.com/questions/15138801/rotate-rectangle-around-its-own-center-in-svg
                         //     did not work.
                         //   - Shift colors somehow. Problem: tried `hue-rotate` and `saturate`, but
-                        //     it's either unnoticeable or too visisble. Ideal would be to rotate hue
-                        //     within bluish color range.
+                        //     it's either unnoticeable or too visisble. Ideal would be to rotate
+                        //     hue within bluish color range.
                     } else {
                         document.get_element_by_id(&node_id).inspect(|n| n.remove());
                     }
                 }
                 {
                     let node_id = square_id(display_board_idx, coord);
-                    let node = ensure_square_node(display_coord, &piece_layer, &node_id, 1.0)?;
-                    node.set_attribute("data-bughouse-location", &node_id)?;
+                    let node = document.ensure_svg_node("use", &node_id, &piece_layer, |node| {
+                        const SIZE: f64 = 1.0;
+                        let shift = (SIZE - 1.0) / 2.0;
+                        let pos = DisplayFCoord::square_pivot(display_coord);
+                        node.set_attribute("x", &(pos.x - shift).to_string())?;
+                        node.set_attribute("y", &(pos.y - shift).to_string())?;
+                        node.set_attribute("data-bughouse-location", &node_id)?;
+                        Ok(())
+                    })?;
                     if !fog_cover_area.contains(&coord)
                         && let Some(piece) = grid[coord]
                     {
@@ -857,7 +866,6 @@ impl WebClient {
                             piece_path(piece.kind, piece.force)
                         };
                         node.set_attribute("href", filename)?;
-                        node.remove_attribute("class")?;
                         node.class_list()
                             .toggle_with_force("draggable", is_piece_draggable(piece.force))?;
                         node.class_list()
@@ -1323,17 +1331,6 @@ fn update_lobby(mtch: &Match) -> JsResult<()> {
     Ok(())
 }
 
-fn ensure_square_node(
-    display_coord: DisplayCoord, layer: &web_sys::Element, node_id: &str, size: f64,
-) -> JsResult<web_sys::Element> {
-    let node = web_document().ensure_svg_node("use", node_id, layer)?;
-    let shift = (size - 1.0) / 2.0;
-    let pos = DisplayFCoord::square_pivot(display_coord);
-    node.set_attribute("x", &(pos.x - shift).to_string())?;
-    node.set_attribute("y", &(pos.y - shift).to_string())?;
-    Ok(node)
-}
-
 // Note. If present, `id` must be unique across both boards.
 fn set_square_highlight(
     id: Option<&str>, class: &str, layer: SquareHighlightLayer, board_idx: DisplayBoard,
@@ -1670,11 +1667,13 @@ fn render_upgrade_promotion_selector(
     let bg_node_id = |kind: PieceKind| format!("promotion-bg-{}", kind.to_full_algebraic());
     let make_fg_node = |piece: PieceKind, x: f64, y: f64| -> JsResult<()> {
         let id = format!("promotion-fg-{}", piece.to_full_algebraic());
-        let node = document.ensure_svg_node("use", &id, &layer)?;
-        node.set_attribute("class", "promotion-target-fg")?;
+        let node = document.ensure_svg_node("use", &id, &layer, |node| {
+            node.set_attribute("class", "promotion-target-fg")?;
+            node.set_attribute("href", &piece_path(piece, force.into()))?;
+            Ok(())
+        })?;
         node.set_attribute("x", &(x - PIECE_SIZE / 2.0).to_string())?;
         node.set_attribute("y", &(y - PIECE_SIZE / 2.0).to_string())?;
-        node.set_attribute("href", &piece_path(piece, force.into()))?;
         Ok(())
     };
     let pos = DisplayFCoord::square_center(display_coord);
@@ -1688,23 +1687,31 @@ fn render_upgrade_promotion_selector(
         let to_rad = from_rad + step_rad;
         let mid_rad = (from_rad + to_rad) / 2.0;
         let piece_pos = svg::polar_to_cartesian(pos.x, pos.y, MID_RADIUS, mid_rad);
-        let bg_node = document.ensure_svg_node("path", &bg_node_id(piece), &layer)?;
+        let bg_node = document.ensure_svg_node("path", &bg_node_id(piece), &layer, |bg_node| {
+            bg_node
+                .set_attribute("data-promotion-target", &piece.to_full_algebraic().to_string())?;
+            bg_node.set_attribute("class", "promotion-target-bg promotion-target-bg-secondary")?;
+            Ok(())
+        })?;
         bg_node.set_attribute(
             "d",
             &svg::ring_arc_path(pos.x, pos.y, INNER_RADIUS, OUTER_RADIUS, from_rad, to_rad),
         )?;
-        bg_node.set_attribute("data-promotion-target", &piece.to_full_algebraic().to_string())?;
-        bg_node.set_attribute("class", "promotion-target-bg promotion-target-bg-secondary")?;
         make_fg_node(piece, piece_pos.0, piece_pos.1)?;
     }
 
-    let bg_node = document.ensure_svg_node("circle", &bg_node_id(primary_target), &layer)?;
+    let bg_node =
+        document.ensure_svg_node("circle", &bg_node_id(primary_target), &layer, |bg_node| {
+            bg_node.set_attribute(
+                "data-promotion-target",
+                &primary_target.to_full_algebraic().to_string(),
+            )?;
+            bg_node.set_attribute("class", "promotion-target-bg promotion-target-bg-primary")?;
+            Ok(())
+        })?;
     bg_node.set_attribute("cx", &pos.x.to_string())?;
     bg_node.set_attribute("cy", &pos.y.to_string())?;
     bg_node.set_attribute("r", &INNER_RADIUS.to_string())?;
-    bg_node
-        .set_attribute("data-promotion-target", &primary_target.to_full_algebraic().to_string())?;
-    bg_node.set_attribute("class", "promotion-target-bg promotion-target-bg-primary")?;
     make_fg_node(primary_target, pos.x, pos.y)?;
 
     Ok(())
