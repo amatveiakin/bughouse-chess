@@ -1206,7 +1206,7 @@ function set_up_chalk_drawing() {
     };
   }
 
-  function mouse_down(event) {
+  function board_mouse_down(event) {
     with_error_handling(function () {
       if (drag_element) {
         // Do not draw while a turn is being made.
@@ -1244,7 +1244,7 @@ function set_up_chalk_drawing() {
     });
   }
 
-  function mouse_click(event) {
+  function board_mouse_up(event) {
     with_error_handling(function () {
       if (is_cancel_button(event)) {
         if (ignore_next_cancellation) {
@@ -1272,8 +1272,8 @@ function set_up_chalk_drawing() {
   for (const board_id of ["primary", "secondary"]) {
     // Improvement potential. Support chalk on touch screens.
     const svg = board_svg(board_id);
-    svg.addEventListener("mousedown", mouse_down);
-    svg.addEventListener("click", mouse_click);
+    svg.addEventListener("mousedown", board_mouse_down);
+    svg.addEventListener("mouseup", board_mouse_up);
   }
   document.addEventListener("mousemove", mouse_move);
   document.addEventListener("mouseup", mouse_up);
