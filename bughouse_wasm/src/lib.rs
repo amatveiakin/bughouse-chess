@@ -48,7 +48,7 @@ use web_document::{web_document, WebDocument};
 use web_element_ext::WebElementExt;
 use web_error_handling::{JsResult, RustError};
 use web_sys::{ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
-use web_util::scroll_to_bottom;
+use web_util::{estimate_text_width, scroll_to_bottom};
 
 use crate::bughouse_prelude::*;
 
@@ -1424,19 +1424,8 @@ fn participant_status_icon(p: &Participant, show_readiness: bool) -> &'static st
     }
 }
 
-fn get_text_width(s: &str) -> JsResult<u32> {
-    let canvas = web_document()
-        .get_existing_element_by_id("canvas")?
-        .dyn_into::<web_sys::HtmlCanvasElement>()?;
-    let context = canvas
-        .get_context("2d")?
-        .ok_or_else(|| rust_error!("Canvas 2D context missing"))?
-        .dyn_into::<web_sys::CanvasRenderingContext2d>()?;
-    Ok(context.measure_text(&s)?.width() as u32)
-}
-
 fn participant_node(p: &Participant, show_readiness: bool) -> JsResult<web_sys::Element> {
-    let width = get_text_width(&p.name)?;
+    let width = estimate_text_width(&p.name)?;
     // Context. Player name limit is 16 characters. String consisting of 'W' repeated 16 times
     // measured 151px on my laptop. 'W' is usually the widest latter in common Latin, but you could
     // go wider with 'Ǆ' and even wider with non-Latin characters. So this solution might be
@@ -1507,7 +1496,7 @@ fn add_lobby_participant_node(
         parent.append_child(&registered_user_node)?;
     }
     {
-        let width_class = match get_text_width(&p.name)? {
+        let width_class = match estimate_text_width(&p.name)? {
             140.. => "lobby-name-xl",
             120.. => "lobby-name-l",
             _ => "lobby-name-m",
@@ -1971,7 +1960,7 @@ fn update_turn_log(
             // but on the other hand, pieces overlap, so the very first piece takes more space than
             // each next one.
             let width_estimate =
-                get_text_width(&algebraic)? + LOG_PIECE_WIDTH * (1 + captures.len() as u32);
+                estimate_text_width(&algebraic)? + LOG_PIECE_WIDTH * (1 + captures.len() as u32);
             let width_class = match width_estimate {
                 55.. => "log-record-xl",
                 50.. => "log-record-l",
