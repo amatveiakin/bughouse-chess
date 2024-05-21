@@ -1,0 +1,38 @@
+name: Build
+
+on: [push]
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Note. No need to specify `toolchain`: `actions-rs` uses `rust-toolchain`.
+jobs:
+  server:
+    name: Server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -r --package bughouse_console
+      - uses: actions/upload-artifact@v2
+        with:
+          path: target/release/bughouse_console
+
+  client:
+    name: Web client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+      - run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - run: cd bughouse_wasm && wasm-pack build && cd ../www && npm run build
+      - uses: actions/upload-artifact@v2
+        with:
+          path: www/dist

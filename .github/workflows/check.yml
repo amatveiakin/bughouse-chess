@@ -1,12 +1,11 @@
-name: Rust
+name: Check
 
 on: [push, pull_request]
 
 env:
   CARGO_TERM_COLOR: always
 
-# Note. No need to specify `toolchain`: `actions-rs` should be able to use
-# `rust-toolchain.toml`.
+# Note. No need to specify `toolchain`: `actions-rs` uses `rust-toolchain`.
 jobs:
   build:
     name: Build
