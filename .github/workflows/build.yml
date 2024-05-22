@@ -32,7 +32,9 @@ jobs:
         with:
           profile: minimal
       - run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-      - run: cd bughouse_wasm && wasm-pack build && cd ../www && npm run build
+      - run: cd bughouse_wasm && wasm-pack build
+      - run: cd www && npm install
+      - run: cd www && npm run build
       - uses: actions/upload-artifact@v2
         with:
           path: www/dist
