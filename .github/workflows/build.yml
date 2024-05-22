@@ -19,9 +19,10 @@ jobs:
         with:
           command: build
           args: -r --package bughouse_console
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v4
         with:
           path: target/release/bughouse_console
+          if-no-files-found: error
 
   client:
     name: Web client
@@ -35,6 +36,8 @@ jobs:
       - run: cd bughouse_wasm && wasm-pack build
       - run: cd www && npm install
       - run: cd www && npm run build
-      - uses: actions/upload-artifact@v2
+      - run: cd www && mkdir upload && mv dist upload/www-dist
+      - uses: actions/upload-artifact@v4
         with:
-          path: www/dist
+          path: www/upload
+          if-no-files-found: error
