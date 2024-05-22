@@ -23,6 +23,12 @@ jobs:
         with:
           path: target/release/bughouse_console
           if-no-files-found: error
+          # Workaround problem with version 4 of `actions/upload-artifact`. This
+          # shouldn't be needed, since we only upload a bughouse_console binary
+          # once per run. But for some reason I got "Failed to CreateArtifact:
+          # Received non-retryable error: Failed request: (409) Conflict: an
+          # artifact with this name already exists on the workflow run".
+          overwrite: true
 
   client:
     name: Web client
