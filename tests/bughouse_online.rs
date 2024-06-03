@@ -1682,6 +1682,17 @@ fn guest_user_reconnect_ok() {
     world.process_all_events();
 }
 
+// Regression test: server should not panic when an active client tries to join their current match.
+#[test]
+fn rejoin_from_live_client() {
+    let mut world = World::new();
+    let (mtch, cl1, cl2, _cl3, _cl4) = world.default_clients();
+    world[cl1].join(&mtch, "p1");
+    world.process_all_events();
+    assert_eq!(world[cl2].state.mtch().unwrap().participants.len(), 4);
+    assert!(world[cl2].state.mtch().unwrap().participants.iter().all(|p| p.is_online));
+}
+
 // TODO: Midgame faction change test.
 #[test]
 fn mid_match_faction_change() {

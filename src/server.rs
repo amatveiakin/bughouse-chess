@@ -935,25 +935,29 @@ impl Match {
             let existing_participant_id = self.participants.find_by_name(&player_name);
             if let Some(existing_participant_id) = existing_participant_id {
                 if let Some(existing_client_id) = find_client(existing_participant_id) {
-                    assert_ne!(existing_client_id, client_id);
-                    let is_existing_user_connection_healthy = ctx
-                        .clients
-                        .get(existing_client_id)
-                        .map_or(false, |c| c.connection_monitor.status(ctx.now).is_healthy());
-                    let is_existing_user_registered =
-                        self.participants[existing_participant_id].is_registered_user;
-                    let both_registered = is_registered_user && is_existing_user_registered;
-                    let both_guests = !is_registered_user && !is_existing_user_registered;
-                    if both_registered
-                        || (both_guests && (hot_reconnect || !is_existing_user_connection_healthy))
-                    {
-                        ctx.clients.send_rejection(
-                            existing_client_id,
-                            BughouseServerRejection::JoinedInAnotherClient,
-                        );
-                        ctx.clients.remove_client(existing_client_id);
-                    } else {
-                        return Err(BughouseServerRejection::PlayerAlreadyExists { player_name });
+                    if existing_client_id != client_id {
+                        let is_existing_user_connection_healthy = ctx
+                            .clients
+                            .get(existing_client_id)
+                            .map_or(false, |c| c.connection_monitor.status(ctx.now).is_healthy());
+                        let is_existing_user_registered =
+                            self.participants[existing_participant_id].is_registered_user;
+                        let both_registered = is_registered_user && is_existing_user_registered;
+                        let both_guests = !is_registered_user && !is_existing_user_registered;
+                        if both_registered
+                            || (both_guests
+                                && (hot_reconnect || !is_existing_user_connection_healthy))
+                        {
+                            ctx.clients.send_rejection(
+                                existing_client_id,
+                                BughouseServerRejection::JoinedInAnotherClient,
+                            );
+                            ctx.clients.remove_client(existing_client_id);
+                        } else {
+                            return Err(BughouseServerRejection::PlayerAlreadyExists {
+                                player_name,
+                            });
+                        }
                     }
                 }
             }
@@ -1003,31 +1007,34 @@ impl Match {
             let existing_participant_id = self.participants.find_by_name(&player_name);
             if let Some(existing_participant_id) = existing_participant_id {
                 if let Some(existing_client_id) = find_client(existing_participant_id) {
-                    assert_ne!(existing_client_id, client_id);
-                    let is_existing_user_registered =
-                        self.participants[existing_participant_id].is_registered_user;
-                    let is_existing_user_connection_healthy = ctx
-                        .clients
-                        .get(existing_client_id)
-                        .map_or(false, |c| c.connection_monitor.status(ctx.now).is_healthy());
-                    if is_registered_user {
-                        let rejection = if is_existing_user_registered {
-                            BughouseServerRejection::JoinedInAnotherClient // this is us
+                    if existing_client_id != client_id {
+                        let is_existing_user_registered =
+                            self.participants[existing_participant_id].is_registered_user;
+                        let is_existing_user_connection_healthy = ctx
+                            .clients
+                            .get(existing_client_id)
+                            .map_or(false, |c| c.connection_monitor.status(ctx.now).is_healthy());
+                        if is_registered_user {
+                            let rejection = if is_existing_user_registered {
+                                BughouseServerRejection::JoinedInAnotherClient // this is us
+                            } else {
+                                BughouseServerRejection::NameClashWithRegisteredUser
+                            };
+                            ctx.clients.send_rejection(existing_client_id, rejection);
+                            ctx.clients.remove_client(existing_client_id);
+                        } else if !is_existing_user_registered
+                            && (hot_reconnect || !is_existing_user_connection_healthy)
+                        {
+                            ctx.clients.send_rejection(
+                                existing_client_id,
+                                BughouseServerRejection::JoinedInAnotherClient,
+                            );
+                            ctx.clients.remove_client(existing_client_id);
                         } else {
-                            BughouseServerRejection::NameClashWithRegisteredUser
-                        };
-                        ctx.clients.send_rejection(existing_client_id, rejection);
-                        ctx.clients.remove_client(existing_client_id);
-                    } else if !is_existing_user_registered
-                        && (hot_reconnect || !is_existing_user_connection_healthy)
-                    {
-                        ctx.clients.send_rejection(
-                            existing_client_id,
-                            BughouseServerRejection::JoinedInAnotherClient,
-                        );
-                        ctx.clients.remove_client(existing_client_id);
-                    } else {
-                        return Err(BughouseServerRejection::PlayerAlreadyExists { player_name });
+                            return Err(BughouseServerRejection::PlayerAlreadyExists {
+                                player_name,
+                            });
+                        }
                     }
                 }
             }
