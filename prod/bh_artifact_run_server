@@ -1,0 +1,7 @@
+#!/bin/bash
+
+set -e
+
+export RUST_BACKTRACE=1
+export RUST_LOG=INFO
+~/server/bughouse_console server ~/bughouse-config.yaml |& tee -i ~/server_log/`date +%Y%m%d-%H%M%S`.txt

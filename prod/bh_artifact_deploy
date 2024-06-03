@@ -1,0 +1,33 @@
+#!/usr/bin/python3
+
+import argparse
+import os
+import shutil
+from pathlib import Path, PurePath
+from zipfile import ZipFile
+
+HOME = Path.home()
+SERVER_BINARY_ROOT = HOME / "server"
+SERVER_BINARY_FILE = SERVER_BINARY_ROOT / "bughouse_console"
+ARTIFACT_CLIENT_PREFIX = PurePath("www-dist")
+WEB_CLIENT_PATH = Path("/var/www/html")
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("artifacts_file", help="Path to the artifacts file")
+args = parser.parse_args()
+
+with ZipFile(args.artifacts_file) as zip:
+    if WEB_CLIENT_PATH.exists():
+        shutil.rmtree(WEB_CLIENT_PATH)
+    os.makedirs(WEB_CLIENT_PATH, exist_ok=True)
+    os.makedirs(SERVER_BINARY_ROOT, exist_ok=True)
+    for file in zip.namelist():
+        zip_path = PurePath(file)
+        if zip_path.is_relative_to(ARTIFACT_CLIENT_PREFIX):
+            target_path = WEB_CLIENT_PATH / zip_path.relative_to(ARTIFACT_CLIENT_PREFIX)
+            target_path.write_bytes(zip.read(file))
+    print(f"Extracted web client to {WEB_CLIENT_PATH}")
+    SERVER_BINARY_FILE.write_bytes(zip.read("bughouse_console"))
+    SERVER_BINARY_FILE.chmod(0o755)
+    print(f"Extracted server binary to {SERVER_BINARY_FILE}")

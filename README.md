@@ -195,30 +195,40 @@ export BUGHOUSE_ROOT=<path-to-bughouse-chess>
 export PATH="$BUGHOUSE_ROOT/prod:$PATH"
 ```
 
-Install npm packages:
-
-```
-cd "$BUGHOUSE_ROOT/www" && npm install
-```
-
-Serve static content:
-
-```
-bh_deploy_web
-```
-
-Copy `prod-config-template.yaml` to the path specified in `bh_run_server` and
-fill in the blanks.
+Copy `prod-config-template.yaml` to `~/bughouse-config.yaml` and fill in the
+blanks.
 
 Put Google client secret (from https://console.cloud.google.com/apis/credentials)
-to the path pointed by `client_secret_source`. Generate a random session secret
-using `util/gen_session_secret.py`.
+to the path pointed by `client_secret_source`.
 
-Run game server (e.g. in `screen`):
+Generate a random session secret using `util/gen_session_secret.py`.
 
-```
-bh_run_server
-```
+### Build via GitHub Actions
+
+Setup:
+
+* Install Python packages: `pip install requests`
+* Generate a GitHub token with read access to Actions and save it to
+  `~/secrets/github_token`.
+
+Getting and deploying new changes:
+
+* Get latest artifact: `bh_artifact_get`
+* Deploy artifact: `bh_artifact_deploy`
+* Run game server (e.g. in `screen`): `bh_artifact_run_server`
+
+### Build locally
+
+Setup:
+
+* Install Rust and wasm-pack.
+* Install npm packages: `cd "$BUGHOUSE_ROOT/www" && npm install`
+
+Getting and deploying new changes:
+
+* Get latest version: `bh_pull`
+* Deploy web client: `bh_build_and_deploy_web`
+* Run game server (e.g. in `screen`): `bh_build_and_run_server`
 
 
 ## Local console client setup

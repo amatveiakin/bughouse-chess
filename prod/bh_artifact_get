@@ -1,0 +1,69 @@
+#!/usr/bin/python3
+
+import os
+import shutil
+from io import BytesIO
+from pathlib import Path
+
+import requests
+
+OWNER = "amatveiakin"
+REPO = "bughouse-chess"
+HOME = Path.home()
+GITHUB_TOKEN = (HOME / "secrets" / "github_token").read_text().strip()
+ARTIFACT_ROOT = HOME / "artifacts"
+
+HTTP_HEADERS = {
+    "Accept": "application/vnd.github+json",
+    "Authorization": f"Bearer {GITHUB_TOKEN}",
+    "X-GitHub-Api-Version": "2022-11-28",
+}
+
+
+def github_request(url_suffix: str):
+    url = f"https://api.github.com/repos/{OWNER}/{REPO}/{url_suffix}"
+    response = requests.get(url, headers=HTTP_HEADERS)
+    response.raise_for_status()
+    return response.json()
+
+
+def ask_confirmation_default_yes(message: str) -> bool:
+    while True:
+        ret = input(message + " (Y/n): ").strip().lower()
+        if ret in ["", "y", "yes"]:
+            return True
+        if ret in ["n", "no"]:
+            return False
+
+
+artifact_list = github_request("actions/artifacts")
+last_artifact = artifact_list["artifacts"][0]
+
+# print(json.dumps(last_artifact, indent=4))
+
+id = last_artifact["id"]
+build_time: str = last_artifact["created_at"]
+sha = last_artifact["workflow_run"]["head_sha"]
+size = last_artifact["size_in_bytes"]
+print(f"Found an artifact in {OWNER}/{REPO}:")
+print(f"  id:       {id}")
+print(f"  built at: {build_time}")
+print(f"  from SHA: {sha}")
+print(f"  size:     {size:,} bytes")
+
+if not ask_confirmation_default_yes("Proceed?"):
+    exit()
+
+os.makedirs(ARTIFACT_ROOT, exist_ok=True)
+name_suffix = build_time.replace(":", "-")
+out_path = ARTIFACT_ROOT / f"artifacts-{name_suffix}.zip"
+
+download_url = last_artifact["archive_download_url"]
+print(f"Downloading {download_url}...")
+response = requests.get(download_url, headers=HTTP_HEADERS)
+response.raise_for_status()
+with open(out_path, "wb") as out_file:
+    shutil.copyfileobj(BytesIO(response.content), out_file)
+
+print("Successfully downloaded the artifact. To deploy, run")
+print(f"  bh_artifact_deploy {out_path}")
