@@ -162,6 +162,7 @@ impl Client {
         self.state.join(match_id.to_owned())
     }
 
+    fn mtch(&self) -> &client::Match { self.state.mtch().unwrap() }
     fn alt_game(&self) -> &AlteredGame { &self.state.game_state().unwrap().alt_game }
     fn perspective(&self) -> Perspective { self.alt_game().perspective() }
     fn my_id(&self) -> BughouseParticipant { self.alt_game().my_id() }
@@ -1691,6 +1692,24 @@ fn rejoin_from_live_client() {
     world.process_all_events();
     assert_eq!(world[cl2].state.mtch().unwrap().participants.len(), 4);
     assert!(world[cl2].state.mtch().unwrap().participants.iter().all(|p| p.is_online));
+}
+
+// Regression test: both active and desired factions should be updated when auto-fixing teams.
+#[test]
+fn faction_auto_fix() {
+    let mut world = World::new();
+    let [cl1, cl2] = world.new_clients();
+    let mtch = world.new_match(cl1, "p1");
+    world[cl2].join(&mtch, "p2");
+    world.process_all_events();
+    world[cl1].state.set_faction(Faction::Fixed(Team::Red));
+    world.process_all_events();
+    world[cl1].state.set_ready(true);
+    world[cl2].state.set_ready(true);
+    world.process_all_events();
+    let p2_record = world[cl1].mtch().participants.iter().find(|p| p.name == "p2").unwrap();
+    assert_eq!(p2_record.active_faction, Faction::Fixed(Team::Blue));
+    assert_eq!(p2_record.desired_faction, Faction::Fixed(Team::Blue));
 }
 
 // TODO: Midgame faction change test.

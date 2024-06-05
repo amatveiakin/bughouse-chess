@@ -140,7 +140,9 @@ pub fn fix_teams_if_needed(participants: &mut impl IterableMut<Participant>) -> 
     if let Some(random_players_team) = random_players_team {
         for p in participants.get_iter_mut() {
             if p.active_faction == Faction::Random {
-                p.active_faction = Faction::Fixed(random_players_team);
+                let new_faction = Faction::Fixed(random_players_team);
+                p.active_faction = new_faction;
+                p.desired_faction = new_faction;
             }
         }
         Teaming::FixedTeams
