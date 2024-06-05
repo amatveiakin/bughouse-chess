@@ -296,11 +296,11 @@ function drag_source_board() {
 
 const Meter = make_meters();
 
-let is_registered_user = false;
-update_session();
-
 init_menu();
 auto_open_menu();
+
+let is_registered_user = false;
+update_session();
 
 document.addEventListener("click", on_document_click);
 document.addEventListener("mouseover", on_document_mouseover);
@@ -774,7 +774,6 @@ function process_notable_events() {
       // Noop, but other events might be coming.
     } else if (js_event_type == "JsEventSessionUpdated") {
       update_session();
-      menu_page_auto_focus();
     } else if (js_event_type == "JsEventMatchStarted") {
       const url = new URL(window.location);
       url.search = "";
@@ -1413,7 +1412,9 @@ function menu_page_auto_focus() {
   if (page === menu_join_match_page) {
     // Make sure "Enter" joines the match when joining via link.
     jc_confirm_button.focus();
+    return;
   }
+  document.activeElement.blur();
 }
 
 function push_menu_page(page) {
@@ -1693,6 +1694,7 @@ function update_session() {
     if (session.status == "google_oauth_registering") {
       push_menu_page(menu_signup_with_google_page);
     }
+    menu_page_auto_focus();
   });
 }
 
