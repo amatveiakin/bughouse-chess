@@ -99,6 +99,7 @@ const SearchParams = {
 };
 
 const page_element = document.getElementById("page");
+const chat_text_area = document.getElementById("chat-text-area");
 const chat_input = document.getElementById("chat-input");
 const chat_send_button = document.getElementById("chat-send-button");
 const chat_reference_tooltip_container = document.getElementById(
@@ -308,6 +309,7 @@ document.addEventListener("mouseover", on_document_mouseover);
 document.addEventListener("keydown", on_document_keydown);
 document.addEventListener("paste", on_document_paste);
 
+chat_text_area.addEventListener("wheel", chat_wheel_scroll);
 chat_input.addEventListener("input", () => update_chat_input());
 chat_input.addEventListener("keydown", on_chat_input_keydown);
 chat_input.addEventListener("focusin", () => update_chat_reference_tooltip());
@@ -607,6 +609,14 @@ function on_document_paste(event) {
   if (!menu_dialog.open) {
     chat_input.focus();
   }
+}
+
+// Chat window is quite narrow, so the default behavior might scroll more than a page.
+function chat_wheel_scroll(event) {
+  event.preventDefault();
+  // TODO: Find a way to make the scroll smooth. Note that simply using `behavior: "smooth"` is bad.
+  // It works well for exactly one turn of the wheel, but gets stuck it you keep rotating the wheel.
+  this.scrollBy({ top: event.deltaY * 0.5, behavior: "instant" });
 }
 
 function update_chat_input() {
