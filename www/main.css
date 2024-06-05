@@ -465,26 +465,35 @@ body.observer .reserve-piece-group {
 }
 
 
-#player-name-container-primary-top,
-#player-name-container-secondary-top {
-  padding-bottom: 0.5em;
+.player-name-container {
+  position: relative;
+  min-height: 2em;
 }
-#player-name-container-primary-bottom,
-#player-name-container-secondary-bottom {
-  padding-top: 0.5em;
+#player-name-primary-top {
+  position: absolute;
+  bottom: 0;
+  right: 0;
 }
-#player-name-container-primary-top,
-#player-name-container-primary-bottom {
-  /* Align right and put status emojis like “⚠️” on the right.
-     TODO: Safer solution that wouldn't break if we allow emojis in player names. */
-  direction: rtl;
+#player-name-primary-bottom {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+#player-name-secondary-top {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+}
+#player-name-secondary-bottom {
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 .player-name {
-  width: 0;
   font-size: 110%;
   white-space: pre;
   color: #a4b984;
-  padding: calc(var(--sq-size-primary) * 0.1) 0;
+  padding: 0.6em 0;
 }
 body.observer .player-name {
   color: #b2b2b2;
@@ -510,10 +519,15 @@ body.observer .player-name {
   font-stretch: condensed;
   font-size: 80%;
 }
-.participant-status-icon {
+.participant-status-icon-left {
   position: absolute;
   left: 0;
   transform: translateX(calc(-50% + var(--participant-status-icon-space) - 0.7em));
+}
+.participant-status-icon-right {
+  position: absolute;
+  right: 0;
+  transform: translateX(calc(+50% - var(--participant-status-icon-space) + 0.7em));
 }
 
 #score-body,
@@ -532,7 +546,7 @@ body.observer .player-name {
 #score-body {
   white-space: pre;
   border-top: 0.2em solid #7fb5a1;
-  margin-top: 1em;
+  margin-top: 1.5em;
   padding: 0.5em 0;
 }
 #observers {
@@ -911,7 +925,7 @@ dialog * {
   width: 7.8em;
   margin: 0.1em;  /* keep in sync with `.wayback-current-turn` outline */
 }
-/* Put scrol bars on the left */
+/* Put scroll bars on the left */
 #turn-log-scroll-area-primary { direction: rtl; }
 #turn-log-primary { direction: ltr; }
 

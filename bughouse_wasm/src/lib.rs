@@ -895,7 +895,11 @@ impl WebClient {
                 let player = mtch.participants.iter().find(|p| p.name == *player_name).unwrap();
                 // TODO: Show teams for the upcoming game in individual mode.
                 let show_readiness = false;
-                let name_content = participant_node(player, show_readiness)?;
+                let p_icon_position = match display_board_idx {
+                    DisplayBoard::Primary => IconPosition::Right,
+                    DisplayBoard::Secondary => IconPosition::Left,
+                };
+                let name_content = participant_node(player, show_readiness, p_icon_position)?;
                 p_node.replace_children_with_node_1(&name_content);
                 let is_draggable = is_piece_draggable(force.into());
                 update_reserve(
@@ -1235,6 +1239,12 @@ enum SquareHighlightLayer {
     Ephemeral,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum IconPosition {
+    Left,
+    Right,
+}
+
 fn scroll_log_to_bottom(board_idx: DisplayBoard) -> JsResult<()> {
     let e = web_document().get_existing_element_by_id(&turn_log_scroll_area_node_id(board_idx))?;
     scroll_to_bottom(&e);
@@ -1424,7 +1434,9 @@ fn participant_status_icon(p: &Participant, show_readiness: bool) -> &'static st
     }
 }
 
-fn participant_node(p: &Participant, show_readiness: bool) -> JsResult<web_sys::Element> {
+fn participant_node(
+    p: &Participant, show_readiness: bool, icon_position: IconPosition,
+) -> JsResult<web_sys::Element> {
     let width = estimate_text_width(&p.name)?;
     // Context. Player name limit is 16 characters. String consisting of 'W' repeated 16 times
     // measured 151px on my laptop. 'W' is usually the widest latter in common Latin, but you could
@@ -1437,8 +1449,15 @@ fn participant_node(p: &Participant, show_readiness: bool) -> JsResult<web_sys::
         80.. => "participant-name-l",
         _ => "participant-name-m",
     };
-    let node = web_document().create_element("span")?.with_classes(["participant-item"])?;
-    node.append_text_span(participant_status_icon(p, show_readiness), ["participant-status-icon"])?;
+    let icon_class = match icon_position {
+        IconPosition::Left => "participant-status-icon-left",
+        IconPosition::Right => "participant-status-icon-right",
+    };
+    let node = web_document().create_element("div")?.with_classes(["participant-item"])?;
+    node.append_text_span(participant_status_icon(p, show_readiness), [
+        "participant-status-icon",
+        icon_class,
+    ])?;
     node.append_text_span(&p.name, ["participant-name", width_class])?;
     Ok(node)
 }
@@ -1828,7 +1847,7 @@ fn update_participants_and_scores(
                 let team_size = players.len();
                 let mut first = true;
                 for p in players.iter().sorted_by_key(|p| &p.name) {
-                    let p_node = participant_node(p, show_readiness)?;
+                    let p_node = participant_node(p, show_readiness, IconPosition::Left)?;
                     let tr = table.append_new_element("tr")?;
                     if first {
                         first = false;
@@ -1864,7 +1883,7 @@ fn update_participants_and_scores(
                     Some((whole, fraction)) => (whole.to_owned(), format!(".{}", fraction)),
                     None => (score, "".to_owned()),
                 };
-                let p_node = participant_node(&p, show_readiness)?;
+                let p_node = participant_node(&p, show_readiness, IconPosition::Left)?;
                 let tr = table.append_new_element("tr")?;
                 tr.append_new_element("td")?
                     .with_classes(["score-player-name"])?
@@ -1888,7 +1907,7 @@ fn update_participants_and_scores(
     observers_node.remove_all_children();
     for p in observers {
         let node = observers_node.append_new_element("div")?;
-        let p_node = participant_node(p, false)?;
+        let p_node = participant_node(p, false, IconPosition::Left)?;
         node.append_child(&p_node)?;
     }
     Ok(())
