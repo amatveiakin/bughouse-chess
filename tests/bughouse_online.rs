@@ -170,7 +170,7 @@ impl Client {
 
     fn chat_item_text(&self) -> Vec<String> {
         let my_name = self.state.my_name().unwrap();
-        let chess_rules = &self.state.mtch().unwrap().rules.chess_rules;
+        let chess_rules = &self.mtch().rules.chess_rules;
         let game_index = self.state.game_state().map(|state| state.game_index);
         self.state
             .mtch()
@@ -744,12 +744,12 @@ fn cold_reconnect_lobby() {
     world.process_all_events();
 
     world.process_all_events();
-    assert_eq!(world[cl1].state.mtch().unwrap().participants.len(), 3);
+    assert_eq!(world[cl1].mtch().participants.len(), 3);
 
     world[cl2].state.leave_server();
     world[cl3].state.leave_server();
     world.process_all_events();
-    assert_eq!(world[cl1].state.mtch().unwrap().participants.len(), 1);
+    assert_eq!(world[cl1].mtch().participants.len(), 1);
 
     let cl4 = world.new_client();
     world.join_and_set_team(cl4, &mtch, "p4", Team::Blue);
@@ -758,7 +758,7 @@ fn cold_reconnect_lobby() {
     world.process_all_events();
     // Game should not start yet because some players have been removed.
     assert!(world[cl1].state.game_state().is_none());
-    assert_eq!(world[cl1].state.mtch().unwrap().participants.len(), 2);
+    assert_eq!(world[cl1].mtch().participants.len(), 2);
 
     // Cannot reconnect as an active player.
     let cl1_new = world.new_client();
@@ -809,7 +809,7 @@ fn cold_reconnect_game_active() {
     let cl5 = world.new_client();
     world[cl5].join(&mtch, "p5");
     world.process_all_events();
-    assert_eq!(world[cl5].state.mtch().unwrap().my_active_faction, Faction::Observer);
+    assert_eq!(world[cl5].mtch().my_active_faction, Faction::Observer);
 
     // Cannot reconnect as an active player.
     let cl2_new = world.new_client();
@@ -890,7 +890,7 @@ fn hot_reconnect_lobby() {
     world.join_and_set_team(cl2, &mtch, "p2", Team::Red);
     world.join_and_set_team(cl3, &mtch, "p3", Team::Blue);
     world.process_all_events();
-    assert_eq!(world[cl1].state.mtch().unwrap().participants.len(), 3);
+    assert_eq!(world[cl1].mtch().participants.len(), 3);
 
     world.reconnect_client(cl2);
     world[cl2].state.set_faction(Faction::Fixed(Team::Blue));
@@ -1590,7 +1590,7 @@ fn two_matches_same_participant_id() {
 
     world.disconnect_client(m1_cl1);
     world.process_all_events();
-    assert_eq!(world[m1_cl2].state.mtch().unwrap().participants.len(), 1);
+    assert_eq!(world[m1_cl2].mtch().participants.len(), 1);
 }
 
 // It's ok for a registered user to reconnect at any point kicking out the old client: we know it's
@@ -1690,8 +1690,8 @@ fn rejoin_from_live_client() {
     let (mtch, cl1, cl2, _cl3, _cl4) = world.default_clients();
     world[cl1].join(&mtch, "p1");
     world.process_all_events();
-    assert_eq!(world[cl2].state.mtch().unwrap().participants.len(), 4);
-    assert!(world[cl2].state.mtch().unwrap().participants.iter().all(|p| p.is_online));
+    assert_eq!(world[cl2].mtch().participants.len(), 4);
+    assert!(world[cl2].mtch().participants.iter().all(|p| p.is_online));
 }
 
 // Regression test: both active and desired factions should be updated when auto-fixing teams.
@@ -1724,7 +1724,7 @@ fn mid_match_faction_change() {
     let cl5 = world.new_client();
     world[cl5].join(&mtch, "p5");
     world.process_all_events();
-    let p5_view = world[cl1].state.mtch().unwrap().participants.last().unwrap();
+    let p5_view = world[cl1].mtch().participants.last().unwrap();
     assert_eq!(p5_view.name, "p5");
     assert_eq!(p5_view.active_faction, Faction::Observer);
 
