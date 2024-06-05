@@ -151,6 +151,7 @@ const game_archive_button = document.getElementById("game-archive-button");
 
 const leave_match_button = document.getElementById("leave-match-button");
 const ready_button = document.getElementById("ready-button");
+const ready_button_caption = document.getElementById("ready-button-caption");
 const resign_button = document.getElementById("resign-button");
 const toggle_faction_button = document.getElementById("toggle-faction-button");
 const rules_button = document.getElementById("rules-button");
@@ -537,6 +538,9 @@ function get_args(args_array, expected_args) {
   }
 }
 
+function get_displayed(element) {
+  return element.style.display !== "none";
+}
 // TODO: Update all code to use this.
 function set_displayed(element, value) {
   element.style.display = value ? null : "none";
@@ -847,6 +851,14 @@ function update_connection_status() {
   }
 }
 
+function update_ready_button() {
+  set_displayed(ready_button_caption, get_displayed(ready_button));
+  const is_ready = wasm_client().is_ready();
+  set_displayed(document.getElementById("ready-yes"), is_ready);
+  set_displayed(document.getElementById("ready-no"), !is_ready);
+  ready_button_caption.innerText = is_ready ? "Go!" : "Go?";
+}
+
 function update_toggle_faction_button() {
   const faction = wasm_client().my_desired_faction();
   const is_observer = faction == "observer";
@@ -907,6 +919,7 @@ function update_buttons() {
     default:
       throw new Error(`Unknown game status: ${game_status}`);
   }
+  update_ready_button();
   update_toggle_faction_button();
   update_shared_wayback_button();
 }

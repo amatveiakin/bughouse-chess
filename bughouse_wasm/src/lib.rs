@@ -383,6 +383,7 @@ impl WebClient {
         Ok(())
     }
     pub fn resign(&mut self) { self.state.resign(); }
+    pub fn is_ready(&self) -> bool { self.state.is_ready().unwrap_or(false) }
     pub fn toggle_ready(&mut self) {
         if let Some(is_ready) = self.state.is_ready() {
             self.state.set_ready(!is_ready);
