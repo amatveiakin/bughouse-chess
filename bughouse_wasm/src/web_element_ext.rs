@@ -10,6 +10,9 @@ pub trait WebElementExt {
     fn with_attribute(self, name: &str, value: &str) -> JsResult<web_sys::Element>;
     fn with_classes(self, classes: impl IntoIterator<Item = &str>) -> JsResult<web_sys::Element>;
 
+    fn is_displayed(&self) -> bool;
+    fn set_displayed(&self, displayed: bool) -> JsResult<()>;
+
     fn remove_all_children(&self);
     fn set_children(
         &self, children: impl IntoIterator<Item = impl ops::Deref<Target = web_sys::Node>>,
@@ -23,7 +26,9 @@ pub trait WebElementExt {
     fn append_new_svg_element(&self, local_name: &str) -> JsResult<web_sys::Element>;
 
     // TODO: More consistent test builder API. We sometimes return `self` and sometimes the appended
-    // element. This is confusing.
+    // element. This is confusing. Consider:
+    //   - Always prefix functions returning `self` with `with_`.
+    //   - Always prefix functions returning the appended element with something else.
     fn append_text(self, text: &str) -> JsResult<web_sys::Element>;
     fn append_text_i(self, text: &str) -> JsResult<web_sys::Element>;
     fn append_span(&self, classes: impl IntoIterator<Item = &str>) -> JsResult<web_sys::Element>;
@@ -53,6 +58,15 @@ impl WebElementExt for web_sys::Element {
             self.class_list().add_1(class)?;
         }
         Ok(self)
+    }
+
+    fn is_displayed(&self) -> bool { !self.class_list().contains("display-none") }
+
+    // TODO: Sync with `set_displayed` in `index.js`: either always use `display-none` class or
+    // always set `display` attribute directly.
+    fn set_displayed(&self, displayed: bool) -> JsResult<()> {
+        self.class_list().toggle_with_force("display-none", !displayed)?;
+        Ok(())
     }
 
     fn remove_all_children(&self) { self.replace_children_with_node_0() }

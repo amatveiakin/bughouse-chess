@@ -1287,10 +1287,10 @@ pub fn update_new_match_rules_body() -> JsResult<()> {
     // format.
     let regicide = duck_chess || atomic_chess || fog_of_war || koedem;
     for node in web_document().get_elements_by_class_name(REGICIDE_CLASS) {
-        node.class_list().toggle_with_force("display-none", !regicide)?;
+        node.set_displayed(regicide)?;
     }
     for node in web_document().get_elements_by_class_name(&rule_setting_class(DROP_AGGRESSION)) {
-        node.class_list().toggle_with_force("display-none", regicide)?;
+        node.set_displayed(!regicide)?;
     }
     Ok(())
 }
@@ -1300,7 +1300,7 @@ fn new_match_rules_variants() -> JsResult<HashMap<String, String>> {
     let buttons = body.get_elements_by_class_name("rule-variant-button");
     let mut variants = HashMap::new();
     for button in buttons.into_iterator() {
-        if !button.class_list().contains("display-none") {
+        if button.is_displayed() {
             let name = button.get_attribute("data-variant-name").unwrap();
             let value = button.get_attribute("data-variant-value").unwrap();
             assert!(variants.insert(name, value).is_none());
@@ -1829,9 +1829,9 @@ fn render_clock(
             .class_list()
             .toggle_with_force("clock-difference-gt", diff.comparison == Ordering::Greater)?;
         diff_node.set_text_content(Some(&diff_ui_string));
-        diff_node.class_list().toggle_with_force("display-none", false)?;
+        diff_node.set_displayed(true)?;
     } else {
-        diff_node.class_list().toggle_with_force("display-none", true)?;
+        diff_node.set_displayed(false)?;
     }
 
     Ok(())

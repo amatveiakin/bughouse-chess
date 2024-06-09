@@ -272,7 +272,7 @@ impl VariantButton {
             button_node.set_attribute("type", "button")?;
             button_node.class_list().add_2("rule-variant-button", class_on_off)?;
             if i != self.default_state {
-                button_node.class_list().add_1("display-none")?;
+                button_node.set_displayed(false)?;
             };
             button_node.set_attribute("data-variant-name", &self.name)?;
             button_node.set_attribute("data-variant-value", &st.value)?;
