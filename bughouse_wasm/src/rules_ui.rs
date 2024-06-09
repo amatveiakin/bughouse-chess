@@ -1,32 +1,34 @@
 // Improvement potential. Factor out SVG images (and make sure there are no `set_inner_html` left).
 
+use std::collections::HashMap;
 use std::time::Duration;
 use std::{fmt, iter};
 
 use bughouse_chess::client::ServerOptions;
 use itertools::Itertools;
 use strum::IntoEnumIterator;
+use wasm_bindgen::prelude::*;
 
 use crate::bughouse_prelude::*;
-use crate::rust_error;
+use crate::html_collection_iterator::IntoHtmlCollectionIterator;
 use crate::web_document::web_document;
 use crate::web_element_ext::WebElementExt;
 use crate::web_error_handling::JsResult;
+use crate::{rust_error, IgnorableError};
 
+const RATING: &str = "rating"; // filled by JSs
+const FAIRY_PIECES: &str = "fairy_pieces";
+const STARTING_POSITION: &str = "starting_position";
+const DUCK_CHESS: &str = "duck_chess";
+const ATOMIC_CHESS: &str = "atomic_chess";
+const FOG_OF_WAR: &str = "fog_of_war";
+const KOEDEM: &str = "koedem";
+const STARTING_TIME: &str = "starting_time";
+const PROMOTION: &str = "promotion";
+const PAWN_DROP_RANKS: &str = "pawn_drop_ranks";
+const DROP_AGGRESSION: &str = "drop_aggression";
 
-pub const RATING: &str = "rating"; // filled by JSs
-pub const FAIRY_PIECES: &str = "fairy_pieces";
-pub const STARTING_POSITION: &str = "starting_position";
-pub const DUCK_CHESS: &str = "duck_chess";
-pub const ATOMIC_CHESS: &str = "atomic_chess";
-pub const FOG_OF_WAR: &str = "fog_of_war";
-pub const KOEDEM: &str = "koedem";
-pub const STARTING_TIME: &str = "starting_time";
-pub const PROMOTION: &str = "promotion";
-pub const PAWN_DROP_RANKS: &str = "pawn_drop_ranks";
-pub const DROP_AGGRESSION: &str = "drop_aggression";
-
-pub const REGICIDE_CLASS: &str = "rule-warning-regicide";
+const REGICIDE_CLASS: &str = "rule-warning-regicide";
 const REGICIDE_ICON: &str = "
 <svg class='inline-icon' viewBox='0 0 100 100'>
  <path d='m36.408 23.945 6.7005-1.0273 1.0304 5.557 6.5262-1.0006 1.0273 6.7005-6.3164 0.96845 1.4693 7.5385q0.15051-0.24388 0.31416-0.48112c5.1065-7.4193 13.621-12.256 21.157-7.7163 7.5558 4.5565 9.5247 17.398 1.4384 26.24-4.5808 5.0085-8.64 9.782-7.4995 15.679l9.5854-0.1708 1.2842 8.3756-46.865 7.1854-1.2842-8.3756 9.1963-2.7089c-0.67859-5.9677-5.9815-9.3058-11.852-12.712-10.36-6.0133-12.329-18.855-6.4892-25.466 5.8245-6.5881 15.398-4.5257 22.497 1.0231q0.22734 0.17816 0.44388 0.3649l-0.85676-7.6324-6.3249 0.96974-1.0273-6.7005 6.5262-1.0006zm-2.3779 26.622c5.123 6.0786 6.8673 13.841 7.3894 17.246-2.0524 0.31469-10.311-1.8992-15.264-6.8591-3.5652-3.5708-5.2493-9.4216-3.0767-12.126s7.7492-2.0601 10.951 1.7396zm19.323-2.9627c-3.0665 7.3342-2.4051 15.262-1.883 18.668 2.0524-0.31469 9.268-4.9011 12.508-11.117 2.3316-4.4749 2.1855-10.561-0.6977-12.491-2.8832-1.9297-8.0105 0.35621-9.927 4.9406z' fill='#808080' fill-rule='evenodd' stroke='#000' stroke-width='.5'/>
@@ -202,20 +204,20 @@ const KOEDEM_ON_ICON: &str = r##"
 </svg>
 "##;
 
-pub struct VariantButtonState {
+struct VariantButtonState {
     value: String,
     caption: String,
     icon: String,
 }
 
-pub struct VariantButton {
+struct VariantButton {
     name: String,
     states: Vec<VariantButtonState>,
     default_state: usize,
     tooltip: Option<web_sys::Element>,
 }
 
-pub struct RuleNode {
+struct RuleNode {
     name: String,
     label: String,
     input: Option<web_sys::Element>,
@@ -223,9 +225,7 @@ pub struct RuleNode {
 }
 
 impl VariantButtonState {
-    pub fn new(
-        value: impl Into<String>, caption: impl Into<String>, icon: impl Into<String>,
-    ) -> Self {
+    fn new(value: impl Into<String>, caption: impl Into<String>, icon: impl Into<String>) -> Self {
         Self {
             value: value.into(),
             caption: caption.into(),
@@ -235,7 +235,7 @@ impl VariantButtonState {
 }
 
 impl VariantButton {
-    pub fn new(name: impl Into<String>, states: Vec<VariantButtonState>) -> Self {
+    fn new(name: impl Into<String>, states: Vec<VariantButtonState>) -> Self {
         Self {
             name: name.into(),
             states,
@@ -244,13 +244,13 @@ impl VariantButton {
         }
     }
 
-    pub fn with_default_state(mut self, default_state: usize) -> Self {
+    fn with_default_state(mut self, default_state: usize) -> Self {
         assert!(default_state < self.states.len());
         self.default_state = default_state;
         self
     }
 
-    pub fn with_tooltip(mut self, node: web_sys::Element) -> Self {
+    fn with_tooltip(mut self, node: web_sys::Element) -> Self {
         self.tooltip = Some(node);
         self
     }
@@ -259,7 +259,7 @@ impl VariantButton {
     // focus management less chaotic.
     // TODO: Switch to the previous state on right-click (will only become relevant when we have
     // buttons with 3+ states though).
-    pub fn to_element(&self) -> JsResult<web_sys::Element> {
+    fn to_element(&self) -> JsResult<web_sys::Element> {
         let state_id = |idx| format!("rule-variant-button-{}-{}", self.name, idx);
         let node = web_document().create_element("div")?;
         for (i, st) in self.states.iter().enumerate() {
@@ -294,7 +294,7 @@ impl VariantButton {
 }
 
 impl RuleNode {
-    pub fn new(name: impl Into<String>, label: impl Into<String>) -> Self {
+    fn new(name: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             label: label.into(),
@@ -303,10 +303,10 @@ impl RuleNode {
         }
     }
 
-    pub fn input_id(&self) -> String { format!("rule-input-{}", self.name) }
-    pub fn class(&self) -> String { rule_setting_class(&self.name) }
+    fn input_id(&self) -> String { format!("rule-input-{}", self.name) }
+    fn class(&self) -> String { rule_setting_class(&self.name) }
 
-    pub fn with_input_select<S1: fmt::Display, S2: fmt::Display>(
+    fn with_input_select<S1: fmt::Display, S2: fmt::Display>(
         mut self, options: impl IntoIterator<Item = (S1, S2, bool)>,
     ) -> JsResult<Self> {
         let mut num_selected = 0;
@@ -328,7 +328,7 @@ impl RuleNode {
         Ok(self)
     }
 
-    pub fn with_input_text(
+    fn with_input_text(
         mut self, pattern: impl fmt::Display, placeholder: impl fmt::Display,
         value: impl fmt::Display,
     ) -> JsResult<Self> {
@@ -347,12 +347,12 @@ impl RuleNode {
         Ok(self)
     }
 
-    pub fn with_tooltip(mut self, node: web_sys::Element) -> JsResult<Self> {
+    fn with_tooltip(mut self, node: web_sys::Element) -> JsResult<Self> {
         self.tooltip = Some(standalone_tooltip(node, [self.class().as_str()])?);
         Ok(self)
     }
 
-    pub fn to_elements(&self) -> JsResult<[web_sys::Element; 3]> {
+    fn to_elements(&self) -> JsResult<[web_sys::Element; 3]> {
         let label_node = web_document().create_element("label")?;
         label_node.set_attribute("for", &self.input_id())?;
         label_node.set_attribute("class", &self.class())?;
@@ -367,7 +367,7 @@ impl RuleNode {
     }
 }
 
-pub fn rule_setting_class(name: &str) -> String { format!("rule-setting-{}", name) }
+fn rule_setting_class(name: &str) -> String { format!("rule-setting-{}", name) }
 
 fn standalone_tooltip<'a>(
     body: web_sys::Element, additional_classes: impl IntoIterator<Item = &'a str>,
@@ -381,7 +381,7 @@ fn standalone_tooltip<'a>(
     Ok(node)
 }
 
-pub fn combine_elements(
+fn combine_elements(
     nodes: impl IntoIterator<Item = web_sys::Element>,
 ) -> JsResult<web_sys::Element> {
     let parent_node = web_document().create_element("div")?;
@@ -391,7 +391,7 @@ pub fn combine_elements(
     Ok(parent_node)
 }
 
-pub fn accolade_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn accolade_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
         .append_text_i("Accolade.")?
@@ -403,7 +403,7 @@ pub fn accolade_tooltip() -> JsResult<Vec<web_sys::Element>> {
         )?])
 }
 
-pub fn fischer_random_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn fischer_random_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
         .append_text_i("Fischer random")?
@@ -418,7 +418,7 @@ pub fn fischer_random_tooltip() -> JsResult<Vec<web_sys::Element>> {
         )?])
 }
 
-pub fn duck_chess_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn duck_chess_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
         .append_text_i("Duck chess.")?
@@ -429,7 +429,7 @@ pub fn duck_chess_tooltip() -> JsResult<Vec<web_sys::Element>> {
         )?])
 }
 
-pub fn atomic_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn atomic_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
         .append_text_i("Atomic chess.")?
@@ -440,7 +440,7 @@ pub fn atomic_tooltip() -> JsResult<Vec<web_sys::Element>> {
         )?])
 }
 
-pub fn fog_of_war_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn fog_of_war_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
         .append_text_i("Fog of war.")?
@@ -450,7 +450,7 @@ pub fn fog_of_war_tooltip() -> JsResult<Vec<web_sys::Element>> {
         )?])
 }
 
-pub fn koedem_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn koedem_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
         .append_text_i("Koedem.")?
@@ -461,9 +461,7 @@ pub fn koedem_tooltip() -> JsResult<Vec<web_sys::Element>> {
         )?])
 }
 
-pub fn starting_time_tooltip(
-    max_starting_time: Option<Duration>,
-) -> JsResult<Vec<web_sys::Element>> {
+fn starting_time_tooltip(max_starting_time: Option<Duration>) -> JsResult<Vec<web_sys::Element>> {
     let mut paragraphs = vec![web_document()
         .create_element("p")?
         .with_text_content("Starting time in “m:ss” format. There are no increments or delays.")];
@@ -476,7 +474,7 @@ pub fn starting_time_tooltip(
     Ok(paragraphs)
 }
 
-pub fn promotion_upgrade_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn promotion_upgrade_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
         .append_text_i("Upgrade.")?
@@ -486,7 +484,7 @@ pub fn promotion_upgrade_tooltip() -> JsResult<Vec<web_sys::Element>> {
             If captured, the piece goes into reserve as a pawn.",
         )?])
 }
-pub fn promotion_discard_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn promotion_discard_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
         .append_text_i("Discard.")?
@@ -495,7 +493,7 @@ pub fn promotion_discard_tooltip() -> JsResult<Vec<web_sys::Element>> {
             You get nothing. C'est la vie.",
         )?])
 }
-pub fn promotion_steal_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn promotion_steal_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![
         web_document().create_element("p")?.append_text_i("Steal.")?.append_text(
             " Expropriate your partner opponent's piece when promoting a pawn!
@@ -506,7 +504,7 @@ pub fn promotion_steal_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
         )?,
     ])
 }
-pub fn promotion_steal_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Element>> {
+fn promotion_steal_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Element>> {
     let exposure = if rules.regicide() {
         "It is possible to expose a king to new attacks by stealing a piece
         since regicide is on."
@@ -524,13 +522,13 @@ pub fn promotion_steal_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_
     ])
 }
 
-pub fn drop_aggression_no_check_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn drop_aggression_no_check_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
         .append_text_i("No check.")?
         .append_text(" Drop with a check is forbidden.")?])
 }
-pub fn drop_aggression_no_chess_mate_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn drop_aggression_no_chess_mate_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
         .append_text_i("No chess mate.")?
@@ -539,7 +537,7 @@ pub fn drop_aggression_no_chess_mate_tooltip() -> JsResult<Vec<web_sys::Element>
             the checkmate with a drop of their own.",
         )?])
 }
-pub fn drop_aggression_no_bughouse_mate_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn drop_aggression_no_bughouse_mate_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
         .append_text_i("No bughouse mate.")?
@@ -549,7 +547,7 @@ pub fn drop_aggression_no_bughouse_mate_tooltip() -> JsResult<Vec<web_sys::Eleme
             is currently empty).",
         )?])
 }
-pub fn drop_aggression_mate_allowed_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn drop_aggression_mate_allowed_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
         .append_text_i("Mate allowed.")?
@@ -557,7 +555,7 @@ pub fn drop_aggression_mate_allowed_tooltip() -> JsResult<Vec<web_sys::Element>>
 }
 
 // Improvement potential: Update based on the current board shape.
-pub fn pawn_drop_rank_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn pawn_drop_rank_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
     let first = web_document().create_element("p")?.append_text(
         "Allowed pawn drop ranks in “min-max” format.
         Ranks are counted starting from the player, so “2-6” means
@@ -570,7 +568,7 @@ pub fn pawn_drop_rank_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
     second.append_with_str_1("1 ≤ min ≤ max ≤ 7")?;
     Ok(vec![first, second])
 }
-pub fn pawn_drop_rank_specific_tooltip(
+fn pawn_drop_rank_specific_tooltip(
     board_shape: BoardShape, min: SubjectiveRow, max: SubjectiveRow,
 ) -> JsResult<Vec<web_sys::Element>> {
     let white_min = min.to_row(board_shape, Force::White).to_algebraic(board_shape);
@@ -596,7 +594,7 @@ pub fn pawn_drop_rank_specific_tooltip(
     Ok(vec![web_document().create_element("p")?.append_text(&message)?])
 }
 
-pub fn regicide_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
+fn regicide_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
     let regicide_variants = ChessVariant::iter()
         .filter(|v| v.enables_regicide())
         .map(|v| v.to_human_readable())
@@ -612,7 +610,7 @@ pub fn regicide_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
         ))?,
     ])
 }
-pub fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Element>> {
+fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Element>> {
     let variants = rules.regicide_reason();
     let prefix = match variants.len() {
         0 => return Err(rust_error!("Regicide is on, but regicide reason list is empty")),
@@ -889,4 +887,146 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
         }
     }
     Ok(table)
+}
+
+fn new_match_rules_variants() -> JsResult<HashMap<String, String>> {
+    let body = web_document().get_existing_element_by_id("cc-rule-variants")?;
+    let buttons = body.get_elements_by_class_name("rule-variant-button");
+    let mut variants = HashMap::new();
+    for button in buttons.into_iterator() {
+        if button.is_displayed() {
+            let name = button.get_attribute("data-variant-name").unwrap();
+            let value = button.get_attribute("data-variant-value").unwrap();
+            assert!(variants.insert(name, value).is_none());
+        }
+    }
+    Ok(variants)
+}
+
+fn new_match_rules_form_data() -> JsResult<web_sys::FormData> {
+    let node = web_document().get_existing_element_by_id("menu-create-match-page")?;
+    web_sys::FormData::new_with_form(&node.dyn_into()?)
+}
+
+pub fn update_new_match_rules_body() -> JsResult<()> {
+    let variants = new_match_rules_variants()?;
+    let duck_chess = variants.get(DUCK_CHESS).unwrap() == "on";
+    let atomic_chess = variants.get(ATOMIC_CHESS).unwrap() == "on";
+    let fog_of_war = variants.get(FOG_OF_WAR).unwrap() == "on";
+    let koedem = variants.get(KOEDEM).unwrap() == "on";
+    // Should mirror `ChessRules::regicide`. Could've constructed `ChessRules` and called it
+    // directly, but doing so could fail due to unrelated problems, e.g. errors in "starting time"
+    // format.
+    let regicide = duck_chess || atomic_chess || fog_of_war || koedem;
+    for node in web_document().get_elements_by_class_name(REGICIDE_CLASS) {
+        node.set_displayed(regicide)?;
+    }
+    for node in web_document().get_elements_by_class_name(&rule_setting_class(DROP_AGGRESSION)) {
+        node.set_displayed(!regicide)?;
+    }
+    Ok(())
+}
+
+pub fn new_match_rules() -> JsResult<Rules> {
+    let variants = new_match_rules_variants()?;
+    let details = new_match_rules_form_data()?;
+
+    // Chess variants
+    let fairy_pieces = match variants.get(FAIRY_PIECES).unwrap().as_str() {
+        "off" => FairyPieces::NoFairy,
+        "accolade" => FairyPieces::Accolade,
+        s => return Err(format!("Invalid fairy pieces: {s}").into()),
+    };
+    let starting_position = match variants.get(STARTING_POSITION).unwrap().as_str() {
+        "off" => StartingPosition::Classic,
+        "fischer-random" => StartingPosition::FischerRandom,
+        s => return Err(format!("Invalid starting position: {s}").into()),
+    };
+    let duck_chess = match variants.get(DUCK_CHESS).unwrap().as_str() {
+        "off" => false,
+        "on" => true,
+        s => return Err(format!("Invalid duck chess option: {s}").into()),
+    };
+    let atomic_chess = match variants.get(ATOMIC_CHESS).unwrap().as_str() {
+        "off" => false,
+        "on" => true,
+        s => return Err(format!("Invalid atomic chess option: {s}").into()),
+    };
+    let fog_of_war = match variants.get(FOG_OF_WAR).unwrap().as_str() {
+        "off" => false,
+        "on" => true,
+        s => return Err(format!("Invalid fog of war option: {s}").into()),
+    };
+    let koedem = match variants.get(KOEDEM).unwrap().as_str() {
+        "off" => false,
+        "on" => true,
+        s => return Err(format!("Invalid koedem option: {s}").into()),
+    };
+
+    // Other chess rules
+    let promotion = match details.get(PROMOTION).as_string().unwrap().as_str() {
+        "upgrade" => Promotion::Upgrade,
+        "discard" => Promotion::Discard,
+        "steal" => Promotion::Steal,
+        s => return Err(format!("Invalid promotion: {s}").into()),
+    };
+    let drop_aggression = match details.get(DROP_AGGRESSION).as_string().unwrap().as_str() {
+        "no-check" => DropAggression::NoCheck,
+        "no-chess-mate" => DropAggression::NoChessMate,
+        "no-bughouse-mate" => DropAggression::NoBughouseMate,
+        "mate-allowed" => DropAggression::MateAllowed,
+        s => return Err(format!("Invalid drop aggression: {s}").into()),
+    };
+
+    let starting_time = details.get(STARTING_TIME).as_string().unwrap();
+    let Some((Ok(starting_minutes), Ok(starting_seconds))) =
+        starting_time.split(':').map(|v| v.parse::<u64>()).collect_tuple()
+    else {
+        return Err(format!("Invalid starting time: {starting_time}").into());
+    };
+    let starting_time = Duration::from_secs(starting_minutes * 60 + starting_seconds);
+
+    let pawn_drop_ranks = details.get(PAWN_DROP_RANKS).as_string().unwrap();
+    let Some((Some(min_pawn_drop_rank), Some(max_pawn_drop_rank))) = pawn_drop_ranks
+        .split('-')
+        .map(|v| v.parse::<i8>().ok().map(SubjectiveRow::from_one_based))
+        .collect_tuple()
+    else {
+        return Err(format!("Invalid pawn drop ranks: {pawn_drop_ranks}").into());
+    };
+
+    // Non-chess rules
+    let rated = match details.get(RATING).as_string().unwrap().as_str() {
+        "rated" => true,
+        "unrated" => false,
+        s => return Err(format!("Invalid rating: {s}").into()),
+    };
+
+    // Combine everything together
+    let match_rules = MatchRules { rated };
+    let mut chess_rules = ChessRules {
+        fairy_pieces,
+        starting_position,
+        duck_chess,
+        atomic_chess,
+        fog_of_war,
+        time_control: TimeControl { starting_time },
+        bughouse_rules: Some(BughouseRules {
+            koedem,
+            promotion,
+            pawn_drop_ranks: PawnDropRanks {
+                min: min_pawn_drop_rank,
+                max: max_pawn_drop_rank,
+            },
+            drop_aggression,
+        }),
+    };
+    if chess_rules.regicide() {
+        chess_rules.bughouse_rules.as_mut().unwrap().drop_aggression = DropAggression::MateAllowed;
+    }
+    let rules = Rules { match_rules, chess_rules };
+    if let Err(message) = rules.verify() {
+        return Err(IgnorableError { message }.into());
+    }
+    Ok(rules)
 }

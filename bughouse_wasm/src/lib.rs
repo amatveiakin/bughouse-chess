@@ -26,10 +26,9 @@ mod web_util;
 
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
-use std::time::Duration;
 
 use bughouse_chess::client::*;
 use bughouse_chess::client_chat::cannot_start_game_message;
@@ -37,7 +36,6 @@ use bughouse_chess::lobby::*;
 use bughouse_chess::meter::*;
 use bughouse_chess::session::*;
 use enum_map::enum_map;
-use html_collection_iterator::IntoHtmlCollectionIterator;
 use instant::Instant;
 use itertools::Itertools;
 use strum::{EnumIter, IntoEnumIterator};
@@ -273,7 +271,7 @@ impl WebClient {
     pub fn init_new_match_rules_body(&self) -> JsResult<()> {
         let server_options = self.state.server_options().ok_or_else(|| rust_error!())?;
         rules_ui::make_new_match_rules_body(server_options)?;
-        update_new_match_rules_body()?;
+        rules_ui::update_new_match_rules_body()?;
         Ok(())
     }
 
@@ -284,108 +282,7 @@ impl WebClient {
         Ok(())
     }
     pub fn new_match(&mut self) -> JsResult<()> {
-        use rules_ui::*;
-        let variants = new_match_rules_variants()?;
-        let details = new_match_rules_form_data()?;
-
-        // Chess variants
-        let fairy_pieces = match variants.get(FAIRY_PIECES).unwrap().as_str() {
-            "off" => FairyPieces::NoFairy,
-            "accolade" => FairyPieces::Accolade,
-            s => return Err(format!("Invalid fairy pieces: {s}").into()),
-        };
-        let starting_position = match variants.get(STARTING_POSITION).unwrap().as_str() {
-            "off" => StartingPosition::Classic,
-            "fischer-random" => StartingPosition::FischerRandom,
-            s => return Err(format!("Invalid starting position: {s}").into()),
-        };
-        let duck_chess = match variants.get(DUCK_CHESS).unwrap().as_str() {
-            "off" => false,
-            "on" => true,
-            s => return Err(format!("Invalid duck chess option: {s}").into()),
-        };
-        let atomic_chess = match variants.get(ATOMIC_CHESS).unwrap().as_str() {
-            "off" => false,
-            "on" => true,
-            s => return Err(format!("Invalid atomic chess option: {s}").into()),
-        };
-        let fog_of_war = match variants.get(FOG_OF_WAR).unwrap().as_str() {
-            "off" => false,
-            "on" => true,
-            s => return Err(format!("Invalid fog of war option: {s}").into()),
-        };
-        let koedem = match variants.get(KOEDEM).unwrap().as_str() {
-            "off" => false,
-            "on" => true,
-            s => return Err(format!("Invalid koedem option: {s}").into()),
-        };
-
-        // Other chess rules
-        let promotion = match details.get(PROMOTION).as_string().unwrap().as_str() {
-            "upgrade" => Promotion::Upgrade,
-            "discard" => Promotion::Discard,
-            "steal" => Promotion::Steal,
-            s => return Err(format!("Invalid promotion: {s}").into()),
-        };
-        let drop_aggression = match details.get(DROP_AGGRESSION).as_string().unwrap().as_str() {
-            "no-check" => DropAggression::NoCheck,
-            "no-chess-mate" => DropAggression::NoChessMate,
-            "no-bughouse-mate" => DropAggression::NoBughouseMate,
-            "mate-allowed" => DropAggression::MateAllowed,
-            s => return Err(format!("Invalid drop aggression: {s}").into()),
-        };
-
-        let starting_time = details.get(STARTING_TIME).as_string().unwrap();
-        let Some((Ok(starting_minutes), Ok(starting_seconds))) =
-            starting_time.split(':').map(|v| v.parse::<u64>()).collect_tuple()
-        else {
-            return Err(format!("Invalid starting time: {starting_time}").into());
-        };
-        let starting_time = Duration::from_secs(starting_minutes * 60 + starting_seconds);
-
-        let pawn_drop_ranks = details.get(PAWN_DROP_RANKS).as_string().unwrap();
-        let Some((Some(min_pawn_drop_rank), Some(max_pawn_drop_rank))) = pawn_drop_ranks
-            .split('-')
-            .map(|v| v.parse::<i8>().ok().map(SubjectiveRow::from_one_based))
-            .collect_tuple()
-        else {
-            return Err(format!("Invalid pawn drop ranks: {pawn_drop_ranks}").into());
-        };
-
-        // Non-chess rules
-        let rated = match details.get(RATING).as_string().unwrap().as_str() {
-            "rated" => true,
-            "unrated" => false,
-            s => return Err(format!("Invalid rating: {s}").into()),
-        };
-
-        // Combine everything together
-        let match_rules = MatchRules { rated };
-        let mut chess_rules = ChessRules {
-            fairy_pieces,
-            starting_position,
-            duck_chess,
-            atomic_chess,
-            fog_of_war,
-            time_control: TimeControl { starting_time },
-            bughouse_rules: Some(BughouseRules {
-                koedem,
-                promotion,
-                pawn_drop_ranks: PawnDropRanks {
-                    min: min_pawn_drop_rank,
-                    max: max_pawn_drop_rank,
-                },
-                drop_aggression,
-            }),
-        };
-        if chess_rules.regicide() {
-            chess_rules.bughouse_rules.as_mut().unwrap().drop_aggression =
-                DropAggression::MateAllowed;
-        }
-        let rules = Rules { match_rules, chess_rules };
-        if let Err(message) = rules.verify() {
-            return Err(IgnorableError { message }.into());
-        }
+        let rules = rules_ui::new_match_rules()?;
         self.state.new_match(rules);
         Ok(())
     }
@@ -1275,44 +1172,7 @@ pub fn init_page() -> JsResult<()> {
 }
 
 #[wasm_bindgen]
-pub fn update_new_match_rules_body() -> JsResult<()> {
-    use rules_ui::*;
-    let variants = new_match_rules_variants()?;
-    let duck_chess = variants.get(DUCK_CHESS).unwrap() == "on";
-    let atomic_chess = variants.get(ATOMIC_CHESS).unwrap() == "on";
-    let fog_of_war = variants.get(FOG_OF_WAR).unwrap() == "on";
-    let koedem = variants.get(KOEDEM).unwrap() == "on";
-    // Should mirror `ChessRules::regicide`. Could've constructed `ChessRules` and called it
-    // directly, but doing so could fail due to unrelated problems, e.g. errors in "starting time"
-    // format.
-    let regicide = duck_chess || atomic_chess || fog_of_war || koedem;
-    for node in web_document().get_elements_by_class_name(REGICIDE_CLASS) {
-        node.set_displayed(regicide)?;
-    }
-    for node in web_document().get_elements_by_class_name(&rule_setting_class(DROP_AGGRESSION)) {
-        node.set_displayed(!regicide)?;
-    }
-    Ok(())
-}
-
-fn new_match_rules_variants() -> JsResult<HashMap<String, String>> {
-    let body = web_document().get_existing_element_by_id("cc-rule-variants")?;
-    let buttons = body.get_elements_by_class_name("rule-variant-button");
-    let mut variants = HashMap::new();
-    for button in buttons.into_iterator() {
-        if button.is_displayed() {
-            let name = button.get_attribute("data-variant-name").unwrap();
-            let value = button.get_attribute("data-variant-value").unwrap();
-            assert!(variants.insert(name, value).is_none());
-        }
-    }
-    Ok(variants)
-}
-
-fn new_match_rules_form_data() -> JsResult<web_sys::FormData> {
-    let node = web_document().get_existing_element_by_id("menu-create-match-page")?;
-    web_sys::FormData::new_with_form(&node.dyn_into()?)
-}
+pub fn update_new_match_rules_body() -> JsResult<()> { rules_ui::update_new_match_rules_body() }
 
 #[wasm_bindgen]
 pub fn git_version() -> String { my_git_version!().to_owned() }
