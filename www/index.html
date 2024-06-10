@@ -489,6 +489,12 @@
             <span class="flex-grow">Sign in with Google</span>
           </div>
         </button>
+        <button id="sign-with-lichess-button" class="big-button">
+          <div class="flex-row-full">
+	    <span>L</span>
+            <span class="flex-grow">Sign in with Lichess</span>
+          </div>
+        </button>
         <button id="begin-login-button" class="big-button">Log in</button>
         <button id="begin-signup-button" class="big-button">Sign up</button>
       </div>
@@ -591,6 +597,34 @@
       </div>
       <div class="align-center">
         <button id="signup-with-google-confirm-button" class="big-button">Create account</button>
+      </div>
+    </form>
+
+    <form id="menu-signup-with-lichess-page" class="menu-page" action="javascript:;">
+      <div class="align-left">
+        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+      </div>
+      <div class="menu-page-body">
+        <label for="signup-with-lichess-user-name">Account name *</label>
+        <input type="text" id="signup-with-lichess-user-name" name="user_name"
+          placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
+          maxlength="16" pattern="[A-Za-z0-9_\-]+"
+          title="User name may contain Latin letters, numbers, underscores ('_') and dashes ('-')" />
+        <div class="tooltip-standalone">
+          <div class="tooltip-text">
+            <p>
+              Account name (required). Your unique public identifier at bughouse.pro.
+              May contain letters, numbers, underscores and dashes. Case-sensitive.
+            </p>
+          </div>
+        </div>
+
+        <div class="label">Email</div>
+        <div class="logged-in-as-email fixed-form-value"></div>
+        <div></div>
+      </div>
+      <div class="align-center">
+        <button id="signup-with-lichess-confirm-button" class="big-button">Create account</button>
       </div>
     </form>
 

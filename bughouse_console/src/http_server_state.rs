@@ -9,6 +9,7 @@ use crate::secret_persistence::SecretDatabaseRW;
 
 pub struct HttpServerStateImpl<DB> {
     pub google_auth: Option<crate::auth::GoogleAuth>,
+    pub lichess_auth: Option<crate::auth::LichessAuth>,
     pub sessions_enabled: bool,
     pub auth_callback_is_https: bool,
     pub db: DB,

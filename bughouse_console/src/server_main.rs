@@ -29,7 +29,9 @@ use crate::network::{self, CommunicationError};
 use crate::persistence::DatabaseReader;
 use crate::prod_server_helpers::ProdServerHelpers;
 use crate::secret_persistence::SecretDatabaseRW;
-use crate::server_config::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
+use crate::server_config::{
+    AuthOptions, DatabaseOptions, ServerConfig, SessionOptions, StringSource,
+};
 use crate::{auth, database};
 
 async fn handle_connection<
@@ -129,9 +131,12 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
             callback_is_https,
         ),
     };
+    let lichess_auth =
+        Some(auth::LichessAuth::new(StringSource::Literal("bughouse.pro".to_owned())).unwrap());
     let mut app = tide::with_state(Arc::new(HttpServerStateImpl {
         sessions_enabled: config.session_options != SessionOptions::NoSessions,
         google_auth,
+        lichess_auth,
         auth_callback_is_https,
         db,
         secret_db,
@@ -166,10 +171,15 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     app.at(AUTH_LOGIN_PATH).post(handle_login);
     app.at(AUTH_LOGOUT_PATH).post(handle_logout);
     app.at(AUTH_SIGN_WITH_GOOGLE_PATH).get(handle_sign_with_google);
+    app.at(AUTH_SIGN_WITH_LICHESS_PATH).get(handle_sign_with_lichess);
     app.at(AUTH_CONTINUE_SIGN_WITH_GOOGLE_PATH)
         .get(handle_continue_sign_with_google);
+    app.at(AUTH_CONTINUE_SIGN_WITH_LICHESS_PATH)
+        .get(handle_continue_sign_with_lichess);
     app.at(AUTH_FINISH_SIGNUP_WITH_GOOGLE_PATH)
         .post(handle_finish_signup_with_google);
+    app.at(AUTH_FINISH_SIGNUP_WITH_LICHESS_PATH)
+        .post(handle_finish_signup_with_lichess);
     app.at(AUTH_CHANGE_ACCOUNT_PATH).post(handle_change_account);
     app.at(AUTH_DELETE_ACCOUNT_PATH).post(handle_delete_account);
     app.at(AUTH_MYSESSION_PATH).get(handle_mysession);

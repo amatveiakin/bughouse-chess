@@ -115,6 +115,7 @@ const menu_authorization_page = document.getElementById("menu-authorization-page
 const menu_login_page = document.getElementById("menu-login-page");
 const menu_signup_page = document.getElementById("menu-signup-page");
 const menu_signup_with_google_page = document.getElementById("menu-signup-with-google-page");
+const menu_signup_with_lichess_page = document.getElementById("menu-signup-with-lichess-page");
 const menu_view_account_page = document.getElementById("menu-view-account-page");
 const menu_change_account_page = document.getElementById("menu-change-account-page");
 const menu_delete_account_page = document.getElementById("menu-delete-account-page");
@@ -136,6 +137,7 @@ const guest_user_tooltip = document.getElementById("guest-user-tooltip");
 const authorization_button = document.getElementById("authorization-button");
 const log_out_button = document.getElementById("log-out-button");
 const sign_with_google_button = document.getElementById("sign-with-google-button");
+const sign_with_lichess_button = document.getElementById("sign-with-lichess-button");
 const begin_login_button = document.getElementById("begin-login-button");
 const begin_signup_button = document.getElementById("begin-signup-button");
 const view_account_change_button = document.getElementById("view-account-change-button");
@@ -335,6 +337,7 @@ view_account_button.addEventListener("click", () => push_menu_page(menu_view_acc
 authorization_button.addEventListener("click", () => push_menu_page(menu_authorization_page));
 log_out_button.addEventListener("click", log_out);
 sign_with_google_button.addEventListener("click", sign_with_google);
+sign_with_lichess_button.addEventListener("click", sign_with_lichess);
 begin_login_button.addEventListener("click", () => push_menu_page(menu_login_page));
 begin_signup_button.addEventListener("click", () => push_menu_page(menu_signup_page));
 view_account_change_button.addEventListener("click", () =>
@@ -346,6 +349,7 @@ view_account_delete_button.addEventListener("click", () =>
 menu_login_page.addEventListener("submit", log_in);
 menu_signup_page.addEventListener("submit", sign_up);
 menu_signup_with_google_page.addEventListener("submit", sign_up_with_google);
+menu_signup_with_lichess_page.addEventListener("submit", sign_up_with_lichess);
 menu_change_account_page.addEventListener("submit", change_account);
 menu_delete_account_page.addEventListener("submit", delete_account);
 create_rated_match_button.addEventListener("click", (event) =>
@@ -1717,6 +1721,9 @@ function update_session() {
     if (session.status == "google_oauth_registering") {
       push_menu_page(menu_signup_with_google_page);
     }
+    if (session.status == "lichess_oauth_registering") {
+      push_menu_page(menu_signup_with_lichess_page);
+    }
     menu_page_auto_focus();
   });
 }
@@ -1783,8 +1790,23 @@ function sign_up_with_google(event) {
   );
 }
 
+function sign_up_with_lichess(event) {
+  const data = new FormData(event.target);
+  process_authentification_request(
+    new Request("auth/finish-signup-with-lichess", {
+      method: "POST",
+      body: as_x_www_form_urlencoded(data),
+    })
+  );
+}
+
+
 async function sign_with_google(event) {
   page_redirect("/auth/sign-with-google");
+}
+
+async function sign_with_lichess(event) {
+  page_redirect("/auth/sign-with-lichess");
 }
 
 async function log_in(event) {

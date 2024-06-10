@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum RegistrationMethod {
     Password,
     GoogleOAuth,
+    LichessOAuth,
 }
 
 impl RegistrationMethod {
@@ -14,6 +15,7 @@ impl RegistrationMethod {
         match self {
             Self::Password => "Password",
             Self::GoogleOAuth => "GoogleOAuth",
+            Self::LichessOAuth => "LichessOAuth",
         }
         .to_owned()
     }
@@ -21,6 +23,7 @@ impl RegistrationMethod {
         match s.as_str() {
             "Password" => Ok(Self::Password),
             "GoogleOAuth" => Ok(Self::GoogleOAuth),
+            "LichessOAuth" => Ok(Self::LichessOAuth),
             _ => Err(format!("failed to parse '{s}' as RegistrationMethod")),
         }
     }
@@ -38,12 +41,25 @@ pub struct GoogleOAuthRegistrationInfo {
     pub email: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LichessOAuthRegistrationInfo {
+    pub email: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PkceChallengeInfo {
+    pub verifier: String,
+}
+
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum Session {
     Unknown,
     #[default]
     LoggedOut,
+    PkceChallengeInitiated(PkceChallengeInfo),
     GoogleOAuthRegistering(GoogleOAuthRegistrationInfo), // in the midst of Google OAuth signup
+    LichessOAuthRegistering(LichessOAuthRegistrationInfo), // in the midst of Google OAuth signup
     LoggedIn(UserInfo),
 }
 
@@ -51,7 +67,11 @@ pub enum Session {
 impl Session {
     pub fn user_info(&self) -> Option<&UserInfo> {
         match self {
-            Session::Unknown | Session::LoggedOut | Session::GoogleOAuthRegistering(_) => None,
+            Session::Unknown
+            | Session::LoggedOut
+            | Session::PkceChallengeInitiated(_)
+            | Session::GoogleOAuthRegistering(_)
+            | Session::LichessOAuthRegistering(_) => None,
             Session::LoggedIn(user_info) => Some(user_info),
         }
     }

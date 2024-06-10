@@ -149,19 +149,22 @@ impl WebClient {
         use Session::*;
         let status = match self.state.session() {
             Unknown => "unknown",
-            LoggedOut => "logged_out",
+            LoggedOut | PkceChallengeInitiated(_) => "logged_out",
             LoggedIn(_) => "logged_in",
             GoogleOAuthRegistering(_) => "google_oauth_registering",
+            LichessOAuthRegistering(_) => "lichess_oauth_registering",
         };
         let user_name = self.state.session().user_name().unwrap_or("").to_string();
         let email = match self.state.session() {
-            Unknown | LoggedOut => String::new(),
+            Unknown | LoggedOut | PkceChallengeInitiated(_) => String::new(),
             LoggedIn(UserInfo { email, .. }) => email.clone().unwrap_or(String::new()),
             GoogleOAuthRegistering(GoogleOAuthRegistrationInfo { email }) => email.clone(),
+            LichessOAuthRegistering(LichessOAuthRegistrationInfo { email }) => email.clone(),
         };
         let registration_method = match self.state.session() {
-            Unknown | LoggedOut => String::new(),
+            Unknown | LoggedOut | PkceChallengeInitiated(_) => String::new(),
             GoogleOAuthRegistering(_) => RegistrationMethod::GoogleOAuth.to_string(),
+            LichessOAuthRegistering(_) => RegistrationMethod::LichessOAuth.to_string(),
             LoggedIn(UserInfo { registration_method, .. }) => registration_method.to_string(),
         };
         Ok(JsSession {
