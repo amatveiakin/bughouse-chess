@@ -1,5 +1,9 @@
 use std::ops;
 
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::convert::FromWasmAbi;
+use wasm_bindgen::JsCast;
+
 use crate::web_document::web_document;
 use crate::web_error_handling::JsResult;
 
@@ -12,6 +16,10 @@ pub trait WebElementExt {
 
     fn is_displayed(&self) -> bool;
     fn set_displayed(&self, displayed: bool) -> JsResult<()>;
+
+    fn add_event_listener_and_forget<E: FromWasmAbi + 'static>(
+        &self, event_type: &str, listener: impl FnMut(E) -> JsResult<()> + 'static,
+    ) -> JsResult<()>;
 
     fn remove_all_children(&self);
     fn set_children(
@@ -66,6 +74,27 @@ impl WebElementExt for web_sys::Element {
     // always set `display` attribute directly.
     fn set_displayed(&self, displayed: bool) -> JsResult<()> {
         self.class_list().toggle_with_force("display-none", !displayed)?;
+        Ok(())
+    }
+
+    // TODO: Don't leak, let JS GC handle it. In order to GC the closure when the element is deleted
+    // we could try something like:
+    // ```
+    //     Reflect::set(
+    //         &self,
+    //         &some_unique_key,
+    //         &closure.into_js_value()
+    //     ).unwrap();
+    // ```
+    // although admittedly this is a bit of a hack. I haven't yet found a way to automatically GC
+    // the closure when the event listener is removed. It's weird web_sys doesn't provide way to
+    // deal with this out-of-the-box.
+    fn add_event_listener_and_forget<E: FromWasmAbi + 'static>(
+        &self, event_type: &str, listener: impl FnMut(E) -> JsResult<()> + 'static,
+    ) -> JsResult<()> {
+        let closure = Closure::new(listener);
+        self.add_event_listener_with_callback(event_type, closure.as_ref().unchecked_ref())?;
+        closure.forget();
         Ok(())
     }
 

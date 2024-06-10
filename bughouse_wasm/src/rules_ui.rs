@@ -1,4 +1,6 @@
 // Improvement potential. Factor out SVG images (and make sure there are no `set_inner_html` left).
+// Improvement potential. Factor out large function calls (like `update_new_match_rules_body`) from
+//   callback closures in order to dedup WASM code and reduce RAM usage.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -264,7 +266,7 @@ impl VariantButton {
         let node = web_document().create_element("div")?;
         for (i, st) in self.states.iter().enumerate() {
             let id = state_id(i);
-            let prev_id = state_id((i + self.states.len() - 1) % self.states.len());
+            let _prev_id = state_id((i + self.states.len() - 1) % self.states.len());
             let next_id = state_id((i + 1) % self.states.len());
             let class_on_off = if i > 0 { "rule-variant-on" } else { "rule-variant-off" };
             let button_node = node.append_new_element("button")?;
@@ -276,12 +278,22 @@ impl VariantButton {
             };
             button_node.set_attribute("data-variant-name", &self.name)?;
             button_node.set_attribute("data-variant-value", &st.value)?;
-            button_node.set_attribute("data-prev-state", &prev_id)?;
-            button_node.set_attribute("data-next-state", &next_id)?;
             button_node.set_inner_html(&st.icon);
             let caption_node = button_node.append_new_element("div")?;
             caption_node.set_class_name("rule-variant-button-caption");
             caption_node.set_text_content(Some(&st.caption));
+            button_node.add_event_listener_and_forget(
+                "click",
+                move |_: web_sys::Event| -> JsResult<()> {
+                    let document = web_document();
+                    let button_node = document.get_existing_element_by_id(&id)?;
+                    let next_button_node = document.get_existing_element_by_id(&next_id)?;
+                    button_node.set_displayed(false)?;
+                    next_button_node.set_displayed(true)?;
+                    update_new_match_rules_body()?;
+                    Ok(())
+                },
+            )?;
         }
         if let Some(tooltip) = &self.tooltip {
             node.class_list().add_1("tooltip-below")?;
@@ -633,8 +645,16 @@ fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Elemen
 
 pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()> {
     let document = web_document();
-    let variants_node = document.get_existing_element_by_id("cc-rule-variants")?;
-    let details_node = document.get_existing_element_by_id("cc-rule-details")?;
+    let rules_node = document.get_existing_element_by_id("menu-create-match-rules")?;
+    if rules_node.child_element_count() > 0 {
+        // Only create the page once, because we leak the closures.
+        return Ok(());
+    }
+    let variants_node = rules_node.append_new_element("div")?.with_id("cc-rule-variants");
+    let details_node = rules_node
+        .append_new_element("div")?
+        .with_id("cc-rule-details")
+        .with_classes(["menu-page-body"])?;
 
     variants_node.remove_all_children();
     variants_node.append_element(

@@ -36,6 +36,8 @@ features = [
   'Document',
   'DomTokenList',
   'Element',
+  'Event',
+  'EventTarget',
   'FormData',
   'HtmlCanvasElement',
   'HtmlCollection',
