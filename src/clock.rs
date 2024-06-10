@@ -43,6 +43,17 @@ fn format_duration_to_mss(d: Duration, f: &mut impl fmt::Write) -> fmt::Result {
     write!(f, "{minutes}:{seconds:02}")
 }
 
+pub fn duration_from_mss(s: &str) -> Option<Duration> {
+    if let Some((minutes, seconds)) = s.split_once(':')
+        && let Ok(minutes) = minutes.parse::<u64>()
+        && let Ok(seconds) = seconds.parse::<u64>()
+    {
+        Some(Duration::from_secs(minutes * 60 + seconds))
+    } else {
+        None
+    }
+}
+
 
 // In all valid cases `Exact` measurement is equivalent to `Approximate`, but `Exact` checks
 // additional invariants that should hold on server and in standalone apps.

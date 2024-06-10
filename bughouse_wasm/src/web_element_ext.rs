@@ -167,3 +167,28 @@ impl WebElementExt for web_sys::Element {
         Ok(())
     }
 }
+
+// TODO: Show error content when the callback passed to `add_event_listener_and_forget` fails.
+// I tried these approached, but they didn't work:
+//
+// fn debug_js_value(js_value: JsValue) -> String {
+//     let json_value: Result<serde_json::Value, _> = serde_wasm_bindgen::from_value(js_value);
+//     match json_value {
+//         Ok(json_value) => {
+//             match serde_json::to_string(&json_value) {
+//                 Ok(json_string) => json_string,
+//                 Err(err) => format!("Error serializing to JSON: {}", err),
+//             }
+//         }
+//         Err(err) => format!("Error converting JsValue: {}", err),
+//     }
+// }
+//
+// #[wasm_bindgen(inline_js = "export function json_stringify(obj) {
+//     return JSON.stringify(obj, null, 2);
+// }")]
+// extern "C" {
+//     fn json_stringify(obj: &JsValue) -> String;
+// }
+// #[wasm_bindgen]
+// pub fn debug_js_value(js_value: JsValue) -> String { json_stringify(&js_value) }

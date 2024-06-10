@@ -15,13 +15,13 @@ extern crate wasm_bindgen;
 extern crate bughouse_chess;
 
 mod bughouse_prelude;
-mod html_collection_iterator;
 mod rules_ui;
 mod svg;
 mod web_chat;
 mod web_document;
 mod web_element_ext;
 mod web_error_handling;
+mod web_iterators;
 mod web_util;
 
 use std::cmp::Ordering;

@@ -12,10 +12,10 @@ use strum::IntoEnumIterator;
 use wasm_bindgen::prelude::*;
 
 use crate::bughouse_prelude::*;
-use crate::html_collection_iterator::IntoHtmlCollectionIterator;
 use crate::web_document::web_document;
 use crate::web_element_ext::WebElementExt;
 use crate::web_error_handling::JsResult;
+use crate::web_iterators::IntoHtmlCollectionIterator;
 use crate::{rust_error, IgnorableError};
 
 const RATING: &str = "rating"; // filled by JSs
@@ -215,7 +215,6 @@ struct VariantButtonState {
 struct VariantButton {
     name: String,
     states: Vec<VariantButtonState>,
-    default_state: usize,
     tooltip: Option<web_sys::Element>,
 }
 
@@ -238,18 +237,7 @@ impl VariantButtonState {
 
 impl VariantButton {
     fn new(name: impl Into<String>, states: Vec<VariantButtonState>) -> Self {
-        Self {
-            name: name.into(),
-            states,
-            default_state: 0,
-            tooltip: None,
-        }
-    }
-
-    fn with_default_state(mut self, default_state: usize) -> Self {
-        assert!(default_state < self.states.len());
-        self.default_state = default_state;
-        self
+        Self { name: name.into(), states, tooltip: None }
     }
 
     fn with_tooltip(mut self, node: web_sys::Element) -> Self {
@@ -273,33 +261,27 @@ impl VariantButton {
             button_node.set_id(&id);
             button_node.set_attribute("type", "button")?;
             button_node.class_list().add_2("rule-variant-button", class_on_off)?;
-            if i != self.default_state {
+            if i != 0 {
                 button_node.set_displayed(false)?;
-            };
+            }
             button_node.set_attribute("data-variant-name", &self.name)?;
             button_node.set_attribute("data-variant-value", &st.value)?;
             button_node.set_inner_html(&st.icon);
             let caption_node = button_node.append_new_element("div")?;
             caption_node.set_class_name("rule-variant-button-caption");
             caption_node.set_text_content(Some(&st.caption));
-            button_node.add_event_listener_and_forget(
-                "click",
-                move |_: web_sys::Event| -> JsResult<()> {
-                    let document = web_document();
-                    let button_node = document.get_existing_element_by_id(&id)?;
-                    let next_button_node = document.get_existing_element_by_id(&next_id)?;
-                    button_node.set_displayed(false)?;
-                    next_button_node.set_displayed(true)?;
-                    update_new_match_rules_body()?;
-                    Ok(())
-                },
-            )?;
+            button_node.add_event_listener_and_forget("click", move |_: web_sys::Event| {
+                let document = web_document();
+                let button_node = document.get_existing_element_by_id(&id)?;
+                let next_button_node = document.get_existing_element_by_id(&next_id)?;
+                button_node.set_displayed(false)?;
+                next_button_node.set_displayed(true)?;
+                update_new_match_rules_body()?;
+                Ok(())
+            })?;
         }
         if let Some(tooltip) = &self.tooltip {
-            node.class_list().add_1("tooltip-below")?;
-            let tooltip_node = node.append_new_element("div")?;
-            tooltip_node.set_class_name("tooltip-text");
-            tooltip_node.append_child(tooltip)?;
+            add_tooltip_below(&node, tooltip)?;
         }
         Ok(node)
     }
@@ -319,30 +301,26 @@ impl RuleNode {
     fn class(&self) -> String { rule_setting_class(&self.name) }
 
     fn with_input_select<S1: fmt::Display, S2: fmt::Display>(
-        mut self, options: impl IntoIterator<Item = (S1, S2, bool)>,
+        mut self, options: impl IntoIterator<Item = (S1, S2)>,
     ) -> JsResult<Self> {
-        let mut num_selected = 0;
-        let input_node = web_document().create_element("select")?;
-        input_node.set_id(&self.input_id());
-        input_node.set_attribute("name", &self.name)?;
-        input_node.class_list().add_1(&self.class())?;
-        for (value, label, selected) in options {
-            let option_node = input_node.append_new_element("option")?;
+        let node = web_document().create_element("select")?;
+        node.set_id(&self.input_id());
+        node.set_attribute("name", &self.name)?;
+        node.class_list().add_1(&self.class())?;
+        for (value, label) in options {
+            let option_node = node.append_new_element("option")?;
             option_node.set_attribute("value", &value.to_string())?;
             option_node.set_text_content(Some(&label.to_string()));
-            if selected {
-                num_selected += 1;
-                option_node.set_attribute("selected", "selected")?;
-            }
         }
-        assert_eq!(num_selected, 1);
-        self.input = Some(input_node);
+        node.add_event_listener_and_forget("change", move |_: web_sys::Event| {
+            update_new_match_rules_body()
+        })?;
+        self.input = Some(node.into());
         Ok(self)
     }
 
     fn with_input_text(
         mut self, pattern: impl fmt::Display, placeholder: impl fmt::Display,
-        value: impl fmt::Display,
     ) -> JsResult<Self> {
         let node = web_document().create_element("input").unwrap();
         node.set_id(&self.input_id());
@@ -351,10 +329,12 @@ impl RuleNode {
         node.set_attribute("class", &self.class())?;
         node.set_attribute("pattern", &pattern.to_string())?;
         node.set_attribute("placeholder", &placeholder.to_string())?;
-        node.set_attribute("value", &value.to_string())?;
         node.set_attribute("spellcheck", "false")?;
         node.set_attribute("autocomplete", "off")?;
         node.set_attribute("required", "")?;
+        node.add_event_listener_and_forget("change", move |_: web_sys::Event| {
+            update_new_match_rules_body()
+        })?;
         self.input = Some(node);
         Ok(self)
     }
@@ -379,6 +359,62 @@ impl RuleNode {
     }
 }
 
+fn preset_button(
+    preset: RulesPreset, label: &str, tooltip: web_sys::Element,
+) -> JsResult<web_sys::Element> {
+    let button = web_document().create_element("button")?;
+    button.set_attribute("type", "button")?;
+    button.set_attribute("value", preset.as_ref())?;
+    button.class_list().add_1("rule-preset-button")?;
+    button.set_text_content(Some(label));
+    button.add_event_listener_and_forget("click", move |_: web_sys::Event| {
+        new_match_apply_preset(preset)
+    })?;
+    add_tooltip_below(&button, &tooltip)?;
+    Ok(button)
+}
+
+fn set_input_value(name: &str, value: &str) -> JsResult<()> {
+    web_document()
+        .query_selector_existing(&format!("[name='{name}']"))?
+        .dyn_into::<web_sys::HtmlInputElement>()?
+        .set_value(value);
+    Ok(())
+}
+
+fn set_select_value(name: &str, value: &str) -> JsResult<()> {
+    web_document()
+        .query_selector_existing(&format!("[name='{name}']"))?
+        .dyn_into::<web_sys::HtmlSelectElement>()?
+        .set_value(value);
+    Ok(())
+}
+
+fn activate_variant_button_value(name: &str, value: &str) -> JsResult<()> {
+    let buttons = web_document().query_selector_all(&format!("[data-variant-name='{name}']"))?;
+    let mut num_visible = 0;
+    for button in buttons {
+        let button = button.dyn_into::<web_sys::Element>()?;
+        let is_visible = button.get_attribute("data-variant-value").as_deref() == Some(value);
+        button.set_displayed(is_visible)?;
+        num_visible += is_visible as u32;
+    }
+    if num_visible != 1 {
+        panic!("Bad value for variant button {name}: {value}");
+    }
+    Ok(())
+}
+
+fn activate_preset_button(preset: Option<RulesPreset>) -> JsResult<()> {
+    for button in web_document().get_elements_by_class_name("rule-preset-button") {
+        let is_active =
+            button.get_attribute("value").as_deref() == preset.as_ref().map(|p| p.as_ref());
+        button.class_list().toggle_with_force("rule-variant-on", is_active)?;
+        button.class_list().toggle_with_force("rule-variant-off", !is_active)?;
+    }
+    Ok(())
+}
+
 fn rule_setting_class(name: &str) -> String { format!("rule-setting-{}", name) }
 
 fn standalone_tooltip<'a>(
@@ -391,6 +427,14 @@ fn standalone_tooltip<'a>(
         .with_classes(iter::once("tooltip-text"))?
         .append_child(&body)?;
     Ok(node)
+}
+
+fn add_tooltip_below(node: &web_sys::Element, tooltip_body: &web_sys::Element) -> JsResult<()> {
+    node.class_list().add_1("tooltip-below")?;
+    let tooltip_node = node.append_new_element("div")?;
+    tooltip_node.class_list().add_1("tooltip-text")?;
+    tooltip_node.append_child(tooltip_body)?;
+    Ok(())
 }
 
 fn combine_elements(
@@ -643,6 +687,35 @@ fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Elemen
     ])
 }
 
+fn preset_rush_tooltip() -> JsResult<web_sys::Element> {
+    combine_elements([
+        web_document()
+            .create_element("p")?
+            .append_text_i("Rush preset. ")?
+            .append_text("Closer to classic chess. Unstoppable fierce attacks.")?,
+        web_document().create_element("p")?.append_text(
+            "Standard starting position and promotion rules.
+            Can drop with a checkmate, can drop pawns one move away from promotion,
+            so even few reserve pieces can create a lot of pressure.",
+        )?,
+    ])
+}
+
+fn preset_twist_tooltip() -> JsResult<web_sys::Element> {
+    combine_elements([
+        web_document()
+            .create_element("p")?
+            .append_text_i("Twist preset. ")?
+            .append_text("Varied and dynamic experience. Longer, more strategic attacks.")?,
+        web_document().create_element("p")?.append_text(
+            "Random starting position makes each game unique from the start.
+            Stealing promotion opens new modes of attack and defense.
+            Cannot drop with a checkmate, pawns have to be dropped at least two
+            moves away from promotion, so the attack has to be planned in advance.",
+        )?,
+    ])
+}
+
 pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()> {
     let document = web_document();
     let rules_node = document.get_existing_element_by_id("menu-create-match-rules")?;
@@ -650,11 +723,25 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
         // Only create the page once, because we leak the closures.
         return Ok(());
     }
+    let presets_node = rules_node.append_new_element("div")?.with_id("cc-rule-presets");
     let variants_node = rules_node.append_new_element("div")?.with_id("cc-rule-variants");
     let details_node = rules_node
         .append_new_element("div")?
         .with_id("cc-rule-details")
         .with_classes(["menu-page-body"])?;
+
+    presets_node.remove_all_children();
+    presets_node.append_text_span("Preset:", [])?;
+    presets_node.append_element(preset_button(
+        RulesPreset::Rush,
+        "Rush",
+        preset_rush_tooltip()?,
+    )?)?;
+    presets_node.append_element(preset_button(
+        RulesPreset::Twist,
+        "Twist",
+        preset_twist_tooltip()?,
+    )?)?;
 
     variants_node.remove_all_children();
     variants_node.append_element(
@@ -670,7 +757,6 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
             VariantButtonState::new("off", "Classic setup", FISCHER_RANDOM_OFF_ICON),
             VariantButtonState::new("fischer-random", "Fischer random", FISCHER_RANDOM_ON_ICON),
         ])
-        .with_default_state(1)
         .with_tooltip(combine_elements(fischer_random_tooltip()?)?)
         .to_element()?,
     )?;
@@ -710,7 +796,7 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
     details_node.remove_all_children();
     details_node.append_children(
         RuleNode::new(STARTING_TIME, "Starting time")
-            .with_input_text("[0-9]+:[0-5][0-9]", "m:ss", "5:00")?
+            .with_input_text("[0-9]+:[0-5][0-9]", "m:ss")?
             .with_tooltip(combine_elements(starting_time_tooltip(
                 server_options.max_starting_time,
             )?)?)?
@@ -719,9 +805,9 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
     details_node.append_children(
         RuleNode::new(PROMOTION, "Promotion")
             .with_input_select([
-                ("upgrade", "Upgrade", true),
-                ("discard", "Discard", false),
-                ("steal", "Steal", false),
+                ("upgrade", "Upgrade"),
+                ("discard", "Discard"),
+                ("steal", "Steal"),
             ])?
             .with_tooltip(combine_elements(
                 [
@@ -736,21 +822,17 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
     )?;
     details_node.append_children(
         RuleNode::new(PAWN_DROP_RANKS, "Pawn drop ranks")
-            .with_input_text(
-                "1-[1-7]|2-[2-7]|3-[3-7]|4-[4-7]|5-[5-7]|6-[6-7]|7-[7-7]",
-                "min-max",
-                "2-6",
-            )?
+            .with_input_text("1-[1-7]|2-[2-7]|3-[3-7]|4-[4-7]|5-[5-7]|6-[6-7]|7-[7-7]", "min-max")?
             .with_tooltip(combine_elements(pawn_drop_rank_general_tooltip()?)?)?
             .to_elements()?,
     )?;
     details_node.append_children(
         RuleNode::new(DROP_AGGRESSION, "Drop aggression")
             .with_input_select([
-                ("no-check", "No check", false),
-                ("no-chess-mate", "No chess mate", true),
-                ("no-bughouse-mate", "No bughouse mate", false),
-                ("mate-allowed", "Mate allowed", false),
+                ("no-check", "No check"),
+                ("no-chess-mate", "No chess mate"),
+                ("no-bughouse-mate", "No bughouse mate"),
+                ("mate-allowed", "Mate allowed"),
             ])?
             .with_tooltip(combine_elements(
                 [
@@ -783,9 +865,12 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
             standalone_tooltip(combine_elements(regicide_general_tooltip()?)?, [REGICIDE_CLASS])?,
         ])?;
     }
+
+    new_match_apply_preset(RulesPreset::Twist)?;
     Ok(())
 }
 
+// TODO: Show preset, if any.
 pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
     // Note: Use a table rather than two independent blocks with valign=top in order to align the
     // caption with the baseline of the first variant.
@@ -944,6 +1029,9 @@ pub fn update_new_match_rules_body() -> JsResult<()> {
     for node in web_document().get_elements_by_class_name(&rule_setting_class(DROP_AGGRESSION)) {
         node.set_displayed(!regicide)?;
     }
+
+    let preset = new_match_rules().map_or(None, |r| r.chess_rules.get_preset());
+    activate_preset_button(preset)?;
     Ok(())
 }
 
@@ -997,21 +1085,12 @@ pub fn new_match_rules() -> JsResult<Rules> {
         "mate-allowed" => DropAggression::MateAllowed,
         s => return Err(format!("Invalid drop aggression: {s}").into()),
     };
-
     let starting_time = details.get(STARTING_TIME).as_string().unwrap();
-    let Some((Ok(starting_minutes), Ok(starting_seconds))) =
-        starting_time.split(':').map(|v| v.parse::<u64>()).collect_tuple()
-    else {
+    let Some(starting_time) = duration_from_mss(&starting_time) else {
         return Err(format!("Invalid starting time: {starting_time}").into());
     };
-    let starting_time = Duration::from_secs(starting_minutes * 60 + starting_seconds);
-
     let pawn_drop_ranks = details.get(PAWN_DROP_RANKS).as_string().unwrap();
-    let Some((Some(min_pawn_drop_rank), Some(max_pawn_drop_rank))) = pawn_drop_ranks
-        .split('-')
-        .map(|v| v.parse::<i8>().ok().map(SubjectiveRow::from_one_based))
-        .collect_tuple()
-    else {
+    let Ok(pawn_drop_ranks) = PawnDropRanks::from_pgn(&pawn_drop_ranks) else {
         return Err(format!("Invalid pawn drop ranks: {pawn_drop_ranks}").into());
     };
 
@@ -1034,10 +1113,7 @@ pub fn new_match_rules() -> JsResult<Rules> {
         bughouse_rules: Some(BughouseRules {
             koedem,
             promotion,
-            pawn_drop_ranks: PawnDropRanks {
-                min: min_pawn_drop_rank,
-                max: max_pawn_drop_rank,
-            },
+            pawn_drop_ranks,
             drop_aggression,
         }),
     };
@@ -1049,4 +1125,59 @@ pub fn new_match_rules() -> JsResult<Rules> {
         return Err(IgnorableError { message }.into());
     }
     Ok(rules)
+}
+
+fn new_match_apply_preset(preset: RulesPreset) -> JsResult<()> {
+    new_match_apply_rules(&ChessRules::from_preset(preset))
+}
+
+fn new_match_apply_rules(rules: &ChessRules) -> JsResult<()> {
+    let bughouse_rules = rules.bughouse_rules.as_ref().unwrap();
+
+    // Chess variants
+    activate_variant_button_value(FAIRY_PIECES, match rules.fairy_pieces {
+        FairyPieces::NoFairy => "off",
+        FairyPieces::Accolade => "accolade",
+    })?;
+    activate_variant_button_value(STARTING_POSITION, match rules.starting_position {
+        StartingPosition::Classic => "off",
+        StartingPosition::FischerRandom => "fischer-random",
+    })?;
+    activate_variant_button_value(DUCK_CHESS, match rules.duck_chess {
+        false => "off",
+        true => "on",
+    })?;
+    activate_variant_button_value(ATOMIC_CHESS, match rules.atomic_chess {
+        false => "off",
+        true => "on",
+    })?;
+    activate_variant_button_value(FOG_OF_WAR, match rules.fog_of_war {
+        false => "off",
+        true => "on",
+    })?;
+    activate_variant_button_value(KOEDEM, match bughouse_rules.koedem {
+        false => "off",
+        true => "on",
+    })?;
+
+    // Other chess rules
+    set_select_value(PROMOTION, match bughouse_rules.promotion {
+        Promotion::Upgrade => "upgrade",
+        Promotion::Discard => "discard",
+        Promotion::Steal => "steal",
+    })?;
+    set_select_value(DROP_AGGRESSION, match bughouse_rules.drop_aggression {
+        DropAggression::NoCheck => "no-check",
+        DropAggression::NoChessMate => "no-chess-mate",
+        DropAggression::NoBughouseMate => "no-bughouse-mate",
+        DropAggression::MateAllowed => "mate-allowed",
+    })?;
+    set_input_value(STARTING_TIME, &duration_to_mss(rules.time_control.starting_time))?;
+    set_input_value(PAWN_DROP_RANKS, &bughouse_rules.pawn_drop_ranks.to_pgn())?;
+
+    // Non-chess rules (like RATING) are out of scope.
+
+    // Final touches
+    update_new_match_rules_body()?;
+    Ok(())
 }

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use chain_cmp::chmp;
 use serde::{Deserialize, Serialize};
-use strum::EnumIter;
+use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
 use crate::clock::TimeControl;
 use crate::coord::{BoardShape, SubjectiveRow};
@@ -24,6 +24,11 @@ use crate::coord::{BoardShape, SubjectiveRow};
 // we don't wait for observer readiness (and the latter is definitely not changing).
 pub const FIRST_GAME_COUNTDOWN_DURATION: Duration = Duration::from_secs(3);
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter, AsRefStr, Serialize, Deserialize)]
+pub enum RulesPreset {
+    Rush,
+    Twist,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum StartingPosition {
@@ -193,6 +198,39 @@ impl MatchRules {
 // Improvement potential. Precompute `variants` and `regicide_reason`. Note that this would mean
 // all `ChessRules` fields need to become private.
 impl ChessRules {
+    pub fn from_preset(preset: RulesPreset) -> Self {
+        match preset {
+            RulesPreset::Rush => Self {
+                bughouse_rules: Some(BughouseRules {
+                    koedem: false,
+                    promotion: Promotion::Upgrade,
+                    pawn_drop_ranks: PawnDropRanks::from_one_based(2, 7),
+                    drop_aggression: DropAggression::MateAllowed,
+                }),
+                ..Self::chess_blitz()
+            },
+            RulesPreset::Twist => Self {
+                starting_position: StartingPosition::FischerRandom,
+                bughouse_rules: Some(BughouseRules {
+                    koedem: false,
+                    promotion: Promotion::Steal,
+                    pawn_drop_ranks: PawnDropRanks::from_one_based(2, 6),
+                    drop_aggression: DropAggression::NoChessMate,
+                }),
+                ..Self::chess_blitz()
+            },
+        }
+    }
+
+    pub fn get_preset(&self) -> Option<RulesPreset> {
+        for preset in RulesPreset::iter() {
+            if *self == Self::from_preset(preset) {
+                return Some(preset);
+            }
+        }
+        None
+    }
+
     pub fn chess_blitz() -> Self {
         Self {
             fairy_pieces: FairyPieces::NoFairy,
@@ -356,23 +394,24 @@ impl DropAggression {
 }
 
 impl PawnDropRanks {
+    pub fn from_one_based(min: i8, max: i8) -> Self {
+        assert!(min <= max, "Bad PawnDropRanks range: {min}-{max}");
+        Self {
+            min: SubjectiveRow::from_one_based(min),
+            max: SubjectiveRow::from_one_based(max),
+        }
+    }
     // The most permissive pawn drop rules possible. In particular, it allows dropping pawns on the
     // first rank, which is almost never allowed.
     pub fn widest(board_shape: BoardShape) -> Self {
-        Self {
-            min: SubjectiveRow::from_one_based(1),
-            max: SubjectiveRow::from_one_based(board_shape.num_rows as i8 - 1),
-        }
+        Self::from_one_based(1, board_shape.num_rows as i8 - 1)
     }
     pub fn to_pgn(&self) -> String {
         format!("{}-{}", self.min.to_one_based(), self.max.to_one_based())
     }
     pub fn from_pgn(s: &str) -> Result<Self, ()> {
         let (min, max) = s.split_once('-').ok_or(())?;
-        Ok(Self {
-            min: SubjectiveRow::from_one_based(min.parse().map_err(|_| ())?),
-            max: SubjectiveRow::from_one_based(max.parse().map_err(|_| ())?),
-        })
+        Ok(Self::from_one_based(min.parse().map_err(|_| ())?, max.parse().map_err(|_| ())?))
     }
     pub fn to_human_readable(&self) -> String { self.to_pgn() }
 }

@@ -1,6 +1,6 @@
-use crate::html_collection_iterator::HtmlCollectionIterator;
 use crate::rust_error;
 use crate::web_error_handling::JsResult;
+use crate::web_iterators::{HtmlCollectionIterator, NodeListIterator};
 
 
 pub struct WebDocument(web_sys::Document);
@@ -32,6 +32,15 @@ impl WebDocument {
             element.class_list().remove_1(class_name)?;
         }
         Ok(())
+    }
+
+    pub fn query_selector_existing(&self, selectors: &str) -> JsResult<web_sys::Element> {
+        self.0.query_selector(selectors).and_then(|e| {
+            e.ok_or_else(|| rust_error!("Cannot find element by selectors \"{}\"", selectors))
+        })
+    }
+    pub fn query_selector_all(&self, selectors: &str) -> JsResult<NodeListIterator> {
+        self.0.query_selector_all(selectors).map(|iter| iter.into())
     }
 
     pub fn create_element(&self, local_name: &str) -> JsResult<web_sys::Element> {
