@@ -46,7 +46,9 @@ pub trait SecretDatabaseReader {
     async fn account_by_email(&self, email: &str) -> Result<Option<Account>, anyhow::Error>;
     async fn account_by_user_name(&self, user_name: &str)
         -> Result<Option<Account>, anyhow::Error>;
-    async fn account_by_lichess_user_id(&self, user_id: &str) -> Result<Option<Account>, anyhow::Error>;
+    async fn account_by_lichess_user_id(
+        &self, user_id: &str,
+    ) -> Result<Option<Account>, anyhow::Error>;
     async fn list_sessions(&self) -> Result<Vec<(SessionId, Session)>, anyhow::Error>;
 }
 
