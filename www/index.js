@@ -1648,13 +1648,8 @@ function update_session() {
     let user_name = null;
     switch (session.status) {
       case "unknown":
-      case "google_oauth_registering": {
-        is_registered_user = false;
-        is_guest = false;
-        user_name = null;
-        break;
-      }
-      case "google_oauth_registering": {
+      case "google_oauth_registering":
+      case "lichess_oauth_registering": {
         is_registered_user = false;
         is_guest = false;
         user_name = null;
