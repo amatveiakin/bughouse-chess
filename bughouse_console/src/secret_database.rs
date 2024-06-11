@@ -46,7 +46,9 @@ where
         row.map(row_to_account).transpose()
     }
 
-    async fn account_by_lichess_user_id(&self, user_id: &str) -> Result<Option<Account>, anyhow::Error> {
+    async fn account_by_lichess_user_id(
+        &self, user_id: &str,
+    ) -> Result<Option<Account>, anyhow::Error> {
         let row = self
             .pool
             .fetch_optional(
@@ -408,8 +410,12 @@ impl SecretDatabaseReader for UnimplementedDatabase {
             "account_by_user_name is unimplemented in UnimplementedDatabase",
         ))
     }
-    async fn account_by_lichess_user_id(&self, _user_id: &str) -> Result<Option<Account>, anyhow::Error> {
-        Err(anyhow::Error::msg("account_by_lichess_user_id is unimplemented in UnimplementedDatabase"))
+    async fn account_by_lichess_user_id(
+        &self, _user_id: &str,
+    ) -> Result<Option<Account>, anyhow::Error> {
+        Err(anyhow::Error::msg(
+            "account_by_lichess_user_id is unimplemented in UnimplementedDatabase",
+        ))
     }
     async fn list_sessions(&self) -> Result<Vec<(SessionId, Session)>, anyhow::Error> {
         Err(anyhow::Error::msg("list_sessions is unimplemented in UnimplementedDatabase"))
