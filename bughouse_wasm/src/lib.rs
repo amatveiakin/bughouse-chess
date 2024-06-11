@@ -95,6 +95,7 @@ pub struct JsSession {
     pub status: String,
     pub user_name: String,
     pub email: String,
+    pub lichess_user_id: String,
     pub registration_method: String,
 }
 
@@ -155,11 +156,18 @@ impl WebClient {
             LichessOAuthRegistering(_) => "lichess_oauth_registering",
         };
         let user_name = self.state.session().user_name().unwrap_or("").to_string();
-        let email = match self.state.session() {
-            Unknown | LoggedOut | PkceChallengeInitiated(_) => String::new(),
-            LoggedIn(UserInfo { email, .. }) => email.clone().unwrap_or(String::new()),
-            GoogleOAuthRegistering(GoogleOAuthRegistrationInfo { email }) => email.clone(),
-            LichessOAuthRegistering(LichessOAuthRegistrationInfo { email }) => email.clone(),
+        let (email, lichess_user_id) = match self.state.session() {
+            Unknown | LoggedOut | PkceChallengeInitiated(_) => (String::new(), String::new()),
+            LoggedIn(UserInfo { email, lichess_user_id, .. }) => (
+                email.clone().unwrap_or(String::new()),
+                lichess_user_id.clone().unwrap_or(String::new()),
+            ),
+            GoogleOAuthRegistering(GoogleOAuthRegistrationInfo { email }) => {
+                (email.clone(), String::new())
+            }
+            LichessOAuthRegistering(LichessOAuthRegistrationInfo { user_id }) => {
+                (String::new(), user_id.clone())
+            }
         };
         let registration_method = match self.state.session() {
             Unknown | LoggedOut | PkceChallengeInitiated(_) => String::new(),
@@ -171,6 +179,7 @@ impl WebClient {
             status: status.to_owned(),
             user_name,
             email,
+            lichess_user_id,
             registration_method,
         }
         .into())

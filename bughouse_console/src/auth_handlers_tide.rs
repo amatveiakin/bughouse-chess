@@ -145,6 +145,7 @@ pub async fn handle_signup<DB: Send + Sync + 'static>(
             user_name.clone(),
             email.clone(),
             Some(password_hash),
+            None,
             RegistrationMethod::Password,
             OffsetDateTime::now_utc(),
         )
@@ -154,6 +155,7 @@ pub async fn handle_signup<DB: Send + Sync + 'static>(
     let session = Session::LoggedIn(UserInfo {
         user_name,
         email,
+        lichess_user_id: None,
         registration_method: RegistrationMethod::Password,
     });
     let session_id = get_session_id(&req)?;
@@ -182,6 +184,7 @@ pub async fn handle_login<DB: Send + Sync + 'static>(
     let session = Session::LoggedIn(UserInfo {
         user_name: account.user_name,
         email: account.email,
+        lichess_user_id: None,
         registration_method: RegistrationMethod::Password,
     });
     let session_id = get_session_id(&req)?;
@@ -314,6 +317,7 @@ pub async fn handle_continue_sign_with_google<DB: Send + Sync + 'static>(
             Session::LoggedIn(UserInfo {
                 user_name: account.user_name,
                 email: Some(email),
+                lichess_user_id: None,
                 registration_method: RegistrationMethod::GoogleOAuth,
             })
         }
@@ -363,7 +367,7 @@ pub async fn handle_continue_sign_with_lichess<DB: Send + Sync + 'static>(
         }
     };
 
-    let email = req
+    let user_id = req
         .state()
         .lichess_auth
         .as_ref()
@@ -371,13 +375,13 @@ pub async fn handle_continue_sign_with_lichess<DB: Send + Sync + 'static>(
             StatusCode::NotImplemented,
             "Lichess auth is not enabled.",
         ))?
-        .email(callback_url_str, auth_code, PkceCodeVerifier::new(verifier))
+        .user_id(callback_url_str, auth_code, PkceCodeVerifier::new(verifier))
         .await?;
 
-    let account = req.state().secret_db.account_by_email(&email).await?;
+    let account = req.state().secret_db.account_by_lichess_user_id(&user_id).await?;
 
     let session = match account {
-        None => Session::LichessOAuthRegistering(LichessOAuthRegistrationInfo { email }),
+        None => Session::LichessOAuthRegistering(LichessOAuthRegistrationInfo { user_id }),
         Some(Account::Live(account)) => {
             if account.registration_method != RegistrationMethod::LichessOAuth {
                 return Err(tide::Error::from_str(
@@ -390,7 +394,8 @@ pub async fn handle_continue_sign_with_lichess<DB: Send + Sync + 'static>(
             }
             Session::LoggedIn(UserInfo {
                 user_name: account.user_name,
-                email: Some(email),
+                email: None,
+                lichess_user_id: Some(user_id),
                 registration_method: RegistrationMethod::LichessOAuth,
             })
         }
@@ -450,6 +455,7 @@ pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
             user_name.clone(),
             Some(email.clone()),
             None,
+            None,
             RegistrationMethod::GoogleOAuth,
             OffsetDateTime::now_utc(),
         )
@@ -459,6 +465,7 @@ pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
     let session = Session::LoggedIn(UserInfo {
         user_name,
         email: Some(email),
+        lichess_user_id: None,
         registration_method: RegistrationMethod::GoogleOAuth,
     });
     req.state().session_store.lock().unwrap().set(session_id, session);
@@ -485,11 +492,11 @@ pub async fn handle_finish_signup_with_lichess<DB: Send + Sync + 'static>(
     };
 
     let session_id = get_session_id(&req)?;
-    let email = {
+    let user_id = {
         let session_store = req.state().session_store.lock().unwrap();
         match session_store.get(&session_id) {
-            Some(Session::LichessOAuthRegistering(LichessOAuthRegistrationInfo { email })) => {
-                email.clone()
+            Some(Session::LichessOAuthRegistering(LichessOAuthRegistrationInfo { user_id })) => {
+                user_id.clone()
             }
             _ => {
                 return Err(tide::Error::from_str(
@@ -504,8 +511,9 @@ pub async fn handle_finish_signup_with_lichess<DB: Send + Sync + 'static>(
         .secret_db
         .create_account(
             user_name.clone(),
-            Some(email.clone()),
             None,
+            None,
+            Some(user_id.clone()),
             RegistrationMethod::LichessOAuth,
             OffsetDateTime::now_utc(),
         )
@@ -514,7 +522,8 @@ pub async fn handle_finish_signup_with_lichess<DB: Send + Sync + 'static>(
 
     let session = Session::LoggedIn(UserInfo {
         user_name,
-        email: Some(email),
+        email: None,
+        lichess_user_id: Some(user_id),
         registration_method: RegistrationMethod::LichessOAuth,
     });
     req.state().session_store.lock().unwrap().set(session_id, session);
@@ -588,6 +597,7 @@ pub async fn handle_change_account<DB: Send + Sync + 'static>(
     let session = Session::LoggedIn(UserInfo {
         user_name,
         email: email_copy,
+        lichess_user_id: None,
         registration_method: old_account.registration_method,
     });
     req.state().session_store.lock().unwrap().set(session_id, session);

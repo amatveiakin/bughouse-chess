@@ -34,12 +34,38 @@ where
                         user_name,
                         email,
                         password_hash,
+                        lichess_user_id,
                         registration_method
                      FROM accounts
                      WHERE
                         email=$1",
                 )
                 .bind(email.to_owned()),
+            )
+            .await?;
+        row.map(row_to_account).transpose()
+    }
+
+    async fn account_by_lichess_user_id(&self, user_id: &str) -> Result<Option<Account>, anyhow::Error> {
+        let row = self
+            .pool
+            .fetch_optional(
+                sqlx::query::<DB>(
+                    "SELECT
+                        rowid,
+                        deleted,
+                        creation_time,
+                        deletion_time,
+                        user_name,
+                        email,
+                        password_hash,
+                        lichess_user_id,
+                        registration_method
+                     FROM accounts
+                     WHERE
+                        lichess_user_id=$1",
+                )
+                .bind(user_id.to_owned()),
             )
             .await?;
         row.map(row_to_account).transpose()
@@ -61,6 +87,7 @@ where
                         user_name,
                         email,
                         password_hash,
+                        lichess_user_id,
                         registration_method
                      FROM accounts
                      WHERE
@@ -85,6 +112,7 @@ where
                         accounts.user_name,
                         accounts.email,
                         accounts.password_hash,
+                        accounts.lichess_user_id,
                         accounts.registration_method
                      FROM sessions INNER JOIN accounts USING(user_name)                   ",
             ))
@@ -97,6 +125,7 @@ where
                     Session::LoggedIn(UserInfo {
                         user_name: acc.user_name,
                         email: acc.email,
+                        lichess_user_id: acc.lichess_user_id,
                         registration_method: acc.registration_method,
                     }),
                 )),
@@ -144,6 +173,7 @@ where
         creation_time,
         user_name,
         email: row.try_get("email")?,
+        lichess_user_id: row.try_get("lichess_user_id")?,
         password_hash: row.try_get("password_hash")?,
         registration_method: RegistrationMethod::try_from_string(
             row.try_get("registration_method")?,
@@ -180,6 +210,7 @@ where
                 user_name TEXT UNIQUE,
                 email TEXT UNIQUE,
                 password_hash TEXT,
+                lichess_user_id TEXT,
                 registration_method TEXT
                 )",
             )
@@ -205,7 +236,8 @@ where
 
     async fn create_account(
         &self, user_name: String, email: Option<String>, password_hash: Option<String>,
-        registration_method: RegistrationMethod, creation_time: OffsetDateTime,
+        lichess_user_id: Option<String>, registration_method: RegistrationMethod,
+        creation_time: OffsetDateTime,
     ) -> anyhow::Result<()> {
         sqlx::query(
             "INSERT INTO accounts(
@@ -213,13 +245,15 @@ where
                 user_name,
                 email,
                 password_hash,
+                lichess_user_id,
                 registration_method)
-            VALUES ($1, $2, $3, $4, $5)",
+            VALUES ($1, $2, $3, $4, $5, $6)",
         )
         .bind(creation_time)
         .bind(user_name)
         .bind(email)
         .bind(password_hash)
+        .bind(lichess_user_id)
         .bind(registration_method.to_string())
         .execute(&self.pool)
         .await?;
@@ -267,6 +301,7 @@ where
                         user_name,
                         email,
                         password_hash,
+                        lichess_user_id,
                         registration_method
                      FROM accounts
                      WHERE
@@ -287,6 +322,7 @@ where
                     user_name=$2,
                     email=$3,
                     password_hash=$4,
+                    lichess_user_id=$5,
                     registration_method=$5
                 WHERE rowid=$6",
             )
@@ -294,6 +330,7 @@ where
             .bind(live_account.user_name)
             .bind(live_account.email)
             .bind(live_account.password_hash)
+            .bind(live_account.lichess_user_id)
             .bind(live_account.registration_method.to_string())
             .bind(id.0),
         )
@@ -318,6 +355,7 @@ where
                         user_name,
                         email,
                         password_hash,
+                        lichess_user_id,
                         registration_method
                      FROM accounts
                      WHERE
@@ -340,6 +378,7 @@ where
                     user_name=$3,
                     email=NULL,
                     password_hash=NULL,
+                    lichess_user_id=NULL,
                     registration_method=NULL
                 WHERE rowid=$4",
             )
@@ -369,6 +408,9 @@ impl SecretDatabaseReader for UnimplementedDatabase {
             "account_by_user_name is unimplemented in UnimplementedDatabase",
         ))
     }
+    async fn account_by_lichess_user_id(&self, _user_id: &str) -> Result<Option<Account>, anyhow::Error> {
+        Err(anyhow::Error::msg("account_by_lichess_user_id is unimplemented in UnimplementedDatabase"))
+    }
     async fn list_sessions(&self) -> Result<Vec<(SessionId, Session)>, anyhow::Error> {
         Err(anyhow::Error::msg("list_sessions is unimplemented in UnimplementedDatabase"))
     }
@@ -381,7 +423,8 @@ impl SecretDatabaseWriter for UnimplementedDatabase {
     }
     async fn create_account(
         &self, _user_name: String, _email: Option<String>, _password_hash: Option<String>,
-        _registration_method: RegistrationMethod, _creation_time: OffsetDateTime,
+        _lichess_user_id: Option<String>, _registration_method: RegistrationMethod,
+        _creation_time: OffsetDateTime,
     ) -> anyhow::Result<()> {
         Err(anyhow::Error::msg("create_account is unimplemented in UnimplementedDatabase"))
     }

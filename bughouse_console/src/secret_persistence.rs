@@ -12,6 +12,7 @@ pub struct LiveAccount {
     pub id: AccountId,
     pub user_name: String,
     pub email: Option<String>,
+    pub lichess_user_id: Option<String>,
     pub password_hash: Option<String>,
     pub registration_method: RegistrationMethod,
     pub creation_time: OffsetDateTime,
@@ -45,6 +46,7 @@ pub trait SecretDatabaseReader {
     async fn account_by_email(&self, email: &str) -> Result<Option<Account>, anyhow::Error>;
     async fn account_by_user_name(&self, user_name: &str)
         -> Result<Option<Account>, anyhow::Error>;
+    async fn account_by_lichess_user_id(&self, user_id: &str) -> Result<Option<Account>, anyhow::Error>;
     async fn list_sessions(&self) -> Result<Vec<(SessionId, Session)>, anyhow::Error>;
 }
 
@@ -53,7 +55,8 @@ pub trait SecretDatabaseWriter {
     async fn create_tables(&self) -> anyhow::Result<()>;
     async fn create_account(
         &self, user_name: String, email: Option<String>, password_hash: Option<String>,
-        registration_method: RegistrationMethod, creation_time: OffsetDateTime,
+        lichess_user_id: Option<String>, registration_method: RegistrationMethod,
+        creation_time: OffsetDateTime,
     ) -> anyhow::Result<()>;
     async fn update_account_txn(
         &self, id: AccountId,

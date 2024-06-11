@@ -33,6 +33,7 @@ impl RegistrationMethod {
 pub struct UserInfo {
     pub user_name: String,
     pub email: Option<String>,
+    pub lichess_user_id: Option<String>,
     pub registration_method: RegistrationMethod,
 }
 
@@ -43,7 +44,7 @@ pub struct GoogleOAuthRegistrationInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LichessOAuthRegistrationInfo {
-    pub email: String,
+    pub user_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

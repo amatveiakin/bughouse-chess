@@ -1710,6 +1710,9 @@ function update_session() {
     for (const node of document.querySelectorAll(".logged-in-as-email")) {
       node.textContent = session.email || "—";
     }
+    for (const node of document.querySelectorAll(".logged-in-as-lichess-user-id")) {
+      node.textContent = session.lichess_user_id || "—";
+    }
     for (const node of document.querySelectorAll(".logged-in-with-password")) {
       node.style.display = using_password_auth ? null : "None";
       node.disabled = !using_password_auth;

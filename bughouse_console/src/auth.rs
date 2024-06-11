@@ -45,6 +45,14 @@ struct GoogleUserInfo {
     email: String,
 }
 
+// Internal Lichess-specific user info struct, used for
+// deserializing user info JSON responses from the API.
+// https://lichess.org/api
+#[derive(Deserialize)]
+struct LichessUserInfo {
+    id: String,
+}
+
 // Internal OAuth-specific (Google-specific?) structure of the redirected
 // URL parameters.
 #[derive(Deserialize)]
@@ -136,7 +144,7 @@ impl LichessAuth {
         Ok(Self { client })
     }
 
-    pub async fn email(
+    pub async fn user_id(
         &self, callback_url: String, code: AuthorizationCode, pkce_verifier: PkceCodeVerifier,
     ) -> anyhow::Result<String> {
         let token_response = self
@@ -151,15 +159,15 @@ impl LichessAuth {
         let secret = token_response.access_token().secret();
         let client = reqwest::Client::new();
         let response = client
-            .get("https://lichess.org/api/account/email")
+            .get("https://lichess.org/api/account")
             .header("Authorization", format!("Bearer {}", secret))
             .send()
             .await
             .context("requesting user info failed")?
-            .json::<GoogleUserInfo>()
+            .json::<LichessUserInfo>()
             .await
             .context("getting user info JSON failed")?;
-        Ok(response.email)
+        Ok(response.id)
     }
 
     pub fn start(
@@ -171,7 +179,7 @@ impl LichessAuth {
             .clone()
             .set_redirect_uri(RedirectUrl::new(callback_url)?)
             .authorize_url(CsrfToken::new_random)
-            .add_scope(Scope::new("email:read".to_owned()))
+            // .add_scope(Scope::new("email:read".to_owned()))
             .set_pkce_challenge(pkce_challenge)
             .url();
         Ok((url, csrf_token, pkce_verifier))
