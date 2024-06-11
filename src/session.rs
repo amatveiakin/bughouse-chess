@@ -60,7 +60,7 @@ pub enum Session {
     LoggedOut,
     PkceChallengeInitiated(PkceChallengeInfo),
     GoogleOAuthRegistering(GoogleOAuthRegistrationInfo), // in the midst of Google OAuth signup
-    LichessOAuthRegistering(LichessOAuthRegistrationInfo), // in the midst of Google OAuth signup
+    LichessOAuthRegistering(LichessOAuthRegistrationInfo), // in the midst of Lichess OAuth signup
     LoggedIn(UserInfo),
 }
 

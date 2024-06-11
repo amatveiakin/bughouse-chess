@@ -1654,6 +1654,12 @@ function update_session() {
         user_name = null;
         break;
       }
+      case "google_oauth_registering": {
+        is_registered_user = false;
+        is_guest = false;
+        user_name = null;
+        break;
+      }
       case "logged_out": {
         is_registered_user = false;
         is_guest = true;
