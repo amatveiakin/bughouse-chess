@@ -1,6 +1,9 @@
 use anyhow::anyhow;
-use bughouse_chess::session::{GoogleOAuthRegistrationInfo, RegistrationMethod, Session, UserInfo};
-use oauth2::AuthorizationCode;
+use bughouse_chess::session::{
+    GoogleOAuthRegistrationInfo, LichessOAuthRegistrationInfo, PkceChallengeInfo,
+    RegistrationMethod, Session, UserInfo,
+};
+use oauth2::{AuthorizationCode, PkceCodeVerifier};
 use serde::Deserialize;
 use tide::StatusCode;
 use time::OffsetDateTime;
@@ -17,8 +20,11 @@ pub const AUTH_SIGNUP_PATH: &str = "/auth/signup";
 pub const AUTH_LOGIN_PATH: &str = "/auth/login";
 pub const AUTH_LOGOUT_PATH: &str = "/auth/logout";
 pub const AUTH_SIGN_WITH_GOOGLE_PATH: &str = "/auth/sign-with-google";
+pub const AUTH_SIGN_WITH_LICHESS_PATH: &str = "/auth/sign-with-lichess";
 pub const AUTH_CONTINUE_SIGN_WITH_GOOGLE_PATH: &str = "/auth/continue-sign-with-google";
+pub const AUTH_CONTINUE_SIGN_WITH_LICHESS_PATH: &str = "/auth/continue-sign-with-lichess";
 pub const AUTH_FINISH_SIGNUP_WITH_GOOGLE_PATH: &str = "/auth/finish-signup-with-google";
+pub const AUTH_FINISH_SIGNUP_WITH_LICHESS_PATH: &str = "/auth/finish-signup-with-lichess";
 pub const AUTH_CHANGE_ACCOUNT_PATH: &str = "/auth/change-account";
 pub const AUTH_DELETE_ACCOUNT_PATH: &str = "/auth/delete-account";
 pub const AUTH_MYSESSION_PATH: &str = "/auth/mysession";
@@ -38,6 +44,11 @@ struct LoginData {
 
 #[derive(Deserialize)]
 struct FinishSignupWithGoogleData {
+    user_name: String,
+}
+
+#[derive(Deserialize)]
+struct FinishSignupWithLichessData {
     user_name: String,
 }
 
@@ -75,7 +86,7 @@ pub fn check_origin<T>(req: &tide::Request<T>, allowed_origin: &AllowedOrigin) -
     ))
 }
 
-pub fn check_google_csrf<T>(req: &tide::Request<T>) -> tide::Result<AuthorizationCode> {
+pub fn check_oauth_csrf<T>(req: &tide::Request<T>) -> tide::Result<AuthorizationCode> {
     let (auth_code, request_csrf_state) = req.query::<auth::NewSessionQuery>()?.parse();
     let Some(oauth_csrf_state_cookie) = req.cookie(OAUTH_CSRF_COOKIE_NAME) else {
         return Err(tide::Error::from_str(StatusCode::Forbidden, "Missing CSRF token cookie."));
@@ -134,6 +145,7 @@ pub async fn handle_signup<DB: Send + Sync + 'static>(
             user_name.clone(),
             email.clone(),
             Some(password_hash),
+            None,
             RegistrationMethod::Password,
             OffsetDateTime::now_utc(),
         )
@@ -143,6 +155,7 @@ pub async fn handle_signup<DB: Send + Sync + 'static>(
     let session = Session::LoggedIn(UserInfo {
         user_name,
         email,
+        lichess_user_id: None,
         registration_method: RegistrationMethod::Password,
     });
     let session_id = get_session_id(&req)?;
@@ -171,6 +184,7 @@ pub async fn handle_login<DB: Send + Sync + 'static>(
     let session = Session::LoggedIn(UserInfo {
         user_name: account.user_name,
         email: account.email,
+        lichess_user_id: None,
         registration_method: RegistrationMethod::Password,
     });
     let session_id = get_session_id(&req)?;
@@ -217,6 +231,50 @@ pub async fn handle_sign_with_google<DB: Send + Sync + 'static>(
     Ok(resp)
 }
 
+pub async fn handle_sign_with_lichess<DB: Send + Sync + 'static>(
+    req: tide::Request<HttpServerState<DB>>,
+) -> tide::Result {
+    let mut callback_url = req.url().clone();
+    callback_url.set_path(AUTH_CONTINUE_SIGN_WITH_LICHESS_PATH);
+    req.state().upgrade_auth_callback(&mut callback_url)?;
+    let (redirect_url, csrf_state, pkce_verifier) = req
+        .state()
+        .lichess_auth
+        .as_ref()
+        .ok_or(tide::Error::from_str(
+            StatusCode::NotImplemented,
+            "Lichess Auth is not enabled.",
+        ))?
+        .start(callback_url.into())?;
+
+    let session_id = get_session_id(&req)?;
+    req.state().session_store.lock().unwrap().set(
+        session_id,
+        Session::PkceChallengeInitiated(PkceChallengeInfo {
+            verifier: pkce_verifier.secret().clone(),
+        }),
+    );
+
+    let mut resp: tide::Response = req.into();
+    resp.set_status(StatusCode::TemporaryRedirect);
+    resp.insert_header(http_types::headers::LOCATION, redirect_url.as_str());
+
+    // Original motivation:
+    // Using a separate cookie for oauth csrf state because the session
+    // cookie has SameSite::Strict policy (and we want to keep that),
+    // which prevents browsers from setting the session cookie upon
+    // redirect.
+    // This will use the default, which is SameSite::Lax on most browsers,
+    // which should still be good enough.
+    // Update: this is no longer the case.
+    // TODO: move csrf_toke into tide's session.
+    let mut csrf_cookie =
+        http_types::cookies::Cookie::new(OAUTH_CSRF_COOKIE_NAME, csrf_state.secret().to_owned());
+    csrf_cookie.set_http_only(true);
+    resp.insert_cookie(csrf_cookie);
+    Ok(resp)
+}
+
 // The "callback" handler of the Google authentication process.
 // TODO: send the user to either the main page or their desider location.
 //   HTTP redirect doesn't work because the session cookies do
@@ -227,7 +285,7 @@ pub async fn handle_sign_with_google<DB: Send + Sync + 'static>(
 pub async fn handle_continue_sign_with_google<DB: Send + Sync + 'static>(
     req: tide::Request<HttpServerState<DB>>,
 ) -> tide::Result {
-    let auth_code = check_google_csrf(&req)?;
+    let auth_code = check_oauth_csrf(&req)?;
 
     let mut callback_url = req.url().clone();
     callback_url.set_query(Some(""));
@@ -259,6 +317,7 @@ pub async fn handle_continue_sign_with_google<DB: Send + Sync + 'static>(
             Session::LoggedIn(UserInfo {
                 user_name: account.user_name,
                 email: Some(email),
+                lichess_user_id: None,
                 registration_method: RegistrationMethod::GoogleOAuth,
             })
         }
@@ -267,6 +326,84 @@ pub async fn handle_continue_sign_with_google<DB: Send + Sync + 'static>(
             return Err(tide::Error::from_str(
                 StatusCode::Forbidden,
                 "Cannot log in with Google: no such account",
+            ));
+        }
+    };
+
+    let session_id = get_session_id(&req)?;
+    req.state().session_store.lock().unwrap().set(session_id, session);
+
+    let mut resp: tide::Response = req.into();
+    resp.set_status(StatusCode::TemporaryRedirect);
+    resp.insert_header(http_types::headers::LOCATION, "/");
+    Ok(resp)
+}
+
+// The "callback" handler of the Lichess authentication process.
+// TODO: send the user to either the main page or their desided location.
+//   HTTP redirect doesn't work because the session cookies do
+//   not survive it, hence, some JS needs to be served that sends back
+//   in 3...2...1... or something similar.
+//   To send to the "desired location", pass the desired URL as a parameter
+//   into /sign-with-lichess and propagate it to callback_url.
+pub async fn handle_continue_sign_with_lichess<DB: Send + Sync + 'static>(
+    req: tide::Request<HttpServerState<DB>>,
+) -> tide::Result {
+    let auth_code = check_oauth_csrf(&req)?;
+
+    let mut callback_url = req.url().clone();
+    callback_url.set_query(Some(""));
+    req.state().upgrade_auth_callback(&mut callback_url)?;
+    let callback_url_str = callback_url.as_str().trim_end_matches('?').to_owned();
+
+    let session_id = get_session_id(&req)?;
+    let verifier = match req.state().session_store.lock().unwrap().get(&session_id) {
+        Some(Session::PkceChallengeInitiated(PkceChallengeInfo { verifier })) => verifier.clone(),
+        _ => {
+            return Err(tide::Error::from_str(
+                StatusCode::Forbidden,
+                "Error logging in with Lichess.".to_owned(),
+            ));
+        }
+    };
+
+    let user_id = req
+        .state()
+        .lichess_auth
+        .as_ref()
+        .ok_or(tide::Error::from_str(
+            StatusCode::NotImplemented,
+            "Lichess auth is not enabled.",
+        ))?
+        .user_id(callback_url_str, auth_code, PkceCodeVerifier::new(verifier))
+        .await?;
+
+    let account = req.state().secret_db.account_by_lichess_user_id(&user_id).await?;
+
+    let session = match account {
+        None => Session::LichessOAuthRegistering(LichessOAuthRegistrationInfo { user_id }),
+        Some(Account::Live(account)) => {
+            if account.registration_method != RegistrationMethod::LichessOAuth {
+                return Err(tide::Error::from_str(
+                    StatusCode::Forbidden,
+                    format!(
+                        "Cannot log in with Lichess: {} authentification method was used during sign-up.",
+                        account.registration_method.to_string()
+                    )
+                ));
+            }
+            Session::LoggedIn(UserInfo {
+                user_name: account.user_name,
+                email: None,
+                lichess_user_id: Some(user_id),
+                registration_method: RegistrationMethod::LichessOAuth,
+            })
+        }
+        Some(Account::Deleted(_)) => {
+            // Should not happen: deleted accounts don't have emails.
+            return Err(tide::Error::from_str(
+                StatusCode::Forbidden,
+                "Cannot log in with Lichess: no such account",
             ));
         }
     };
@@ -318,6 +455,7 @@ pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
             user_name.clone(),
             Some(email.clone()),
             None,
+            None,
             RegistrationMethod::GoogleOAuth,
             OffsetDateTime::now_utc(),
         )
@@ -327,7 +465,66 @@ pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
     let session = Session::LoggedIn(UserInfo {
         user_name,
         email: Some(email),
+        lichess_user_id: None,
         registration_method: RegistrationMethod::GoogleOAuth,
+    });
+    req.state().session_store.lock().unwrap().set(session_id, session);
+
+    let mut resp: tide::Response = req.into();
+    resp.set_status(StatusCode::Ok);
+    Ok(resp)
+}
+
+pub async fn handle_finish_signup_with_lichess<DB: Send + Sync + 'static>(
+    mut req: tide::Request<HttpServerState<DB>>,
+) -> tide::Result {
+    let FinishSignupWithLichessData { user_name } = req.body_form().await?;
+
+    validate_player_name(&user_name)
+        .map_err(|err| tide::Error::from_str(StatusCode::Forbidden, err))?;
+
+    let existing_account = req.state().secret_db.account_by_user_name(&user_name).await?;
+    if existing_account.is_some() {
+        return Err(tide::Error::from_str(
+            StatusCode::Forbidden,
+            format!("Username '{}' is already taken.", &user_name),
+        ));
+    };
+
+    let session_id = get_session_id(&req)?;
+    let user_id = {
+        let session_store = req.state().session_store.lock().unwrap();
+        match session_store.get(&session_id) {
+            Some(Session::LichessOAuthRegistering(LichessOAuthRegistrationInfo { user_id })) => {
+                user_id.clone()
+            }
+            _ => {
+                return Err(tide::Error::from_str(
+                    StatusCode::Forbidden,
+                    "Error creating account with Lichess.",
+                ));
+            }
+        }
+    };
+
+    req.state()
+        .secret_db
+        .create_account(
+            user_name.clone(),
+            None,
+            None,
+            Some(user_id.clone()),
+            RegistrationMethod::LichessOAuth,
+            OffsetDateTime::now_utc(),
+        )
+        .await
+        .map_err(|err| tide::Error::new(StatusCode::InternalServerError, err))?;
+
+    let session = Session::LoggedIn(UserInfo {
+        user_name,
+        email: None,
+        lichess_user_id: Some(user_id),
+        registration_method: RegistrationMethod::LichessOAuth,
     });
     req.state().session_store.lock().unwrap().set(session_id, session);
 
@@ -400,6 +597,7 @@ pub async fn handle_change_account<DB: Send + Sync + 'static>(
     let session = Session::LoggedIn(UserInfo {
         user_name,
         email: email_copy,
+        lichess_user_id: None,
         registration_method: old_account.registration_method,
     });
     req.state().session_store.lock().unwrap().set(session_id, session);
@@ -478,9 +676,18 @@ pub async fn handle_mysession<DB>(req: tide::Request<HttpServerState<DB>>) -> ti
             panic!("Session::Unknown is a client-only state. Should never happen on server.");
         }
         None | Some(Session::LoggedOut) => Ok("You are not logged in.".into()),
+        Some(Session::PkceChallengeInitiated(_)) => Ok(format!(
+            "You are currently signing up with Lichess, completing the pkce challenge."
+        )
+        .into()),
         Some(Session::GoogleOAuthRegistering(registration_info)) => Ok(format!(
             "You are currently signing up with Google in. \
                 GoogleOAuthRegisteringInfo: {registration_info:?}"
+        )
+        .into()),
+        Some(Session::LichessOAuthRegistering(registration_info)) => Ok(format!(
+            "You are currently signing up with Lichess in. \
+                LichessOAuthRegisteringInfo: {registration_info:?}"
         )
         .into()),
         Some(Session::LoggedIn(user_info)) => {

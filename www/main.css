@@ -1373,11 +1373,15 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   transform: translateY(0.12em);
   padding-right: 0.1em;
 }
-
 #google-logo {
   height: 1em;
   filter: url(#google-logo-shadow);
   transform: translateX(-0.4em) scale(200%);
+}
+#lichess-logo {
+  height: 1em;
+  filter: url(#lichess-logo-shadow);
+  transform: translateX(-0.4em) scale(164%);
 }
 .logged-in-as-prefix {
   font-size: 80%;

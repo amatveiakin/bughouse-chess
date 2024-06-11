@@ -106,6 +106,7 @@ impl Server {
         let user_info = Session::LoggedIn(UserInfo {
             user_name: user_name.to_owned(),
             email: None,
+            lichess_user_id: None,
             registration_method: RegistrationMethod::Password,
         });
         self.session_store.lock().unwrap().set(session_id.clone(), user_info);

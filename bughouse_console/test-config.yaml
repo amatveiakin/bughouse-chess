@@ -1,6 +1,5 @@
 database_options: !Sqlite bughouse.db
 secret_database_options: !Sqlite bughouse-secret.db
-auth_options: !NoAuth
 session_options: !WithSessions
   secret: !Literal "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
   expire_in: 30d

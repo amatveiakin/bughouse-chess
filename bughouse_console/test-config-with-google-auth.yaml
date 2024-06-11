@@ -1,9 +1,10 @@
 database_options: !Sqlite bughouse.db
 secret_database_options: !Sqlite bughouse-secret.db
-auth_options: !Google
+auth_options:
   callback_is_https: false
-  client_id_source: !EnvVar GOOGLE_CLIENT_ID
-  client_secret_source: !EnvVar GOOGLE_CLIENT_SECRET
+  google: !Some
+    client_id_source: !EnvVar GOOGLE_CLIENT_ID
+    client_secret_source: !EnvVar GOOGLE_CLIENT_SECRET
 session_options: !WithSessions
   secret: !Literal "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
   expire_in: 30d

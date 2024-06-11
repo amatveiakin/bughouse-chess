@@ -118,20 +118,20 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     session_store: Arc<Mutex<SessionStore>>, clients: Arc<Clients>,
     server_info: Arc<Mutex<ServerInfo>>, tx: mpsc::SyncSender<IncomingEvent>,
 ) {
-    let (google_auth, auth_callback_is_https) = match config.auth_options {
-        AuthOptions::NoAuth => (None, false),
-        AuthOptions::Google {
+    let (auth_callback_is_https, google_auth, lichess_auth) = match config.auth_options {
+        None => (false, None, None),
+        Some(AuthOptions { callback_is_https, google, lichess }) => (
             callback_is_https,
-            client_id_source,
-            client_secret_source,
-        } => (
-            Some(auth::GoogleAuth::new(client_id_source, client_secret_source).unwrap()),
-            callback_is_https,
+            google.map(|ga| {
+                auth::GoogleAuth::new(ga.client_id_source, ga.client_secret_source).unwrap()
+            }),
+            lichess.map(|la| auth::LichessAuth::new(la.client_id_source).unwrap()),
         ),
     };
     let mut app = tide::with_state(Arc::new(HttpServerStateImpl {
         sessions_enabled: config.session_options != SessionOptions::NoSessions,
         google_auth,
+        lichess_auth,
         auth_callback_is_https,
         db,
         secret_db,
@@ -166,10 +166,15 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     app.at(AUTH_LOGIN_PATH).post(handle_login);
     app.at(AUTH_LOGOUT_PATH).post(handle_logout);
     app.at(AUTH_SIGN_WITH_GOOGLE_PATH).get(handle_sign_with_google);
+    app.at(AUTH_SIGN_WITH_LICHESS_PATH).get(handle_sign_with_lichess);
     app.at(AUTH_CONTINUE_SIGN_WITH_GOOGLE_PATH)
         .get(handle_continue_sign_with_google);
+    app.at(AUTH_CONTINUE_SIGN_WITH_LICHESS_PATH)
+        .get(handle_continue_sign_with_lichess);
     app.at(AUTH_FINISH_SIGNUP_WITH_GOOGLE_PATH)
         .post(handle_finish_signup_with_google);
+    app.at(AUTH_FINISH_SIGNUP_WITH_LICHESS_PATH)
+        .post(handle_finish_signup_with_lichess);
     app.at(AUTH_CHANGE_ACCOUNT_PATH).post(handle_change_account);
     app.at(AUTH_DELETE_ACCOUNT_PATH).post(handle_delete_account);
     app.at(AUTH_MYSESSION_PATH).get(handle_mysession);
@@ -256,10 +261,16 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
         .expect("Failed to start the tide server");
 }
 
+fn sessions_required(config: &ServerConfig) -> bool {
+    let Some(o) = config.auth_options.as_ref() else {
+        return false;
+    };
+    o.google.is_some() || o.lichess.is_some()
+}
+
 pub fn run(config: ServerConfig) {
     assert!(
-        config.auth_options == AuthOptions::NoAuth
-            || config.session_options != SessionOptions::NoSessions,
+        !sessions_required(&config) || config.session_options != SessionOptions::NoSessions,
         "Authentication is enabled while sessions are not."
     );
 

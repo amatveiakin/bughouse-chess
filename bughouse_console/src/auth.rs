@@ -6,8 +6,8 @@ use oauth2::basic::BasicClient;
 // Alternatively, this can be oauth2::curl::http_client or a custom.
 use oauth2::reqwest::async_http_client;
 use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, RevocationUrl,
-    Scope, TokenResponse, TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
+    PkceCodeVerifier, RedirectUrl, RevocationUrl, Scope, TokenResponse, TokenUrl,
 };
 use serde::Deserialize;
 use url::Url;
@@ -43,6 +43,14 @@ pub struct GoogleAuth {
 #[derive(Deserialize)]
 struct GoogleUserInfo {
     email: String,
+}
+
+// Internal Lichess-specific user info struct, used for
+// deserializing user info JSON responses from the API.
+// https://lichess.org/api
+#[derive(Deserialize)]
+struct LichessUserInfo {
+    id: String,
 }
 
 // Internal OAuth-specific (Google-specific?) structure of the redirected
@@ -115,5 +123,65 @@ impl GoogleAuth {
         .await
         .context("getting user info JSON failed")?;
         Ok(response.email)
+    }
+}
+
+pub struct LichessAuth {
+    client: BasicClient,
+}
+
+impl LichessAuth {
+    pub fn new(client_id_source: StringSource) -> anyhow::Result<Self> {
+        // See https://lichess/api
+        let lichess_client_id = ClientId::new(client_id_source.get()?);
+
+        let auth_url = AuthUrl::new("https://lichess.org/oauth".to_owned())
+            .context("Invalid authorization endpoint URL")?;
+        let token_url = TokenUrl::new("https://lichess.org/api/token".to_owned())
+            .context("Invalid token endpoint URL")?;
+        // TODO: revokation. Lichess uses DELETE on /api/token.
+        let client = BasicClient::new(lichess_client_id, None, auth_url, Some(token_url));
+        Ok(Self { client })
+    }
+
+    pub async fn user_id(
+        &self, callback_url: String, code: AuthorizationCode, pkce_verifier: PkceCodeVerifier,
+    ) -> anyhow::Result<String> {
+        let token_response = self
+            .client
+            .clone()
+            .set_redirect_uri(RedirectUrl::new(callback_url)?)
+            .exchange_code(code)
+            .set_pkce_verifier(pkce_verifier)
+            .request_async(async_http_client)
+            .await
+            .context("exchanging auth code for auth token failed")?;
+        let secret = token_response.access_token().secret();
+        let client = reqwest::Client::new();
+        let response = client
+            .get("https://lichess.org/api/account")
+            .header("Authorization", format!("Bearer {}", secret))
+            .send()
+            .await
+            .context("requesting user info failed")?
+            .json::<LichessUserInfo>()
+            .await
+            .context("getting user info JSON failed")?;
+        Ok(response.id)
+    }
+
+    pub fn start(
+        &self, callback_url: String,
+    ) -> anyhow::Result<(Url, CsrfToken, PkceCodeVerifier)> {
+        let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+        let (url, csrf_token) = self
+            .client
+            .clone()
+            .set_redirect_uri(RedirectUrl::new(callback_url)?)
+            .authorize_url(CsrfToken::new_random)
+            // .add_scope(Scope::new("email:read".to_owned()))
+            .set_pkce_challenge(pkce_challenge)
+            .url();
+        Ok((url, csrf_token, pkce_verifier))
     }
 }
