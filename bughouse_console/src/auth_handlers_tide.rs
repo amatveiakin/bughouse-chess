@@ -362,7 +362,7 @@ pub async fn handle_continue_sign_with_lichess<DB: Send + Sync + 'static>(
         _ => {
             return Err(tide::Error::from_str(
                 StatusCode::Forbidden,
-                format!("Error creating account with Lichess."),
+                "Error logging in with Lichess.".to_owned(),
             ));
         }
     };
