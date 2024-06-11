@@ -1,9 +1,12 @@
 database_options: !Sqlite <DB-PATH>/bughouse.db
 secret_database_options: !Sqlite <DB-PATH>/bughouse-secret.db
-auth_options: !Google
+auth_options:
   callback_is_https: true
-  client_id_source: !Literal "<GOOGLE-CLIENT-ID>"
-  client_secret_source: !File <SECRET-PATH>/google-client-secret
+  google: !Some
+    client_id_source: !Literal "<GOOGLE-CLIENT-ID>"
+    client_secret_source: !File <SECRET-PATH>/google-client-secret
+  lichess: !Some
+    client_id_source: !Literal "bughouse.pro"
 session_options: !WithSessions
   secret: !File <SECRET-PATH>/session-secret
   expire_in: 30d

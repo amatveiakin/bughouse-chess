@@ -29,9 +29,7 @@ use crate::network::{self, CommunicationError};
 use crate::persistence::DatabaseReader;
 use crate::prod_server_helpers::ProdServerHelpers;
 use crate::secret_persistence::SecretDatabaseRW;
-use crate::server_config::{
-    AuthOptions, DatabaseOptions, ServerConfig, SessionOptions, StringSource,
-};
+use crate::server_config::{AuthOptions, DatabaseOptions, ServerConfig, SessionOptions};
 use crate::{auth, database};
 
 async fn handle_connection<
@@ -120,19 +118,16 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     session_store: Arc<Mutex<SessionStore>>, clients: Arc<Clients>,
     server_info: Arc<Mutex<ServerInfo>>, tx: mpsc::SyncSender<IncomingEvent>,
 ) {
-    let (google_auth, auth_callback_is_https) = match config.auth_options {
-        AuthOptions::NoAuth => (None, false),
-        AuthOptions::Google {
+    let (auth_callback_is_https, google_auth, lichess_auth) = match config.auth_options {
+        None => (false, None, None),
+        Some(AuthOptions { callback_is_https, google, lichess }) => (
             callback_is_https,
-            client_id_source,
-            client_secret_source,
-        } => (
-            Some(auth::GoogleAuth::new(client_id_source, client_secret_source).unwrap()),
-            callback_is_https,
+            google.map(|ga| {
+                auth::GoogleAuth::new(ga.client_id_source, ga.client_secret_source).unwrap()
+            }),
+            lichess.map(|la| auth::LichessAuth::new(la.client_id_source).unwrap()),
         ),
     };
-    let lichess_auth =
-        Some(auth::LichessAuth::new(StringSource::Literal("bughouse.pro".to_owned())).unwrap());
     let mut app = tide::with_state(Arc::new(HttpServerStateImpl {
         sessions_enabled: config.session_options != SessionOptions::NoSessions,
         google_auth,
@@ -266,10 +261,16 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
         .expect("Failed to start the tide server");
 }
 
+fn sessions_required(config: &ServerConfig) -> bool {
+    let Some(o) = config.auth_options.as_ref() else {
+        return false;
+    };
+    o.google.is_some() || o.lichess.is_some()
+}
+
 pub fn run(config: ServerConfig) {
     assert!(
-        config.auth_options == AuthOptions::NoAuth
-            || config.session_options != SessionOptions::NoSessions,
+        !sessions_required(&config) || config.session_options != SessionOptions::NoSessions,
         "Authentication is enabled while sessions are not."
     );
 

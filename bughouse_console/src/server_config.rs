@@ -39,13 +39,21 @@ impl StringSource {
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum AuthOptions {
-    NoAuth,
-    Google {
-        callback_is_https: bool,
-        client_id_source: StringSource,
-        client_secret_source: StringSource,
-    },
+pub struct AuthOptions {
+    pub callback_is_https: bool,
+    pub google: Option<GoogleAuthOptions>,
+    pub lichess: Option<LichessAuthOptions>,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GoogleAuthOptions {
+    pub client_id_source: StringSource,
+    pub client_secret_source: StringSource,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct LichessAuthOptions {
+    pub client_id_source: StringSource,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
@@ -72,7 +80,7 @@ pub enum AllowedOrigin {
 pub struct ServerConfig {
     pub database_options: DatabaseOptions,
     pub secret_database_options: DatabaseOptions,
-    pub auth_options: AuthOptions,
+    pub auth_options: Option<AuthOptions>,
     pub session_options: SessionOptions,
     pub static_content_url_prefix: String,
     pub allowed_origin: AllowedOrigin,
