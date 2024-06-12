@@ -11,7 +11,7 @@ module.exports = {
   plugins: [
     new CopyWebpackPlugin({
       patterns: [
-        "*.html",
+        "**/index.html",
         "info-page.css",
         {
           from: "../assets/logo.svg",
