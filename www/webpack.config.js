@@ -13,6 +13,8 @@ module.exports = {
       patterns: [
         "**/index.html",
         "info-page.css",
+        "robots.txt",
+        "sitemap.txt",
         {
           from: "../assets/logo.svg",
           to: "logo.svg",
