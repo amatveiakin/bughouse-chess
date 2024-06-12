@@ -243,12 +243,7 @@ impl ChessRules {
         }
     }
 
-    pub fn bughouse_chess_com() -> Self {
-        let mut rules = Self::chess_blitz();
-        let bughouse_rules = BughouseRules::chess_com(rules.board_shape());
-        rules.bughouse_rules = Some(bughouse_rules);
-        rules
-    }
+    pub fn bughouse_rush() -> Self { Self::from_preset(RulesPreset::Rush) }
 
     pub fn board_shape(&self) -> BoardShape { BoardShape::standard() }
 
@@ -324,20 +319,6 @@ impl ChessRules {
             }
         }
         Ok(())
-    }
-}
-
-impl BughouseRules {
-    pub fn chess_com(board_shape: BoardShape) -> Self {
-        Self {
-            koedem: false,
-            promotion: Promotion::Upgrade,
-            pawn_drop_ranks: PawnDropRanks {
-                min: SubjectiveRow::from_one_based(2),
-                max: SubjectiveRow::from_one_based(board_shape.num_rows as i8 - 1),
-            },
-            drop_aggression: DropAggression::MateAllowed,
-        }
     }
 }
 

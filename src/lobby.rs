@@ -394,7 +394,7 @@ mod tests {
 
     fn make_rules(rated: bool) -> Rules {
         Rules {
-            chess_rules: ChessRules::bughouse_chess_com(),
+            chess_rules: ChessRules::bughouse_rush(),
             match_rules: MatchRules { rated },
         }
     }

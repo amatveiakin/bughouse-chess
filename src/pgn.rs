@@ -813,7 +813,7 @@ mod tests {
     fn pgn_standard_conformity() {
         let rules = Rules {
             match_rules: MatchRules::unrated(),
-            chess_rules: ChessRules::bughouse_chess_com(),
+            chess_rules: ChessRules::bughouse_rush(),
         };
         let mut game =
             BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());
@@ -840,7 +840,7 @@ mod tests {
         use Force::*;
         let mut rules = Rules {
             match_rules: MatchRules::unrated(),
-            chess_rules: ChessRules::bughouse_chess_com(),
+            chess_rules: ChessRules::bughouse_rush(),
         };
         rules.chess_rules.time_control.starting_time = Duration::from_secs(100);
         let mut game =
@@ -870,7 +870,7 @@ mod tests {
     fn pgn_golden() {
         let rules = Rules {
             match_rules: MatchRules::unrated(),
-            chess_rules: ChessRules::bughouse_chess_com(),
+            chess_rules: ChessRules::bughouse_rush(),
         };
         let mut game =
             BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());

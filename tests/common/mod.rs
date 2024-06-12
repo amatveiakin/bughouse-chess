@@ -314,7 +314,7 @@ mod tests {
         const T0: GameInstant = GameInstant::game_start();
         let rules = Rules {
             match_rules: MatchRules::unrated(),
-            chess_rules: ChessRules::bughouse_chess_com(),
+            chess_rules: ChessRules::bughouse_rush(),
         };
         let game_str = "
             r n b q k b n r     R N B K Q B N R

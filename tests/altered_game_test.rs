@@ -36,7 +36,7 @@ fn as_double_player(team: Team) -> BughouseParticipant {
 fn default_rules() -> Rules {
     Rules {
         match_rules: MatchRules::unrated(),
-        chess_rules: ChessRules::bughouse_chess_com(),
+        chess_rules: ChessRules::bughouse_rush(),
     }
 }
 
