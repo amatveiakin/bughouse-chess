@@ -10,43 +10,74 @@
 </head>
 
 <body>
-  <h1><a href=".."><img src="logo.svg" class="app-logo"></a> About bughouse.pro</h1>
+  <h1>
+    <a href=".."><img src="logo.svg" class="app-logo"></a> About bughouse.pro
+  </h1>
   <p>
-    Welcome to bughouse.pro: a place where you can play bughouse chess online with your friends!
-  </p>
-  <!-- TODO: Make more readable by adding visual structure. -->
-  <p>
-    <i>Bughouse chess</i> (a.k.a. double chess, exchange chess, tandem chess, etc.)
-    is a chess variant played two versus two on two boards.
-    Pieces captured by one player go into their teammate's <i>reserve</i>.
-    Each player has an option to <i>drop</i> a reserve piece on a free square instead
-    of making a <s>boring</s> normal chess move.
+    Welcome to bughouse.pro: a free, adless, open source bughouse chess server!
   </p>
   <p>
-    There are variations in bughouse chess rules, and this site aims to support them all
-    rather than one specific variant. For example, it allows you to configure where pawns
-    can be dropped or whether drops with checkmates are allowed. Here you even could
-    (I dare say: should) play bughouse Fischer random chess! I find this to be a particularly
-    neat combination: bughouse effectively makes endgame theory useless and Fischer random
-    does the same to openings. Together they let your imagination fly completely free from
-    the chains of chess textbooks.
+    <i>Bughouse chess</i> (a.k.a. double chess, exchange chess, tandem chess) is
+    a chess variant played two versus two on two boards. Pieces captured by one
+    player go into their teammate's <i>reserve</i>. Each player has an option to
+    <i>drop</i> a reserve piece on a free square instead of making a
+    <s>boring</s> normal chess move.
   </p>
   <p>
-    If you cherish a bughouse variant that we missed, if you feel your experience on this
-    website is not crazy enough&nbsp— please tell us! Our aim is to make bughouse chess do
-    justice to its name.
+    There are variations in bughouse chess rules, and we aim to support them
+    all. Whether dropping with a checkmate is allowed, whether pawns can be
+    dropped one move away from promotion, whether promoted pawn simply turns
+    into a new piece or allows to steal a piece from the board&nbsp— all of this
+    and more is configurable. On top of that, we support the following chess
+    variants:
+  </p>
+  <!-- TODO: Replace bullets with variant icons -->
+  <ul>
+    <li>
+      <i>Fischer random (Chess960).</i> Pawns start as usual, other pieces are
+      shuffled randomly. I find variant to combine particularly well with
+      bughouse: while bughouse makes endgame theory obsolete, Fischer random
+      does the same to openings. Together they let your imagination fly free
+      from the chains of chess textbooks.
+    </li>
+    <li>
+      <i>Accolade.</i> Combine a Knight with a Bishop, a Rook or a Queen to get
+      a Cardinal, an Empress or an Amazon respectively.
+    </li>
+    <li>
+      <i>Duck chess.</i> A duck occupies one square on the board and cannot be
+      captured. Players move the duck to a new location after each move.
+    </li>
+    <li>
+      <i>Fog of war (Dard chess).</i> You only see squares where your pieces can
+      legally move.
+    </li>
+    <li>
+      <i>Koedem.</i> Kings can be captured. The game ends when one team
+      accumulates all four kings.
+    </li>
+  </ul>
+  <p>
+    All these variants can be combined without limits. Have you ever wondered
+    what it would feel like to play bughouse duck chess in fog of war? You’ve
+    come to the right place! (Alternatively, if you have not wondered that, you
+    might still be in the right place, because you really don't have to do
+    that.)
   </p>
   <p>
-    Please note that this platform is in beta. Features may be missing. Games may crash.
-    Rating may be recalculated retroactively. If you encounter something that feels like
-    a bug&nbsp— please tell us!
+    We aim to add more options in the future. If you cherish a bughouse variant
+    that we missed, if you feel your experience on this website is not crazy
+    enough&nbsp— please tell us. Our goal is to make bughouse chess do justice
+    to its name.
   </p>
   <p>
-    The two biggest missing features are built-in player communication and matchmaking.
-    For now there's really just one way to play bughouse here. First, find a group of
-    people willing to play bughouse. Second, organize yourself a call in a voice chat of
-    your choosing. Third, create a game here, send an invitation code to your fellow
-    players and enjoy!
+    Please note that this platform is in beta. Features may be missing. Games
+    may crash. Rating may be recalculated retroactively. If you encounter
+    something that feels like a bug&nbsp— please tell us.
+  </p>
+  <p>
+    Oh, and please join our <a href="https://discord.gg/HK57zMCHZw">Discord server</a>
+    to look for play buddies and stay in touch with our team!
   </p>
   <hr>
   <p>
@@ -56,6 +87,7 @@
   <p>
     For questions, comments, suggestions and bug reports contact us at
     <a href="mailto:contact.bughousepro@gmail.com">contact.bughousepro@gmail.com</a>
+    or via <a href="https://discord.gg/HK57zMCHZw">Discord</a>.
   </p>
   <p>
     Privacy policy:
@@ -63,7 +95,7 @@
   </p>
   <p>
     <!-- TODO: Add app version -->
-    Source:
+    Source code:
     <a href="https://github.com/amatveiakin/bughouse-chess" target="_blank">
       github.com/amatveiakin/bughouse-chess</a>
   </p>

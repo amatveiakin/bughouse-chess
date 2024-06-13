@@ -6,21 +6,23 @@ It implements a client and a server for
 [bughouse chess](https://en.wikipedia.org/wiki/Bughouse_chess) — the
 best<sup>[citation not needed]</sup> kind of chess.
 
-It exists because alternative bughouse implementations use a fixed set of rules
-while the rules in fact vary.
+Our platform supports a range of bughouse configurations as well as other chess
+variants:
 
-Supported rule variations:
+- We allow to tune bughouse-related aspects: allowed pawn drop ranks; limits on
+  drop aggression (e.g. whether drops can checkmate); whether pawn promotion
+  follows chess rules or is allows to steal a piece for the other board.
+- On top of that, we support a range of chess variants: Fischer random
+  (Chess960), Accolade, Duck chess, Fog of war (Dark chess) and Koedem.
 
-- Starting position: classic or Fischer random (a.k.a. Chess960).
-- Limits on where pawns can be dropped.
-- Limits on drop aggression, e.g. cannot drop piece if that leads to checkmate.
+All abovementioned options can be combined arbitrarily.
 
 Folder structure:
 
-- `/` — The core library (`bughouse_chess` Rust package).
+- `/src` — The core library used by the server and the client.
 - `/bughouse_console` — A binary that can run as a server or as console client.
   The server part is responsible for the game engine and dynamic HTML content.
-  It does not serve static HTML content.
+  Static HTML content is served separately.
 - `/bughouse_wasm` — WASM (WebAssembly) bindings for the web client.
 - `/www` — Web client based on the abovementioned WASM bindings.
 

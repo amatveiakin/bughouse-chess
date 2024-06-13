@@ -462,10 +462,9 @@ fn accolade_tooltip() -> JsResult<Vec<web_sys::Element>> {
 fn fischer_random_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("Fischer random")?
+        .append_text_i("Fischer random (Chess960). ")?
         .append_text(
-            " (a.k.a. Chess960).
-            Pawns start as usual. Pieces start on the home ranks, but their
+            "Pawns start as usual. Pieces start on the home ranks, but their
             positions are randomized. Bishops are always of opposite colors.
             King always starts between the rooks. Castling is allowed:
             A-side castling puts the kind and left rook on files C and\u{00a0}D respectively,
@@ -480,7 +479,7 @@ fn duck_chess_tooltip() -> JsResult<Vec<web_sys::Element>> {
         .append_text_i("Duck chess.")?
         .append_text(
             " A duck occupies one square on the board and cannot be captured.
-            Each turn consists of two parts. First, a regular bughouse turn.
+            Each move consists of two parts. First, a regular bughouse move.
             Second, moving the duck to any free square on the board. Quack!",
         )?])
 }
@@ -499,9 +498,9 @@ fn atomic_tooltip() -> JsResult<Vec<web_sys::Element>> {
 fn fog_of_war_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("Fog of war.")?
+        .append_text_i("Fog of war (Dark chess).")?
         .append_text(
-            " You only see squares that are a legal move destination for one of your pieces.
+            " You only see squares where your pieces can legally move.
             You can drop pieces into the fog of war at your own risk.",
         )?])
 }
@@ -512,7 +511,7 @@ fn koedem_tooltip() -> JsResult<Vec<web_sys::Element>> {
         .append_text_i("Koedem.")?
         .append_text(
             " Kings can be captured. Upon receiving a king, you must play it immediately.
-            The game ends when one first team accumulates all four kings
+            The game ends when one team accumulates all four kings
             or when time runs out on any board.",
         )?])
 }

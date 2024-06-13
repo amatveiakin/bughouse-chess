@@ -36,6 +36,10 @@ h2 {
   padding-bottom: 0;
 }
 
+li:not(:last-child) {
+  margin-bottom: 6px;
+}
+
 .app-logo {
   height: 1.2em;
   transform: translateY(0.12em);
