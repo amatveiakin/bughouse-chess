@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 
 import argparse
-import os
 import shutil
 from pathlib import Path, PurePath
 from zipfile import ZipFile
@@ -20,12 +19,13 @@ args = parser.parse_args()
 with ZipFile(args.artifacts_file) as zip:
     if WEB_CLIENT_PATH.exists():
         shutil.rmtree(WEB_CLIENT_PATH)
-    os.makedirs(WEB_CLIENT_PATH, exist_ok=True)
-    os.makedirs(SERVER_BINARY_ROOT, exist_ok=True)
+    WEB_CLIENT_PATH.mkdir(parents=True, exist_ok=True)
+    SERVER_BINARY_ROOT.mkdir(parents=True, exist_ok=True)
     for file in zip.namelist():
         zip_path = PurePath(file)
         if zip_path.is_relative_to(ARTIFACT_CLIENT_PREFIX):
             target_path = WEB_CLIENT_PATH / zip_path.relative_to(ARTIFACT_CLIENT_PREFIX)
+            target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_bytes(zip.read(file))
     print(f"Extracted web client to {WEB_CLIENT_PATH}")
     SERVER_BINARY_FILE.write_bytes(zip.read("bughouse_console"))
