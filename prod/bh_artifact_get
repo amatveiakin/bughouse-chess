@@ -2,6 +2,7 @@
 
 import os
 import shutil
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 
@@ -18,6 +19,16 @@ HTTP_HEADERS = {
     "Authorization": f"Bearer {GITHUB_TOKEN}",
     "X-GitHub-Api-Version": "2022-11-28",
 }
+
+
+def approximate_duration(d: timedelta):
+    if d.days > 0:
+        return f"{d.days}d"
+    if d.seconds >= 3600:
+        return f"{d.seconds // 3600}h"
+    if d.seconds >= 60:
+        return f"{d.seconds // 60}m"
+    return f"{d.seconds}s"
 
 
 def github_request(url_suffix: str):
@@ -43,11 +54,13 @@ last_artifact = artifact_list["artifacts"][0]
 
 id = last_artifact["id"]
 build_time: str = last_artifact["created_at"]
+build_time_fixed = build_time.replace("Z", "+00:00") # for Python <3.11
+build_age = datetime.now(timezone.utc) - datetime.fromisoformat(build_time_fixed)
 sha = last_artifact["workflow_run"]["head_sha"]
 size = last_artifact["size_in_bytes"]
 print(f"Found an artifact in {OWNER}/{REPO}:")
 print(f"  id:       {id}")
-print(f"  built at: {build_time}")
+print(f"  built at: {build_time} ({approximate_duration(build_age)} ago)")
 print(f"  from SHA: {sha}")
 print(f"  size:     {size:,} bytes")
 
