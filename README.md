@@ -203,7 +203,7 @@ blanks.
 Put Google client secret (from https://console.cloud.google.com/apis/credentials)
 to the path pointed by `client_secret_source`.
 
-Generate a random session secret using `util/gen_session_secret.py`.
+Generate a random session secret using `tools/gen_session_secret.py`.
 
 ### Build via GitHub Actions
 
