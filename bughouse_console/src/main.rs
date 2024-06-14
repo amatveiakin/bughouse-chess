@@ -29,6 +29,7 @@ mod auth;
 mod auth_handlers_tide;
 mod bughouse_prelude;
 mod censor;
+mod check_user_name;
 mod client_main;
 mod client_performance_stats;
 mod competitor;
@@ -97,6 +98,11 @@ fn main() -> io::Result<()> {
                 )
                 .arg(arg!(--"remove-timestamps" "Removes turn timestamps and GameDuration tag.")),
         )
+        .subcommand(
+            Command::new("check-user-name")
+                .about("Verifies whether a user name is valid (but not necessarily free).")
+                .arg(arg!(<user_name> "User name to check")),
+        )
         .get_matches();
 
     match matches.subcommand() {
@@ -120,6 +126,9 @@ fn main() -> io::Result<()> {
             },
             remove_timestamps: sub_matches.get_flag("remove-timestamps"),
         }),
+        Some(("check-user-name", sub_matches)) => {
+            check_user_name::run(&sub_matches.get_one::<String>("user_name").unwrap().clone())
+        }
         _ => unreachable!("Exhausted list of subcommands and subcommand_required prevents `None`"),
     }
 }
