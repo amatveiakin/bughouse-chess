@@ -160,6 +160,8 @@ impl WebElementExt for web_sys::Element {
         Ok(())
     }
 
+    // TODO: Deduplicate. This is also implemented in `index.js` as `make_animated_dots` and
+    // explicitly spelled out in `index.html`.
     fn append_animated_dots(&self) -> JsResult<()> {
         for _ in 0..3 {
             self.append_new_element("span")?.with_classes(["dot"])?.with_text_content(".");

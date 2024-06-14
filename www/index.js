@@ -1,4 +1,3 @@
-// TODO: Remove logging (or at least don't log heartbeat events).
 // TODO: Figure out if it's possible to enable strict mode with webpack.
 
 import "./main.css";
@@ -2077,7 +2076,6 @@ function set_tooltip(node, text) {
   }
 }
 
-// TODO: Dedup against `index.html`.
 function make_animated_dots() {
   const parent = document.createElement("span");
   for (let i = 0; i < 3; ++i) {
