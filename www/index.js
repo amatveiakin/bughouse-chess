@@ -546,7 +546,6 @@ function get_args(args_array, expected_args) {
 function get_displayed(element) {
   return element.style.display !== "none";
 }
-// TODO: Update all code to use this.
 function set_displayed(element, value) {
   element.style.display = value ? null : "none";
 }
@@ -1311,7 +1310,7 @@ function update_cookie_policy() {
   gtag("consent", "update", {
     analytics_storage: is_analytics_ok ? "granted" : "denied",
   });
-  cookie_banner.style.display = show_banner ? null : "None";
+  set_displayed(cookie_banner, show_banner);
 }
 
 function on_accept_essential_cookies() {
@@ -1400,11 +1399,11 @@ function on_hide_menu_page(page) {
 
 function hide_menu_pages(execute_on_hide = true) {
   for (const page of menu_pages) {
-    if (page.style.display !== "none") {
+    if (get_displayed(page)) {
       if (execute_on_hide) {
         on_hide_menu_page(page);
       }
-      page.style.display = "none";
+      set_displayed(page, false);
     }
   }
 }
@@ -1419,7 +1418,7 @@ function reset_menu() {
     jc_match_id.value = match_id;
     push_menu_page(menu_join_match_page);
   } else {
-    menu_start_page.style.display = "block";
+    set_displayed(menu_start_page, true);
   }
 }
 
@@ -1446,7 +1445,7 @@ function menu_page_auto_focus() {
 function push_menu_page(page) {
   menu_page_stack.push(page);
   hide_menu_pages();
-  page.style.display = "block";
+  set_displayed(page, true);
 
   const player_name_input = find_player_name_input(page);
   if (player_name_input) {
@@ -1459,13 +1458,13 @@ function pop_menu_page() {
   menu_page_stack.pop();
   const page = current_menu_page();
   hide_menu_pages();
-  page.style.display = "block";
+  set_displayed(page, true);
 }
 
 function close_menu() {
   hide_menu_pages(); // hide the pages to execute "on hide" handlers
   menu_dialog.close();
-  menu_backdrop.style.display = "None";
+  set_displayed(menu_backdrop, false);
   for (const element of page_element.getElementsByTagName("*")) {
     if ("disabled" in element) {
       element.disabled = false;
@@ -1478,7 +1477,7 @@ function open_menu() {
   // The "`show` + manual backdrop + disable the rest of the page" combo emulates `showModal`.
   // We cannot use `showModal` because of the cookie banner.
   menu_dialog.show();
-  menu_backdrop.style.display = null;
+  set_displayed(menu_backdrop, true);
   for (const element of page_element.getElementsByTagName("*")) {
     if ("disabled" in element) {
       element.disabled = true;
@@ -1669,9 +1668,9 @@ function update_session() {
     }
     const session_info_loaded = is_registered_user || is_guest;
     const ready_to_play = session_info_loaded && wasm_client().got_server_welcome();
-    registered_user_bar.style.display = is_registered_user ? null : "None";
-    guest_user_bar.style.display = !is_registered_user ? null : "None";
-    guest_user_tooltip.style.display = is_guest ? null : "None";
+    set_displayed(registered_user_bar, is_registered_user);
+    set_displayed(guest_user_bar, !is_registered_user);
+    set_displayed(guest_user_tooltip, is_guest);
     if (ready_to_play) {
       if (is_registered_user) {
         create_rated_match_button.disabled = false;
@@ -1714,11 +1713,11 @@ function update_session() {
       node.textContent = session.lichess_user_id || "—";
     }
     for (const node of document.querySelectorAll(".logged-in-with-password")) {
-      node.style.display = using_password_auth ? null : "None";
+      set_displayed(node, using_password_auth);
       node.disabled = !using_password_auth;
     }
     for (const node of document.querySelectorAll(".guest-player-name")) {
-      node.style.display = is_guest ? null : "None";
+      set_displayed(node, is_guest);
       node.disabled = !is_guest;
     }
     if (session.status === "google_oauth_registering") {
@@ -1988,14 +1987,14 @@ function set_volume(volume) {
   audio_volume = volume;
   gain_node.gain.value = volume_to_js[volume];
   if (volume === 0) {
-    document.getElementById("volume-mute").style.display = null;
+    set_displayed(document.getElementById("volume-mute"), true);
     for (let v = 1; v <= max_volume; ++v) {
-      document.getElementById(`volume-${v}`).style.display = "none";
+      set_displayed(document.getElementById(`volume-${v}`), false);
     }
   } else {
-    document.getElementById("volume-mute").style.display = "none";
+    set_displayed(document.getElementById("volume-mute"), false);
     for (let v = 1; v <= max_volume; ++v) {
-      document.getElementById(`volume-${v}`).style.display = v > volume ? "none" : null;
+      set_displayed(document.getElementById(`volume-${v}`), v <= volume);
     }
   }
 }
@@ -2057,7 +2056,7 @@ function download(text, filename) {
   var element = document.createElement("a");
   element.setAttribute("href", "data:text/plain;charset=utf-8," + encodeURIComponent(text));
   element.setAttribute("download", filename);
-  element.style.display = "none";
+  set_displayed(element, false);
   document.body.appendChild(element);
   element.click();
   document.body.removeChild(element);
