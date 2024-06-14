@@ -7,7 +7,7 @@ use crate::censor::profanity_censor;
 #[allow(clippy::useless_format)]
 pub fn validate_player_name(name: &str) -> Result<(), String> {
     const MIN_NAME_LENGTH: usize = 2;
-    const MAX_NAME_LENGTH: usize = 16;
+    const MAX_NAME_LENGTH: usize = 20;
 
     // These words cannot be used inside player names, even with slight variations.
     const CUSTOM_CENSOR: &[&'static str] = &["admin", "guest"];

@@ -809,7 +809,12 @@ impl WebClient {
                     DisplayBoard::Primary => IconPosition::Right,
                     DisplayBoard::Secondary => IconPosition::Left,
                 };
-                let name_content = participant_node(player, show_readiness, p_icon_position)?;
+                let name_content = participant_node(
+                    player,
+                    ParticipantItemLocation::Board,
+                    show_readiness,
+                    p_icon_position,
+                )?;
                 p_node.replace_children_with_node_1(&name_content);
                 let is_draggable = is_piece_draggable(force.into());
                 update_reserve(
@@ -1155,6 +1160,12 @@ enum IconPosition {
     Right,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ParticipantItemLocation {
+    Board,
+    Score,
+}
+
 fn scroll_log_to_bottom(board_idx: DisplayBoard) -> JsResult<()> {
     let e = web_document().get_existing_element_by_id(&turn_log_scroll_area_node_id(board_idx))?;
     scroll_to_bottom(&e);
@@ -1308,13 +1319,16 @@ fn participant_status_icon(p: &Participant, show_readiness: bool) -> &'static st
 }
 
 fn participant_node(
-    p: &Participant, show_readiness: bool, icon_position: IconPosition,
+    p: &Participant, location: ParticipantItemLocation, show_readiness: bool,
+    icon_position: IconPosition,
 ) -> JsResult<web_sys::Element> {
+    let location_class = match location {
+        ParticipantItemLocation::Board => "board-participant-name",
+        ParticipantItemLocation::Score => "score-participant-name",
+    };
     let width = estimate_text_width(&p.name)?;
-    // Context. Player name limit is 16 characters. String consisting of 'W' repeated 16 times
-    // measured 151px on my laptop. 'W' is usually the widest latter in common Latin, but you could
-    // go wider with 'Ǆ' and even wider with non-Latin characters. So this solution might be
-    // insufficient in case of complete outliers, but it should work for all realistic cases.
+    // Context. Player name limit is 20 characters. 'W' is the widest allowed character. String
+    // consisting of 'W' repeated 20 times is estimated to be 180px.
     let width_class = match width {
         140.. => "participant-name-xxxl",
         120.. => "participant-name-xxl",
@@ -1331,7 +1345,11 @@ fn participant_node(
         "participant-status-icon",
         icon_class,
     ])?;
-    node.append_text_span(&p.name, ["participant-name", width_class])?;
+    node.append_new_element("div")?.with_text_content(&p.name).with_classes([
+        "participant-name",
+        location_class,
+        width_class,
+    ])?;
     Ok(node)
 }
 
@@ -1720,13 +1738,18 @@ fn update_participants_and_scores(
                 let team_size = players.len();
                 let mut first = true;
                 for p in players.iter().sorted_by_key(|p| &p.name) {
-                    let p_node = participant_node(p, show_readiness, IconPosition::Left)?;
+                    let p_node = participant_node(
+                        p,
+                        ParticipantItemLocation::Score,
+                        show_readiness,
+                        IconPosition::Left,
+                    )?;
                     let tr = table.append_new_element("tr")?;
                     if first {
                         first = false;
                         let score = score_map[team].as_f64();
                         tr.append_new_element("td")?
-                            .with_classes(["score-player-name", "score-first-player-name"])?
+                            .with_classes(["score-player-cell", "score-first-player-name"])?
                             .append_child(&p_node)?;
                         {
                             let td =
@@ -1736,7 +1759,7 @@ fn update_participants_and_scores(
                         }
                     } else {
                         tr.append_new_element("td")?
-                            .with_classes(["score-player-name"])?
+                            .with_classes(["score-player-cell"])?
                             .append_child(&p_node)?;
                     }
                 }
@@ -1756,10 +1779,15 @@ fn update_participants_and_scores(
                     Some((whole, fraction)) => (whole.to_owned(), format!(".{}", fraction)),
                     None => (score, "".to_owned()),
                 };
-                let p_node = participant_node(&p, show_readiness, IconPosition::Left)?;
+                let p_node = participant_node(
+                    &p,
+                    ParticipantItemLocation::Score,
+                    show_readiness,
+                    IconPosition::Left,
+                )?;
                 let tr = table.append_new_element("tr")?;
                 tr.append_new_element("td")?
-                    .with_classes(["score-player-name"])?
+                    .with_classes(["score-player-cell"])?
                     .append_child(&p_node)?;
                 tr.append_new_element("td")?
                     .with_classes(["individual-score-value"])?
@@ -1780,7 +1808,8 @@ fn update_participants_and_scores(
     observers_node.remove_all_children();
     for p in observers {
         let node = observers_node.append_new_element("div")?;
-        let p_node = participant_node(p, false, IconPosition::Left)?;
+        let p_node =
+            participant_node(p, ParticipantItemLocation::Score, false, IconPosition::Left)?;
         node.append_child(&p_node)?;
     }
     Ok(())

@@ -27,8 +27,6 @@ body {
   --color-dialog-scrollbar: #a18a18;
   --color-dialog-scrollbar-background: #c7bc7c;
   --color-dialog-tooltip: #c6bcad;
-
-  --participant-status-icon-space: 0.25em;
 }
 body.symmetric {
   --sq-size-primary: min(4.4vw, 7.8vh);
@@ -97,7 +95,7 @@ svg {
     auto
     calc(var(--sq-size-primary) * 0.4)
     auto
-    calc(var(--sq-size-primary) * 1.2)
+    calc(var(--sq-size-primary) * 0.9)
     auto
     calc(var(--sq-size-primary) * 0.4)
     auto
@@ -127,7 +125,7 @@ body.symmetric #page {
     auto
     calc(var(--sq-size-primary) * 0.4)
     auto
-    calc(var(--sq-size-primary) * 1.2)
+    calc(var(--sq-size-primary) * 1.0)
     auto
     calc(var(--sq-size-primary) * 0.4)
     auto
@@ -490,7 +488,6 @@ body.observer .reserve-piece-group {
   left: 0;
 }
 .player-name {
-  font-size: 110%;
   white-space: pre;
   color: #a4b984;
   padding: 0.6em 0;
@@ -503,8 +500,14 @@ body.observer .player-name {
   white-space: nowrap;
   position: relative; /* for `.participant-status-icon` positioning */
 }
+.score-participant-name {
+  max-width: calc(7.0 * var(--rem));
+  mask-image: linear-gradient(to right, black calc(calc(6.5 * var(--rem))), transparent);
+}
+#observers .score-participant-name {
+  mask-image: unset;
+}
 .participant-name {
-  padding-left: var(--participant-status-icon-space);
   font-family: "Open Sans", sans-serif;
 }
 .participant-name-l ,
@@ -522,12 +525,12 @@ body.observer .player-name {
 .participant-status-icon-left {
   position: absolute;
   left: 0;
-  transform: translateX(calc(-50% + var(--participant-status-icon-space) - 0.7em));
+  transform: translateX(calc(-50% - 0.6em));
 }
 .participant-status-icon-right {
   position: absolute;
   right: 0;
-  transform: translateX(calc(+50% - var(--participant-status-icon-space) + 0.7em));
+  transform: translateX(calc(+50% + 0.6em));
 }
 
 #score-body,
@@ -553,7 +556,7 @@ body.observer .player-name {
   height: 0;
   font-size: 75%;
 }
-.score-player-name {
+.score-player-cell {
   max-width: 10em;
   font-size: 85%;
   line-height: 110%;
@@ -575,7 +578,7 @@ body.observer .player-name {
   vertical-align: baseline;
 }
 .individual-score-value {
-  padding-left: 0.5em;
+  padding-left: 0.4em;
   font-size: 105%;
   text-align: right;
 }
@@ -590,7 +593,7 @@ body.observer .player-name {
 body.symmetric #score-body {
     padding: 0.4em 0;
 }
-body.symmetric .score-player-name {
+body.symmetric .score-player-cell {
     line-height: 100%;
 }
 body.symmetric .individual-score-value {
