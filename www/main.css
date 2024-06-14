@@ -1353,7 +1353,7 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   color: red;
 }
 
-#jc-match-id:not(:placeholder-shown) {
+#join-match-id:not(:placeholder-shown) {
   /* This is of course a purely visual change. Actual input should be uppercased in JS. */
   text-transform: uppercase;
 }
@@ -1433,7 +1433,7 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   flex-direction: column;
   justify-content: center;
 }
-#cc-rule-presets {
+#create-match-rule-presets {
   font-size: 90%;
   display: flex;
   flex-direction: row;
@@ -1446,7 +1446,7 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   padding: 0.3em 0;
   width: 6em;
 }
-#cc-rule-variants {
+#create-match-rule-variants {
   margin: 0.5em 0 1em 0;
   max-width: calc(
     var(--rule-variant-button-width) * var(--rule-variant-buttons-per-row) +
@@ -1459,7 +1459,7 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   gap: 0.7em;
   justify-content: center;
 }
-#cc-rule-details {
+#create-match-rule-details {
   font-size: 85%;
 }
 

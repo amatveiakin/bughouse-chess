@@ -722,11 +722,11 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
         // Only create the page once, because we leak the closures.
         return Ok(());
     }
-    let presets_node = rules_node.append_new_element("div")?.with_id("cc-rule-presets");
-    let variants_node = rules_node.append_new_element("div")?.with_id("cc-rule-variants");
+    let presets_node = rules_node.append_new_element("div")?.with_id("create-match-rule-presets");
+    let variants_node = rules_node.append_new_element("div")?.with_id("create-match-rule-variants");
     let details_node = rules_node
         .append_new_element("div")?
-        .with_id("cc-rule-details")
+        .with_id("create-match-rule-details")
         .with_classes(["menu-page-body"])?;
 
     presets_node.remove_all_children();
@@ -994,7 +994,7 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
 }
 
 fn new_match_rules_variants() -> JsResult<HashMap<String, String>> {
-    let body = web_document().get_existing_element_by_id("cc-rule-variants")?;
+    let body = web_document().get_existing_element_by_id("create-match-rule-variants")?;
     let buttons = body.get_elements_by_class_name("rule-variant-button");
     let mut variants = HashMap::new();
     for button in buttons.into_iterator() {

@@ -147,8 +147,8 @@ const change_account_email = document.getElementById("change-account-email");
 const create_rated_match_button = document.getElementById("create-rated-match-button");
 const create_unrated_match_button = document.getElementById("create-unrated-match-button");
 const join_match_button = document.getElementById("join-match-button");
-const jc_match_id = document.getElementById("jc-match-id");
-const jc_confirm_button = document.getElementById("jc-confirm-button");
+const jc_match_id = document.getElementById("join-match-id");
+const jc_confirm_button = document.getElementById("join-match-confirm-button");
 const lobby_leave_button = document.getElementById("lobby-leave-button");
 const game_archive_button = document.getElementById("game-archive-button");
 
@@ -1804,7 +1804,6 @@ function sign_up_with_lichess(event) {
   );
 }
 
-
 async function sign_with_google(event) {
   page_redirect("/auth/sign-with-google");
 }
@@ -1867,15 +1866,15 @@ function show_create_match_page() {
 
 function create_match_as_guest(event) {
   with_error_handling(function () {
-    const player_name = document.getElementById("ccn-player-name").value;
+    const player_name = document.getElementById("create-match-player-name").value;
     wasm_client().set_guest_player_name(player_name);
     show_create_match_page();
   });
 }
 
 function on_create_match_request(event, rated) {
-  const cc_rating = document.getElementById("cc-rating");
-  const cc_confirm_button = document.getElementById("cc-confirm-button");
+  const cc_rating = document.getElementById("create-match-rating");
+  const cc_confirm_button = document.getElementById("create-match-confirm-button");
   cc_rating.value = rated ? "rated" : "unrated";
   cc_confirm_button.innerText = rated ? "Create rated match!" : "Create unrated match!";
   if (is_registered_user) {

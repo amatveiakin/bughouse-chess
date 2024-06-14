@@ -741,15 +741,15 @@
         <!-- `pattern` and `maxlength` must be in sync with join match player name field and with `is_valid_player_name` -->
         <!-- Improvement potential. Dedup player name properties (like `pattern` and `title`),
               or reuse the same <input> via dynamic css grids. -->
-        <label for="ccn-player-name" class="guest-player-name">Player name</label>
-        <input type="text" id="ccn-player-name" name="player_name" class="guest-player-name"
+        <label for="create-match-player-name" class="guest-player-name">Player name</label>
+        <input type="text" id="create-match-player-name" name="player_name" class="guest-player-name"
           placeholder="&nbsp;" spellcheck="false" required
           maxlength="20" pattern="[A-Za-z0-9_\-]+"
           title="Player name may consist of Latin letters, numbers, underscores ('_') and dashes ('-')" />
         <div class="guest-player-name"></div>
       </div>
       <div class="align-center">
-        <button id="ccn-confirm-button" class="big-button">Choose rules ❯</button>
+        <button class="big-button">Choose rules ❯</button>
       </div>
     </form>
 
@@ -763,11 +763,10 @@
           <span class="logged-in-as-account"></span>
         </div>
       </div>
-      <!-- TODO: Rename `ccn, `cc` and `cj`: their are based on "contest" term, which was replace by "match". -->
       <div id="menu-create-match-rules"></div>
-      <input type="hidden" id="cc-rating" name="rating" />
+      <input type="hidden" id="create-match-rating" name="rating" />
       <div class="align-center">
-        <button id="cc-confirm-button" class="big-button"></button>
+        <button id="create-match-confirm-button" class="big-button"></button>
       </div>
     </form>
 
@@ -781,23 +780,23 @@
         </div>
       </div>
       <div class="menu-page-body">
-        <label for="jc-match-id">Match ID</label>
-        <input type="text" id="jc-match-id" name="match_id"
+        <label for="join-match-id">Match ID</label>
+        <input type="text" id="join-match-id" name="match_id"
           placeholder="&nbsp;" spellcheck="false" autocomplete="off" required
           maxlength="10" pattern="[a-zA-Z0-9]*"
           title="Match ID consists of Latin letters and numbers" />
         <div></div>
 
         <!-- `pattern` and `maxlength` must be in sync with join match player name field and with `is_valid_player_name` -->
-        <label for="jc-player-name" class="guest-player-name">Player name</label>
-        <input type="text" id="jc-player-name" name="player_name" class="guest-player-name"
+        <label for="join-match-player-name" class="guest-player-name">Player name</label>
+        <input type="text" id="join-match-player-name" name="player_name" class="guest-player-name"
           placeholder="&nbsp;" spellcheck="false" required
           maxlength="20" pattern="[A-Za-z0-9_\-]+"
           title="Player name may consist of Latin letters, numbers, underscores ('_') and dashes ('-')" />
         <div class="guest-player-name"></div>
       </div>
       <div class="align-center">
-        <button id="jc-confirm-button" class="big-button">Join match!</button>
+        <button id="join-match-confirm-button" class="big-button">Join match!</button>
       </div>
     </form>
 
