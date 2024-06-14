@@ -93,7 +93,7 @@ where
                         registration_method
                      FROM accounts
                      WHERE
-                        user_name=$1",
+                        UPPER(user_name)=UPPER($1)",
                 )
                 .bind(user_name.to_owned()),
             )
