@@ -1,5 +1,4 @@
 // TODO: Remove logging (or at least don't log heartbeat events).
-// TODO: Check if ==/!= have to be replaced with ===/!== and other JS weirdness.
 // TODO: Figure out if it's possible to enable strict mode with webpack.
 
 import "./main.css";
@@ -77,7 +76,7 @@ class MyButton {
 }
 
 function log_time() {
-  if (typeof log_time.start == "undefined") {
+  if (typeof log_time.start === "undefined") {
     log_time.start = performance.now();
   }
   const sec = (performance.now() - log_time.start) / 1000.0;
@@ -188,7 +187,7 @@ const loading_tracker = new (class {
   #update() {
     // TODO: Don't start the game until `ready`.
     console.assert(this.#resources_loaded <= this.#resources_required);
-    const ready = this.#resources_loaded == this.#resources_required;
+    const ready = this.#resources_loaded === this.#resources_required;
     if (ready) {
       console.log(`All resources loaded ${this.#resources_loaded}`);
     }
@@ -391,9 +390,9 @@ function with_error_handling(f) {
     } else if (e instanceof InvalidCommand) {
       wasm_client().show_command_error(e.msg);
       update();
-    } else if (e?.constructor?.name == "IgnorableError") {
+    } else if (e?.constructor?.name === "IgnorableError") {
       ignorable_error_dialog(e.message);
-    } else if (e?.constructor?.name == "KickedFromMatch") {
+    } else if (e?.constructor?.name === "KickedFromMatch") {
       ignorable_error_dialog(e.message);
       // Need to recreate the socket because server aborts the connection here.
       // If this turns out to be buggy, could do
@@ -402,11 +401,11 @@ function with_error_handling(f) {
       open_socket("kicked");
       open_menu();
       push_menu_page(menu_join_match_page);
-    } else if (e?.constructor?.name == "FatalError") {
+    } else if (e?.constructor?.name === "FatalError") {
       fatal_error_dialog(e.message);
-    } else if (e?.constructor?.name == "RustError") {
+    } else if (e?.constructor?.name === "RustError") {
       ignorable_error_dialog(`Internal error: ${e.message}`);
-      if (socket.readyState == WebSocket.OPEN) {
+      if (socket.readyState === WebSocket.OPEN) {
         socket.send(wasm.make_rust_error_event(e));
       }
       throw e;
@@ -415,7 +414,7 @@ function with_error_handling(f) {
       if (rust_panic) {
         wasm_client_panicked = true;
         let report = "";
-        if (socket.readyState == WebSocket.OPEN) {
+        if (socket.readyState === WebSocket.OPEN) {
           socket.send(rust_panic);
         } else {
           report = "Please consider reporting the error to contact.bughousepro@gmail.com";
@@ -428,7 +427,7 @@ function with_error_handling(f) {
       } else {
         console.log(log_time(), "Unknown error: ", e);
         ignorable_error_dialog(`Unknown error: ${e}`);
-        if (socket.readyState == WebSocket.OPEN) {
+        if (socket.readyState === WebSocket.OPEN) {
           // Improvement potential. Include stack trace.
           socket.send(wasm.make_unknown_error_event(e.toString()));
         }
@@ -642,9 +641,9 @@ function execute_chat_input() {
 }
 
 function on_chat_input_keydown(event) {
-  if (!event.repeat && event.key == "Enter") {
+  if (!event.repeat && event.key === "Enter") {
     execute_chat_input();
-  } else if (!event.repeat && event.key == "Escape") {
+  } else if (!event.repeat && event.key === "Escape") {
     // Remove focus thus hiding the chat reference tooltip.
     chat_input.blur();
   } else if (["<", ">", "/"].includes(chat_input.value) && [">", "<", "/"].includes(event.key)) {
@@ -788,25 +787,25 @@ function process_notable_events() {
   let js_event;
   while ((js_event = wasm_client().next_notable_event())) {
     const js_event_type = js_event?.constructor?.name;
-    if (js_event_type == "JsEventNoop") {
+    if (js_event_type === "JsEventNoop") {
       // Noop, but other events might be coming.
-    } else if (js_event_type == "JsEventSessionUpdated") {
+    } else if (js_event_type === "JsEventSessionUpdated") {
       update_session();
-    } else if (js_event_type == "JsEventMatchStarted") {
+    } else if (js_event_type === "JsEventMatchStarted") {
       const url = new URL(window.location);
       url.search = "";
       url.searchParams.set(SearchParams.match_id, js_event.match_id);
       window.history.pushState({}, "", url);
       push_menu_page(menu_lobby_page);
-    } else if (js_event_type == "JsEventGameStarted") {
+    } else if (js_event_type === "JsEventGameStarted") {
       close_menu();
-    } else if (js_event_type == "JsEventGameOver") {
+    } else if (js_event_type === "JsEventGameOver") {
       play_audio(Sound[js_event.result]);
-    } else if (js_event_type == "JsEventPlaySound") {
+    } else if (js_event_type === "JsEventPlaySound") {
       play_audio(Sound[js_event.audio], js_event.pan);
-    } else if (js_event_type == "JsEventArchiveGameLoaded") {
+    } else if (js_event_type === "JsEventArchiveGameLoaded") {
       update();
-    } else if (js_event_type != null) {
+    } else {
       throw "Unexpected notable event: " + js_event_type;
     }
   }
@@ -824,7 +823,7 @@ function update_drag_state() {
       wasm_client().reset_drag_highlights();
       break;
     case "yes":
-      console.assert(drag_element != null);
+      console.assert(drag_element);
       break;
     case "defunct":
       // Improvement potential: Better image (broken piece / add red cross).
@@ -841,7 +840,7 @@ function update_lobby_countdown() {
   const lobby_waiting = document.getElementById("lobby-waiting");
   const lobby_countdown_seconds = document.getElementById("lobby-countdown-seconds");
   const s = wasm_client().lobby_countdown_seconds_left();
-  lobby_footer.classList.toggle("countdown", s != null);
+  lobby_footer.classList.toggle("countdown", !!s);
   lobby_waiting.textContent = wasm_client().lobby_waiting_explanation();
   lobby_countdown_seconds.textContent = s;
 }
@@ -875,7 +874,7 @@ function update_ready_button() {
 
 function update_toggle_faction_button() {
   const faction = wasm_client().my_desired_faction();
-  const is_observer = faction == "observer";
+  const is_observer = faction === "observer";
   set_displayed(document.getElementById("toggle-faction-observer"), is_observer);
   set_displayed(document.getElementById("toggle-faction-player"), !is_observer);
   toggle_faction_button.title = is_observer
@@ -899,7 +898,7 @@ function update_buttons() {
   switch (game_status) {
     case "active":
       set_displayed(leave_match_button, false);
-      set_displayed(resign_button, observer_status == "no");
+      set_displayed(resign_button, observer_status === "no");
       set_displayed(ready_button, false);
       set_displayed(toggle_faction_button, true);
       set_displayed(export_button, false);
@@ -908,7 +907,7 @@ function update_buttons() {
     case "over":
       set_displayed(leave_match_button, false);
       set_displayed(resign_button, false);
-      set_displayed(ready_button, observer_status != "permanently");
+      set_displayed(ready_button, observer_status !== "permanently");
       set_displayed(toggle_faction_button, true);
       // TODO: Add "get game permalink" button.
       set_displayed(export_button, false);
@@ -940,7 +939,7 @@ function update_buttons() {
 
 function leave_match() {
   with_error_handling(function () {
-    if (wasm_client().game_status() == "archive") {
+    if (wasm_client().game_status() === "archive") {
       const url = new URL(window.location);
       url.search = "";
       window.history.pushState({}, "", url);
@@ -955,16 +954,16 @@ async function request_resign() {
     new MyButton("Keep playing", MyButton.HIDE),
     new MyButton("🏳 Resign", MyButton.DO),
   ]);
-  if (ret == MyButton.DO) {
+  if (ret === MyButton.DO) {
     execute_input("/resign");
   }
 }
 
 async function toggle_faction_ingame() {
   const current_faction = wasm_client().my_desired_faction();
-  if (current_faction == "none") {
+  if (current_faction === "none") {
     // unavailable
-  } else if (current_faction == "observer") {
+  } else if (current_faction === "observer") {
     if (wasm_client().fixed_teams()) {
       // TODO: Popup menu instead of a dialog.
       // TODO: List team players. Team color is hidden from the UI.
@@ -973,9 +972,9 @@ async function toggle_faction_ingame() {
         new MyButton("Team Red", MyButton.OPTION_1),
         new MyButton("Team Blue", MyButton.OPTION_2),
       ]);
-      if (ret == MyButton.OPTION_1) {
+      if (ret === MyButton.OPTION_1) {
         wasm_client().change_faction_ingame("team_red");
-      } else if (ret == MyButton.OPTION_2) {
+      } else if (ret === MyButton.OPTION_2) {
         wasm_client().change_faction_ingame("team_blue");
       }
     } else {
@@ -1037,7 +1036,7 @@ function set_up_drag_and_drop() {
   }
 
   function is_main_pointer(event) {
-    return event.button == 0 || event.changedTouches?.length >= 1;
+    return event.button === 0 || event.changedTouches?.length >= 1;
   }
 
   function pointer_position(event) {
@@ -1140,7 +1139,7 @@ function set_up_drag_and_drop() {
         const source = element.getAttribute("data-bughouse-location");
         const board_idx = wasm_client().start_drag_piece(source);
 
-        if (board_idx == "abort") {
+        if (board_idx === "abort") {
           return;
         }
 
@@ -1180,7 +1179,7 @@ function set_up_drag_and_drop() {
 
   function end_drag(pos) {
     with_error_handling(function () {
-      console.assert(drag_element != null);
+      console.assert(drag_element);
       const coord = position_relative_to_board(pos, drag_source_board());
       wasm_client().drag_piece_drop(drag_source_board_id, coord.x, coord.y);
       drag_element.remove();
@@ -1218,10 +1217,10 @@ function set_up_chalk_drawing() {
   let ignore_next_context_menu = false;
 
   function is_draw_button(event) {
-    return event.button == 2;
+    return event.button === 2;
   }
   function is_cancel_button(event) {
-    return event.button == 0;
+    return event.button === 0;
   }
 
   function viewbox_mouse_position(node, event) {
@@ -1251,7 +1250,7 @@ function set_up_chalk_drawing() {
   function mouse_move(event) {
     with_error_handling(function () {
       if (wasm_client().is_chalk_active()) {
-        console.assert(chalk_target != null);
+        console.assert(chalk_target);
         const coord = viewbox_mouse_position(chalk_target, event);
         wasm_client().chalk_move(coord.x, coord.y);
       }
@@ -1261,7 +1260,7 @@ function set_up_chalk_drawing() {
   function mouse_up(event) {
     with_error_handling(function () {
       if (wasm_client().is_chalk_active() && is_draw_button(event)) {
-        console.assert(chalk_target != null);
+        console.assert(chalk_target);
         const coord = viewbox_mouse_position(chalk_target, event);
         wasm_client().chalk_up(coord.x, coord.y);
         chalk_target = null;
@@ -1307,8 +1306,8 @@ function set_up_chalk_drawing() {
 }
 
 function update_cookie_policy() {
-  const is_analytics_ok = window.localStorage.getItem(Storage.cookies_accepted) == "all";
-  const show_banner = window.localStorage.getItem(Storage.cookies_accepted) == null;
+  const is_analytics_ok = window.localStorage.getItem(Storage.cookies_accepted) === "all";
+  const show_banner = window.localStorage.getItem(Storage.cookies_accepted) === null;
   gtag("consent", "update", {
     analytics_storage: is_analytics_ok ? "granted" : "denied",
   });
@@ -1327,10 +1326,10 @@ function on_accept_all_cookies() {
 
 function set_up_menu_pointers() {
   function is_cycle_forward(event) {
-    return event.button == 0 || event.changedTouches?.length >= 1;
+    return event.button === 0 || event.changedTouches?.length >= 1;
   }
   function is_cycle_backward(event) {
-    return event.button == 2;
+    return event.button === 2;
   }
 
   function mouse_down(event) {
@@ -1380,7 +1379,7 @@ function set_up_log_navigation() {
 
 function find_player_name_input(page) {
   for (const input of page.getElementsByTagName("input")) {
-    if (input.name == "player_name" || input.name == "user_name") {
+    if (input.name === "player_name" || input.name === "user_name") {
       return input;
     }
   }
@@ -1393,7 +1392,7 @@ function on_hide_menu_page(page) {
     window.localStorage.setItem(Storage.player_name, player_name_input.value);
   }
   for (const input of page.getElementsByTagName("input")) {
-    if (input.type == "password") {
+    if (input.type === "password") {
       input.value = "";
     }
   }
@@ -1431,7 +1430,7 @@ function current_menu_page() {
 function menu_page_auto_focus() {
   const page = current_menu_page();
   for (const input of page.getElementsByTagName("input")) {
-    if (!input.disabled != "none" && !input.value) {
+    if (!input.disabled !== "none" && !input.value) {
       input.focus();
       return;
     }
@@ -1528,7 +1527,7 @@ function html_dialog(dialog_classes, body, buttons) {
       button_node.role = "button";
       button_node.textContent = button.label;
       const action = button.action;
-      can_hide ||= action == MyButton.HIDE;
+      can_hide ||= action === MyButton.HIDE;
       button_node.addEventListener("click", (event) => {
         dialog.close();
         resolve(action);
@@ -1643,7 +1642,7 @@ function update_session() {
   with_error_handling(function () {
     reset_menu();
     const session = wasm_client().session();
-    const using_password_auth = session.registration_method == "Password";
+    const using_password_auth = session.registration_method === "Password";
     let is_guest = null;
     let user_name = null;
     switch (session.status) {
@@ -1722,10 +1721,10 @@ function update_session() {
       node.style.display = is_guest ? null : "None";
       node.disabled = !is_guest;
     }
-    if (session.status == "google_oauth_registering") {
+    if (session.status === "google_oauth_registering") {
       push_menu_page(menu_signup_with_google_page);
     }
-    if (session.status == "lichess_oauth_registering") {
+    if (session.status === "lichess_oauth_registering") {
       push_menu_page(menu_signup_with_lichess_page);
     }
     menu_page_auto_focus();
@@ -1761,7 +1760,7 @@ async function process_authentification_request(request, success_message) {
 
 async function sign_up(event) {
   const data = new FormData(event.target);
-  if (data.get("confirm_password") != data.get("password")) {
+  if (data.get("confirm_password") !== data.get("password")) {
     ignorable_error_dialog("Passwords do not match!");
     return;
   }
@@ -1772,7 +1771,7 @@ async function sign_up(event) {
         "if you forget your password. Continue?",
       [new MyButton("Go back", MyButton.HIDE), new MyButton("Proceed without email", MyButton.DO)]
     );
-    if (ret != MyButton.DO) {
+    if (ret !== MyButton.DO) {
       return;
     }
   }
@@ -1832,7 +1831,7 @@ function log_out(event) {
 
 async function change_account(event) {
   const data = new FormData(event.target);
-  if (data.get("confirm_new_password") != data.get("new_password")) {
+  if (data.get("confirm_new_password") !== data.get("new_password")) {
     ignorable_error_dialog("Passwords do not match!");
     return;
   }
@@ -1988,7 +1987,7 @@ function set_volume(volume) {
   // TODO: Save settings to a local storage.
   audio_volume = volume;
   gain_node.gain.value = volume_to_js[volume];
-  if (volume == 0) {
+  if (volume === 0) {
     document.getElementById("volume-mute").style.display = null;
     for (let v = 1; v <= max_volume; ++v) {
       document.getElementById(`volume-${v}`).style.display = "none";
