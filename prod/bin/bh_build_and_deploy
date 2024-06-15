@@ -1,0 +1,29 @@
+#!/bin/bash
+
+set -e
+set -o xtrace
+
+
+# Build bughouse server
+cd "$BUGHOUSE_ROOT"
+cargo build -r --package bughouse_console
+
+# Build bughouse web client
+cd "$BUGHOUSE_ROOT/bughouse_wasm"
+wasm-pack build
+cd ../www
+rm -r dist || true
+npm run build
+
+# Stop bughouse server
+systemctl stop bughouse-server
+
+# Deploy bughouse web client
+sudo rm /var/www/html/* || true
+sudo cp dist/* /var/www/html
+
+# Deploy bughouse server
+cp ./target/release/bughouse_console ~/server
+
+# Start bughouse server
+systemctl start bughouse-server

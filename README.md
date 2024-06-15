@@ -194,7 +194,7 @@ git clone https://github.com/amatveiakin/bughouse-chess.git
 Add to `.bashrc`:
 ```
 export BUGHOUSE_ROOT=<path-to-bughouse-chess>
-export PATH="$BUGHOUSE_ROOT/prod:$PATH"
+export PATH="$BUGHOUSE_ROOT/prod/bin:$PATH"
 ```
 
 Copy `prod-config-template.yaml` to `~/bughouse-config.yaml` and fill in the
@@ -205,7 +205,9 @@ to the path pointed by `client_secret_source`.
 
 Generate a random session secret using `tools/gen_session_secret.py`.
 
-### Build via GitHub Actions
+---
+
+**Alternative: Build via GitHub Actions**
 
 Setup:
 
@@ -217,9 +219,10 @@ Getting and deploying new changes:
 
 * Get latest artifact: `bh_artifact_get`
 * Deploy artifact: `bh_artifact_deploy`
-* Run game server (e.g. in `screen`): `bh_artifact_run_server`
 
-### Build locally
+---
+
+**Alternative: Build locally**
 
 Setup:
 
@@ -229,8 +232,14 @@ Setup:
 Getting and deploying new changes:
 
 * Get latest version: `bh_pull`
-* Deploy web client: `bh_build_and_deploy_web`
-* Run game server (e.g. in `screen`): `bh_build_and_run_server`
+* Deploy web client: `bh_build_and_deploy`
+
+---
+
+To register bughouse server as a systemd service, copy
+`prod/configs/bughouse-server.service` to
+`/etc/systemd/system/bughouse-server.service`.
+Then start the service: `systemctl start bughouse-server`.
 
 
 ## Local console client setup

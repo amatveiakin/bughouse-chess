@@ -3,8 +3,10 @@
 import argparse
 import shutil
 from pathlib import Path, PurePath
+import subprocess
 from zipfile import ZipFile
 
+SERVER_SERVICE_NAME = "bughouse-server"
 HOME = Path.home()
 SERVER_BINARY_ROOT = HOME / "server"
 SERVER_BINARY_FILE = SERVER_BINARY_ROOT / "bughouse_console"
@@ -15,6 +17,10 @@ WEB_CLIENT_PATH = Path("/var/www/html")
 parser = argparse.ArgumentParser()
 parser.add_argument("artifacts_file", help="Path to the artifacts file")
 args = parser.parse_args()
+
+print(f"Stopping {SERVER_SERVICE_NAME} service...")
+subprocess.run(["systemctl", "stop", SERVER_SERVICE_NAME])
+print("Stopped")
 
 with ZipFile(args.artifacts_file) as zip:
     if WEB_CLIENT_PATH.exists():
@@ -31,3 +37,7 @@ with ZipFile(args.artifacts_file) as zip:
     SERVER_BINARY_FILE.write_bytes(zip.read("bughouse_console"))
     SERVER_BINARY_FILE.chmod(0o755)
     print(f"Extracted server binary to {SERVER_BINARY_FILE}")
+
+print(f"Starting {SERVER_SERVICE_NAME} service...")
+subprocess.run(["systemctl", "start", SERVER_SERVICE_NAME])
+print("Started")
