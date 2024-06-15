@@ -102,7 +102,7 @@ Install tools and libraries:
 
 ```
 apt update
-apt install curl npm pkg-config libssl-dev apache2 mailutils
+apt install curl npm pkg-config libssl-dev apache2
 curl https://sh.rustup.rs -sSf | sh -s -- -y
 cargo install wasm-pack
 ```
@@ -205,6 +205,11 @@ to the path pointed by `client_secret_source`.
 
 Generate a random session secret using `tools/gen_session_secret.py`.
 
+In order to get notification on bughouse server failures, create and fill
+`~/secrets/telegram-bot-token` and `~/secrets/telegram-chat-id`.
+You could get the token from BotFather and the chat ID from the URL of the
+“Saved Messages” chat in Telegram web.
+
 ---
 
 **Alternative: Build via GitHub Actions**
@@ -236,16 +241,12 @@ Getting and deploying new changes:
 
 ---
 
-Register bughouse server as a systemd service. First, create an auxiliary
-service to send email notifications if the bughouse service is down.
-Copy `prod/configs/notify-email@.service` to `/etc/systemd/system/`.
-Replace `<email@to.notify>` with the proper email address.
-To create the actual bughouse service, copy
+Register bughouse server as a systemd service.
+Copy `prod/configs/bughouse-handle-failure.service` and
 `prod/configs/bughouse-server.service` to `/etc/systemd/system/`.
-Enable and start the services:
+Enable and start the service:
 
 ```
-systemctl enable notify-email@bughouse
 systemctl enable bughouse-server
 systemctl start bughouse-server
 ```

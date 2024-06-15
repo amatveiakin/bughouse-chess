@@ -1,0 +1,9 @@
+#!/bin/bash
+
+TOKEN=`cat /root/secrets/telegram-bot-token`
+CHAT_ID=`cat /root/secrets/telegram-chat-id`
+
+curl -s -X POST https://api.telegram.org/bot$TOKEN/sendMessage -d chat_id=$CHAT_ID -d text="
+`systemctl status bughouse-server -n 30`"
+sleep 1
+systemctl start bughouse-server

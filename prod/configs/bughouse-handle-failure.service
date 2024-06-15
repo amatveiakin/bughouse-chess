@@ -1,0 +1,9 @@
+[Unit]
+Description=Notify about bughouse-server failure and restart it
+
+[Service]
+Type=oneshot
+ExecStart=/root/bughouse-chess/prod/bin/bh_handle_server_failure
+
+[Install]
+WantedBy=multi-user.target

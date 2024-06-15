@@ -2,15 +2,15 @@
 Description=Bughouse server
 After=network.target
 StartLimitIntervalSec=0
-OnFailure=notify-email@%i.service
+OnFailure=bughouse-handle-failure.service
 
 [Service]
 Type=simple
-Restart=always
-RestartSec=1
+# Restarting breaks `OnFailure`
+Restart=no
 User=root
 ExecStart=/root/bughouse-chess/prod/bin/bh_run_server
-TimeoutStopSec="infinity"
+TimeoutStopSec=infinity
 
 [Install]
 WantedBy=multi-user.target
