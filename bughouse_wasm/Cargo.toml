@@ -57,6 +57,9 @@ features = [
 [dev-dependencies]
 wasm-bindgen-test = { workspace = true }
 
+[lints]
+workspace = true
+
 # Improvement potential: Optimize WASM version for size. This is blocked on the following:
 #   - profiles can only be specified in the Cargo workspace root (not here);
 #   - we don't want this to affect server build;

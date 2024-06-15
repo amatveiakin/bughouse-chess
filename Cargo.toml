@@ -64,6 +64,17 @@ wasm-bindgen = "0.2.92"
 wasm-bindgen-test = "0.3.42"
 web-sys = "0.3.69"
 
+# Clippy philosophy. The goal is to have zero warnings from `cargo clippy` on the main branch.
+# Thus silencing all warning that I don't want to fix now. These decisions could be revised.
+[workspace.lints.clippy]
+collapsible_else_if = "allow"
+large_enum_variant = "allow"
+manual_is_ascii_check = "allow"
+new_without_default = "allow"
+option_map_unit_fn = "allow"
+too_many_arguments = "allow"
+type_complexity = "allow"
+
 [package]
 name = "bughouse_chess"
 version = "0.1.0"
@@ -107,6 +118,9 @@ time = { workspace = true, features = ["formatting", "macros", "parsing", "serde
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 async-std = { workspace = true, features = ["attributes"] }
+
+[lints]
+workspace = true
 
 [profile.release]
 panic = "abort"
