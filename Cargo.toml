@@ -107,3 +107,6 @@ time = { workspace = true, features = ["formatting", "macros", "parsing", "serde
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 async-std = { workspace = true, features = ["attributes"] }
+
+[profile.release]
+panic = "abort"
