@@ -102,7 +102,7 @@ Install tools and libraries:
 
 ```
 apt update
-apt install curl npm pkg-config libssl-dev apache2
+apt install curl npm pkg-config libssl-dev apache2 mailutils
 curl https://sh.rustup.rs -sSf | sh -s -- -y
 cargo install wasm-pack
 ```
@@ -236,10 +236,19 @@ Getting and deploying new changes:
 
 ---
 
-To register bughouse server as a systemd service, copy
-`prod/configs/bughouse-server.service` to
-`/etc/systemd/system/bughouse-server.service`.
-Then start the service: `systemctl start bughouse-server`.
+Register bughouse server as a systemd service. First, create an auxiliary
+service to send email notifications if the bughouse service is down.
+Copy `prod/configs/notify-email@.service` to `/etc/systemd/system/`.
+Replace `<email@to.notify>` with the proper email address.
+To create the actual bughouse service, copy
+`prod/configs/bughouse-server.service` to `/etc/systemd/system/`.
+Enable and start the services:
+
+```
+systemctl enable notify-email@bughouse
+systemctl enable bughouse-server
+systemctl start bughouse-server
+```
 
 
 ## Local console client setup

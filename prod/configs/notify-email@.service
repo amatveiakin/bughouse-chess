@@ -1,0 +1,9 @@
+[Unit]
+Description=Sent email
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash -c '/usr/bin/systemctl status %i | /usr/bin/mailx -Ssendwait -s "[SYSTEMD_%i] Fail" <email@to.notify>'
+
+[Install]
+WantedBy=multi-user.target

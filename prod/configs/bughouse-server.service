@@ -2,6 +2,7 @@
 Description=Bughouse server
 After=network.target
 StartLimitIntervalSec=0
+OnFailure=notify-email@%i.service
 
 [Service]
 Type=simple
