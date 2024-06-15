@@ -11,12 +11,12 @@ pub fn validate_player_name(name: &str) -> Result<(), String> {
     const MAX_NAME_LENGTH: usize = 20;
 
     // These words cannot be used inside player names, even with slight variations.
-    const CUSTOM_CENSOR: &[&'static str] = &["admin", "guest"];
+    const CUSTOM_CENSOR: &[&str] = &["admin", "guest"];
 
     // These words cannot be used as player names to avoid confusion in system messages.
     // They can be used inside player names, though.
     #[rustfmt::skip]
-    const CUSTOM_BAN: &[&'static str] = &[
+    const CUSTOM_BAN: &[&str] = &[
         // Pronouns
         "I", "me", "myself", "mine", "my",
         "we", "us", "ourselves", "ourself", "ours", "our",
@@ -75,9 +75,9 @@ pub fn validate_player_name(name: &str) -> Result<(), String> {
     if len > MAX_NAME_LENGTH {
         return Err(format!("Maximum name length is {MAX_NAME_LENGTH}."));
     }
-    if profanity_censor().check(&name)
-        || Censor::custom(CUSTOM_CENSOR.iter().copied()).check(&name)
-        || contains_ignoring_ascii_case(CUSTOM_BAN, &name)
+    if profanity_censor().check(name)
+        || Censor::custom(CUSTOM_CENSOR.iter().copied()).check(name)
+        || contains_ignoring_ascii_case(CUSTOM_BAN, name)
     {
         return Err(format!("Please try another player name."));
     }

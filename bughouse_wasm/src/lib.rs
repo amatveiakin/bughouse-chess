@@ -569,7 +569,7 @@ impl WebClient {
             Some(NotableEvent::SessionUpdated) => Ok(JsEventSessionUpdated {}.into()),
             Some(NotableEvent::MatchStarted(match_id)) => {
                 reset_chat()?;
-                init_lobby(&self.state.mtch().unwrap())?;
+                init_lobby(self.state.mtch().unwrap())?;
                 Ok(JsEventMatchStarted { match_id }.into())
             }
             Some(NotableEvent::GameStarted) => {
@@ -926,7 +926,7 @@ impl WebClient {
         let mtch = self.state.mtch().ok_or_else(|| rust_error!())?;
         let node = web_document().create_element("div")?;
         node.append_element(
-            make_match_caption_body(&mtch)?.with_classes(["readonly-rules-match-caption"])?,
+            make_match_caption_body(mtch)?.with_classes(["readonly-rules-match-caption"])?,
         )?;
         node.append_new_element("hr")?;
         node.append_element(rules_ui::make_readonly_rules_body(&mtch.rules)?)?;
@@ -1568,7 +1568,7 @@ fn render_upgrade_promotion_selector(
         let id = format!("promotion-fg-{}", piece.to_full_algebraic());
         let node = document.ensure_svg_node("use", &id, &layer, |node| {
             node.set_attribute("class", "promotion-target-fg")?;
-            node.set_attribute("href", &piece_path(piece, force.into()))?;
+            node.set_attribute("href", piece_path(piece, force.into()))?;
             Ok(())
         })?;
         node.set_attribute("x", &(x - PIECE_SIZE / 2.0).to_string())?;
@@ -1780,7 +1780,7 @@ fn update_participants_and_scores(
                     None => (score, "".to_owned()),
                 };
                 let p_node = participant_node(
-                    &p,
+                    p,
                     ParticipantItemLocation::Score,
                     show_readiness,
                     IconPosition::Left,
@@ -2169,7 +2169,7 @@ fn render_archive_game_list(
             0 => return Err(rust_error!()),
             1 => {
                 td.append_element(make_player_node(&player_names[0])?)?;
-                td.append_text_span(&" ×2", ["game-archive-double-play"])?;
+                td.append_text_span(" ×2", ["game-archive-double-play"])?;
             }
             2 => {
                 td.append_element(make_player_node(&player_names[0])?)?;

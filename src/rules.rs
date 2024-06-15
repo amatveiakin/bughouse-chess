@@ -223,12 +223,7 @@ impl ChessRules {
     }
 
     pub fn get_preset(&self) -> Option<RulesPreset> {
-        for preset in RulesPreset::iter() {
-            if *self == Self::from_preset(preset) {
-                return Some(preset);
-            }
-        }
-        None
+        RulesPreset::iter().find(|&preset| *self == Self::from_preset(preset))
     }
 
     pub fn chess_blitz() -> Self {

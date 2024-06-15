@@ -175,9 +175,8 @@ pub fn assign_boards<'a>(
     participants: impl Iterator<Item = &'a Participant> + Clone,
     current_assignment: Option<&[PlayerInGame]>, rng: &mut impl Rng,
 ) -> Vec<PlayerInGame> {
-    let current_assignment = current_assignment.map(|current| {
-        current.into_iter().map(|p| (p.name.clone(), p.id)).collect::<HashMap<_, _>>()
-    });
+    let current_assignment = current_assignment
+        .map(|current| current.iter().map(|p| (p.name.clone(), p.id)).collect::<HashMap<_, _>>());
     let current_assignment = current_assignment.as_ref();
 
     let players = participants
@@ -400,7 +399,7 @@ mod tests {
     }
 
     fn simulate_play(players: &[PlayerInGame], participants: &mut Participants) {
-        let players: HashMap<_, _> = players.into_iter().map(|p| (p.name.clone(), p)).collect();
+        let players: HashMap<_, _> = players.iter().map(|p| (p.name.clone(), p)).collect();
         for (_, p) in participants.iter_mut() {
             if let Some(pl) = players.get(&p.name) {
                 p.games_played += 1;

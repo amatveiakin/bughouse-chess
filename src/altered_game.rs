@@ -311,7 +311,7 @@ impl AlteredGame {
                 piece_origin: PieceOrigin::Innate,
                 source: board
                     .duck_position()
-                    .map_or(PartialTurnSource::Reserve, |pos| PartialTurnSource::Board(pos)),
+                    .map_or(PartialTurnSource::Reserve, PartialTurnSource::Board),
             }))
         };
         partial_turn.or(duck_turn)
@@ -880,9 +880,9 @@ impl AlteredGame {
             // setting up a dependency tracking framework seems like an overkill.
             self.derived_data.replace(compute_derived_data(
                 self.my_id,
-                &*self.game_confirmed,
+                &self.game_confirmed,
                 *self.partial_turn_input,
-                &*self.local_turns,
+                &self.local_turns,
                 *self.wayback_turn_index,
             ));
         }

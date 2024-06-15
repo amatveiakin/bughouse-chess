@@ -25,7 +25,7 @@ impl StringSource {
             Self::Random { len } => Ok(rand::thread_rng()
                 .sample_iter(rand::distributions::Uniform::new(0, 128))
                 .take(*len)
-                .map(|b: u8| -> char { b.try_into().unwrap() })
+                .map(|b: u8| -> char { b.into() })
                 .collect()),
             Self::Literal(s) => Ok(s.clone()),
             Self::EnvVar(v) => {

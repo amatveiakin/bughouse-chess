@@ -9,7 +9,7 @@ pub type JsResult<T> = Result<T, JsValue>;
 
 // The client is single-threaded, so wrapping all mutable singletons in `thread_local!` seems ok.
 thread_local! {
-    static LAST_PANIC: RefCell<String> = RefCell::new(String::new());
+    static LAST_PANIC: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
 // Copied from console_error_panic_hook

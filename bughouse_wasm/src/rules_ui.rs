@@ -315,7 +315,7 @@ impl RuleNode {
         node.add_event_listener_and_forget("change", move |_: web_sys::Event| {
             update_new_match_rules_body()
         })?;
-        self.input = Some(node.into());
+        self.input = Some(node);
         Ok(self)
     }
 

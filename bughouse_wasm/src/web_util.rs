@@ -20,7 +20,7 @@ pub fn get_text_width(s: &str) -> JsResult<u32> {
         .get_context("2d")?
         .ok_or_else(|| rust_error!("Canvas 2D context missing"))?
         .dyn_into::<web_sys::CanvasRenderingContext2d>()?;
-    Ok(context.measure_text(&s)?.width() as u32)
+    Ok(context.measure_text(s)?.width() as u32)
 }
 
 pub fn estimate_text_width(s: &str) -> JsResult<u32> {

@@ -175,7 +175,7 @@ impl From<Duration> for GameDuration {
 }
 
 impl From<MillisDuration> for Duration {
-    fn from(d: MillisDuration) -> Self { Duration::from_millis(d.as_millis() as u64) }
+    fn from(d: MillisDuration) -> Self { Duration::from_millis(d.as_millis()) }
 }
 impl TryFrom<GameDuration> for Duration {
     type Error = ();

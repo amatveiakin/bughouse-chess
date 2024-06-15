@@ -180,7 +180,7 @@ fn tokenize_bpgn(text: &str) -> Vec<Token<'_>> {
                         let token = text[start..i]
                             .strip_prefix('[')
                             .and_then(|s| s.strip_suffix(']'))
-                            .map(|s| Token::Addendum(s));
+                            .map(Token::Addendum);
                         result = Some((token, Consume));
                     }
                 }
@@ -721,7 +721,7 @@ fn parse_game_status(
         let mut status = GameOutcome::from_pgn(players, outcome_text).map(|o| o.status);
         // The logic is similar to `Result::or_else`, but returns the first error rather than the second
         // one.
-        if !status.is_ok() {
+        if status.is_err() {
             if let Ok(legacy_status) = GameOutcome::from_legacy_pgn(players, outcome_text) {
                 status = Ok(legacy_status);
             }
@@ -778,7 +778,7 @@ pub fn import_from_bpgn(s: &str, role: Role) -> Result<(BughouseGame, BpgnMetada
         apply_turn(&mut game, turn)?;
     }
     if !status.is_active() {
-        let game_duration = parse_game_duration(&tags).unwrap_or_else(|_| GameInstant::UNKNOWN);
+        let game_duration = parse_game_duration(&tags).unwrap_or(GameInstant::UNKNOWN);
         game.set_status(status, game_duration);
     }
     Ok((game, meta))
@@ -828,7 +828,7 @@ mod tests {
         // Test: Uses short algebraic and includes capture notations.
         assert!(bpgn.contains(" Nx"));
         // Test: Does not contain non-ASCII characters (like "×").
-        assert!(bpgn.chars().all(|ch| ch.is_ascii()));
+        assert!(bpgn.is_ascii());
         // Test: Castling is PGN-style (not FIDE-style).
         assert!(bpgn.contains("O-O"));
         assert!(!bpgn.contains("0-0"));
@@ -1115,7 +1115,8 @@ mod tests {
         );
         // Test that legacy style BPGNs are still parsed. Output format is expected be different, so
         // compare game states instead.
-        for source in [source_old] {
+        {
+            let source = source_old;
             let (game, meta) = import_from_bpgn(source, Role::ServerOrStandalone).unwrap();
             let serialized = export_to_bpgn(BpgnExportFormat::default(), &game, meta);
             let (game2, _) = import_from_bpgn(&serialized, Role::ServerOrStandalone).unwrap();

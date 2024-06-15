@@ -59,7 +59,7 @@ pub fn update_chat(chat_node: &web_sys::Element, items: &[ChatItem]) -> JsResult
     }
     if items_added {
         // TODO: Scroll to bottom only if it was at the bottom.
-        scroll_to_bottom(&chat_node);
+        scroll_to_bottom(chat_node);
     }
     Ok(())
 }
@@ -90,12 +90,12 @@ fn new_chat_item(item: &ChatItem) -> JsResult<web_sys::Element> {
     if item.sender.is_some() || item.recipient.is_some() {
         let prefix_node = item_node.append_span(["chat-prefix"])?;
         if let Some(sender) = &item.sender {
-            let (sender_name, sender_class) = chat_party_name_and_class(&sender, "sender");
+            let (sender_name, sender_class) = chat_party_name_and_class(sender, "sender");
             prefix_node.append_text_span(sender_name, ["chat-sender", &sender_class])?;
         }
         if let Some(recipient) = &item.recipient {
             let (recipient_name, recipient_class) =
-                chat_party_name_and_class(&recipient, "recipient");
+                chat_party_name_and_class(recipient, "recipient");
             prefix_node.append_text_span("→", ["chat-arrow"])?;
             prefix_node.append_text_span(recipient_name, ["chat-recipient", &recipient_class])?;
         }
@@ -184,7 +184,7 @@ pub fn render_chat_reference_tooltip(
                 Recipient(text) => (text, "chat-reference-recipient"),
                 Notation(text) => (text, "chat-reference-notation"),
             };
-            input_node.append_text_span(*text, [class])?;
+            input_node.append_text_span(text, [class])?;
         }
         line_node.append_text_span(" — ", ["chat-reference-separator"])?;
         line_node.append_text_span(explanation, ["chat-reference-explanation"])?;
@@ -287,7 +287,7 @@ pub fn render_chat_reference_dialog() -> JsResult<()> {
                     Recipient(text) => (text, "chat-reference-recipient"),
                     Notation(text) => (text, "chat-reference-notation"),
                 };
-                input_td.append_text_span(*text, [class])?;
+                input_td.append_text_span(text, [class])?;
             }
             let explanation_td =
                 line_tr.append_new_element("td")?.with_classes(["chat-reference-explanation"])?;
