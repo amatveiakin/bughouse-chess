@@ -72,8 +72,10 @@ large_enum_variant = "allow"
 manual_is_ascii_check = "allow"
 new_without_default = "allow"
 option_map_unit_fn = "allow"
+result_unit_err = "allow"
 too_many_arguments = "allow"
 type_complexity = "allow"
+useless_format = "allow"  # could look better next to other formats
 
 [package]
 name = "bughouse_chess"
