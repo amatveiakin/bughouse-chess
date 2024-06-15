@@ -181,6 +181,7 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
 
     app.at("/dyn/metrics").get(handle_metrics);
     app.at("/dyn/server").get(handle_server_info);
+    app.at("/dyn/panic").get(handle_panic); // TODO: Delete when test is over!
 
     crate::stats_handlers_tide::Handlers::<HttpServerState<DB>>::register_handlers(&mut app);
 
@@ -453,4 +454,8 @@ async fn handle_server_info<DB>(req: tide::Request<HttpServerState<DB>>) -> tide
     resp.set_content_type(http_types::Mime::from("text/html; charset=UTF-8"));
     resp.set_body(h);
     Ok(resp)
+}
+
+async fn handle_panic<DB>(_req: tide::Request<HttpServerState<DB>>) -> tide::Result {
+    panic!("Test panic");
 }
