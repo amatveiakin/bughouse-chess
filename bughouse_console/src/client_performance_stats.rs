@@ -3,6 +3,7 @@ use hdrhistogram::Histogram;
 use itertools::Itertools;
 
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct ClientPerformanceRecord {
     pub git_version: String,

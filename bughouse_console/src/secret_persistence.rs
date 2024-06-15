@@ -18,6 +18,7 @@ pub struct LiveAccount {
     pub creation_time: OffsetDateTime,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct DeletedAccount {
     pub id: AccountId,
@@ -28,6 +29,7 @@ pub struct DeletedAccount {
 
 pub enum Account {
     Live(LiveAccount),
+    #[allow(dead_code)]
     Deleted(DeletedAccount),
 }
 
