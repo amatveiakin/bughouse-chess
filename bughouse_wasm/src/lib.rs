@@ -2438,8 +2438,8 @@ fn turn_log_node_id(board_idx: DisplayBoard) -> String {
 
 fn turn_record_node_id(index: TurnIndex, board: TurnRecordBoard) -> String {
     match board {
-        TurnRecordBoard::Main => format!("turn-record-{}", index.to_string()),
-        TurnRecordBoard::Auxiliary => format!("turn-record-aux-{}", index.to_string()),
+        TurnRecordBoard::Main => format!("turn-record-{}", index),
+        TurnRecordBoard::Auxiliary => format!("turn-record-aux-{}", index),
     }
 }
 

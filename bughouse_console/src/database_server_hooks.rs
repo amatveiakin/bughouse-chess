@@ -87,10 +87,7 @@ impl<DB: Send + Sync + DatabaseReader + DatabaseWriter> ServerHooks for Database
                     .find(|(_, players)| {
                         players.iter().any(|p| p.as_user().is_ok_and(|name| name == user_name))
                     })
-                    .map(|(team, _)| team);
-                let Some(user_team) = user_team else {
-                    return None;
-                };
+                    .map(|(team, _)| team)?;
                 let teammates = std::mem::take(&mut team_players[user_team]);
                 let opponents = std::mem::take(&mut team_players[user_team.opponent()]);
                 // TODO: Log game result parsing errors.

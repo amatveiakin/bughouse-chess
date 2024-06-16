@@ -26,6 +26,7 @@
 #![allow(unused_parens)]
 
 use std::collections::HashSet;
+use std::fmt::Display;
 use std::hash::Hash;
 use std::mem;
 use std::rc::Rc;
@@ -80,8 +81,8 @@ pub struct TurnRecordExpanded {
     pub boards_after: EnumMap<BughouseBoard, Board>,
 }
 
-impl ToString for TurnIndex {
-    fn to_string(&self) -> String { self.0.to_string() }
+impl Display for TurnIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}", self.0) }
 }
 impl FromStr for TurnIndex {
     type Err = <usize as FromStr>::Err;
@@ -692,10 +693,7 @@ impl BughouseGame {
         let game_duration = BughouseBoard::iter()
             .filter_map(|board| self.boards[board].flag_defeat_moment(now))
             .filter_map(|d| MillisDuration::try_from(d.elapsed_since_start()).ok())
-            .min();
-        let Some(game_duration) = game_duration else {
-            return None;
-        };
+            .min()?;
         let game_over_time = GameInstant::from_millis_duration(game_duration);
         self.boards[A].test_flag(game_over_time);
         self.boards[B].test_flag(game_over_time);

@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 use std::iter;
 use std::time::Duration;
 
@@ -263,10 +264,10 @@ impl BpgnHeader {
         self.tags.push((key.to_string(), value.to_string()));
     }
     fn render(&self) -> String {
-        self.tags
-            .iter()
-            .map(|(key, value)| format!("[{} \"{}\"]\n", key, value))
-            .collect()
+        self.tags.iter().fold(String::new(), |mut output, (key, value)| {
+            writeln!(output, "[{} \"{}\"]", key, value).unwrap();
+            output
+        })
     }
     fn parse(tokens: &mut TokenIter<'_>) -> Result<Self, &'static str> {
         let mut result = BpgnHeader::new();

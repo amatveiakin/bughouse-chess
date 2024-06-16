@@ -1707,16 +1707,13 @@ fn update_board_assigment(
     chat: &mut ServerChat,
 ) {
     let participants_status = verify_participants(rules, participants.iter());
-    let need_to_seat_out;
-    match participants_status {
-        ParticipantsStatus::CanStart { warning, .. } => {
-            need_to_seat_out = match warning {
-                None => false,
-                Some(ParticipantsWarning::NeedToDoublePlayAndSeatOut) => true,
-                Some(ParticipantsWarning::NeedToDoublePlay) => false,
-                Some(ParticipantsWarning::NeedToSeatOut) => true,
-            };
-        }
+    let need_to_seat_out = match participants_status {
+        ParticipantsStatus::CanStart { warning, .. } => match warning {
+            None => false,
+            Some(ParticipantsWarning::NeedToDoublePlayAndSeatOut) => true,
+            Some(ParticipantsWarning::NeedToDoublePlay) => false,
+            Some(ParticipantsWarning::NeedToSeatOut) => true,
+        },
         ParticipantsStatus::CannotStart(error) => {
             *next_board_assignment = None;
             chat.add(
@@ -1727,7 +1724,7 @@ fn update_board_assigment(
             );
             return;
         }
-    }
+    };
     let next_players = assign_boards(
         participants.iter(),
         next_board_assignment.as_deref(),

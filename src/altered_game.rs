@@ -455,12 +455,9 @@ impl AlteredGame {
         &mut self, destination: WaybackDestination, board_idx: Option<BughouseBoard>,
     ) -> Option<TurnIndex> {
         assert!(!self.is_active());
-        let Some(old_index) = self
+        let old_index = self
             .wayback_turn_index
-            .or_else(|| self.game_confirmed.last_turn_record().map(|r| r.index))
-        else {
-            return None;
-        };
+            .or_else(|| self.game_confirmed.last_turn_record().map(|r| r.index))?;
         let mut iter = self
             .game_confirmed
             .turn_log()
@@ -920,7 +917,7 @@ fn board_turn_log_modulo_wayback(
 
 fn compute_derived_data(
     my_id: BughouseParticipant, game_confirmed: &BughouseGame,
-    partial_turn_input: Option<(BughouseBoard, PartialTurnInput)>, local_turns: &Vec<TurnRecord>,
+    partial_turn_input: Option<(BughouseBoard, PartialTurnInput)>, local_turns: &[TurnRecord],
     wayback_turn_index: Option<TurnIndex>,
 ) -> DerivedData {
     let mut local_game_full_turns = game_confirmed.clone();

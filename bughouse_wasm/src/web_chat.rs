@@ -8,6 +8,8 @@
 //
 // Improvement potential. Make simple updates, like adding a new message, O(1).
 
+use std::cmp::Ordering;
+
 use bughouse_chess::client_chat::{ChatItem, ChatItemDurability, ChatParty, SystemMessageClass};
 use bughouse_chess::game::{BughouseParticipant, BughousePlayer};
 
@@ -35,16 +37,20 @@ pub fn update_chat(chat_node: &web_sys::Element, items: &[ChatItem]) -> JsResult
         let item = &items[idx as usize];
         let child_node = chat_node.children().get_with_index(idx).unwrap();
         let child_id = child_node.get_attribute(CHAT_ID_ATTR).ok_or_else(|| rust_error!())?;
-        if child_id < item.id {
-            chat_node.children().get_with_index(idx).unwrap().remove();
-        } else if child_id > item.id {
-            items_added = true;
-            let new_node = new_chat_item(item)?;
-            chat_node.insert_before(&new_node, Some(&child_node))?;
-            idx += 1;
-        } else {
-            update_chat_item(&child_node, item)?;
-            idx += 1;
+        match child_id.cmp(&item.id) {
+            Ordering::Less => {
+                chat_node.children().get_with_index(idx).unwrap().remove();
+            }
+            Ordering::Greater => {
+                items_added = true;
+                let new_node = new_chat_item(item)?;
+                chat_node.insert_before(&new_node, Some(&child_node))?;
+                idx += 1;
+            }
+            Ordering::Equal => {
+                update_chat_item(&child_node, item)?;
+                idx += 1;
+            }
         }
     }
     while idx < chat_node.children().length() {
@@ -192,6 +198,7 @@ pub fn render_chat_reference_tooltip(
     Ok(())
 }
 
+#[allow(clippy::vec_init_then_push)] // use `push`es to reduce identation level
 pub fn render_chat_reference_dialog() -> JsResult<()> {
     use ChatReferenceElement::*;
     // Improvement potential. Highlight "/a" and notation examples in explanation sections.
