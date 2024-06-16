@@ -39,6 +39,10 @@
         https://bugzilla.mozilla.org/show_bug.cgi?id=376027 -->
   <svg width="0" height="0" style="position: absolute">
     <defs id="svg-defs">
+      <symbol id="back-arrow">
+        <path d="m14.9 50 30.8-30.8h13.1l-26.1 26.3h52.4v9.08h-52.4l26.1 26.3h-13.1z"/>
+      </symbol>
+
       <symbol id="registered-user">
         <path id="path" d="m4.047 2.5141a0.66 0.66 0 1 0-0.3186 0.0388l-0.2943 2.381-1.4189-1.2323a0.6575 0.6575 0 1 0-0.2643 0.15l0.7392 2.5343 0.7644 1.2508-0.7644 0.1352v0.99h5.0262v-0.99l-0.7742-0.1358 0.764-1.25 0.7392-2.5342a0.66 0.66 0 1 0-0.2643-0.15l-1.4189 1.232-0.294-2.381a0.66 0.66 0 1 0-0.3186-0.0388l-0.9514 2.1558z" stroke-width=".1"/>
       </symbol>
@@ -460,7 +464,7 @@
     <form id="menu-authorization-page" class="menu-page" action="javascript:;">
       <div class="flex-col">
         <div class="align-left">
-          <button type="button" class="square-button back-button" title="Go back">🡨</button>
+          <button type="button" class="square-button back-button"></button>
         </div>
         <button id="begin-login-button" class="big-button">Log in</button>
         <button id="begin-signup-button" class="big-button">Sign up</button>
@@ -492,7 +496,7 @@
 
     <form id="menu-login-page" class="menu-page" action="javascript:;">
       <div class="align-left">
-        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <button type="button" class="square-button back-button"></button>
       </div>
       <div class="menu-page-body">
         <label for="login-user-name">Account name</label>
@@ -514,7 +518,7 @@
 
     <form id="menu-signup-page" class="menu-page" action="javascript:;">
       <div class="align-left">
-        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <button type="button" class="square-button back-button"></button>
       </div>
       <div class="menu-page-body">
         <label for="signup-user-name">Account name *</label>
@@ -564,7 +568,7 @@
 
     <form id="menu-signup-with-google-page" class="menu-page" action="javascript:;">
       <div class="align-left">
-        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <button type="button" class="square-button back-button"></button>
       </div>
       <div class="menu-page-body">
         <label for="signup-with-google-user-name">Account name *</label>
@@ -592,7 +596,7 @@
 
     <form id="menu-signup-with-lichess-page" class="menu-page" action="javascript:;">
       <div class="align-left">
-        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <button type="button" class="square-button back-button"></button>
       </div>
       <div class="menu-page-body">
         <label for="signup-with-lichess-user-name">Account name *</label>
@@ -620,7 +624,7 @@
 
     <form id="menu-view-account-page" class="menu-page" action="javascript:;">
       <div class="align-left">
-        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <button type="button" class="square-button back-button"></button>
       </div>
       <div class="menu-page-body">
         <div class="label">Account name</div>
@@ -643,7 +647,7 @@
 
     <form id="menu-change-account-page" class="menu-page" action="javascript:;">
       <div class="align-left">
-        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <button type="button" class="square-button back-button"></button>
       </div>
       <div class="menu-page-body">
         <div class="label">Account name</div>
@@ -691,7 +695,7 @@
 
     <form id="menu-delete-account-page" class="menu-page" action="javascript:;">
       <div class="align-left">
-        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <button type="button" class="square-button back-button"></button>
       </div>
       <div id="account-deletion-warning">
         You are about to delete your bughouse.pro account,
@@ -713,7 +717,7 @@
 
     <form id="menu-create-match-name-page" class="menu-page" action="javascript:;">
       <div class="flex-row-full">
-        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <button type="button" class="square-button back-button"></button>
         <div class="flex-grow"></div>
         <div class="logged-in-as">
           <span class="logged-in-as-prefix">Playing as</span>
@@ -739,7 +743,7 @@
 
     <form id="menu-create-match-page" class="menu-page" action="javascript:;">
       <div class="flex-row-full">
-        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <button type="button" class="square-button back-button"></button>
         <div class="flex-grow"></div>
         <div class="logged-in-as">
           <span class="logged-in-as-prefix">Playing as</span>
@@ -756,7 +760,7 @@
 
     <form id="menu-join-match-page" class="menu-page" action="javascript:;">
       <div class="flex-row-full">
-        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <button type="button" class="square-button back-button"></button>
         <div class="flex-grow"></div>
         <div class="logged-in-as">
           <span class="logged-in-as-prefix">Playing as</span>
@@ -813,7 +817,7 @@
 
     <form id="menu-game-archive-page" class="menu-page" action="javascript:;">
       <div class="flex-row-full">
-        <button type="button" class="square-button back-button" title="Go back">🡨</button>
+        <button type="button" class="square-button back-button"></button>
         <div>My Game Archive</div>
       </div>
       <div style="height: 0.4em"></div>

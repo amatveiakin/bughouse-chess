@@ -40,6 +40,8 @@ import victory_sound from "../assets/sounds/victory.ogg";
 import defeat_sound from "../assets/sounds/defeat.ogg";
 import draw_sound from "../assets/sounds/draw.ogg";
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
 class WasmClientDoesNotExist {}
 class WasmClientPanicked {}
 class InvalidCommand {
@@ -251,6 +253,7 @@ wasm.set_panic_hook();
 wasm.init_page();
 console.log("bughouse.pro client version:", wasm.git_version());
 
+postprocess_html();
 set_up_drag_and_drop();
 set_up_chalk_drawing();
 set_up_menu_pointers();
@@ -1001,6 +1004,15 @@ function server_websocket_address() {
   return url;
 }
 
+function postprocess_html() {
+  for (const button of document.getElementsByClassName("back-button")) {
+    button.title = "Go back";
+    const icon = make_svg_from_symbol("back-arrow", 100);
+    icon.classList.add("square-button-icon");
+    button.appendChild(icon);
+  }
+}
+
 function set_up_drag_and_drop() {
   // Note. Need to process mouse and touch screens separately. Cannot use pointer events
   // (https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events) here: it seems impossible
@@ -1568,12 +1580,11 @@ function fatal_error_dialog(message) {
   fatal_error_shown = true;
 }
 
-function make_svg_image(symbol_id, size) {
-  const SVG_NS = "http://www.w3.org/2000/svg";
+function make_svg_image_placeholder(symbol_id, image_id, size) {
   const symbol = document.createElementNS(SVG_NS, "symbol");
   symbol.id = symbol_id;
   const image = document.createElementNS(SVG_NS, "image");
-  image.id = `${symbol_id}-image`;
+  image.id = image_id;
   image.setAttribute("width", size);
   image.setAttribute("height", size);
   symbol.appendChild(image);
@@ -1604,7 +1615,7 @@ function load_svg_images(image_records) {
     const symbol_id = record.symbol;
     const size = record.size || 1;
     const image_id = `${symbol_id}-image`;
-    make_svg_image(symbol_id, size);
+    make_svg_image_placeholder(symbol_id, image_id, size);
     load_image(record.path, image_id, size);
     loading_tracker.resource_required();
   }
@@ -2074,6 +2085,15 @@ function set_tooltip(node, text) {
     tooltip_node.appendChild(p);
     node.appendChild(tooltip_node);
   }
+}
+
+function make_svg_from_symbol(symbol_id, size) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+  const use = document.createElementNS(SVG_NS, "use");
+  use.setAttribute("href", `#${symbol_id}`);
+  svg.appendChild(use);
+  return svg;
 }
 
 function make_animated_dots() {

@@ -52,7 +52,8 @@
      inkscape:bbox-paths="false"
      inkscape:showpageshadow="2"
      inkscape:pagecheckerboard="0"
-     inkscape:deskcolor="#d1d1d1">
+     inkscape:deskcolor="#d1d1d1"
+     showguides="false">
     <inkscape:grid
        type="xygrid"
        id="grid2022"
@@ -63,14 +64,14 @@
      id="OUTLINE">
     <text
        xml:space="preserve"
-       style="font-weight:bold;font-size:64px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans Bold';text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1;stroke-linejoin:round"
-       x="48.890625"
-       y="73.125"
+       style="font-weight:bold;font-size:85.3333px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans Bold';text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.1;stroke-linejoin:round"
+       x="48.520832"
+       y="80.833321"
        id="text319"><tspan
          sodipodi:role="line"
          id="tspan317"
-         x="48.890625"
-         y="73.125"
-         style="font-size:64px">🡨</tspan></text>
+         x="48.520832"
+         y="80.833321"
+         style="font-size:85.3333px">🡨</tspan></text>
   </g>
 </svg>
