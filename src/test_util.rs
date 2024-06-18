@@ -25,28 +25,19 @@ pub fn sample_chess_players() -> EnumMap<Force, String> {
     }
 }
 
+// Improvement potential: Should we use `BughouseGame::stub_players` instead?
 pub fn sample_bughouse_players() -> Vec<PlayerInGame> {
     use BughouseBoard::*;
     use Force::*;
-    let single_player =
-        |force, board_idx| BughousePlayer::SinglePlayer(BughouseEnvoy { board_idx, force });
+    let single_player = |name: &str, force, board_idx| PlayerInGame {
+        name: name.to_owned(),
+        id: BughousePlayer::SinglePlayer(BughouseEnvoy { board_idx, force }),
+    };
     vec![
-        PlayerInGame {
-            name: "Alice".to_owned(),
-            id: single_player(White, A),
-        },
-        PlayerInGame {
-            name: "Bob".to_owned(),
-            id: single_player(Black, A),
-        },
-        PlayerInGame {
-            name: "Charlie".to_owned(),
-            id: single_player(White, B),
-        },
-        PlayerInGame {
-            name: "Dave".to_owned(),
-            id: single_player(Black, B),
-        },
+        single_player("Alice", White, A),
+        single_player("Bob", Black, A),
+        single_player("Charlie", White, B),
+        single_player("Dave", Black, B),
     ]
 }
 

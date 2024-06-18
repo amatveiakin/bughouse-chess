@@ -889,6 +889,28 @@ impl Board {
         }
     }
 
+    pub fn new_setup_demo(rules: Rc<Rules>, role: Role) -> BoardSetup {
+        let mut board =
+            Board::new(rules, role, Self::stub_players(), &EffectiveStartingPosition::Classic);
+        for coord in board.shape().coords() {
+            if let Some(piece) = board.grid[coord].take() {
+                let force = match piece.force {
+                    PieceForce::White | PieceForce::Neutral => Force::White,
+                    PieceForce::Black => Force::Black,
+                };
+                board.reserve_mut(force)[piece.kind] += 1;
+            }
+        }
+        board.into()
+    }
+
+    pub fn stub_players() -> EnumMap<Force, String> {
+        enum_map! {
+            Force::White => "White".to_owned(),
+            Force::Black => "Black".to_owned(),
+        }
+    }
+
     pub fn rules(&self) -> &Rules { &self.rules }
     pub fn match_rules(&self) -> &MatchRules { &self.rules.match_rules }
     pub fn chess_rules(&self) -> &ChessRules { &self.rules.chess_rules }
@@ -1904,6 +1926,19 @@ impl Board {
             })),
             Turn::Castle(dir) => Some(AlgebraicTurn::Castle(dir)),
             Turn::PlaceDuck(to) => Some(AlgebraicTurn::PlaceDuck(to)),
+        }
+    }
+}
+
+impl From<Board> for BoardSetup {
+    fn from(board: Board) -> BoardSetup {
+        BoardSetup {
+            grid: board.grid,
+            active_force: board.active_force,
+            castling_rights: board.castling_rights,
+            en_passant_target: board.en_passant_target,
+            next_piece_id: board.next_piece_id,
+            reserves: board.reserves,
         }
     }
 }

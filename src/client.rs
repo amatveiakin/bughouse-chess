@@ -1,5 +1,6 @@
 use core::panic;
 use std::collections::{HashMap, VecDeque};
+use std::rc::Rc;
 use std::time::Duration;
 
 use enum_map::{enum_map, EnumMap};
@@ -9,7 +10,7 @@ use lru::LruCache;
 use strum::IntoEnumIterator;
 
 use crate::altered_game::{AlteredGame, TurnInputResult, WaybackDestination, WaybackState};
-use crate::board::{TurnError, TurnInput, TurnMode};
+use crate::board::{Board, TurnError, TurnInput, TurnMode};
 use crate::chalk::{ChalkCanvas, ChalkMark, Chalkboard};
 use crate::chat::{ChatMessage, ChatMessageBody, ChatRecipient};
 use crate::client_chat::{ClientChat, SystemMessageClass};
@@ -19,6 +20,7 @@ use crate::event::{
     BughouseClientEvent, BughouseClientPerformance, BughouseServerEvent, BughouseServerRejection,
     FinishedGameDescription, GameUpdate, SubjectiveGameResult,
 };
+use crate::force::Force;
 use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
     BughousePlayer, PlayerInGame, PlayerRelation, TurnIndex, TurnRecord, TurnRecordExpanded,
@@ -30,7 +32,7 @@ use crate::pgn::import_from_bpgn;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Faction, Participant};
 use crate::role::Role;
-use crate::rules::{ChessRules, DropAggression, Rules, FIRST_GAME_COUNTDOWN_DURATION};
+use crate::rules::{ChessRules, DropAggression, MatchRules, Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
 use crate::session::Session;
 use crate::starter::EffectiveStartingPosition;
@@ -75,6 +77,8 @@ pub struct ServerOptions {
 
 #[derive(Debug)]
 pub struct GameState {
+    // Whether this a demo setup not corresponding to a real game.
+    pub is_demo: bool,
     // The index of this game within the match.
     pub game_index: u64,
     // Game state including unconfirmed local changes.
@@ -121,10 +125,12 @@ pub struct Match {
     pub is_ready: bool,
     // If `Some`, the first game is going to start after the countdown.
     pub first_game_countdown_since: Option<Instant>,
-    // Active game or latest game.
-    pub game_state: Option<GameState>,
     // Chat box content. Includes messages from other players and system messages.
     pub chat: ClientChat,
+    // Active game or latest game.
+    pub game_state: Option<GameState>,
+    // Shown before the first game starts.
+    setup_demo_state: GameState,
 }
 
 #[derive(Debug)]
@@ -187,6 +193,7 @@ pub struct ClientState {
     session: Session,
     guest_player_name: Option<String>, // used only to create/join match
     game_archive_cache: LruCache<i64, String>, // game_id -> BPGN
+    default_setup_demo_state: GameState, // shown before the match starts
 }
 
 const LOW_TIME_WARNING_THRESHOLDS: &[Duration] = &[
@@ -209,6 +216,10 @@ impl ClientState {
         let now = Instant::now();
         let mut meter_box = MeterBox::new();
         let ping_meter = meter_box.meter("ping".to_owned());
+        let default_setup_demo_state = make_setup_demo_state(Rules {
+            match_rules: MatchRules { rated: false },
+            chess_rules: ChessRules::bughouse_twist(),
+        });
         ClientState {
             user_agent,
             time_zone,
@@ -221,6 +232,7 @@ impl ClientState {
             session: Session::Unknown,
             guest_player_name: None,
             game_archive_cache: LruCache::new(GAME_ARCHIVE_CACHE_SIZE.try_into().unwrap()),
+            default_setup_demo_state,
         }
     }
 
@@ -244,8 +256,21 @@ impl ClientState {
     pub fn is_ready(&self) -> Option<bool> { self.mtch().map(|m| m.is_ready) }
     pub fn match_id(&self) -> Option<&String> { self.mtch().and_then(|m| m.match_id()) }
     pub fn archive_game_id(&self) -> Option<i64> { self.mtch().and_then(|m| m.archive_game_id()) }
+    // TODO: Should we ever use `game_state` externally? Consider: remove `game_state`, make
+    // `Match::game_state` private, always use `displayed_game_state`.
     pub fn game_state(&self) -> Option<&GameState> {
         self.mtch().and_then(|m| m.game_state.as_ref())
+    }
+    pub fn displayed_game_state(&self) -> &GameState {
+        if let Some(mtch) = self.mtch() {
+            if let Some(game_state) = &mtch.game_state {
+                game_state
+            } else {
+                &mtch.setup_demo_state
+            }
+        } else {
+            &self.default_setup_demo_state
+        }
     }
     fn game_state_mut(&mut self) -> Option<&mut GameState> {
         self.mtch_mut().and_then(|m| m.game_state.as_mut())
@@ -433,10 +458,18 @@ impl ClientState {
         self.connection.send(BughouseClientEvent::SetReady { is_ready });
     }
     pub fn leave_match(&mut self) {
-        if self.mtch().is_some() {
-            self.connection.send(BughouseClientEvent::LeaveMatch);
-            self.match_state = MatchState::NotConnected;
-        }
+        use MatchState::*;
+        match &self.match_state {
+            NotConnected
+            | LoadingArchiveGame { .. }
+            | Connected(Match { origin: MatchOrigin::ArchiveGame(_), .. }) => {}
+            Creating { .. }
+            | Joining { .. }
+            | Connected(Match { origin: MatchOrigin::ActiveMatch(_), .. }) => {
+                self.connection.send(BughouseClientEvent::LeaveMatch);
+            }
+        };
+        self.match_state = MatchState::NotConnected;
     }
     pub fn leave_server(&mut self) {
         // TODO: Do we need this? On the one hand, it's not necessary: detecting connection closure
@@ -834,6 +867,7 @@ impl ClientState {
             // a player if we are in fact an observer. We'll get the real faction afterwards
             // in a `LobbyUpdated` event.
             let my_faction = Faction::Observer;
+            let setup_demo_state = make_setup_demo_state(rules.clone());
             self.match_state = MatchState::Connected(Match {
                 origin: MatchOrigin::ActiveMatch(match_id),
                 my_name,
@@ -846,6 +880,7 @@ impl ClientState {
                 first_game_countdown_since: None,
                 game_state: None,
                 chat: ClientChat::new(),
+                setup_demo_state,
             });
         }
         Ok(())
@@ -932,6 +967,7 @@ impl ClientState {
         let board_shape = alt_game.board_shape();
         let perspective = alt_game.perspective();
         mtch.game_state = Some(GameState {
+            is_demo: false,
             game_index,
             alt_game,
             time_pair,
@@ -1276,6 +1312,7 @@ impl ClientState {
         let board_shape = alt_game.board_shape();
         let perspective = alt_game.perspective();
         let game_state = GameState {
+            is_demo: false, // archive is not playable, but still a real game
             game_index,
             alt_game,
             time_pair: None,
@@ -1295,6 +1332,7 @@ impl ClientState {
             body: ChatMessageBody::GameOver { outcome },
         });
 
+        let setup_demo_state = make_setup_demo_state(rules.clone()); // wouldn't be used
         self.match_state = MatchState::Connected(Match {
             origin: MatchOrigin::ArchiveGame(game_id),
             my_name: String::new(),
@@ -1307,6 +1345,7 @@ impl ClientState {
             first_game_countdown_since: None,
             game_state: Some(game_state),
             chat,
+            setup_demo_state,
         });
         self.notable_event_queue.push_back(NotableEvent::ArchiveGameLoaded(game_id));
         Ok(())
@@ -1366,6 +1405,42 @@ impl ClientState {
                 }
             }
         }
+    }
+}
+
+fn make_setup_demo_state(rules: Rules) -> GameState {
+    let rules = Rc::new(rules);
+    let starting_position = EffectiveStartingPosition::manual_duplicate(&Board::new_setup_demo(
+        Rc::clone(&rules),
+        Role::Client,
+    ));
+    let mut game = BughouseGame::new_with_starting_position_and_rules_rc(
+        rules,
+        Role::Client,
+        starting_position,
+        &BughouseGame::stub_players(),
+    );
+    for board_idx in BughouseBoard::iter() {
+        game.board_mut(board_idx).clock_mut().erase_time();
+    }
+    let my_id = BughousePlayer::SinglePlayer(BughouseEnvoy {
+        board_idx: BughouseBoard::A,
+        force: Force::White,
+    });
+    let alt_game = AlteredGame::new(BughouseParticipant::Player(my_id), game);
+    let board_shape = alt_game.board_shape();
+    let perspective = alt_game.perspective();
+    GameState {
+        is_demo: true,
+        game_index: 0,
+        alt_game,
+        time_pair: None,
+        chalkboard: Chalkboard::new(),
+        chalk_canvas: ChalkCanvas::new(board_shape, perspective),
+        shared_wayback_enabled: false,
+        shared_wayback_turn_index: None,
+        updates_applied: 0,
+        next_low_time_warning_idx: enum_map! { _ => 0 },
     }
 }
 

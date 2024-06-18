@@ -529,6 +529,12 @@ impl Clock {
         }
         self.turn_state = None;
     }
+
+    pub fn erase_time(&mut self) {
+        for force in Force::iter() {
+            self.remaining_time[force] = GameDuration::UNKNOWN;
+        }
+    }
 }
 
 

@@ -123,7 +123,7 @@ const menu_create_match_name_page = document.getElementById("menu-create-match-n
 const menu_create_match_page = document.getElementById("menu-create-match-page");
 const menu_join_match_page = document.getElementById("menu-join-match-page");
 const menu_lobby_page = document.getElementById("menu-lobby-page");
-const menu_game_archive_game = document.getElementById("menu-game-archive-page");
+const menu_game_archive_page = document.getElementById("menu-game-archive-page");
 const menu_pages = document.getElementsByClassName("menu-page");
 
 const cookie_banner = document.getElementById("cookie-banner");
@@ -250,17 +250,11 @@ const Sound = load_sounds({
 });
 
 wasm.set_panic_hook();
-wasm.init_page();
 console.log("bughouse.pro client version:", wasm.git_version());
-
-postprocess_html();
-set_up_drag_and_drop();
-set_up_chalk_drawing();
-set_up_menu_pointers();
-set_up_log_navigation();
 
 let wasm_client_object = make_wasm_client();
 let wasm_client_panicked = false;
+wasm_client().init_page();
 
 let fatal_error_shown = false;
 
@@ -300,6 +294,14 @@ function drag_source_board() {
 }
 
 const Meter = make_meters();
+
+postprocess_html();
+set_up_drag_and_drop();
+set_up_chalk_drawing();
+set_up_menu_pointers();
+set_up_log_navigation();
+
+update();
 
 init_menu();
 auto_open_menu();
@@ -363,7 +365,7 @@ join_match_button.addEventListener("click", on_join_match_submenu);
 menu_create_match_name_page.addEventListener("submit", create_match_as_guest);
 menu_create_match_page.addEventListener("submit", on_create_match_confirm);
 menu_join_match_page.addEventListener("submit", on_join_match_confirm);
-lobby_leave_button.addEventListener("click", leave_match_lobby);
+lobby_leave_button.addEventListener("click", leave_active_match);
 game_archive_button.addEventListener("click", view_archive_game_list);
 
 for (const button of document.querySelectorAll(".back-button")) {
@@ -378,7 +380,7 @@ set_volume(max_volume);
 
 setInterval(on_tick, 50);
 
-// TODO: Support async function and use in `toggle_faction_ingame`.
+// TODO: Support async function and use in `toggle_faction_ingame` and `leave_match`.
 function with_error_handling(f) {
   // Note. Re-throw all unexpected errors to get a stacktrace.
   try {
@@ -468,7 +470,7 @@ function make_meters() {
 
 function on_socket_message(event) {
   with_error_handling(function () {
-    // console.log(log_time(), 'server: ', event.data);
+    // console.log(log_time(), "server: ", event.data);
     const update_needed = wasm_client().process_server_event(event.data);
     if (update_needed) {
       update();
@@ -895,10 +897,9 @@ function update_shared_wayback_button() {
 function update_buttons() {
   const observer_status = wasm_client().observer_status();
   const game_status = wasm_client().game_status();
-  // TODO: Allow leaving active matches.
   switch (game_status) {
     case "active":
-      set_displayed(leave_match_button, false);
+      set_displayed(leave_match_button, observer_status !== "no");
       set_displayed(resign_button, observer_status === "no");
       set_displayed(ready_button, false);
       set_displayed(toggle_faction_button, true);
@@ -906,7 +907,7 @@ function update_buttons() {
       set_displayed(shared_wayback_button, false);
       break;
     case "over":
-      set_displayed(leave_match_button, false);
+      set_displayed(leave_match_button, true);
       set_displayed(resign_button, false);
       set_displayed(ready_button, observer_status !== "permanently");
       set_displayed(toggle_faction_button, true);
@@ -938,16 +939,25 @@ function update_buttons() {
   update_shared_wayback_button();
 }
 
-function leave_match() {
-  with_error_handling(function () {
-    if (wasm_client().game_status() === "archive") {
-      const url = new URL(window.location);
-      url.search = "";
-      window.history.pushState({}, "", url);
-      open_menu();
-      view_archive_game_list();
+async function leave_match() {
+  if (wasm_client().game_status() === "archive") {
+    const url = new URL(window.location);
+    url.search = "";
+    window.history.pushState({}, "", url);
+    open_menu();
+    view_archive_game_list();
+  } else {
+    const need_confirmation = wasm_client().observer_status() !== "permanently";
+    const leave = need_confirmation
+      ? (await text_dialog("Leave match? (you can join back later with the same Match ID)", [
+          new MyButton("Stay", MyButton.HIDE),
+          new MyButton("Leave", MyButton.DO),
+        ])) === MyButton.DO
+      : true;
+    if (leave) {
+      leave_active_match();
     }
-  });
+  }
 }
 
 async function request_resign() {
@@ -1396,7 +1406,7 @@ function find_player_name_input(page) {
   return null;
 }
 
-function on_hide_menu_page(page) {
+function on_hide_menu_page(page, reason) {
   const player_name_input = find_player_name_input(page);
   if (player_name_input) {
     window.localStorage.setItem(Storage.player_name, player_name_input.value);
@@ -1406,14 +1416,18 @@ function on_hide_menu_page(page) {
       input.value = "";
     }
   }
+  if (page === menu_game_archive_page && reason === "back") {
+    with_error_handling(function () {
+      wasm_client().leave_match();
+      update();
+    });
+  }
 }
 
-function hide_menu_pages(execute_on_hide = true) {
+function hide_menu_pages(reason) {
   for (const page of menu_pages) {
     if (get_displayed(page)) {
-      if (execute_on_hide) {
-        on_hide_menu_page(page);
-      }
+      on_hide_menu_page(page, reason);
       set_displayed(page, false);
     }
   }
@@ -1468,7 +1482,7 @@ function push_menu_page(page) {
 function pop_menu_page() {
   menu_page_stack.pop();
   const page = current_menu_page();
-  hide_menu_pages();
+  hide_menu_pages("back");
   set_displayed(page, true);
 }
 
@@ -1511,7 +1525,10 @@ function auto_open_menu() {
 }
 
 function init_menu() {
-  hide_menu_pages(false);
+  // Don't call `hide_menu_pages` to avoid executing `on_hide_menu_page`.
+  for (const page of menu_pages) {
+    set_displayed(page, false);
+  }
 }
 
 // Shows a dialog with a message and buttons.
@@ -1912,14 +1929,14 @@ function on_join_match_confirm(event) {
   });
 }
 
-function leave_match_lobby() {
+function leave_active_match() {
   with_error_handling(function () {
     wasm_client().leave_match();
     update();
     const url = new URL(window.location);
     url.searchParams.delete(SearchParams.match_id);
     window.history.pushState({}, "", url);
-    reset_menu();
+    open_menu();
   });
 }
 
@@ -1927,7 +1944,7 @@ function view_archive_game_list() {
   with_error_handling(function () {
     wasm_client().view_archive_game_list();
     update_events();
-    push_menu_page(menu_game_archive_game);
+    push_menu_page(menu_game_archive_page);
   });
 }
 

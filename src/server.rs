@@ -1298,6 +1298,9 @@ impl Match {
     }
 
     fn process_leave_match(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
+        // TODO: Better chat message ("X left" rather than "X became an observer"). Note that the
+        // message could also be sent in `update_on_game_over`.
+        self.process_set_faction(ctx, client_id, Faction::Observer)?;
         self.clients.remove(&client_id);
         if let Some(ref mut client) = ctx.clients.get_mut(client_id) {
             client.match_id = None;

@@ -569,7 +569,7 @@ impl BughouseGame {
         )
     }
 
-    fn new_with_starting_position_and_rules_rc(
+    pub fn new_with_starting_position_and_rules_rc(
         rules: Rc<Rules>, role: Role, starting_position: EffectiveStartingPosition,
         players: &[PlayerInGame],
     ) -> Self {
@@ -605,6 +605,21 @@ impl BughouseGame {
             self.starting_position.clone(),
             &self.players(),
         )
+    }
+
+    pub fn stub_players() -> Vec<PlayerInGame> {
+        use BughouseBoard::*;
+        use Force::*;
+        let single_player = |name: &str, force, board_idx| PlayerInGame {
+            name: name.to_owned(),
+            id: BughousePlayer::SinglePlayer(BughouseEnvoy { board_idx, force }),
+        };
+        vec![
+            single_player("WhiteA", White, A),
+            single_player("BlackA", Black, A),
+            single_player("WhiteB", White, B),
+            single_player("BlackB", Black, B),
+        ]
     }
 
     pub fn starting_position(&self) -> &EffectiveStartingPosition { &self.starting_position }

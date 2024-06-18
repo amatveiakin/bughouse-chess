@@ -4,6 +4,7 @@ use enum_map::EnumMap;
 use itertools::Itertools;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
+use strum::IntoEnumIterator;
 
 use crate::board::{BoardCastlingRights, Reserve};
 use crate::coord::{Col, Coord, Row};
@@ -30,6 +31,16 @@ pub enum EffectiveStartingPosition {
     FischerRandom(Vec<PieceKind>),
     // Not using EnumMap: it is inconvenient with complex non-copiable types.
     ManualSetup(HashMap<BughouseBoard, BoardSetup>),
+}
+
+impl EffectiveStartingPosition {
+    pub fn manual_duplicate(board_setup: &BoardSetup) -> Self {
+        EffectiveStartingPosition::ManualSetup({
+            BughouseBoard::iter()
+                .map(|board_idx| (board_idx, board_setup.clone()))
+                .collect()
+        })
+    }
 }
 
 fn new_white(kind: PieceKind) -> PieceOnBoard {

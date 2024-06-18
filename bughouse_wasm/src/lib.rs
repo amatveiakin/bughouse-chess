@@ -300,7 +300,11 @@ impl WebClient {
     }
     pub fn next_faction(&mut self) { self.change_faction(|f| f + 1); }
     pub fn previous_faction(&mut self) { self.change_faction(|f| f - 1); }
-    pub fn leave_match(&mut self) { self.state.leave_match(); }
+    pub fn leave_match(&mut self) -> JsResult<()> {
+        self.state.leave_match();
+        self.init_game_view(true)?;
+        Ok(())
+    }
 
     pub fn change_faction_ingame(&mut self, faction: &str) -> JsResult<()> {
         let faction = parse_faction_id(faction)?;
@@ -529,9 +533,7 @@ impl WebClient {
     pub fn repaint_chalk(&self) -> JsResult<()> {
         // Improvement potential: Meter.
         // Improvement potential: Repaint only the current mark while drawing.
-        let Some(GameState { alt_game, chalkboard, .. }) = self.state.game_state() else {
-            return Ok(());
-        };
+        let GameState { alt_game, chalkboard, .. } = self.state.displayed_game_state();
         let document = web_document();
         for board_idx in DisplayBoard::iter() {
             document
@@ -564,16 +566,29 @@ impl WebClient {
         Ok(updated_needed)
     }
 
+    // TODO: Find a more robust way to ensure processing order. We sometimes need `NotableEvent`
+    // update to be processed before `update_state` and sometimes after. For now this is solved by
+    // always processing the update beforehand and calling `update` manually in `index.js` after the
+    // corresponding notable event if a post-update is needed. This means we do two updates where
+    // one would suffice. Worse than that, we could still get into trouble because we did the first
+    // update too early. For example, it is sheer dumb luck that `init_game_view` ended up being
+    // commutative with `update_state`. It was entirely reasonable for `update_state` to expect that
+    // the board is set up (especially when board shape changes) and panic on mismatch. Fix idea:
+    // replace notable events with:
+    //   - a queue of sounds and other effects;
+    //   - a set of dirty flags like "board needs to be rerendered", "chat needs to be cleared" or
+    //     "turn log needs to be scrolled", which `update_state` could clear at appropriate moments:
+    //     before, after or during the rest of the update.
     pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
         match self.state.next_notable_event() {
             Some(NotableEvent::SessionUpdated) => Ok(JsEventSessionUpdated {}.into()),
             Some(NotableEvent::MatchStarted(match_id)) => {
-                reset_chat()?;
+                self.init_game_view(true)?;
                 init_lobby(self.state.mtch().unwrap())?;
                 Ok(JsEventMatchStarted { match_id }.into())
             }
             Some(NotableEvent::GameStarted) => {
-                self.init_game_view()?;
+                self.init_game_view(false)?;
                 Ok(JsEventGameStarted {}.into())
             }
             Some(NotableEvent::GameOver(game_status)) => {
@@ -633,9 +648,7 @@ impl WebClient {
                 Ok(JsEventNoop {}.into())
             }
             Some(NotableEvent::ArchiveGameLoaded(game_id)) => {
-                // TODO: Reset when going back to main menu.
-                reset_chat()?;
-                self.init_game_view()?;
+                self.init_game_view(true)?;
                 highlight_archive_game_row(game_id)?;
                 Ok(JsEventArchiveGameLoaded { game_id }.into())
             }
@@ -651,38 +664,72 @@ impl WebClient {
 
     pub fn refresh(&mut self) { self.state.refresh(); }
 
+    pub fn init_page(&self) -> JsResult<()> {
+        generate_svg_markers()?;
+        render_archive_game_list(None, None)?;
+        web_chat::render_chat_reference_dialog()?;
+        self.init_game_view(true)?;
+        Ok(())
+    }
+
+    fn init_game_view(&self, need_reset_chat: bool) -> JsResult<()> {
+        let GameState { ref alt_game, .. } = self.state.displayed_game_state();
+        let my_id = alt_game.my_id();
+        render_boards(alt_game.board_shape(), alt_game.perspective())?;
+        setup_participation_mode(my_id)?;
+        if need_reset_chat {
+            reset_chat()?;
+        }
+        // TODO: Actualize chat tooltip for game archive.
+        // Improvement potential. Add an <hr> style separator between games in chat.
+        web_chat::render_chat_reference_tooltip(my_id, self.state.team_chat_enabled())?;
+        for display_board_idx in DisplayBoard::iter() {
+            scroll_log_to_bottom(display_board_idx)?;
+        }
+        Ok(())
+    }
+
     pub fn update_state(&self) -> JsResult<()> {
         let document = web_document();
-        self.update_clock()?;
-        let Some(mtch) = self.state.mtch() else {
-            return Ok(());
-        };
-        let hash_seed = match &mtch.origin {
-            MatchOrigin::ActiveMatch(match_id) => match_id.clone(),
-            MatchOrigin::ArchiveGame(game_id) => game_id.to_string(),
-        };
-        let Some(GameState { game_index, ref alt_game, .. }) = mtch.game_state else {
-            update_lobby(mtch)?;
-            return Ok(());
-        };
+        let GameState { is_demo, game_index, ref alt_game, .. } = self.state.displayed_game_state();
         let game = alt_game.local_game();
+        let hash_seed;
+        let mtch = self.state.mtch();
+        if let Some(mtch) = mtch {
+            hash_seed = match &mtch.origin {
+                MatchOrigin::ActiveMatch(match_id) => match_id.clone(),
+                MatchOrigin::ArchiveGame(game_id) => game_id.to_string(),
+            };
+            update_lobby(mtch)?;
+        } else {
+            hash_seed = String::new();
+        }
+        if !is_demo {
+            let mtch = mtch.unwrap();
+            let show_readiness = !game.status().is_active() && mtch.is_active_match();
+            update_participants_and_scores(&mtch.scores, &mtch.participants, show_readiness)?;
+            let chat_node = web_document().get_existing_element_by_id("chat-text-area")?;
+            web_chat::update_chat(
+                &chat_node,
+                &mtch.chat.items(&mtch.my_name, game.chess_rules(), Some(*game_index)),
+            )?;
+            update_cannot_start_alert(mtch)?;
+        } else {
+            update_participants_and_scores(&None, &[], false)?;
+            set_cannot_start_alert(None)?;
+        }
         let board_shape = alt_game.board_shape();
         let my_id = alt_game.my_id();
         let perspective = alt_game.perspective();
         let wayback = alt_game.wayback_state();
-        update_participants_and_scores(
-            &mtch.scores,
-            &mtch.participants,
-            game.status(),
-            mtch.is_active_match(),
-        )?;
         for (board_idx, board) in game.boards() {
             let my_force = my_id.envoy_for(board_idx).map(|e| e.force);
             let is_my_duck_turn = alt_game.is_my_duck_turn(board_idx);
             let is_piece_draggable = |piece_force: PieceForce| {
-                my_id
-                    .envoy_for(board_idx)
-                    .map_or(false, |e| piece_force.is_owned_by_or_neutral(e.force))
+                !is_demo
+                    && my_id
+                        .envoy_for(board_idx)
+                        .map_or(false, |e| piece_force.is_owned_by_or_neutral(e.force))
             };
             let is_glowing_steal = |coord: Coord| {
                 let Some((input_board_idx, partial_input)) = alt_game.partial_turn_input() else {
@@ -801,28 +848,36 @@ impl WebClient {
                     display_board_idx,
                     player_idx,
                 ))?;
-                let player_name = board.player_name(force);
-                let player = mtch.participants.iter().find(|p| p.name == *player_name).unwrap();
-                // TODO: Show teams for the upcoming game in individual mode.
-                let show_readiness = false;
-                let p_icon_position = match display_board_idx {
-                    DisplayBoard::Primary => IconPosition::Right,
-                    DisplayBoard::Secondary => IconPosition::Left,
-                };
-                let name_content = participant_node(
-                    player,
-                    ParticipantItemLocation::Board,
-                    show_readiness,
-                    p_icon_position,
-                )?;
-                p_node.replace_children_with_node_1(&name_content);
+                if !is_demo {
+                    let mtch = mtch.unwrap();
+                    let player_name = board.player_name(force);
+                    let player = mtch.participants.iter().find(|p| p.name == *player_name).unwrap();
+                    // TODO: Show teams for the upcoming game in individual mode.
+                    let show_readiness = false;
+                    let p_icon_position = match display_board_idx {
+                        DisplayBoard::Primary => IconPosition::Right,
+                        DisplayBoard::Secondary => IconPosition::Left,
+                    };
+                    let name_content = participant_node(
+                        player,
+                        ParticipantItemLocation::Board,
+                        show_readiness,
+                        p_icon_position,
+                    )?;
+                    p_node.replace_children_with_node_1(&name_content);
+                } else {
+                    p_node.remove_all_children();
+                }
                 let is_draggable = is_piece_draggable(force.into());
+                use ReservePresentation::*;
+                let reserve_presentation = if *is_demo { Demo } else { Normal };
                 update_reserve(
                     board.reserve(force),
                     force,
                     display_board_idx,
                     player_idx,
                     is_draggable,
+                    reserve_presentation,
                     game.chess_rules(),
                 )?;
             }
@@ -830,27 +885,20 @@ impl WebClient {
             board_node.class_list().toggle_with_force("wayback", wayback.active())?;
             update_turn_log(&game, my_id, board_idx, display_board_idx, &wayback)?;
         }
+        self.update_clock()?;
         self.update_turn_highlights()?;
         document
             .body()?
             .class_list()
             .toggle_with_force("active-player", is_clock_ticking(&game, my_id))?;
-        let chat_node = web_document().get_existing_element_by_id("chat-text-area")?;
-        web_chat::update_chat(
-            &chat_node,
-            &mtch.chat.items(&mtch.my_name, game.chess_rules(), Some(game_index)),
-        )?;
         self.repaint_chalk()?;
-        update_cannot_start_alert(mtch)?;
         Ok(())
     }
 
     // Improvement potential. Time difference is the same for all players (modulo sign). Consider
     // showing it only once, e.g. add a colored hourglass/progressbar somewhere in the middle.
     pub fn update_clock(&self) -> JsResult<()> {
-        let Some(GameState { ref alt_game, time_pair, .. }) = self.state.game_state() else {
-            return Ok(());
-        };
+        let GameState { ref alt_game, time_pair, .. } = &self.state.displayed_game_state();
         let now = Instant::now();
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         let game = alt_game.local_game();
@@ -961,9 +1009,7 @@ impl WebClient {
         &self, board_idx: DisplayBoard, owner: PlayerRelation, mark: &ChalkMark,
     ) -> JsResult<()> {
         use PlayerRelation::*;
-        let Some(GameState { alt_game, .. }) = self.state.game_state() else {
-            return Ok(());
-        };
+        let GameState { alt_game, .. } = self.state.displayed_game_state();
         let document = web_document();
         let board_shape = alt_game.board_shape();
         let orientation = get_board_orientation(board_idx, alt_game.perspective());
@@ -1047,9 +1093,7 @@ impl WebClient {
         web_document().purge_class_name("reserve-highlight")?;
         clear_square_highlight_layer(SquareHighlightLayer::Turn)?;
         clear_square_highlight_layer(SquareHighlightLayer::TurnAbove)?;
-        let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
-            return Ok(());
-        };
+        let GameState { alt_game, .. } = self.state.displayed_game_state();
         let board_shape = alt_game.board_shape();
         let perspective = alt_game.perspective();
         let highlights = alt_game.turn_highlights();
@@ -1077,22 +1121,6 @@ impl WebClient {
                 h.piece_kind,
             ))?;
             node.class_list().add_1("reserve-highlight")?;
-        }
-        Ok(())
-    }
-
-    fn init_game_view(&self) -> JsResult<()> {
-        let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
-            return Err(rust_error!());
-        };
-        let my_id = alt_game.my_id();
-        render_boards(alt_game.board_shape(), alt_game.perspective())?;
-        setup_participation_mode(my_id)?;
-        // TODO: Actualize chat tooltip for game archive.
-        // Improvement potential. Add an <hr> style separator between games in chat.
-        web_chat::render_chat_reference_tooltip(my_id, self.state.team_chat_enabled())?;
-        for display_board_idx in DisplayBoard::iter() {
-            scroll_log_to_bottom(display_board_idx)?;
         }
         Ok(())
     }
@@ -1155,6 +1183,12 @@ enum SquareHighlightLayer {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ReservePresentation {
+    Normal,
+    Demo,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum IconPosition {
     Left,
     Right,
@@ -1172,15 +1206,6 @@ fn scroll_log_to_bottom(board_idx: DisplayBoard) -> JsResult<()> {
     Ok(())
 }
 
-
-#[wasm_bindgen]
-pub fn init_page() -> JsResult<()> {
-    generate_svg_markers()?;
-    render_starting()?;
-    web_chat::render_chat_reference_tooltip(BughouseParticipant::default_observer(), false)?;
-    web_chat::render_chat_reference_dialog()?;
-    Ok(())
-}
 
 #[wasm_bindgen]
 pub fn update_new_match_rules_body() -> JsResult<()> { rules_ui::update_new_match_rules_body() }
@@ -1297,6 +1322,7 @@ fn clear_square_highlight_layer(layer: SquareHighlightLayer) -> JsResult<()> {
 }
 
 // TODO: Use SVG images instead.
+// TODO: Show leave icon rather than error when a player in seat-out leaves.
 // Improvement potential: Add a tooltip explaining the meaning of the icons.
 // Improvement potential: Add small red/blue icons for fixed teams in individual mode.
 fn participant_status_icon(p: &Participant, show_readiness: bool) -> &'static str {
@@ -1503,9 +1529,12 @@ fn render_reserve(
 
 fn update_reserve(
     reserve: &Reserve, force: Force, board_idx: DisplayBoard, player_idx: DisplayPlayer,
-    is_draggable: bool, chess_rules: &ChessRules,
+    is_draggable: bool, presentation: ReservePresentation, chess_rules: &ChessRules,
 ) -> JsResult<()> {
-    let piece_kind_sep = 1.0;
+    let piece_kind_sep = match presentation {
+        ReservePresentation::Normal => 1.0, // make sure draggable areas do not overlaps
+        ReservePresentation::Demo => 0.75,  // make demo look less cluttered
+    };
     let reserve_iter = reserve
         .iter()
         .filter(|(kind, &amount)| {
@@ -1515,7 +1544,7 @@ fn update_reserve(
                 // reserve piece.
                 PieceReservable::Always => true,
                 PieceReservable::Never => {
-                    assert!(amount == 0);
+                    assert!(amount == 0, "{kind:?}");
                     false
                 }
                 PieceReservable::InSpecialCases => amount > 0,
@@ -1616,41 +1645,6 @@ fn render_upgrade_promotion_selector(
     Ok(())
 }
 
-fn render_starting() -> JsResult<()> {
-    use PieceKind::*;
-    let board_shape = BoardShape { num_rows: 8, num_cols: 8 };
-    let perspective = Perspective::for_participant(BughouseParticipant::default_observer());
-    render_boards(board_shape, perspective)?;
-    let reserve = [
-        (Pawn, 8),
-        (Knight, 2),
-        (Bishop, 2),
-        (Rook, 2),
-        (Queen, 1),
-        (King, 1),
-    ];
-    let draggable = false;
-    let piece_kind_sep = 0.75;
-    let reserve_iter = reserve.iter().copied();
-    for force in Force::iter() {
-        for board_idx in DisplayBoard::iter() {
-            let board_orientation = get_board_orientation(board_idx, perspective);
-            let player_idx = get_display_player(force, board_orientation);
-            render_reserve(
-                force,
-                board_idx,
-                player_idx,
-                draggable,
-                board_shape,
-                piece_kind_sep,
-                reserve_iter.clone(),
-            )?;
-        }
-    }
-    render_archive_game_list(None, None)?;
-    Ok(())
-}
-
 // Differs from `BughouseGame::envoy_is_active` in that it returns false for White before game start.
 fn is_clock_ticking(game: &BughouseGame, participant_id: BughouseParticipant) -> bool {
     for envoy in participant_id.envoys() {
@@ -1716,10 +1710,8 @@ fn render_clock(
 }
 
 fn update_participants_and_scores(
-    scores: &Option<Scores>, participants: &[Participant], game_status: BughouseGameStatus,
-    is_active_match: bool,
+    scores: &Option<Scores>, participants: &[Participant], show_readiness: bool,
 ) -> JsResult<()> {
-    let show_readiness = !game_status.is_active() && is_active_match;
     let table = web_document().create_element("table")?;
     let mut observers = vec![];
     match scores {
@@ -1812,6 +1804,10 @@ fn update_participants_and_scores(
             participant_node(p, ParticipantItemLocation::Score, false, IconPosition::Left)?;
         node.append_child(&p_node)?;
     }
+
+    web_document()
+        .get_existing_element_by_id("participant-container")?
+        .set_displayed(!participants.is_empty())?;
     Ok(())
 }
 
@@ -1992,7 +1988,10 @@ fn update_cannot_start_alert(mtch: &Match) -> JsResult<()> {
         ParticipantsStatus::CanStart { .. } => None,
         ParticipantsStatus::CannotStart(error) => Some(cannot_start_game_message(error)),
     };
-    _ = alert;
+    set_cannot_start_alert(alert)
+}
+
+fn set_cannot_start_alert(alert: Option<&str>) -> JsResult<()> {
     let alert_node = web_document().get_existing_element_by_id("cannot-start-alert")?;
     alert_node.set_text_content(alert);
     alert_node

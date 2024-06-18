@@ -258,10 +258,9 @@ impl PieceKind {
             King => {
                 if chess_rules.bughouse_rules.as_ref().map_or(false, |r| r.koedem) {
                     PieceReservable::Always
-                } else if chess_rules.regicide() {
-                    PieceReservable::InSpecialCases // after game over
                 } else {
-                    PieceReservable::Never
+                    // Before game start (demos) and after game over (regicide).
+                    PieceReservable::InSpecialCases
                 }
             }
             Duck => PieceReservable::InSpecialCases, // before game start

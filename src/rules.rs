@@ -244,6 +244,7 @@ impl ChessRules {
     }
 
     pub fn bughouse_rush() -> Self { Self::from_preset(RulesPreset::Rush) }
+    pub fn bughouse_twist() -> Self { Self::from_preset(RulesPreset::Twist) }
 
     pub fn board_shape(&self) -> BoardShape {
         use FairyPieces::*;
