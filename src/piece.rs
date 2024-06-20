@@ -5,7 +5,7 @@ use static_assertions::const_assert;
 use strum::EnumIter;
 
 use crate::force::Force;
-use crate::rules::ChessRules;
+use crate::rules::{ChessRules, FairyPieces};
 use crate::util::{as_single_char, sort_two_desc};
 
 
@@ -246,10 +246,15 @@ impl PieceKind {
     }
 
     pub fn reservable(self, chess_rules: &ChessRules) -> PieceReservable {
+        use FairyPieces::*;
         use PieceKind::*;
         match self {
             Pawn | Knight | Bishop | Rook | Queen => PieceReservable::Always,
-            Cardinal | Empress | Amazon => PieceReservable::Never,
+            Cardinal | Empress => match chess_rules.fairy_pieces {
+                NoFairy | Accolade => PieceReservable::Never,
+                Capablanca => PieceReservable::Always,
+            },
+            Amazon => PieceReservable::Never,
             King => {
                 if chess_rules.bughouse_rules.as_ref().map_or(false, |r| r.koedem) {
                     PieceReservable::Always

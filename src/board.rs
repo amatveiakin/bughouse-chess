@@ -71,9 +71,10 @@ fn col_range_inclusive((col_min, col_max): (Col, Col)) -> impl Iterator<Item = C
 fn combine_pieces(
     rules: &ChessRules, id: PieceId, first: PieceOnBoard, second: PieceOnBoard,
 ) -> Option<PieceOnBoard> {
+    use FairyPieces::*;
     match rules.fairy_pieces {
-        FairyPieces::NoFairy => None,
-        FairyPieces::Accolade => accolade_combine_pieces(id, first, second),
+        NoFairy | Capablanca => None,
+        Accolade => accolade_combine_pieces(id, first, second),
     }
 }
 
@@ -502,8 +503,10 @@ fn piece_to_captured(pos: Coord, piece: PieceOnBoard) -> impl Iterator<Item = Ca
     })
 }
 
-fn initial_castling_rights(starting_position: &EffectiveStartingPosition) -> EnvoyCastlingRights {
-    let row = starting_piece_row(starting_position);
+fn initial_castling_rights(
+    fairy_pieces: FairyPieces, starting_position: &EffectiveStartingPosition,
+) -> EnvoyCastlingRights {
+    let row = starting_piece_row(fairy_pieces, starting_position);
     let king_pos = row.iter().position(|&p| p == PieceKind::King).unwrap();
     let king_col = Col::from_zero_based(king_pos.try_into().unwrap());
     let mut rights = enum_map! { _ => None };
@@ -818,10 +821,11 @@ impl Board {
         rules: Rc<Rules>, role: Role, players: EnumMap<Force, String>,
         starting_position: &EffectiveStartingPosition,
     ) -> Board {
-        let board_shape = rules.chess_rules.board_shape();
         let mut next_piece_id = PieceId::new();
-        let grid = generate_starting_grid(board_shape, starting_position, &mut next_piece_id);
-        let each_castling_rights = initial_castling_rights(starting_position);
+        let grid =
+            generate_starting_grid(&rules.chess_rules, starting_position, &mut next_piece_id);
+        let each_castling_rights =
+            initial_castling_rights(rules.chess_rules.fairy_pieces, starting_position);
         let castling_rights = enum_map! { _ => each_castling_rights };
         let reserves = enum_map! { _ => enum_map!{ _ => 0 } };
         let setup = BoardSetup {

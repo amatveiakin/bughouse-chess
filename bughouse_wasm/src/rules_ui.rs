@@ -29,6 +29,8 @@ const PROMOTION: &str = "promotion";
 const PAWN_DROP_RANKS: &str = "pawn_drop_ranks";
 const DROP_AGGRESSION: &str = "drop_aggression";
 
+const PLACEHOLDER_ICON: &str = r##"<svg class="rule-variant-icon"></svg>"##;
+
 const REGICIDE_CLASS: &str = "rule-warning-regicide";
 const REGICIDE_ICON: &str = "
 <svg class='inline-icon' viewBox='0 0 100 100'>
@@ -707,6 +709,7 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
     variants_node.append_element(
         VariantButton::new(FAIRY_PIECES, vec![
             VariantButtonState::new("off", "Standard pieces", ACCOLADE_OFF_ICON),
+            // VariantButtonState::new("capablanca", "Capablanca", PLACEHOLDER_ICON),
             VariantButtonState::new("accolade", "Accolade", ACCOLADE_ON_ICON),
         ])
         .with_tooltip(combine_elements(accolade_tooltip()?)?)
@@ -833,6 +836,7 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
         .map(|variant| {
             use ChessVariant::*;
             let (icon, tooltip) = match variant {
+                Capablanca => (PLACEHOLDER_ICON, vec![]),
                 Accolade => (ACCOLADE_ON_ICON, accolade_tooltip()?),
                 FischerRandom => (FISCHER_RANDOM_ON_ICON, fischer_random_tooltip()?),
                 DuckChess => (DUCK_CHESS_ON_ICON, duck_chess_tooltip()?),
@@ -995,6 +999,7 @@ pub fn new_match_rules() -> JsResult<Rules> {
     let fairy_pieces = match variants.get(FAIRY_PIECES).unwrap().as_str() {
         "off" => FairyPieces::NoFairy,
         "accolade" => FairyPieces::Accolade,
+        "capablanca" => FairyPieces::Capablanca,
         s => return Err(format!("Invalid fairy pieces: {s}").into()),
     };
     let starting_position = match variants.get(STARTING_POSITION).unwrap().as_str() {
@@ -1086,6 +1091,7 @@ fn new_match_apply_rules(rules: &ChessRules) -> JsResult<()> {
     activate_variant_button_value(FAIRY_PIECES, match rules.fairy_pieces {
         FairyPieces::NoFairy => "off",
         FairyPieces::Accolade => "accolade",
+        FairyPieces::Capablanca => "capablanca",
     })?;
     activate_variant_button_value(STARTING_POSITION, match rules.starting_position {
         StartingPosition::Classic => "off",

@@ -36,9 +36,13 @@ pub enum StartingPosition {
     FischerRandom, // a.k.a. Chess960
 }
 
+// TODO: Rename to take into account that it also defined the board shape.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum FairyPieces {
     NoFairy,
+
+    // A game on 10x8 board with two additional pieces per player: a Cardinal and an Empress.
+    Capablanca,
 
     // Can "glue" a Knight to a Bishop, a Rook or a Queen by moving one piece onto another
     // or dropping one piece onto another. Could move a Knight onto a piece, could move a
@@ -183,6 +187,7 @@ pub struct Rules {
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, EnumIter, Serialize, Deserialize)]
 pub enum ChessVariant {
+    Capablanca,
     Accolade,
     FischerRandom,
     DuckChess,
@@ -240,7 +245,13 @@ impl ChessRules {
 
     pub fn bughouse_rush() -> Self { Self::from_preset(RulesPreset::Rush) }
 
-    pub fn board_shape(&self) -> BoardShape { BoardShape::standard() }
+    pub fn board_shape(&self) -> BoardShape {
+        use FairyPieces::*;
+        match self.fairy_pieces {
+            NoFairy | Accolade => BoardShape::standard(),
+            Capablanca => BoardShape { num_rows: 8, num_cols: 10 },
+        }
+    }
 
     pub fn promotion(&self) -> Promotion {
         self.bughouse_rules.as_ref().map_or(Promotion::Upgrade, |r| r.promotion)
@@ -270,6 +281,9 @@ impl ChessRules {
         let mut v = vec![];
         match self.fairy_pieces {
             FairyPieces::NoFairy => {}
+            FairyPieces::Capablanca => {
+                v.push(ChessVariant::Capablanca);
+            }
             FairyPieces::Accolade => {
                 v.push(ChessVariant::Accolade);
             }
@@ -396,13 +410,14 @@ impl ChessVariant {
     pub fn enables_regicide(self) -> bool {
         use ChessVariant::*;
         match self {
-            Accolade | FischerRandom => false,
+            Capablanca | Accolade | FischerRandom => false,
             DuckChess | AtomicChess | FogOfWar | Koedem => true,
         }
     }
 
     pub fn to_pgn(self) -> &'static str {
         match self {
+            ChessVariant::Capablanca => "Capablanca",
             ChessVariant::Accolade => "Accolade",
             ChessVariant::FischerRandom => "Chess960",
             ChessVariant::DuckChess => "DuckChess",
@@ -417,6 +432,7 @@ impl ChessVariant {
     // Parses chess variant: as written by `to_pgn` or an alternative/historical name.
     pub fn from_pgn(s: &str) -> Option<Self> {
         match s {
+            "Capablanca" => Some(ChessVariant::Capablanca),
             "Accolade" => Some(ChessVariant::Accolade),
             "Chess960" => Some(ChessVariant::FischerRandom),
             "DuckChess" => Some(ChessVariant::DuckChess),
@@ -429,6 +445,7 @@ impl ChessVariant {
 
     pub fn to_human_readable(self) -> &'static str {
         match self {
+            ChessVariant::Capablanca => "Capablanca chess",
             ChessVariant::Accolade => "Accolade",
             ChessVariant::FischerRandom => "Fischer random",
             ChessVariant::DuckChess => "Duck chess",

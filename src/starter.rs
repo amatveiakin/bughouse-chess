@@ -6,12 +6,12 @@ use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::board::{BoardCastlingRights, Reserve};
-use crate::coord::{BoardShape, Col, Coord, Row};
+use crate::coord::{Col, Coord, Row};
 use crate::force::Force;
 use crate::game::BughouseBoard;
 use crate::grid::Grid;
 use crate::piece::{PieceForce, PieceId, PieceKind, PieceOnBoard, PieceOrigin};
-use crate::rules::{ChessRules, StartingPosition};
+use crate::rules::{ChessRules, FairyPieces, StartingPosition};
 
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -66,11 +66,12 @@ pub fn assign_piece_ids(grid: &mut Grid, piece_id: &mut PieceId) {
 }
 
 pub fn generate_starting_position(rules: &ChessRules) -> EffectiveStartingPosition {
+    use FairyPieces::*;
     use PieceKind::*;
-    assert_eq!(rules.board_shape().num_cols, 8);
-    match rules.starting_position {
-        StartingPosition::Classic => EffectiveStartingPosition::Classic,
-        StartingPosition::FischerRandom => {
+    match (rules.fairy_pieces, rules.starting_position) {
+        (_, StartingPosition::Classic) => EffectiveStartingPosition::Classic,
+        (NoFairy | Accolade, StartingPosition::FischerRandom) => {
+            assert_eq!(rules.board_shape().num_cols, 8);
             let mut rng = rand::thread_rng();
             let mut row = [None; 8];
             row[rng.gen_range(0..4) * 2] = Some(Bishop);
@@ -94,27 +95,36 @@ pub fn generate_starting_position(rules: &ChessRules) -> EffectiveStartingPositi
             row[knight_col_2] = Some(Knight);
             EffectiveStartingPosition::FischerRandom(row.map(|col| col.unwrap()).into())
         }
+        // TODO: Consider which other variants should support Fischer random.
+        (Capablanca, StartingPosition::FischerRandom) => EffectiveStartingPosition::Classic,
     }
 }
 
-pub fn starting_piece_row(starting_position: &EffectiveStartingPosition) -> &[PieceKind] {
+pub fn starting_piece_row(
+    fairy_pieces: FairyPieces, starting_position: &EffectiveStartingPosition,
+) -> &[PieceKind] {
+    use EffectiveStartingPosition::*;
+    use FairyPieces::*;
     use PieceKind::*;
-    match starting_position {
-        EffectiveStartingPosition::Classic => {
-            &[Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]
-        }
-        EffectiveStartingPosition::FischerRandom(row) => row,
-        EffectiveStartingPosition::ManualSetup(_) => {
+    match (fairy_pieces, starting_position) {
+        (NoFairy | Accolade, Classic) => &[Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook],
+        (Capablanca, Classic) => &[
+            Rook, Knight, Cardinal, Bishop, Queen, King, Bishop, Empress, Knight, Rook,
+        ],
+        (_, FischerRandom(row)) => row,
+        (_, ManualSetup(_)) => {
             panic!("Must use Board::new_from_setup with EffectiveStartingPosition::ManualSetup")
         }
     }
 }
 
 pub fn generate_starting_grid(
-    board_shape: BoardShape, starting_position: &EffectiveStartingPosition, piece_id: &mut PieceId,
+    rules: &ChessRules, starting_position: &EffectiveStartingPosition, piece_id: &mut PieceId,
 ) -> Grid {
-    let mut grid = Grid::new(board_shape);
-    for (col, piece_kind) in starting_piece_row(starting_position).iter().enumerate() {
+    let mut grid = Grid::new(rules.board_shape());
+    let starting_row = &starting_piece_row(rules.fairy_pieces, starting_position);
+    assert_eq!(starting_row.len(), grid.shape().num_cols as usize);
+    for (col, piece_kind) in starting_row.iter().enumerate() {
         let coord = Coord::new(Row::_1, Col::from_zero_based(col.try_into().unwrap()));
         grid[coord] = Some(new_white(*piece_kind));
     }
