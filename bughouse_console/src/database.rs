@@ -301,6 +301,10 @@ where
             ping_p90 INTEGER,
             ping_p99 INTEGER,
             ping_n INTEGER,
+            turn_confirmation_p50 INTEGER,
+            turn_confirmation_p90 INTEGER,
+            turn_confirmation_p99 INTEGER,
+            turn_confirmation_n INTEGER,
             process_outgoing_events_p99 INTEGER,
             process_notable_events_p99 INTEGER,
             refresh_p99 INTEGER,
@@ -352,6 +356,7 @@ where
     ) -> anyhow::Result<()> {
         let stats = &perf.stats;
         let ping = stats.get("ping");
+        let turn_confirmation = stats.get("turn_confirmation");
         let process_outgoing_events = stats.get("process_outgoing_events");
         let process_notable_events = stats.get("process_notable_events");
         let refresh = stats.get("refresh");
@@ -368,6 +373,10 @@ where
                 ping_p90,
                 ping_p99,
                 ping_n,
+                turn_confirmation_p50,
+                turn_confirmation_p90,
+                turn_confirmation_p99,
+                turn_confirmation_n,
                 process_outgoing_events_p99,
                 process_notable_events_p99,
                 refresh_p99,
@@ -386,6 +395,10 @@ where
                 .bind(ping.map(|s| s.p90 as i64))
                 .bind(ping.map(|s| s.p99 as i64))
                 .bind(ping.map(|s| s.num_values as i64))
+                .bind(turn_confirmation.map(|s| s.p50 as i64))
+                .bind(turn_confirmation.map(|s| s.p90 as i64))
+                .bind(turn_confirmation.map(|s| s.p99 as i64))
+                .bind(turn_confirmation.map(|s| s.num_values as i64))
                 .bind(process_outgoing_events.map(|s| s.p99 as i64))
                 .bind(process_notable_events.map(|s| s.p99 as i64))
                 .bind(refresh.map(|s| s.p99 as i64))
