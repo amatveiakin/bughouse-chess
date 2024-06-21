@@ -2258,6 +2258,7 @@ fn render_archive_game_list(
             }
         }
     }
+    tbody.append_new_element("tr")?.with_classes(["game-archive-buttom-padding"])?;
     Ok(())
 }
 

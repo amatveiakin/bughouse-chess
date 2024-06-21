@@ -1649,6 +1649,9 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   font-size: 90%;
   color: #444;
 }
+.game-archive-buttom-padding {
+  height: 100%;
+}
 
 .dot {
   display: inline-block;
