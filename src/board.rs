@@ -667,6 +667,9 @@ pub struct TurnExpanded {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TurnMode {
     // Regular in-order turn.
+    //
+    // TODO: Rename to something more specific, together with other functions and variables that
+    // inherit the word "normal" from here.
     Normal,
 
     // Out-of-order turn scheduled for execution. This is normally called "premove",

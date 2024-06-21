@@ -9,7 +9,10 @@ use itertools::Itertools;
 use lru::LruCache;
 use strum::IntoEnumIterator;
 
-use crate::altered_game::{AlteredGame, TurnInputResult, WaybackDestination, WaybackState};
+use crate::altered_game::{
+    AlteredGame, ApplyRemoteTurnResult, TurnConfirmation, TurnInputResult, WaybackDestination,
+    WaybackState,
+};
 use crate::board::{Board, TurnError, TurnInput, TurnMode};
 use crate::chalk::{ChalkCanvas, ChalkMark, Chalkboard};
 use crate::chat::{ChatMessage, ChatMessageBody, ChatRecipient};
@@ -101,6 +104,8 @@ pub struct GameState {
     updates_applied: usize,
     // Index of the next warning in `LOW_TIME_WARNING_THRESHOLDS`.
     next_low_time_warning_idx: EnumMap<BughouseBoard, usize>,
+    // Used to track how long it took the server to confirm a turn.
+    awaiting_turn_confirmation_since: EnumMap<BughouseBoard, Option<Instant>>,
 }
 
 #[derive(Clone, Debug)]
@@ -190,6 +195,11 @@ pub struct ClientState {
     notable_event_queue: VecDeque<NotableEvent>,
     meter_box: MeterBox,
     ping_meter: Meter,
+    // Records how long it took the server to react to each turn. Doesn't have to be 100% precise.
+    // E.g. currently if a user moves their piece and then moves the duck immediately, duck turn
+    // confirmation time would not be recorded. This is completely fine, since we only need the
+    // general feeling of how quickly the turns are confirmed, not a complete log.
+    turn_confirmed_meter: Meter,
     session: Session,
     guest_player_name: Option<String>, // used only to create/join match
     game_archive_cache: LruCache<i64, String>, // game_id -> BPGN
@@ -216,6 +226,7 @@ impl ClientState {
         let now = Instant::now();
         let mut meter_box = MeterBox::new();
         let ping_meter = meter_box.meter("ping".to_owned());
+        let turn_confirmed_meter = meter_box.meter("turn_confirmation".to_owned());
         let default_setup_demo_state = make_setup_demo_state(Rules {
             match_rules: MatchRules { rated: false },
             chess_rules: ChessRules::bughouse_twist(),
@@ -229,6 +240,7 @@ impl ClientState {
             notable_event_queue: VecDeque::new(),
             meter_box,
             ping_meter,
+            turn_confirmed_meter,
             session: Session::Unknown,
             guest_player_name: None,
             game_archive_cache: LruCache::new(GAME_ARCHIVE_CACHE_SIZE.try_into().unwrap()),
@@ -576,12 +588,24 @@ impl ClientState {
         &mut self, display_board: DisplayBoard, turn_input: TurnInput,
     ) -> Result<(), TurnError> {
         let game_state = self.game_state_mut().ok_or(TurnError::NoGameInProgress)?;
-        let GameState { ref mut alt_game, time_pair, .. } = game_state;
+        let GameState {
+            ref mut alt_game,
+            time_pair,
+            ref mut awaiting_turn_confirmation_since,
+            ..
+        } = game_state;
         let board_idx = get_board_index(display_board, alt_game.perspective());
         let my_envoy = alt_game.my_id().envoy_for(board_idx).ok_or(TurnError::NotPlayer)?;
         let now = Instant::now();
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
-        alt_game.try_local_turn(board_idx, turn_input.clone(), game_now)?;
+        let mode = alt_game.try_local_turn(board_idx, turn_input.clone(), game_now)?;
+        if mode == TurnMode::Normal {
+            // The test for an existing turn confirmation is required for variants with subturns,
+            // like duck chess.
+            if awaiting_turn_confirmation_since[board_idx].is_none() {
+                awaiting_turn_confirmation_since[board_idx] = Some(now);
+            }
+        }
         self.connection.send(BughouseClientEvent::MakeTurn { board_idx, turn_input });
         self.notable_event_queue.push_back(NotableEvent::TurnMade(my_envoy));
         Ok(())
@@ -977,6 +1001,7 @@ impl ClientState {
             shared_wayback_turn_index: None,
             updates_applied: 0,
             next_low_time_warning_idx: enum_map! { _ => 0 },
+            awaiting_turn_confirmation_since: enum_map! { _ => None },
         });
         for update in updates {
             // Don't generate notable events. Cold reconnect means that the user refreshed
@@ -1088,13 +1113,37 @@ impl ClientState {
             let game_start = GameInstant::game_start();
             *time_pair = Some(WallGameTimePair::new(now, game_start));
         }
-        let turn_record = alt_game.apply_remote_turn(envoy, &turn_input, time).map_err(|err| {
+        let ApplyRemoteTurnResult {
+            turn_record,
+            turn_confirmations: turns_confirmed,
+        } = alt_game.apply_remote_turn(envoy, &turn_input, time).map_err(|err| {
             internal_client_error!(
                 "Got impossible turn from server: {:?}, error: {:?}",
                 turn_input,
                 err
             )
         })?;
+        for board_idx in BughouseBoard::iter() {
+            match turns_confirmed[board_idx] {
+                TurnConfirmation::Pending => {}
+                TurnConfirmation::Confirmed => {
+                    if let Some(start) = game_state.awaiting_turn_confirmation_since[board_idx] {
+                        self.turn_confirmed_meter.record_duration(now - start);
+                    }
+                    game_state.awaiting_turn_confirmation_since[board_idx] = None;
+                }
+                TurnConfirmation::Discarded => {
+                    // A turn was invalidated by another event, e.g. the the piece was stolen by the
+                    // opponent. It could be tempting to record this as a turn confirmation because
+                    // rejection is a kind of response, but I think this is a bad idea. The event
+                    // that caused turn cancellation could have been already in flight when we
+                    // submitted the turn, it wasn't sent in response to the turn, so recording it
+                    // would go against the spirit of this counter. And it may cause confusing
+                    // results like getting a 1ms confirmation while having 100ms ping.
+                    game_state.awaiting_turn_confirmation_since[board_idx] = None;
+                }
+            }
+        }
         if generate_notable_events {
             if !is_my_turn {
                 // The `TurnMade` event fires when a turn is seen by the user, not when it's
@@ -1322,6 +1371,7 @@ impl ClientState {
             shared_wayback_turn_index: None,
             updates_applied: 0,
             next_low_time_warning_idx: enum_map! { _ => 0 },
+            awaiting_turn_confirmation_since: enum_map! { _ => None },
         };
 
         let mut chat = ClientChat::new();
@@ -1441,6 +1491,7 @@ fn make_setup_demo_state(rules: Rules) -> GameState {
         shared_wayback_turn_index: None,
         updates_applied: 0,
         next_low_time_warning_idx: enum_map! { _ => 0 },
+        awaiting_turn_confirmation_since: enum_map! { _ => None },
     }
 }
 

@@ -46,6 +46,19 @@ pub enum TurnInputResult {
     Error(TurnError),
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ApplyRemoteTurnResult {
+    pub turn_record: TurnRecordExpanded,
+    pub turn_confirmations: EnumMap<BughouseBoard, TurnConfirmation>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TurnConfirmation {
+    Pending,
+    Confirmed,
+    Discarded,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct RegularPartialTurn {
     pub piece_kind: PieceKind,
@@ -234,7 +247,7 @@ impl AlteredGame {
 
     pub fn apply_remote_turn(
         &mut self, envoy: BughouseEnvoy, turn_input: &TurnInput, time: GameInstant,
-    ) -> Result<TurnRecordExpanded, TurnError> {
+    ) -> Result<ApplyRemoteTurnResult, TurnError> {
         let mut original_game_confirmed = (*self.game_confirmed).clone();
         self.game_confirmed.get_mut().try_turn_by_envoy(
             envoy,
@@ -242,20 +255,24 @@ impl AlteredGame {
             TurnMode::Normal,
             time,
         )?;
-        let remote_turn_record = self.game_confirmed.turn_log().last().unwrap().clone();
+        let turn_record = self.game_confirmed.turn_log().last().unwrap().clone();
 
         if !self.game_confirmed.is_active() {
             self.reset_local_changes();
-            return Ok(remote_turn_record);
+            let turn_confirmations = enum_map! { _ => TurnConfirmation::Discarded };
+            return Ok(ApplyRemoteTurnResult { turn_record, turn_confirmations });
         }
 
-        for (turn_idx, turn_record) in self.local_turns.iter().enumerate() {
-            if turn_record.envoy == envoy {
+        let mut turn_confirmations = enum_map! { _ => TurnConfirmation::Pending };
+        let local_turn_before = self.has_normal_local_turn_per_board();
+        for (turn_idx, local_record) in self.local_turns.iter().enumerate() {
+            if local_record.envoy == envoy {
                 let local_turn =
-                    original_game_confirmed.apply_turn_record(turn_record, TurnMode::Normal);
-                if local_turn == Ok(remote_turn_record.turn_expanded.turn) {
+                    original_game_confirmed.apply_turn_record(local_record, TurnMode::Normal);
+                if local_turn == Ok(turn_record.turn_expanded.turn) {
                     // The server confirmed a turn made by this player. Discard the local copy.
                     self.local_turns.get_mut().remove(turn_idx);
+                    turn_confirmations[envoy.board_idx] = TurnConfirmation::Confirmed;
                     break;
                 } else {
                     // The server sent a turn made by this player, but it's different from the local
@@ -272,7 +289,17 @@ impl AlteredGame {
         }
 
         self.discard_invalid_local_turns();
-        Ok(remote_turn_record)
+
+        let local_turn_after = self.has_normal_local_turn_per_board();
+        for board_idx in BughouseBoard::iter() {
+            if turn_confirmations[board_idx] == TurnConfirmation::Pending
+                && local_turn_before[board_idx]
+                && !local_turn_after[board_idx]
+            {
+                turn_confirmations[board_idx] = TurnConfirmation::Discarded;
+            }
+        }
+        Ok(ApplyRemoteTurnResult { turn_record, turn_confirmations })
     }
 
     pub fn my_id(&self) -> BughouseParticipant { self.my_id }
@@ -861,6 +888,16 @@ impl AlteredGame {
                 self.partial_turn_input.set(None);
             }
         }
+    }
+
+    fn has_normal_local_turn_per_board(&self) -> EnumMap<BughouseBoard, bool> {
+        let mut ret = enum_map! { _ => false };
+        for turn in self.local_turns.iter() {
+            if self.game_confirmed.turn_mode_for_envoy(turn.envoy) == Ok(TurnMode::Normal) {
+                ret[turn.envoy.board_idx] = true;
+            }
+        }
+        ret
     }
 
     fn derived_data(&self) -> Ref<DerivedData> {
