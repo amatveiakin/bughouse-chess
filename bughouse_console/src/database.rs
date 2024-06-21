@@ -197,7 +197,11 @@ where
                 update_state_p50,
                 update_state_p90,
                 update_state_p99,
-                update_state_n
+                update_state_n,
+                turn_confirmation_p50,
+                turn_confirmation_p90,
+                turn_confirmation_p99,
+                turn_confirmation_n
              FROM client_performance",
         )
         .fetch_all(&self.pool)
@@ -217,12 +221,19 @@ where
                     p99: row.try_get_u64("update_state_p99")?,
                     num_values: row.try_get_u64("update_state_n")?,
                 };
+                let turn_confirmation_stats = MeterStats {
+                    p50: row.try_get_u64("turn_confirmation_p50")?,
+                    p90: row.try_get_u64("turn_confirmation_p90")?,
+                    p99: row.try_get_u64("turn_confirmation_p99")?,
+                    num_values: row.try_get_u64("turn_confirmation_n")?,
+                };
                 Ok(ClientPerformanceRecord {
                     git_version: row.try_get("git_version")?,
                     user_agent: row.try_get("user_agent")?,
                     time_zone: row.try_get("time_zone")?,
                     ping_stats,
                     update_state_stats,
+                    turn_confirmation_stats,
                 })
             })
             .partition(Result::is_ok);

@@ -11,6 +11,7 @@ pub struct ClientPerformanceRecord {
     pub time_zone: String,
     pub ping_stats: MeterStats,
     pub update_state_stats: MeterStats,
+    pub turn_confirmation_stats: MeterStats,
 }
 
 // TODO: What is the proper way to aggregate quantiles?
@@ -25,6 +26,7 @@ pub struct AggregatedClientPerformancePoint {
     pub git_version: String,
     pub ping_stats: MeterStatsWithUncertainty,
     pub update_state_stats: MeterStatsWithUncertainty,
+    pub turn_confirmation_stats: MeterStatsWithUncertainty,
 }
 
 // TODO: Add performance stats by browsers and ping by location.
@@ -51,17 +53,22 @@ impl ClientPerformanceStats {
             .map(|(git_version, records)| {
                 let mut ping_values = vec![];
                 let mut update_state_values = vec![];
+                let mut turn_confirmation_values = vec![];
                 for record in records {
                     ping_values.push(record.ping_stats);
                     update_state_values.push(record.update_state_stats);
+                    turn_confirmation_values.push(record.turn_confirmation_stats);
                 }
                 let ping_stats = MeterStatsWithUncertainty::from_values(&ping_values);
                 let update_state_stats =
                     MeterStatsWithUncertainty::from_values(&update_state_values);
+                let turn_confirmation_stats =
+                    MeterStatsWithUncertainty::from_values(&turn_confirmation_values);
                 AggregatedClientPerformancePoint {
                     git_version,
                     ping_stats,
                     update_state_stats,
+                    turn_confirmation_stats,
                 }
             })
             .collect();
@@ -105,5 +112,14 @@ pub fn performance_stats_graph_html(stats: &ClientPerformanceStats) -> String {
     plot.add_trace(make_trace(stats, &xs, "update_state_50", |p| &p.update_state_stats.p50s));
     plot.add_trace(make_trace(stats, &xs, "update_state_90", |p| &p.update_state_stats.p90s));
     plot.add_trace(make_trace(stats, &xs, "update_state_99", |p| &p.update_state_stats.p99s));
+    plot.add_trace(make_trace(stats, &xs, "turn_confirmation_50", |p| {
+        &p.turn_confirmation_stats.p50s
+    }));
+    plot.add_trace(make_trace(stats, &xs, "turn_confirmation_90", |p| {
+        &p.turn_confirmation_stats.p90s
+    }));
+    plot.add_trace(make_trace(stats, &xs, "turn_confirmation_99", |p| {
+        &p.turn_confirmation_stats.p99s
+    }));
     plot.to_inline_html(None)
 }
