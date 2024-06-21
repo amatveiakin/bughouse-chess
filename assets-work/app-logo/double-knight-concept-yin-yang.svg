@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 100 100"
+   x="0px"
+   y="0px"
+   version="1.1"
+   id="svg8"
+   sodipodi:docname="double-knight-concept-yin-yang.svg"
+   inkscape:version="1.2.2 (732a01da63, 2022-12-09)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <defs
+     id="defs7" />
+  <sodipodi:namedview
+     id="namedview5"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="5.6568545"
+     inkscape:cx="34.471454"
+     inkscape:cy="60.987957"
+     inkscape:window-width="2560"
+     inkscape:window-height="1476"
+     inkscape:window-x="-12"
+     inkscape:window-y="-12"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg8" />
+  <metadata
+     id="metadata12">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <rect
+     style="fill:#ffffff;fill-opacity:0.98393601;stroke-width:1.843;stroke-linecap:round;stroke-linejoin:round"
+     id="rect1751"
+     width="50"
+     height="100"
+     x="0"
+     y="0"
+     ry="0" />
+  <rect
+     style="fill:#000000;fill-opacity:0.98393571;stroke-width:1.843;stroke-linecap:round;stroke-linejoin:round"
+     id="rect1751-2"
+     width="50"
+     height="100"
+     x="50"
+     y="1.2461243e-06"
+     ry="0" />
+  <path
+     id="path569"
+     style="display:inline;fill:#ffffff;stroke-width:0.952592"
+     d="M 61.301847,25.541892 71.254595,11.85583 c 1.441375,3.224474 2.837681,8.915766 0.829605,13.024832 0.896438,0.06715 1.780506,0.28177 2.626523,0.637614 4.597044,2.174577 9.640603,7.794038 12.120235,19.482638 0.717767,3.384861 2.009746,5.005463 3.544598,6.93208 1.970033,2.31017 3.56856,5.022214 4.718061,8.004609 3.305893,8.442476 -5.614434,16.885935 -12.119401,9.217846 -2.740012,-3.221848 -5.977135,-5.796526 -9.537111,-7.585437 -3.862585,-2.14801 -6.662706,-3.707606 -8.244295,-11.373728 -0.751153,3.574769 -0.452361,12.012325 6.772874,17.160465 7.225237,5.148139 8.730042,15.999379 8.578976,19.212048 H 41.45421 c 0,-30.547401 1.430254,-56.937519 19.847637,-61.026905 z"
+     sodipodi:nodetypes="ccccccccccsccc" />
+  <path
+     id="path"
+     style="display:inline;fill:#000000;stroke-width:0.952592"
+     d="M 38.698153,25.541893 28.745405,11.855831 c -1.441375,3.224474 -2.837681,8.915765 -0.829605,13.024831 -0.896438,0.06715 -1.780506,0.28177 -2.626523,0.637614 -4.597043,2.174577 -9.640603,7.794038 -12.120235,19.482638 -0.717767,3.384861 -2.009746,5.005463 -3.5445979,6.93208 -1.9700322,2.31017 -3.5685593,5.022214 -4.7180599,8.004609 -3.3058992,8.442476 5.6144338,16.885935 12.1193998,9.217846 2.740012,-3.221848 5.977135,-5.796526 9.537111,-7.585437 3.862585,-2.14801 6.662707,-3.707606 8.244296,-11.373728 0.751152,3.574769 0.45236,12.012325 -6.772875,17.160465 -7.225236,5.148139 -8.730042,15.999379 -8.578976,19.212048 l 30.54978,-0.0029 c 0,-4.528566 -2.809202,-2.781257 -1.902033,-13.826202 0.879394,-10.706776 5.70458,-10.75807 7.051092,-22.210388 1.009034,-8.582015 -0.90192,-11.68852 -5.140389,-17.49051 -2.766437,-3.78694 -6.509582,-6.42977 -11.315637,-7.496904 z"
+     sodipodi:nodetypes="ccccccccccsccsssc" />
+</svg>
