@@ -4,6 +4,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use enum_map::{enum_map, EnumMap};
+use hdrhistogram::Histogram;
 use instant::Instant;
 use itertools::Itertools;
 use lru::LruCache;
@@ -200,6 +201,7 @@ pub struct ClientState {
     // confirmation time would not be recorded. This is completely fine, since we only need the
     // general feeling of how quickly the turns are confirmed, not a complete log.
     turn_confirmed_meter: Meter,
+    is_performance_reporting_enabled: bool,
     session: Session,
     guest_player_name: Option<String>, // used only to create/join match
     game_archive_cache: LruCache<i64, String>, // game_id -> BPGN
@@ -228,7 +230,7 @@ impl ClientState {
         let ping_meter = meter_box.meter("ping".to_owned());
         let turn_confirmed_meter = meter_box.meter("turn_confirmation".to_owned());
         let default_setup_demo_state = make_setup_demo_state(Rules {
-            match_rules: MatchRules { rated: false },
+            match_rules: MatchRules::unrated(),
             chess_rules: ChessRules::bughouse_twist(),
         });
         ClientState {
@@ -241,11 +243,16 @@ impl ClientState {
             meter_box,
             ping_meter,
             turn_confirmed_meter,
+            is_performance_reporting_enabled: true,
             session: Session::Unknown,
             guest_player_name: None,
             game_archive_cache: LruCache::new(GAME_ARCHIVE_CACHE_SIZE.try_into().unwrap()),
             default_setup_demo_state,
         }
+    }
+
+    pub fn disable_performance_reporting(&mut self) {
+        self.is_performance_reporting_enabled = false;
     }
 
     pub fn session(&self) -> &Session { &self.session }
@@ -349,6 +356,9 @@ impl ClientState {
     pub fn read_meter_stats(&self) -> HashMap<String, MeterStats> { self.meter_box.read_stats() }
     pub fn consume_meter_stats(&mut self) -> HashMap<String, MeterStats> {
         self.meter_box.consume_stats()
+    }
+    pub fn consume_meter_histograms(&mut self) -> HashMap<String, Histogram<u64>> {
+        self.meter_box.consume_histograms()
     }
 
     pub fn got_server_welcome(&self) -> bool { self.server_options.is_some() }
@@ -490,6 +500,9 @@ impl ClientState {
         self.connection.send(BughouseClientEvent::LeaveServer);
     }
     pub fn report_performance(&mut self) {
+        if !self.is_performance_reporting_enabled {
+            return;
+        }
         let stats = self.consume_meter_stats();
         self.connection
             .send(BughouseClientEvent::ReportPerformace(BughouseClientPerformance {

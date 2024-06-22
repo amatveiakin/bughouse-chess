@@ -242,6 +242,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
             match event {
                 NotableEvent::SessionUpdated => {}
                 NotableEvent::MatchStarted(..) => {
+                    client_state.set_ready(true);
                     // TODO: Display match ID to the user.
                 }
                 NotableEvent::GameStarted => {

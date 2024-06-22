@@ -10,6 +10,8 @@ use hdrhistogram::Histogram;
 use serde::{Deserialize, Serialize};
 
 
+pub const METER_SIGNIFICANT_DIGITS: u8 = 3;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MeterStats {
     pub p50: u64,
@@ -32,7 +34,7 @@ impl fmt::Display for MeterStats {
 
 #[derive(Clone, Debug, Default)]
 pub struct MeterBox {
-    meters: HashMap<String, Meter>,
+    pub meters: HashMap<String, Meter>,
 }
 
 impl MeterBox {
@@ -50,19 +52,24 @@ impl MeterBox {
         self.meters.values_mut().for_each(|meter| meter.reset());
         stats
     }
+    pub fn consume_histograms(&mut self) -> HashMap<String, Histogram<u64>> {
+        self.meters
+            .iter_mut()
+            .map(|(name, meter)| (name.clone(), meter.take()))
+            .collect()
+    }
 }
 
 
 #[derive(Clone, Debug)]
 pub struct Meter {
-    histogram: Rc<RefCell<Histogram<u64>>>,
+    pub histogram: Rc<RefCell<Histogram<u64>>>,
 }
 
 impl Meter {
     fn new() -> Self {
-        const SIGNIFICANT_DIGITS: u8 = 3;
         Meter {
-            histogram: Rc::new(RefCell::new(Histogram::new(SIGNIFICANT_DIGITS).unwrap())),
+            histogram: Rc::new(RefCell::new(Histogram::new(METER_SIGNIFICANT_DIGITS).unwrap())),
         }
     }
 
@@ -72,6 +79,11 @@ impl Meter {
         self.record(value);
     }
 
+    fn take(&mut self) -> Histogram<u64> {
+        let mut histogram = Histogram::new(METER_SIGNIFICANT_DIGITS).unwrap();
+        std::mem::swap(&mut *self.histogram.borrow_mut(), &mut histogram);
+        histogram
+    }
     fn reset(&mut self) { self.histogram.borrow_mut().reset(); }
     fn stats(&self) -> MeterStats {
         let histogram = self.histogram.borrow();

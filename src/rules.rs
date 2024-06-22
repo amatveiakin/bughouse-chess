@@ -397,6 +397,7 @@ impl PawnDropRanks {
     pub fn widest(board_shape: BoardShape) -> Self {
         Self::from_one_based(1, board_shape.num_rows as i8 - 1)
     }
+    pub fn contains(&self, row: SubjectiveRow) -> bool { self.min <= row && row <= self.max }
     pub fn to_pgn(&self) -> String {
         format!("{}-{}", self.min.to_one_based(), self.max.to_one_based())
     }

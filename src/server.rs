@@ -50,6 +50,14 @@ use crate::util::Relax;
 use crate::{fetch_new_chat_messages, my_git_version};
 
 
+// Exclude confusing characters:
+//   - 'O' and '0' (easy to confuse);
+//   - 'I' (looks like '1'; keep '1' because confusion in the other direction seems less likely).
+pub const MATCH_ID_ALPHABET: [char; 33] = [
+    '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K',
+    'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+];
+
 const DOUBLE_TERMINATION_ABORT_THRESHOLD: Duration = Duration::from_secs(1);
 const TERMINATION_WAITING_PERIOD: Duration = Duration::from_secs(60);
 const MATCH_GC_INACTIVITY_THRESHOLD: Duration = Duration::from_secs(3600 * 24);
@@ -472,13 +480,6 @@ impl CoreServerState {
             }
         }
 
-        // Exclude confusing characters:
-        //   - 'O' and '0' (easy to confuse);
-        //   - 'I' (looks like '1'; keep '1' because confusion in the other direction seems less likely).
-        const ALPHABET: [char; 33] = [
-            '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
-            'J', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-        ];
         const MIN_ID_LEN: usize = 4;
         const MAX_ATTEMPTS_PER_LEN: usize = 100;
         let mut rng = rand::thread_rng();
@@ -488,8 +489,8 @@ impl CoreServerState {
         while id.0.is_empty() || self.matches.contains_key(&id) {
             id = MatchId(
                 (&mut rng)
-                    .sample_iter(rand::distributions::Uniform::from(0..ALPHABET.len()))
-                    .map(|idx| ALPHABET[idx])
+                    .sample_iter(rand::distributions::Uniform::from(0..MATCH_ID_ALPHABET.len()))
+                    .map(|idx| MATCH_ID_ALPHABET[idx])
                     .take(id_len)
                     .collect(),
             );
@@ -1250,7 +1251,7 @@ impl Match {
             return Err(unknown_error!());
         };
         if !game.is_active() {
-            return Err(unknown_error!());
+            return Ok(());
         }
         let participant_id = *self.clients.get(&client_id).ok_or_else(|| unknown_error!())?;
         let player_bughouse_id = game

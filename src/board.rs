@@ -181,7 +181,7 @@ fn visibility_from(
         .collect()
 }
 
-fn legal_move_destinations(
+fn move_destinations(
     rules: &ChessRules, grid: &Grid, from: Coord, en_passant_target: Option<Coord>,
 ) -> Vec<Coord> {
     // Improvement potential: Don't iterate over all squares.
@@ -194,11 +194,11 @@ fn legal_move_destinations(
         .collect()
 }
 
-// Generates two kinds of castling moves: moving the king onto a neighboring rook and moving the
-// king two cols in the corresponding direction. In reality it's also possible to move the king
-// by 3 or more cols, but we exclude this to reduce clutter.
+// Generates castling moves. The UI allows to drag the king any number of squares >=2 or even 1
+// square if the rook stand right next to it, but we generate one move per direction to reduce
+// clutter.
 // TODO: Exclude moves when the path is blocked.
-fn legal_castling_destinations(
+fn castling_destinations(
     grid: &Grid, from: Coord, castling_rights: &BoardCastlingRights,
 ) -> Vec<Coord> {
     let Some(piece) = grid[from] else {
@@ -213,22 +213,29 @@ fn legal_castling_destinations(
     let mut dst_cols = vec![];
     for (dir, rook_col) in castling_rights[force] {
         if let Some(rook_col) = rook_col {
-            if (rook_col - from.col).abs() == 1 {
-                dst_cols.push(rook_col);
-            }
             let d = match dir {
-                CastleDirection::ASide => -2,
-                CastleDirection::HSide => 2,
+                CastleDirection::ASide => -1,
+                CastleDirection::HSide => 1,
             };
-            let jump_col = from.col + d;
-            if grid.contains_col(jump_col) {
-                dst_cols.push(jump_col);
+            let jump2_col = from.col + d * 2;
+            let jump1_col = from.col + d;
+            if grid.contains_col(jump2_col) {
+                dst_cols.push(jump2_col);
+            } else {
+                assert_eq!(jump1_col, rook_col);
+                dst_cols.push(jump1_col);
             }
         }
     }
-    dst_cols.sort();
-    dst_cols.dedup();
     dst_cols.into_iter().map(|col| Coord::new(from.row, col)).collect()
+}
+
+// TODO: Exclude moves when the path is blocked.
+fn castling_moves(castling_rights: &EnvoyCastlingRights) -> Vec<Turn> {
+    castling_rights
+        .iter()
+        .filter_map(|(dir, col)| col.map(|_| Turn::Castle(dir)))
+        .collect()
 }
 
 fn king_force(grid: &Grid, king_pos: Coord) -> Force {
@@ -248,7 +255,7 @@ fn is_chess_mate_to(
     for from in grid.shape().coords() {
         if let Some(piece) = grid[from] {
             if piece.force == force.into() {
-                for to in legal_move_destinations(rules, grid, from, en_passant_target) {
+                for to in move_destinations(rules, grid, from, en_passant_target) {
                     let capture_or = get_capture(grid, from, to, en_passant_target);
                     // Zero out capture separately because of en passant.
                     let mut grid = grid.maybe_scoped_set(capture_or.map(|pos| (pos, None)));
@@ -965,6 +972,11 @@ impl Board {
         }
     }
 
+    // Checks whether a turn is legal, including check and mate related conditions.
+    pub fn is_turn_legal(&self, turn: Turn, mode: TurnMode) -> bool {
+        self.turn_outcome(turn, mode).is_ok()
+    }
+
     // Does not test flag. Will not update game status if a player has zero time left.
     pub fn try_turn(
         &mut self, turn: Turn, mode: TurnMode, now: GameInstant,
@@ -1009,14 +1021,84 @@ impl Board {
 
     // Generates legal moves and castlings (if King) for a piece in a given square.
     // Check and mate are not taken into account.
-    pub fn legal_turn_destinations(&self, from: Coord) -> Vec<Coord> {
+    pub fn turn_destinations(&self, from: Coord) -> Vec<Coord> {
         // TODO: What about preturns? Possibilities:
         //   - Treat as a normal turn (this happens now),
         //   - Include all possibilities,
         //   - Return two separate lists: in-order turn moves + preturn moves.
         let mut ret =
-            legal_move_destinations(self.chess_rules(), &self.grid, from, self.en_passant_target);
-        ret.extend(legal_castling_destinations(&self.grid, from, &self.castling_rights));
+            move_destinations(self.chess_rules(), &self.grid, from, self.en_passant_target);
+        ret.extend(castling_destinations(&self.grid, from, &self.castling_rights));
+        ret
+    }
+
+    // Generates all legal moves and castlings.
+    // Check and mate are not taken into account. Filter through `is_turn_legal` if needed.
+    // Limitations:
+    //   - Always promotes to a Queen.
+    //   - Does not support stealing promotion.
+    //   - Does not support Duck moves.
+    // See also `potential_drops`.
+    pub fn potential_moves(&self) -> Vec<Turn> {
+        let force = self.active_force;
+        let mut ret = vec![];
+        for from in self.shape().coords() {
+            let Some(piece) = self.grid[from] else {
+                continue;
+            };
+            if piece.force != force.into() {
+                continue;
+            }
+            let destinations =
+                move_destinations(self.chess_rules(), &self.grid, from, self.en_passant_target);
+            for to in destinations {
+                let mut promote_to = None;
+                let last_row = SubjectiveRow::last(self.shape()).to_row(self.shape(), force);
+                if piece.kind == PieceKind::Pawn && to.row == last_row {
+                    promote_to = Some(match self.chess_rules().promotion() {
+                        Promotion::Upgrade => PromotionTarget::Upgrade(PieceKind::Queen),
+                        Promotion::Discard => PromotionTarget::Discard,
+                        Promotion::Steal => {
+                            panic!("potential_turns does not support Steal promotion")
+                        }
+                    })
+                }
+                ret.push(Turn::Move(TurnMove { from, to, promote_to }));
+            }
+            if piece.kind == PieceKind::King {
+                ret.extend(castling_moves(&self.castling_rights[force]));
+            }
+        }
+        ret
+    }
+
+    // Generates all legal drops.
+    // Check and mate are not taken into account. Filter through `is_turn_legal` if needed.
+    // Limitations:
+    //   - Does not generate combining drops in Accolade.
+    pub fn potential_drops(&self) -> Vec<Turn> {
+        let Some(bughouse_rules) = self.bughouse_rules() else {
+            return vec![];
+        };
+        let force = self.active_force;
+        let mut ret = vec![];
+        for (piece_kind, &count) in self.reserve(force) {
+            if count == 0 {
+                continue;
+            }
+            for to in self.shape().coords() {
+                if self.grid[to].is_some() {
+                    continue;
+                }
+                let to_subjective_row = SubjectiveRow::from_row(self.shape(), to.row, force);
+                if piece_kind == PieceKind::Pawn
+                    && !bughouse_rules.pawn_drop_ranks.contains(to_subjective_row)
+                {
+                    continue;
+                }
+                ret.push(Turn::Drop(TurnDrop { piece_kind, to }));
+            }
+        }
         ret
     }
 
@@ -1470,8 +1552,7 @@ impl Board {
                 }
                 let to_subjective_row = SubjectiveRow::from_row(self.shape(), drop.to.row, force);
                 if drop.piece_kind == PieceKind::Pawn
-                    && (to_subjective_row < bughouse_rules.pawn_drop_ranks.min
-                        || to_subjective_row > bughouse_rules.pawn_drop_ranks.max)
+                    && !bughouse_rules.pawn_drop_ranks.contains(to_subjective_row)
                 {
                     return Err(TurnError::InvalidPawnDropRank);
                 }

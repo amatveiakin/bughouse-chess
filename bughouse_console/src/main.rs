@@ -6,6 +6,7 @@
 //       that is not implemented or stabilized yet.
 
 #![forbid(unsafe_code)]
+#![feature(deadline_api)]
 #![cfg_attr(feature = "strict", deny(warnings))]
 
 extern crate clap;
@@ -38,6 +39,7 @@ mod database_server_hooks;
 mod game_stats;
 mod history_graphs;
 mod http_server_state;
+mod load_test;
 mod persistence;
 mod process_bpgn;
 mod prod_server_helpers;
@@ -76,6 +78,16 @@ fn main() -> io::Result<()> {
                 .arg(arg!(<server_address> "Server address"))
                 .arg(arg!(<match_id> "Match ID"))
                 .arg(arg!(<player_name> "Player name")),
+        )
+        .subcommand(
+            Command::new("load-test")
+                .about("Load test a given server")
+                .arg(arg!(<server_address> "Server address"))
+                .arg(
+                    arg!(-'n' --"matches" <n> "Number of simultaneous games, four clients each")
+                        .value_parser(1..=1000)
+                        .default_value("100"),
+                ),
         )
         .subcommand(
             Command::new("stress-test")
@@ -117,6 +129,10 @@ fn main() -> io::Result<()> {
         }),
         Some(("stress-test", sub_matches)) => stress_test::run(stress_test::StressTestConfig {
             target: sub_matches.get_one::<String>("target").unwrap().clone(),
+        }),
+        Some(("load-test", sub_matches)) => load_test::run(load_test::LoadTestConfig {
+            server_address: sub_matches.get_one::<String>("server_address").unwrap().clone(),
+            num_matches: *sub_matches.get_one::<i64>("matches").unwrap() as usize,
         }),
         Some(("bpgn", sub_matches)) => process_bpgn::run(process_bpgn::ProcessBpgnConfig {
             role: match sub_matches.get_one::<String>("role").unwrap().as_str() {

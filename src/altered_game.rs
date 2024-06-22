@@ -1214,7 +1214,7 @@ fn get_partial_turn_highlight_basis(
         // squares would give away information. Not highlighting them could be misleading.
         let fog_of_war = board.chess_rules().fog_of_war;
         if need_move_hint && !fog_of_war {
-            for dest in board.legal_turn_destinations(from) {
+            for dest in board.turn_destinations(from) {
                 highlights.push((TurnHighlightItem::LegalDestination, dest));
             }
         }
