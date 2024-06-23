@@ -534,8 +534,8 @@ fn remove_castling_right(castling_rights: &mut EnvoyCastlingRights, col: Col) {
 // Whether the piece is going to capture. Used by reachability tests.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Capturing {
-    Yes,   // used by TurnMode::Normal
-    No,    // used by TurnMode::Normal
+    Yes,   // used by TurnMode::InOrder
+    No,    // used by TurnMode::InOrder
     Maybe, // used by TurnMode::Preturn
 }
 
@@ -666,11 +666,8 @@ pub struct TurnExpanded {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TurnMode {
-    // Regular in-order turn.
-    //
-    // TODO: Rename to something more specific, together with other functions and variables that
-    // inherit the word "normal" from here.
-    Normal,
+    // Turn that could be applied immediately.
+    InOrder,
 
     // Out-of-order turn scheduled for execution. This is normally called "premove",
     // but we reserve "move" for a turn that takes one piece from the board and moves
@@ -942,7 +939,7 @@ impl Board {
     pub fn is_bughouse(&self) -> bool { self.bughouse_rules().is_some() }
     pub fn turn_owner(&self, mode: TurnMode) -> Force {
         match mode {
-            TurnMode::Normal => self.active_force,
+            TurnMode::InOrder => self.active_force,
             TurnMode::Preturn => self.active_force.opponent(),
         }
     }
@@ -997,7 +994,7 @@ impl Board {
 
     pub fn destination_reachability(&self, from: Coord, to: Coord, mode: TurnMode) -> Reachability {
         match mode {
-            TurnMode::Normal => {
+            TurnMode::InOrder => {
                 let capture = get_capture(&self.grid, from, to, self.en_passant_target);
                 reachability(self.chess_rules(), &self.grid, from, to, capture.is_some())
             }
@@ -1016,7 +1013,7 @@ impl Board {
         // TODO: What about preturns? Possibilities:
         //   - Treat as a normal turn (this happens now),
         //   - Include all possibilities,
-        //   - Return two separate lists: normal turn moves + preturn moves.
+        //   - Return two separate lists: in-order turn moves + preturn moves.
         let mut ret =
             legal_move_destinations(self.chess_rules(), &self.grid, from, self.en_passant_target);
         ret.extend(legal_castling_destinations(&self.grid, from, &self.castling_rights));
@@ -1102,7 +1099,7 @@ impl Board {
     fn update_turn_stage_and_active_force(&mut self, mode: TurnMode) {
         let force = self.turn_owner(mode);
         let next_active_force = match mode {
-            TurnMode::Normal => self.active_force.opponent(),
+            TurnMode::InOrder => self.active_force.opponent(),
             TurnMode::Preturn => self.active_force,
         };
         if self.chess_rules().duck_chess {
@@ -1155,14 +1152,14 @@ impl Board {
             if *reserve_left > 0 {
                 *reserve_left -= 1;
             } else {
-                if mode == TurnMode::Normal {
+                if mode == TurnMode::InOrder {
                     panic!("Must have verified reserve earlier");
                 }
             }
         }
 
         match mode {
-            TurnMode::Normal => {
+            TurnMode::InOrder => {
                 if !matches!(turn, Turn::PlaceDuck(_)) {
                     self.en_passant_target = get_en_passant_target(&self.grid, turn);
                 }
@@ -1230,7 +1227,7 @@ impl Board {
     fn turn_outcome(&self, turn: Turn, mode: TurnMode) -> Result<TurnOutcome, TurnError> {
         let mut outcome = self.turn_outcome_no_check_test(turn, mode)?;
         match mode {
-            TurnMode::Normal => self.verify_check_and_drop_aggression(turn, mode, &mut outcome)?,
+            TurnMode::InOrder => self.verify_check_and_drop_aggression(turn, mode, &mut outcome)?,
             TurnMode::Preturn => {}
         }
         Ok(outcome)
@@ -1316,7 +1313,7 @@ impl Board {
                 }
                 let mut capture_pos_or = None;
                 match mode {
-                    TurnMode::Normal => {
+                    TurnMode::InOrder => {
                         use Reachability::*;
                         capture_pos_or =
                             get_capture(&new_grid, mv.from, mv.to, self.en_passant_target);
@@ -1499,7 +1496,7 @@ impl Board {
                         new_piece = combined_piece;
                     } else {
                         match mode {
-                            TurnMode::Normal => {
+                            TurnMode::InOrder => {
                                 return Err(TurnError::DropBlocked);
                             }
                             TurnMode::Preturn => {}
@@ -1563,7 +1560,7 @@ impl Board {
                 };
 
                 match mode {
-                    TurnMode::Normal => {
+                    TurnMode::InOrder => {
                         let cols = [king_from.col, king_to.col, rook_from.col, rook_to.col];
                         for col in col_range_inclusive(iter_minmax(cols.into_iter()).unwrap()) {
                             if new_grid[Coord::new(row, col)].is_some() {
@@ -1601,12 +1598,12 @@ impl Board {
                 }
                 let from = find_piece(&new_grid, |p| p.kind == PieceKind::Duck);
                 let duck = if let Some(from) = from {
-                    if to == from && mode == TurnMode::Normal {
+                    if to == from && mode == TurnMode::InOrder {
                         return Err(TurnError::MustChangeDuckPosition);
                     }
                     new_grid[from].take().unwrap()
                 } else {
-                    if self.reserves[force][PieceKind::Duck] == 0 && mode == TurnMode::Normal {
+                    if self.reserves[force][PieceKind::Duck] == 0 && mode == TurnMode::InOrder {
                         // This shouldn't really happen.
                         return Err(TurnError::DropPieceMissing);
                     }
@@ -1618,7 +1615,7 @@ impl Board {
                         PieceForce::Neutral,
                     )
                 };
-                if new_grid[to].is_some() && mode == TurnMode::Normal {
+                if new_grid[to].is_some() && mode == TurnMode::InOrder {
                     return Err(TurnError::PathBlocked);
                 }
                 new_grid[to] = Some(duck);
@@ -1678,7 +1675,7 @@ impl Board {
         }
         for steal in &facts.steals {
             let pos = find_piece_by_id(&self.grid, steal.piece_id);
-            if mode == TurnMode::Normal {
+            if mode == TurnMode::InOrder {
                 // Tested in `verify_sibling_turn`.
                 let pos = pos.unwrap();
                 assert_eq!(self.grid[pos].unwrap().kind, steal.piece_kind);
@@ -1694,7 +1691,7 @@ impl Board {
     fn parse_drag_drop_turn(&self, prototurn: Turn, mode: TurnMode) -> Result<Turn, TurnError> {
         if let Turn::Move(mv) = prototurn {
             match mode {
-                TurnMode::Normal => {
+                TurnMode::InOrder => {
                     let force = self.turn_owner(mode);
                     let piece = self.grid[mv.from].ok_or(TurnError::PieceMissing)?;
                     if piece.force != force.into() {
@@ -1760,7 +1757,7 @@ impl Board {
                         {
                             let reachable;
                             match mode {
-                                TurnMode::Normal => {
+                                TurnMode::InOrder => {
                                     use Reachability::*;
                                     let capture_or = get_capture(
                                         &self.grid,
@@ -1880,7 +1877,7 @@ impl Board {
         match turn {
             Turn::Move(mv) => {
                 let details = match mode {
-                    TurnMode::Normal => details,
+                    TurnMode::InOrder => details,
                     TurnMode::Preturn => AlgebraicDetails::LongAlgebraic,
                 };
                 let include_col_row = match details {

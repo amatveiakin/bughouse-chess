@@ -6,7 +6,8 @@
 // shall not panic on bogus local turns and other invalid user actions.
 //
 // Only one preturn is allowed (for game-design reasons, this is not a technical limitation).
-// It is still possible to have two unconfirmed local turns: one normal and one preturn.
+// It is still possible to have multiple unconfirmed local turns: one in-order and one preturn.
+// Also because of duck turns.
 
 use std::cell::{Ref, RefCell};
 use std::cmp;
@@ -186,10 +187,10 @@ pub struct AlteredGame {
     // Partial turn input (e.g. move of a pawn to the last rank without a promotion choice).
     partial_turn_input: Dirty<Option<(BughouseBoard, PartialTurnInput)>>,
     // Local changes of two kinds:
-    //   - Local turns (TurnMode::Normal) not confirmed by the server yet, but displayed on the
+    //   - Local turns (TurnMode::InOrder) not confirmed by the server yet, but displayed on the
     //     client. Always valid turns for the `game_confirmed`.
     //   - Local preturns (TurnMode::Preturn).
-    // The turns are executed sequentially. Preturns always follow normal turns.
+    // The turns are executed sequentially. Preturns always follow in-order turns.
     local_turns: Dirty<Vec<TurnRecord>>,
     // Historical position that the user is currently viewing.
     wayback_turn_index: Dirty<Option<TurnIndex>>,
@@ -252,7 +253,7 @@ impl AlteredGame {
         self.game_confirmed.get_mut().try_turn_by_envoy(
             envoy,
             turn_input,
-            TurnMode::Normal,
+            TurnMode::InOrder,
             time,
         )?;
         let turn_record = self.game_confirmed.turn_log().last().unwrap().clone();
@@ -264,11 +265,11 @@ impl AlteredGame {
         }
 
         let mut turn_confirmations = enum_map! { _ => TurnConfirmation::Pending };
-        let local_turn_before = self.has_normal_local_turn_per_board();
+        let local_turn_before = self.has_inorder_local_turn_per_board();
         for (turn_idx, local_record) in self.local_turns.iter().enumerate() {
             if local_record.envoy == envoy {
                 let local_turn =
-                    original_game_confirmed.apply_turn_record(local_record, TurnMode::Normal);
+                    original_game_confirmed.apply_turn_record(local_record, TurnMode::InOrder);
                 if local_turn == Ok(turn_record.turn_expanded.turn) {
                     // The server confirmed a turn made by this player. Discard the local copy.
                     self.local_turns.get_mut().remove(turn_idx);
@@ -290,7 +291,7 @@ impl AlteredGame {
 
         self.discard_invalid_local_turns();
 
-        let local_turn_after = self.has_normal_local_turn_per_board();
+        let local_turn_after = self.has_inorder_local_turn_per_board();
         for board_idx in BughouseBoard::iter() {
             if turn_confirmations[board_idx] == TurnConfirmation::Pending
                 && local_turn_before[board_idx]
@@ -890,10 +891,10 @@ impl AlteredGame {
         }
     }
 
-    fn has_normal_local_turn_per_board(&self) -> EnumMap<BughouseBoard, bool> {
+    fn has_inorder_local_turn_per_board(&self) -> EnumMap<BughouseBoard, bool> {
         let mut ret = enum_map! { _ => false };
         for turn in self.local_turns.iter() {
-            if self.game_confirmed.turn_mode_for_envoy(turn.envoy) == Ok(TurnMode::Normal) {
+            if self.game_confirmed.turn_mode_for_envoy(turn.envoy) == Ok(TurnMode::InOrder) {
                 ret[turn.envoy.board_idx] = true;
             }
         }

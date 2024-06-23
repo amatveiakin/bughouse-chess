@@ -112,7 +112,7 @@ fn chess960_first_move_castle() {
 #[test]
 fn chess960_drag_king_onto_rook_castle() {
     let mut game = chess960_from_short_fen("RBNNBKRQ");
-    game.try_turn(&drag_move!(F1 -> G1), TurnMode::Normal, GameInstant::game_start())
+    game.try_turn(&drag_move!(F1 -> G1), TurnMode::InOrder, GameInstant::game_start())
         .unwrap();
     assert!(game.board().grid()[Coord::F1].is(piece!(White Rook)));
     assert!(game.board().grid()[Coord::G1].is(piece!(White King)));

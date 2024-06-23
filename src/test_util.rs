@@ -51,7 +51,7 @@ pub fn replay_chess_log(
         let turn_notation =
             turn_number_re.captures(turn_notation).unwrap().get(1).unwrap().as_str();
         let turn_input = TurnInput::Algebraic(turn_notation.to_owned());
-        game.try_turn(&turn_input, TurnMode::Normal, GameInstant::from_duration(t))?;
+        game.try_turn(&turn_input, TurnMode::InOrder, GameInstant::from_duration(t))?;
         t += time_per_turn;
     }
     Ok(())
@@ -82,7 +82,7 @@ pub fn replay_bughouse_log(
         };
         assert_eq!(game.board(board_idx).active_force(), force);
         let turn_input = TurnInput::Algebraic(turn_notation.to_owned());
-        game.try_turn(board_idx, &turn_input, TurnMode::Normal, GameInstant::from_duration(t))?;
+        game.try_turn(board_idx, &turn_input, TurnMode::InOrder, GameInstant::from_duration(t))?;
         t += time_per_turn;
     }
     Ok(())

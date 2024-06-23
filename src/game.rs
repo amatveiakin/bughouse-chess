@@ -93,7 +93,7 @@ impl TurnRecordExpanded {
     pub fn trim_for_sending(&self) -> TurnRecord {
         // This is used only to send confirmed turns from server to clients, so preturns
         // should never occur here.
-        assert_eq!(self.mode, TurnMode::Normal);
+        assert_eq!(self.mode, TurnMode::InOrder);
         TurnRecord {
             envoy: self.envoy,
             turn_input: TurnInput::Explicit(self.turn_expanded.turn),
@@ -681,7 +681,7 @@ impl BughouseGame {
     pub fn turn_mode_for_envoy(&self, envoy: BughouseEnvoy) -> Result<TurnMode, TurnError> {
         if self.status.is_active() {
             Ok(if self.is_envoy_active(envoy) {
-                TurnMode::Normal
+                TurnMode::InOrder
             } else {
                 TurnMode::Preturn
             })
@@ -780,7 +780,7 @@ impl BughouseGame {
         let turn_algebraic = turn_algebraic.unwrap();
         let other_board = &mut self.boards[board_idx.other()];
         match mode {
-            TurnMode::Normal => other_board.start_clock(now),
+            TurnMode::InOrder => other_board.start_clock(now),
             TurnMode::Preturn => {}
         }
         other_board.apply_sibling_turn(&turn_facts, mode);

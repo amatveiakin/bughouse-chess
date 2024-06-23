@@ -752,7 +752,7 @@ fn apply_turn(game: &mut BughouseGame, turn: BpgnTurn) -> Result<(), String> {
     game.try_turn_by_envoy(
         turn.envoy,
         &TurnInput::Algebraic(turn.algebraic.clone()),
-        TurnMode::Normal,
+        TurnMode::InOrder,
         turn_time,
     )
     .map_err(|err| format!("turn {} invalid: {:?}", turn.render_without_addenda(), err))?;
@@ -846,9 +846,9 @@ mod tests {
         rules.chess_rules.time_control.starting_time = Duration::from_secs(100);
         let mut game =
             BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());
-        game.try_turn(A, &algebraic("e4"), TurnMode::Normal, game_t!(0)).unwrap();
-        game.try_turn(A, &algebraic("e5"), TurnMode::Normal, game_t!(10 s)).unwrap();
-        game.try_turn(B, &algebraic("e4"), TurnMode::Normal, game_t!(20 s)).unwrap();
+        game.try_turn(A, &algebraic("e4"), TurnMode::InOrder, game_t!(0)).unwrap();
+        game.try_turn(A, &algebraic("e5"), TurnMode::InOrder, game_t!(10 s)).unwrap();
+        game.try_turn(B, &algebraic("e4"), TurnMode::InOrder, game_t!(20 s)).unwrap();
         game.test_flag(game_t!(999 s));
 
         let bpgn = export_to_bpgn(BpgnExportFormat::default(), &game, default_meta());

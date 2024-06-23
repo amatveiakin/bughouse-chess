@@ -243,7 +243,7 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
                     .try_turn(
                         envoy.board_idx,
                         &TurnInput::DragDrop(turn),
-                        TurnMode::Normal,
+                        TurnMode::InOrder,
                         GameInstant::game_start(),
                     )
                     .is_ok();
@@ -323,7 +323,7 @@ pub fn bughouse_game_test() -> io::Result<()> {
                 let ret = game.try_turn(
                     random_board(rng),
                     &TurnInput::DragDrop(random_turn(rng, game.chess_rules().board_shape())),
-                    TurnMode::Normal,
+                    TurnMode::InOrder,
                     GameInstant::game_start(),
                 );
                 total_turns += 1;

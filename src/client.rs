@@ -599,7 +599,7 @@ impl ClientState {
         let now = Instant::now();
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         let mode = alt_game.try_local_turn(board_idx, turn_input.clone(), game_now)?;
-        if mode == TurnMode::Normal {
+        if mode == TurnMode::InOrder {
             // The test for an existing turn confirmation is required for variants with subturns,
             // like duck chess.
             if awaiting_turn_confirmation_since[board_idx].is_none() {

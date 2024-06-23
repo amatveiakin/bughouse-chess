@@ -1678,9 +1678,9 @@ fn resolve_one_turn(
     let mut iter = mem::take(turn_requests).into_iter();
     while let Some(r) = iter.next() {
         match game.turn_mode_for_envoy(r.envoy) {
-            Ok(TurnMode::Normal) => {
+            Ok(TurnMode::InOrder) => {
                 if game
-                    .try_turn_by_envoy(r.envoy, &r.turn_input, TurnMode::Normal, game_now)
+                    .try_turn_by_envoy(r.envoy, &r.turn_input, TurnMode::InOrder, game_now)
                     .is_ok()
                 {
                     // Discard this turn, but keep the rest.

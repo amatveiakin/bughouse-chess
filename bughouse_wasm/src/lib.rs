@@ -1864,7 +1864,7 @@ fn update_turn_log(
                     .format(board_shape, AlgebraicCharset::AuxiliaryUnicode)
             };
             let (algebraic, captures) = match record.mode {
-                TurnMode::Normal => (algebraic, record.turn_expanded.captures.clone()),
+                TurnMode::InOrder => (algebraic, record.turn_expanded.captures.clone()),
                 TurnMode::Preturn => (
                     format!("({})", algebraic),
                     vec![], // don't show captures for preturns: too unpredictable and messes with braces

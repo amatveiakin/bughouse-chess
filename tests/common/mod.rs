@@ -301,8 +301,8 @@ mod tests {
 
         let mut game_expected =
             ChessGame::new(rules, Role::ServerOrStandalone, sample_chess_players());
-        game_expected.try_turn(&algebraic_turn("e4"), TurnMode::Normal, T0).unwrap();
-        game_expected.try_turn(&algebraic_turn("d5"), TurnMode::Normal, T0).unwrap();
+        game_expected.try_turn(&algebraic_turn("e4"), TurnMode::InOrder, T0).unwrap();
+        game_expected.try_turn(&algebraic_turn("d5"), TurnMode::InOrder, T0).unwrap();
         let board_expected = game_expected.board();
 
         assert_eq!(board.grid().without_ids(), board_expected.grid().without_ids());
@@ -330,10 +330,12 @@ mod tests {
 
         let mut game_expected =
             BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());
-        game_expected.try_turn(A, &algebraic_turn("e4"), TurnMode::Normal, T0).unwrap();
-        game_expected.try_turn(A, &algebraic_turn("d5"), TurnMode::Normal, T0).unwrap();
-        game_expected.try_turn(B, &algebraic_turn("e3"), TurnMode::Normal, T0).unwrap();
-        game_expected.try_turn(B, &algebraic_turn("Nf6"), TurnMode::Normal, T0).unwrap();
+        game_expected.try_turn(A, &algebraic_turn("e4"), TurnMode::InOrder, T0).unwrap();
+        game_expected.try_turn(A, &algebraic_turn("d5"), TurnMode::InOrder, T0).unwrap();
+        game_expected.try_turn(B, &algebraic_turn("e3"), TurnMode::InOrder, T0).unwrap();
+        game_expected
+            .try_turn(B, &algebraic_turn("Nf6"), TurnMode::InOrder, T0)
+            .unwrap();
 
         for board_idx in BughouseBoard::iter() {
             assert_eq!(

@@ -44,7 +44,7 @@ fn make_turn(
     game: &mut BughouseGame, board_idx: BughouseBoard, turn_notation: &str,
 ) -> Result<(), TurnError> {
     let turn_input = TurnInput::Algebraic(turn_notation.to_owned());
-    game.try_turn(board_idx, &turn_input, TurnMode::Normal, GameInstant::game_start())?;
+    game.try_turn(board_idx, &turn_input, TurnMode::InOrder, GameInstant::game_start())?;
     Ok(())
 }
 
@@ -56,8 +56,8 @@ fn replay_log_symmetric(game: &mut BughouseGame, log: &str) -> Result<(), TurnEr
     let now = GameInstant::game_start();
     for turn_notation in log.split_whitespace() {
         let turn_input = TurnInput::Algebraic(turn_notation.to_owned());
-        game.try_turn(BughouseBoard::A, &turn_input, TurnMode::Normal, now)?;
-        game.try_turn(BughouseBoard::B, &turn_input, TurnMode::Normal, now)?;
+        game.try_turn(BughouseBoard::A, &turn_input, TurnMode::InOrder, now)?;
+        game.try_turn(BughouseBoard::B, &turn_input, TurnMode::InOrder, now)?;
     }
     Ok(())
 }
@@ -259,7 +259,7 @@ fn steal_promotion_cannot_expose_checked_king() {
     ";
     let mut game = parse_ascii_bughouse(rules, Role::ServerOrStandalone, game_str).unwrap();
     assert_eq!(
-        game.try_turn(BughouseBoard::A, &alg("a8=Bh2"), TurnMode::Normal, T0),
+        game.try_turn(BughouseBoard::A, &alg("a8=Bh2"), TurnMode::InOrder, T0),
         Err(TurnError::ExposingKingByStealing)
     );
 }
@@ -280,7 +280,7 @@ fn steal_promotion_cannot_expose_partner_king() {
     ";
     let mut game = parse_ascii_bughouse(rules, Role::ServerOrStandalone, game_str).unwrap();
     assert_eq!(
-        game.try_turn(BughouseBoard::A, &alg("a8=Ne8"), TurnMode::Normal, T0),
+        game.try_turn(BughouseBoard::A, &alg("a8=Ne8"), TurnMode::InOrder, T0),
         Err(TurnError::ExposingPartnerKingByStealing)
     );
 }
@@ -305,7 +305,7 @@ fn steal_promotion_cannot_expose_checked_partner_king() {
     ";
     let mut game = parse_ascii_bughouse(rules, Role::ServerOrStandalone, game_str).unwrap();
     assert_eq!(
-        game.try_turn(BughouseBoard::A, &alg("a8=Re8"), TurnMode::Normal, T0),
+        game.try_turn(BughouseBoard::A, &alg("a8=Re8"), TurnMode::InOrder, T0),
         Err(TurnError::ExposingPartnerKingByStealing)
     );
 }
@@ -325,8 +325,8 @@ fn combined_piece_falls_apart_on_capture() {
         R . . . K . . .     . . . k . . . .
     ";
     let mut game = parse_ascii_bughouse(rules, Role::ServerOrStandalone, game_str).unwrap();
-    game.try_turn(BughouseBoard::A, &alg("Na1"), TurnMode::Normal, T0).unwrap();
-    game.try_turn(BughouseBoard::A, &alg("Bxa1"), TurnMode::Normal, T0).unwrap();
+    game.try_turn(BughouseBoard::A, &alg("Na1"), TurnMode::InOrder, T0).unwrap();
+    game.try_turn(BughouseBoard::A, &alg("Bxa1"), TurnMode::InOrder, T0).unwrap();
     assert_eq!(
         game.board(BughouseBoard::B).reserve(Force::White).to_map(),
         [(PieceKind::Knight, 1), (PieceKind::Rook, 1)].into_iter().collect()
@@ -349,9 +349,9 @@ fn steal_promotion_preserves_piece_composition() {
         R . . . K . . .     . . . k . . . .
     ";
     let mut game = parse_ascii_bughouse(rules, Role::ServerOrStandalone, game_str).unwrap();
-    game.try_turn(BughouseBoard::A, &alg("Na1"), TurnMode::Normal, T0).unwrap();
-    game.try_turn(BughouseBoard::B, &alg("Pa8=Ea1"), TurnMode::Normal, T0).unwrap();
-    game.try_turn(BughouseBoard::B, &alg("Bxa8"), TurnMode::Normal, T0).unwrap();
+    game.try_turn(BughouseBoard::A, &alg("Na1"), TurnMode::InOrder, T0).unwrap();
+    game.try_turn(BughouseBoard::B, &alg("Pa8=Ea1"), TurnMode::InOrder, T0).unwrap();
+    game.try_turn(BughouseBoard::B, &alg("Bxa8"), TurnMode::InOrder, T0).unwrap();
     assert_eq!(
         game.board(BughouseBoard::A).reserve(Force::White).to_map(),
         [
@@ -398,15 +398,15 @@ fn koedem_castling() {
     // Now we have only kings and rooks on ranks 1 and 8 on board A.
     // Should always try to castle the original king, not the dropped one.
     assert_eq!(
-        game.try_turn(BughouseBoard::A, &alg("0-0-0"), TurnMode::Normal, T0),
+        game.try_turn(BughouseBoard::A, &alg("0-0-0"), TurnMode::InOrder, T0),
         Err(TurnError::PathBlocked)
     );
-    game.try_turn(BughouseBoard::A, &alg("0-0"), TurnMode::Normal, T0).unwrap();
+    game.try_turn(BughouseBoard::A, &alg("0-0"), TurnMode::InOrder, T0).unwrap();
     assert_eq!(
-        game.try_turn(BughouseBoard::A, &alg("0-0-0"), TurnMode::Normal, T0),
+        game.try_turn(BughouseBoard::A, &alg("0-0-0"), TurnMode::InOrder, T0),
         Err(TurnError::PathBlocked)
     );
-    game.try_turn(BughouseBoard::A, &alg("0-0"), TurnMode::Normal, T0).unwrap();
+    game.try_turn(BughouseBoard::A, &alg("0-0"), TurnMode::InOrder, T0).unwrap();
 }
 
 // Normally the only turn one can do in Koedem while having a king in reserve is to drop the king.
@@ -429,23 +429,23 @@ fn koedem_two_kings_and_a_duck() {
 
     // Must place the first king.
     assert_eq!(
-        game.try_turn(BughouseBoard::B, &alg("Qf3"), TurnMode::Normal, T0),
+        game.try_turn(BughouseBoard::B, &alg("Qf3"), TurnMode::InOrder, T0),
         Err(TurnError::MustDropKingIfPossible)
     );
-    game.try_turn(BughouseBoard::B, &alg("K@b3"), TurnMode::Normal, T0).unwrap();
+    game.try_turn(BughouseBoard::B, &alg("K@b3"), TurnMode::InOrder, T0).unwrap();
     // We still have one more king in reserve, yet now we need to place a duck.
-    game.try_turn(BughouseBoard::B, &alg("@c4"), TurnMode::Normal, T0).unwrap();
+    game.try_turn(BughouseBoard::B, &alg("@c4"), TurnMode::InOrder, T0).unwrap();
 
-    game.try_turn(BughouseBoard::B, &alg("a5"), TurnMode::Normal, T0).unwrap();
-    game.try_turn(BughouseBoard::B, &alg("@a4"), TurnMode::Normal, T0).unwrap();
+    game.try_turn(BughouseBoard::B, &alg("a5"), TurnMode::InOrder, T0).unwrap();
+    game.try_turn(BughouseBoard::B, &alg("@a4"), TurnMode::InOrder, T0).unwrap();
 
     // Must place the second king.
     assert_eq!(
-        game.try_turn(BughouseBoard::B, &alg("Qf3"), TurnMode::Normal, T0),
+        game.try_turn(BughouseBoard::B, &alg("Qf3"), TurnMode::InOrder, T0),
         Err(TurnError::MustDropKingIfPossible)
     );
-    game.try_turn(BughouseBoard::B, &alg("K@c3"), TurnMode::Normal, T0).unwrap();
-    game.try_turn(BughouseBoard::B, &alg("@b4"), TurnMode::Normal, T0).unwrap();
+    game.try_turn(BughouseBoard::B, &alg("K@c3"), TurnMode::InOrder, T0).unwrap();
+    game.try_turn(BughouseBoard::B, &alg("@b4"), TurnMode::InOrder, T0).unwrap();
 }
 
 // TODO: More atomic chess tests:
@@ -616,8 +616,8 @@ fn clock_showings_match() {
                 Force::White => (&turn_white_1, &turn_white_2),
                 Force::Black => (&turn_black_1, &turn_black_2),
             };
-            if game.try_turn(board, turn_1, TurnMode::Normal, game_t).is_err() {
-                game.try_turn(board, turn_2, TurnMode::Normal, game_t).unwrap();
+            if game.try_turn(board, turn_1, TurnMode::InOrder, game_t).is_err() {
+                game.try_turn(board, turn_2, TurnMode::InOrder, game_t).unwrap();
             }
             game.board_mut(board).reset_threefold_repetition_draw();
         }
