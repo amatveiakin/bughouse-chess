@@ -283,6 +283,7 @@ let audio_volume = 0;
 const gain_node = audio_context.createGain();
 gain_node.connect(audio_context.destination);
 const pan_nodes = new Map();
+
 const drag_start_threshold = 8;
 let pointer_down_position = null;
 let pointer_down_element = null;
@@ -292,6 +293,8 @@ let drag_source_board_id = null;
 function drag_source_board() {
   return board_svg(drag_source_board_id);
 }
+
+let is_processing_wayback = false;
 
 const Meter = make_meters();
 
@@ -599,6 +602,18 @@ function on_document_keydown(event) {
         // Make sure log is not scrolled by arrow keys: we are scrolling it
         // programmatically to make sure the current turn is visible.
         event.preventDefault();
+
+        if (is_processing_wayback) {
+          // Workaround a problem on slow devices. If the user holds arrow up or
+          // down, while rendering a wayback position takes longer than the
+          // interval between keydown events, then the keydown events could hog
+          // the event look, not allowing any other events to pass through. This
+          // including pongs from the server, which could lead the client to
+          // conclude that the connection was lost.
+          // TODO: Speed up `update` and remove this workaround.
+          return;
+        }
+        is_processing_wayback = true;
         wasm_client().on_vertical_arrow_key_down(
           event.key,
           event.ctrlKey,
@@ -606,6 +621,7 @@ function on_document_keydown(event) {
           event.altKey
         );
         update();
+        setTimeout(() => (is_processing_wayback = false), 10);
       }
     }
   });
