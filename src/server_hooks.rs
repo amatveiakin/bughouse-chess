@@ -10,8 +10,7 @@ use crate::utc_time::UtcDateTime;
 #[async_trait]
 pub trait ServerHooks {
     async fn record_client_performance(&self, perf: &BughouseClientPerformance);
-    // TODO: Make async too.
-    fn record_finished_game(
+    async fn record_finished_game(
         &self, game: &BughouseGame, registered_users: &HashSet<String>,
         game_start_time: UtcDateTime, game_end_time: UtcDateTime, round: u64,
     );
@@ -26,7 +25,7 @@ pub struct NoopServerHooks {}
 #[async_trait]
 impl ServerHooks for NoopServerHooks {
     async fn record_client_performance(&self, _perf: &BughouseClientPerformance) {}
-    fn record_finished_game(
+    async fn record_finished_game(
         &self, _game: &BughouseGame, _registered_users: &HashSet<String>,
         _game_start_time: UtcDateTime, _game_end_time: UtcDateTime, _round: u64,
     ) {

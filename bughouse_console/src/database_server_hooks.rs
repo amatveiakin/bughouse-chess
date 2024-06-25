@@ -38,7 +38,7 @@ impl<DB: Send + Sync + DatabaseReader + DatabaseWriter> ServerHooks for Database
         }
     }
 
-    fn record_finished_game(
+    async fn record_finished_game(
         &self, game: &BughouseGame, registered_users: &HashSet<String>,
         game_start_time: UtcDateTime, game_end_time: UtcDateTime, round: u64,
     ) {
@@ -48,7 +48,7 @@ impl<DB: Send + Sync + DatabaseReader + DatabaseWriter> ServerHooks for Database
             error!("Error extracting game result from:\n{:#?}", game);
             return;
         };
-        if let Err(e) = async_std::task::block_on(self.db.add_finished_game(row)) {
+        if let Err(e) = self.db.add_finished_game(row).await {
             error!("Error persisting game result: {}", e);
         }
     }

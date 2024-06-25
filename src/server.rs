@@ -1793,14 +1793,24 @@ fn update_on_game_over(
     }
     let final_game_start_utc_time = game_start_utc_time.unwrap_or(ctx.utc_now);
     *game_start_utc_time = Some(final_game_start_utc_time);
-    let round = game_index + 1;
-    ctx.hooks.record_finished_game(
-        game,
-        &registered_users,
-        final_game_start_utc_time,
-        ctx.utc_now,
-        round,
-    );
+    {
+        let round = game_index + 1;
+        // Improvement potential: Compute `GameResultRow` here, don't create a throw-away game copy.
+        let game = game.clone();
+        let hooks = Arc::clone(&ctx.hooks);
+        let utc_now = ctx.utc_now;
+        async_task_spawn(async move {
+            hooks
+                .record_finished_game(
+                    &game,
+                    &registered_users,
+                    final_game_start_utc_time,
+                    utc_now,
+                    round,
+                )
+                .await
+        });
+    }
     chat.add(
         Some(game_index),
         ctx.utc_now,
