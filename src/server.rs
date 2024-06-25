@@ -16,7 +16,6 @@ use lazy_static::lazy_static;
 use log::{info, warn};
 use prometheus::{register_histogram_vec, HistogramVec};
 use rand::prelude::*;
-use strum::IntoEnumIterator;
 
 use crate::board::{TurnInput, TurnMode, VictoryReason};
 use crate::chalk::{ChalkDrawing, Chalkboard};
@@ -1663,11 +1662,7 @@ fn current_game_time(game_state: &GameState, now: Instant) -> Option<GameInstant
     } else if game_state.game.is_active() {
         Some(GameInstant::from_now_game_maybe_active(game_state.game_start, now))
     } else {
-        let elapsed_since_start = BughouseBoard::iter()
-            .map(|board_idx| game_state.game.board(board_idx).clock().total_time_elapsed())
-            .all_equal_value()
-            .unwrap();
-        Some(GameInstant::from_game_duration(elapsed_since_start))
+        Some(GameInstant::from_game_duration(game_state.game.total_time_elapsed()))
     }
 }
 
@@ -1686,7 +1681,7 @@ fn resolve_one_turn(
                 {
                     // Discard this turn, but keep the rest.
                     turn_requests.extend(iter);
-                    return Some(game.last_turn_record().unwrap().trim_for_sending());
+                    return Some(game.last_turn_record().unwrap().trim());
                 } else {
                     // Discard. Ignore error: Preturns fail all the time and even a valid in-order
                     // turn can fail, e.g. if the game ended on the board board in the meantime, or

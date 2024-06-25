@@ -10,8 +10,8 @@
 // Also because of duck turns.
 
 use std::cell::{Ref, RefCell};
-use std::cmp;
 use std::collections::HashSet;
+use std::{cmp, mem};
 
 use enum_map::{enum_map, EnumMap};
 use itertools::Itertools;
@@ -1054,12 +1054,27 @@ fn apply_wayback(wayback_turn_index: Option<TurnIndex>, game: &mut BughouseGame)
     let Some(ref turn_idx) = wayback_turn_index else {
         return false;
     };
-    let turn = game.turn_log().iter().rev().find(|turn| turn.index <= *turn_idx).unwrap();
-    let turn_time = turn.time;
-    let boards_after = turn.boards_after.clone();
-    for (board_idx, mut board) in boards_after {
-        board.clock_mut().stop(turn_time);
-        *game.board_mut(board_idx) = board;
+    let mut replay_game = game.clone_from_start();
+    for turn in game.turn_log().iter().take_while(|turn| turn.index <= *turn_idx) {
+        // TODO: Optimize: apply turn record quickly, without checking correctness, especially
+        // mate-related stuff.
+        // Idea: upgrade information in `TurnExpanded` to a more structured form that encodes all
+        // changes on the boards, including relocations (one or two in case of a castling), drops,
+        // steals, combinings (in Accolade), etc. Use this info:
+        //   - to apply the turn quickly (without checking correctness or decoding);
+        //   - to highlight squares and improve the turn log (as it's done now);
+        //   - to animate piece movements.
+        replay_game.apply_turn_record(&turn.trim(), TurnMode::InOrder).unwrap();
+    }
+    // Cannot use `replay_game` directly, because we still need the original turn log.
+    let turn_time = GameInstant::from_game_duration(replay_game.total_time_elapsed());
+    debug_assert_eq!(
+        turn_time,
+        game.turn_log().iter().rev().find(|turn| turn.index <= *turn_idx).unwrap().time
+    );
+    for board_idx in BughouseBoard::iter() {
+        mem::swap(game.board_mut(board_idx), replay_game.board_mut(board_idx));
+        game.board_mut(board_idx).clock_mut().stop(turn_time);
     }
     true
 }

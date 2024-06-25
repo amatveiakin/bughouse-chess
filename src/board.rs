@@ -882,20 +882,6 @@ impl Board {
         board
     }
 
-    pub fn clone_for_wayback(&self) -> Self {
-        Board {
-            // Strip away large structures that are not needed for rendering:
-            position_count: HashMap::new(),
-
-            // Copy everything else as is:
-            rules: self.rules.clone(),
-            player_names: self.player_names.clone(),
-            grid: self.grid.clone(),
-            clock: self.clock.clone(),
-            ..*self
-        }
-    }
-
     pub fn new_setup_demo(rules: Rc<Rules>, role: Role) -> BoardSetup {
         let mut board =
             Board::new(rules, role, Self::stub_players(), &EffectiveStartingPosition::Classic);

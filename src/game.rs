@@ -42,7 +42,7 @@ use crate::board::{
     Board, ChessGameStatus, DrawReason, Reserve, Turn, TurnError, TurnExpanded, TurnFacts,
     TurnInput, TurnMode, VictoryReason,
 };
-use crate::clock::{GameInstant, MillisDuration};
+use crate::clock::{GameDuration, GameInstant, MillisDuration};
 use crate::coord::BoardShape;
 use crate::force::Force;
 use crate::once_cell_regex;
@@ -78,7 +78,6 @@ pub struct TurnRecordExpanded {
     pub envoy: BughouseEnvoy,
     pub turn_expanded: TurnExpanded,
     pub time: GameInstant,
-    pub boards_after: EnumMap<BughouseBoard, Board>,
 }
 
 impl Display for TurnIndex {
@@ -90,9 +89,9 @@ impl FromStr for TurnIndex {
 }
 
 impl TurnRecordExpanded {
-    pub fn trim_for_sending(&self) -> TurnRecord {
-        // This is used only to send confirmed turns from server to clients, so preturns
-        // should never occur here.
+    pub fn trim(&self) -> TurnRecord {
+        // This is used only to send confirmed turns from server to clients and replay wayback,
+        // so preturns should never occur here.
         assert_eq!(self.mode, TurnMode::InOrder);
         TurnRecord {
             envoy: self.envoy,
@@ -644,6 +643,16 @@ impl BughouseGame {
     pub fn status(&self) -> BughouseGameStatus { self.status }
     pub fn is_active(&self) -> bool { self.status.is_active() }
 
+    pub fn total_time_elapsed(&self) -> GameDuration {
+        // Both clocks should return the same time after the game is over.
+        // Otherwise choose the value from the board where the latest turn was made.
+        BughouseBoard::iter()
+            .map(|board_idx| self.board(board_idx).clock().total_time_elapsed())
+            .filter_map(|d| MillisDuration::try_from(d).ok())
+            .max()
+            .map_or(GameDuration::UNKNOWN, Into::into)
+    }
+
     pub fn players(&self) -> Vec<PlayerInGame> {
         let mut ret = vec![];
         for team in Team::iter() {
@@ -797,7 +806,6 @@ impl BughouseGame {
             local_number += 1;
         }
         let turn_expanded = make_turn_expanded(turn, turn_algebraic, turn_facts);
-        let boards_after = EnumMap::from_fn(|idx| self.boards[idx].clone_for_wayback());
         self.turn_log.push(TurnRecordExpanded {
             index,
             local_number,
@@ -805,7 +813,6 @@ impl BughouseGame {
             envoy,
             turn_expanded,
             time: now,
-            boards_after,
         });
         assert!(self.status.is_active());
         if self.bughouse_rules().koedem {

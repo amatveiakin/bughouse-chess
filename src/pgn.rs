@@ -468,12 +468,7 @@ fn total_game_duration(game: &BughouseGame) -> Option<GameInstant> {
     if game.status().is_active() {
         return None;
     }
-    Some(GameInstant::from_game_duration(
-        BughouseBoard::iter()
-            .map(|board_idx| game.board(board_idx).clock().total_time_elapsed())
-            .all_equal_value()
-            .unwrap(),
-    ))
+    Some(GameInstant::from_game_duration(game.total_time_elapsed()))
 }
 
 // TODO(duck): Improve duck notation. Here's the suggested notation:
@@ -858,7 +853,7 @@ mod tests {
         let game_now = game_t!(0); // doesn't matter for finished games
         assert_eq!(game2.board(A).clock().time_left(Black, game_now), game_d!(90 s));
         assert_eq!(game2.board(A).clock().time_left(White, game_now), game_d!(0));
-        assert_eq!(game2.board(A).clock().total_time_elapsed(), game_d!(110 s));
+        assert_eq!(game2.total_time_elapsed(), game_d!(110 s));
         let clock_showing = game2.board(A).clock().showing_for(White, game_now);
         assert_eq!(clock_showing.time_breakdown, TimeBreakdown::LowTime {
             seconds: 0,
