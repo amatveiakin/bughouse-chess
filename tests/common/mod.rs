@@ -8,7 +8,6 @@
 //   could combine all integration tests together (see above) or move out the unit tests.
 
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use bughouse_chess::board::{Board, Reserve, TurnInput};
 use bughouse_chess::display::{from_display_coord, BoardOrientation, DisplayCoord};
@@ -207,7 +206,7 @@ pub fn parse_ascii_board(rules: Rules, role: Role, board_str: &str) -> Result<Bo
     let lines = board_str.split('\n').map(|line| line.trim()).filter(|line| !line.is_empty());
     let setup = parse_ascii_setup(&rules, lines, BoardOrientation::Normal)?;
     let players = sample_chess_players();
-    Ok(Board::new_from_setup(Rc::new(rules), role, players, setup))
+    Ok(Board::new_from_setup(rules, role, players, setup))
 }
 
 // Parses board representation in ASCII format.

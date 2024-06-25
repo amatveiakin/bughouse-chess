@@ -1,6 +1,5 @@
 use core::panic;
 use std::collections::{HashMap, VecDeque};
-use std::rc::Rc;
 use std::time::Duration;
 
 use enum_map::{enum_map, EnumMap};
@@ -1472,12 +1471,11 @@ impl ClientState {
 }
 
 fn make_setup_demo_state(rules: Rules) -> GameState {
-    let rules = Rc::new(rules);
     let starting_position = EffectiveStartingPosition::manual_duplicate(&Board::new_setup_demo(
-        Rc::clone(&rules),
+        rules.clone(),
         Role::Client,
     ));
-    let mut game = BughouseGame::new_with_starting_position_and_rules_rc(
+    let mut game = BughouseGame::new_with_starting_position(
         rules,
         Role::Client,
         starting_position,

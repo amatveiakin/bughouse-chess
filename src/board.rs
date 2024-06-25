@@ -5,7 +5,6 @@
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::mem;
-use std::rc::Rc;
 
 use enum_map::{enum_map, EnumMap};
 use itertools::{iproduct, Itertools};
@@ -803,7 +802,7 @@ impl Reachability {
 // Improvement potential: Don't store players here since they don't affect game process.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Board {
-    rules: Rc<Rules>,
+    rules: Rules,
     role: Role,
     player_names: EnumMap<Force, String>,
     status: ChessGameStatus,
@@ -825,7 +824,7 @@ pub struct Board {
 
 impl Board {
     pub fn new(
-        rules: Rc<Rules>, role: Role, players: EnumMap<Force, String>,
+        rules: Rules, role: Role, players: EnumMap<Force, String>,
         starting_position: &EffectiveStartingPosition,
     ) -> Board {
         let mut next_piece_id = PieceId::new();
@@ -847,7 +846,7 @@ impl Board {
     }
 
     pub fn new_from_setup(
-        rules: Rc<Rules>, role: Role, players: EnumMap<Force, String>, setup: BoardSetup,
+        rules: Rules, role: Role, players: EnumMap<Force, String>, setup: BoardSetup,
     ) -> Board {
         let time_control = rules.chess_rules.time_control.clone();
         let time_measurement = match role {
@@ -882,7 +881,7 @@ impl Board {
         board
     }
 
-    pub fn new_setup_demo(rules: Rc<Rules>, role: Role) -> BoardSetup {
+    pub fn new_setup_demo(rules: Rules, role: Role) -> BoardSetup {
         let mut board =
             Board::new(rules, role, Self::stub_players(), &EffectiveStartingPosition::Classic);
         for coord in board.shape().coords() {
