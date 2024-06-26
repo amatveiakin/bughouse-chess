@@ -11,6 +11,7 @@ use async_tungstenite::WebSocketStream;
 use bughouse_chess::event::BughouseServerEvent;
 use bughouse_chess::server::*;
 use bughouse_chess::server_hooks::ServerHooks;
+use bughouse_chess::session::Session;
 use bughouse_chess::session_store::*;
 use bughouse_chess::utc_time::UtcDateTime;
 use futures_io::{AsyncRead, AsyncWrite};
@@ -211,7 +212,7 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
             // Sessions where a user has a tab open throughout expiration time
             // are probably not something we want anyway.
             if let Some(session_id) = &session_id {
-                http_server_state.session_store.lock().await.touch(session_id);
+                http_server_state.session_store.lock().await.touch(session_id).await;
             }
 
             // tide::Request -> http_types::Request -> http::Request<Body> -> http::Request<()>.
@@ -326,7 +327,8 @@ pub async fn run(config: ServerConfig) {
         let expire_in = *expire_in;
 
         // It's OK to instantiate a separate connection.
-        let secret_database_for_sessions = make_database(&config.secret_database_options).unwrap();
+        let secret_database_for_sessions: Arc<dyn SecretDatabaseRW> =
+            make_database(&config.secret_database_options).unwrap().into();
 
         if let Err(e) =
             async_std::task::block_on(secret_database_for_sessions.gc_expired_sessions(expire_in))
@@ -335,20 +337,25 @@ pub async fn run(config: ServerConfig) {
         }
         if let Err(e) =
             restore_sessions(secret_database_for_sessions.as_ref(), &mut session_store.lock().await)
+                .await
         {
             error!("Failed to restore sessions: {}", e);
             // Proceed even if restoring sessions failed.
         }
-        session_store.lock().await.on_any_change(move |session_id, session| {
-            if let Err(e) =
-                async_std::task::block_on(secret_database_for_sessions.set_logged_in_session(
-                    session_id,
-                    session.user_info().map(|i| i.user_name.clone()),
-                    OffsetDateTime::now_utc(),
-                ))
-            {
-                error!("Failed to persist session info: {}", e);
-            }
+        session_store.lock().await.on_any_change(move |session_id, session: Session| {
+            let secret_database_for_sessions = Arc::clone(&secret_database_for_sessions);
+            Box::pin(async move {
+                if let Err(e) = secret_database_for_sessions
+                    .set_logged_in_session(
+                        &session_id,
+                        session.user_info().map(|i| i.user_name.clone()),
+                        OffsetDateTime::now_utc(),
+                    )
+                    .await
+                {
+                    error!("Failed to persist session info: {}", e);
+                }
+            })
         });
     }
 
@@ -435,11 +442,13 @@ fn make_database(options: &DatabaseOptions) -> anyhow::Result<Box<dyn SecretData
     })
 }
 
-fn restore_sessions(
-    db: &dyn SecretDatabaseRW, session_store: &mut async_std::sync::MutexGuard<SessionStore>,
+async fn restore_sessions(
+    db: &dyn SecretDatabaseRW, session_store: &mut async_std::sync::MutexGuard<'_, SessionStore>,
 ) -> anyhow::Result<()> {
-    let sessions = async_std::task::block_on(db.list_sessions())?;
-    sessions.into_iter().for_each(|(id, value)| session_store.set(id, value));
+    let sessions = db.list_sessions().await?;
+    for (id, value) in sessions {
+        session_store.set(id, value).await;
+    }
     Ok(())
 }
 

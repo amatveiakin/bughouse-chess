@@ -1,5 +1,7 @@
 use std::collections::{hash_map, HashMap};
+use std::future::Future;
 use std::hash::Hash;
+use std::pin::Pin;
 
 use crate::session::*;
 
@@ -18,7 +20,8 @@ impl SessionId {
 
 pub struct Store<K, V> {
     entries: HashMap<K, Entry<V>>,
-    on_any_change: Option<Box<dyn Fn(&K, &V) + Send>>,
+    on_any_change:
+        Option<Box<dyn (Fn(K, V) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>) + Send>>,
 }
 
 #[derive(Default, Hash, Eq, PartialEq, Clone, Copy)]
@@ -29,7 +32,7 @@ pub struct SubscriptionId(usize);
 impl<K, V> Store<K, V>
 where
     K: Eq + PartialEq + Hash + Clone,
-    V: Default,
+    V: Clone + Default,
 {
     pub fn new() -> Self {
         Self {
@@ -41,8 +44,10 @@ where
     pub fn get(&self, id: &K) -> Option<&V> { self.entries.get(id).map(|e| &e.value) }
 
     // Sets the new Session data and notifies all subscribers.
-    pub fn set(&mut self, id: K, value: V) {
-        self.on_any_change.as_ref().map(|f| f(&id, &value));
+    pub async fn set(&mut self, id: K, value: V) {
+        if let Some(on_any_change) = self.on_any_change.as_ref() {
+            on_any_change(id.clone(), value.clone()).await;
+        }
         match self.entries.entry(id) {
             hash_map::Entry::Vacant(v) => {
                 v.insert(Entry {
@@ -70,7 +75,10 @@ where
     // Registers a callback for any change in the store.
     // The callback is NOT called for the existing values.
     // Only one callback can be registered at a time.
-    pub fn on_any_change(&mut self, f: impl Fn(&K, &V) + Send + 'static) {
+    pub fn on_any_change(
+        &mut self,
+        f: impl Fn(K, V) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + 'static,
+    ) {
         assert!(
             self.on_any_change.is_none(),
             "Setting the on_any_change callback twice is not supported."
@@ -80,15 +88,19 @@ where
 
     // Runs the on_any_change callback, possibly creating a default entry.
     // Does not update subscribers.
-    pub fn touch(&mut self, id: &K) {
+    pub async fn touch(&mut self, id: &K) {
         let v = self.entries.entry(id.clone()).or_default();
-        self.on_any_change.as_ref().map(|f| f(id, &v.value));
+        if let Some(on_any_change) = self.on_any_change.as_ref() {
+            on_any_change(id.clone(), v.value.clone()).await;
+        }
     }
 
-    pub fn update_if_exists<F: FnOnce(&mut V)>(&mut self, id: &K, f: F) {
+    pub async fn update_if_exists<F: FnOnce(&mut V)>(&mut self, id: &K, f: F) {
         if let Some(entry) = self.entries.get_mut(id) {
             f(&mut entry.value);
-            self.on_any_change.as_ref().map(|f| f(id, &entry.value));
+            if let Some(on_any_change) = self.on_any_change.as_ref() {
+                on_any_change(id.clone(), entry.value.clone()).await;
+            }
             entry.update_subscribers();
         }
     }

@@ -111,7 +111,7 @@ impl Server {
             registration_method: RegistrationMethod::Password,
         });
         async_std::task::block_on(async {
-            self.session_store.lock().await.set(session_id.clone(), user_info);
+            self.session_store.lock().await.set(session_id.clone(), user_info).await;
         });
         session_id
     }
