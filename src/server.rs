@@ -3,10 +3,11 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{self, AtomicUsize};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use std::{iter, mem, ops};
 
+use async_std::sync::Mutex;
 use dashmap::DashMap;
 use enum_map::enum_map;
 use indoc::printdoc;
@@ -229,7 +230,9 @@ impl Client {
     }
     fn registered_user_name(&self, session_store: &Arc<Mutex<SessionStore>>) -> Option<String> {
         let session_id = self.session_id.as_ref()?;
-        Some(session_store.lock().unwrap().get(session_id)?.user_info()?.user_name.clone())
+        async_std::task::block_on(async {
+            Some(session_store.lock().await.get(session_id)?.user_info()?.user_name.clone())
+        })
     }
 }
 
@@ -529,7 +532,9 @@ impl CoreServerState {
             IncomingEvent::Tick => self.on_tick(ctx),
             IncomingEvent::Terminate => self.on_terminate(ctx),
         }
-        ctx.info.lock().unwrap().num_active_matches = self.num_active_matches(ctx.now);
+        async_std::task::block_on(async {
+            ctx.info.lock().await.num_active_matches = self.num_active_matches(ctx.now);
+        });
 
         timer.observe_duration();
     }

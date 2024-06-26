@@ -1,5 +1,6 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
+use async_std::sync::Mutex;
 use bughouse_chess::server;
 use bughouse_chess::session_store::{SessionId, SessionStore};
 use http_types::StatusCode;

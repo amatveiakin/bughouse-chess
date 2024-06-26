@@ -119,7 +119,9 @@ fn main() -> io::Result<()> {
 
     match matches.subcommand() {
         Some(("server", sub_matches)) => {
-            server_main::run(read_config_file(sub_matches.get_one("config_file").unwrap()));
+            async_std::task::block_on(server_main::run(read_config_file(
+                sub_matches.get_one("config_file").unwrap(),
+            )));
             Ok(())
         }
         Some(("client", sub_matches)) => client_main::run(client_main::ClientConfig {

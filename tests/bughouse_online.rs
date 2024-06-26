@@ -9,8 +9,9 @@ mod common;
 use std::cell::Ref;
 use std::collections::{HashMap, HashSet};
 use std::ops;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
+use async_std::sync::Mutex;
 use bughouse_chess::altered_game::{AlteredGame, WaybackDestination};
 use bughouse_chess::board::{Board, TurnError, TurnInput, VictoryReason};
 use bughouse_chess::chat::ChatRecipient;
@@ -109,7 +110,9 @@ impl Server {
             lichess_user_id: None,
             registration_method: RegistrationMethod::Password,
         });
-        self.session_store.lock().unwrap().set(session_id.clone(), user_info);
+        async_std::task::block_on(async {
+            self.session_store.lock().await.set(session_id.clone(), user_info);
+        });
         session_id
     }
 

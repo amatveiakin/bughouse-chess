@@ -2,10 +2,11 @@
 //   We should figure out a proper concurrency story: either transition fully to async code, or
 //   get systematic about how we use threads vs async tasks.
 
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 
+use async_std::sync::Mutex;
 use async_tungstenite::WebSocketStream;
 use bughouse_chess::event::BughouseServerEvent;
 use bughouse_chess::server::*;
@@ -44,33 +45,29 @@ async fn handle_connection<
 
     let (client_tx, client_rx) = async_std::channel::unbounded();
 
-    let session_store_subscription_id = session_id.as_ref().map(|session_id| {
+    let session_store_subscription_id = if let Some(session_id) = &session_id {
         // Subscribe the client to all updates to the session in session store.
         let my_client_tx = client_tx.clone();
-        http_server_state.session_store.lock().unwrap().subscribe(session_id, move |s| {
+        Some(http_server_state.session_store.lock().await.subscribe(session_id, move |s| {
             // Send the entire session data to the client.
             // We can perform some mapping here if we want to hide
             // some of the state from the client.
             let _ =
                 my_client_tx.try_send(BughouseServerEvent::UpdateSession { session: s.clone() });
-        })
-    });
+        }))
+    } else {
+        None
+    };
 
     let client_id = clients.add_client(client_tx, session_id.clone(), peer_addr.to_string());
-    let clients_remover = Arc::clone(&clients);
-    let remove_client1 = move || {
-        if let (Some(session_id), Some(session_store_subscription_id)) =
-            (session_id, session_store_subscription_id)
-        {
-            http_server_state
-                .session_store
-                .lock()
-                .unwrap()
-                .unsubscribe(&session_id, session_store_subscription_id);
-        }
-        clients_remover.remove_client(client_id)
+    let clients_remover1 = ClientRemover {
+        client_id,
+        session_id,
+        session_store_subscription_id,
+        clients,
+        session_store: Arc::clone(&http_server_state.session_store),
     };
-    let remove_client2 = remove_client1.clone();
+    let clients_remover2 = clients_remover1.clone();
 
     // Client -> Server
     async_std::task::spawn(async move {
@@ -80,7 +77,7 @@ async fn handle_connection<
                     tx.send(IncomingEvent::Network(client_id, ev)).unwrap();
                 }
                 Err(err) => {
-                    if let Some(logging_id) = remove_client1() {
+                    if let Some(logging_id) = clients_remover1.remove().await {
                         match err {
                             CommunicationError::ConnectionClosed => {
                                 info!("Client {} disconnected", logging_id)
@@ -102,7 +99,7 @@ async fn handle_connection<
         match network::write_obj_async(&mut stream_tx, &ev).await {
             Ok(()) => {}
             Err(err) => {
-                if let Some(logging_id) = remove_client2() {
+                if let Some(logging_id) = clients_remover2.remove().await {
                     warn!("Client {} disconnected due to write error: {:?}", logging_id, err);
                 }
                 break;
@@ -213,9 +210,9 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
             // interaction with the websocket for simplicity and performance.
             // Sessions where a user has a tab open throughout expiration time
             // are probably not something we want anyway.
-            session_id
-                .as_ref()
-                .inspect(|s| http_server_state.session_store.lock().unwrap().touch(s));
+            if let Some(session_id) = &session_id {
+                http_server_state.session_store.lock().await.touch(session_id);
+            }
 
             // tide::Request -> http_types::Request -> http::Request<Body> -> http::Request<()>.
             let http_types_req: http_types::Request = req.into();
@@ -268,7 +265,7 @@ fn sessions_required(config: &ServerConfig) -> bool {
     o.google.is_some() || o.lichess.is_some()
 }
 
-pub fn run(config: ServerConfig) {
+pub async fn run(config: ServerConfig) {
     assert!(
         !sessions_required(&config) || config.session_options != SessionOptions::NoSessions,
         "Authentication is enabled while sessions are not."
@@ -336,14 +333,13 @@ pub fn run(config: ServerConfig) {
         {
             error!("Failed to GC expired sessions: {}", e);
         }
-        if let Err(e) = restore_sessions(
-            secret_database_for_sessions.as_ref(),
-            &mut session_store.lock().unwrap(),
-        ) {
+        if let Err(e) =
+            restore_sessions(secret_database_for_sessions.as_ref(), &mut session_store.lock().await)
+        {
             error!("Failed to restore sessions: {}", e);
             // Proceed even if restoring sessions failed.
         }
-        session_store.lock().unwrap().on_any_change(move |session_id, session| {
+        session_store.lock().await.on_any_change(move |session_id, session| {
             if let Err(e) =
                 async_std::task::block_on(secret_database_for_sessions.set_logged_in_session(
                     session_id,
@@ -404,6 +400,29 @@ pub fn run(config: ServerConfig) {
     }
 }
 
+// Replacement for an async closure because those are not clonable.
+#[derive(Clone)]
+struct ClientRemover {
+    client_id: ClientId,
+    session_id: Option<SessionId>,
+    session_store_subscription_id: Option<SubscriptionId>,
+    clients: Arc<Clients>,
+    session_store: Arc<Mutex<SessionStore>>,
+}
+impl ClientRemover {
+    async fn remove(self) -> Option<String> {
+        if let (Some(session_id), Some(session_store_subscription_id)) =
+            (self.session_id, self.session_store_subscription_id)
+        {
+            self.session_store
+                .lock()
+                .await
+                .unsubscribe(&session_id, session_store_subscription_id);
+        }
+        self.clients.remove_client(self.client_id)
+    }
+}
+
 fn make_database(options: &DatabaseOptions) -> anyhow::Result<Box<dyn SecretDatabaseRW>> {
     Ok(match options {
         DatabaseOptions::NoDatabase => Box::new(database::UnimplementedDatabase {}),
@@ -417,7 +436,7 @@ fn make_database(options: &DatabaseOptions) -> anyhow::Result<Box<dyn SecretData
 }
 
 fn restore_sessions(
-    db: &dyn SecretDatabaseRW, session_store: &mut SessionStore,
+    db: &dyn SecretDatabaseRW, session_store: &mut async_std::sync::MutexGuard<SessionStore>,
 ) -> anyhow::Result<()> {
     let sessions = async_std::task::block_on(db.list_sessions())?;
     sessions.into_iter().for_each(|(id, value)| session_store.set(id, value));
@@ -437,7 +456,7 @@ async fn handle_metrics<DB>(_req: tide::Request<HttpServerState<DB>>) -> tide::R
 }
 
 async fn handle_server_info<DB>(req: tide::Request<HttpServerState<DB>>) -> tide::Result {
-    let num_active_matches = req.state().server_info.lock().unwrap().num_active_matches;
+    let num_active_matches = req.state().server_info.lock().await.num_active_matches;
     let h: String = html! {
         <html>
         <head>

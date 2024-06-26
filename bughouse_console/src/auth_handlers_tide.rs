@@ -159,7 +159,7 @@ pub async fn handle_signup<DB: Send + Sync + 'static>(
         registration_method: RegistrationMethod::Password,
     });
     let session_id = get_session_id(&req)?;
-    req.state().session_store.lock().unwrap().set(session_id, session);
+    req.state().session_store.lock().await.set(session_id, session);
 
     let mut resp: tide::Response = req.into();
     resp.set_status(StatusCode::Ok);
@@ -188,7 +188,7 @@ pub async fn handle_login<DB: Send + Sync + 'static>(
         registration_method: RegistrationMethod::Password,
     });
     let session_id = get_session_id(&req)?;
-    req.state().session_store.lock().unwrap().set(session_id, session);
+    req.state().session_store.lock().await.set(session_id, session);
 
     let mut resp: tide::Response = req.into();
     resp.set_status(StatusCode::Ok);
@@ -248,7 +248,7 @@ pub async fn handle_sign_with_lichess<DB: Send + Sync + 'static>(
         .start(callback_url.into())?;
 
     let session_id = get_session_id(&req)?;
-    req.state().session_store.lock().unwrap().set(
+    req.state().session_store.lock().await.set(
         session_id,
         Session::PkceChallengeInitiated(PkceChallengeInfo {
             verifier: pkce_verifier.secret().clone(),
@@ -331,7 +331,7 @@ pub async fn handle_continue_sign_with_google<DB: Send + Sync + 'static>(
     };
 
     let session_id = get_session_id(&req)?;
-    req.state().session_store.lock().unwrap().set(session_id, session);
+    req.state().session_store.lock().await.set(session_id, session);
 
     let mut resp: tide::Response = req.into();
     resp.set_status(StatusCode::TemporaryRedirect);
@@ -357,7 +357,7 @@ pub async fn handle_continue_sign_with_lichess<DB: Send + Sync + 'static>(
     let callback_url_str = callback_url.as_str().trim_end_matches('?').to_owned();
 
     let session_id = get_session_id(&req)?;
-    let verifier = match req.state().session_store.lock().unwrap().get(&session_id) {
+    let verifier = match req.state().session_store.lock().await.get(&session_id) {
         Some(Session::PkceChallengeInitiated(PkceChallengeInfo { verifier })) => verifier.clone(),
         _ => {
             return Err(tide::Error::from_str(
@@ -409,7 +409,7 @@ pub async fn handle_continue_sign_with_lichess<DB: Send + Sync + 'static>(
     };
 
     let session_id = get_session_id(&req)?;
-    req.state().session_store.lock().unwrap().set(session_id, session);
+    req.state().session_store.lock().await.set(session_id, session);
 
     let mut resp: tide::Response = req.into();
     resp.set_status(StatusCode::TemporaryRedirect);
@@ -435,7 +435,7 @@ pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
 
     let session_id = get_session_id(&req)?;
     let email = {
-        let session_store = req.state().session_store.lock().unwrap();
+        let session_store = req.state().session_store.lock().await;
         match session_store.get(&session_id) {
             Some(Session::GoogleOAuthRegistering(GoogleOAuthRegistrationInfo { email })) => {
                 email.clone()
@@ -468,7 +468,7 @@ pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
         lichess_user_id: None,
         registration_method: RegistrationMethod::GoogleOAuth,
     });
-    req.state().session_store.lock().unwrap().set(session_id, session);
+    req.state().session_store.lock().await.set(session_id, session);
 
     let mut resp: tide::Response = req.into();
     resp.set_status(StatusCode::Ok);
@@ -493,7 +493,7 @@ pub async fn handle_finish_signup_with_lichess<DB: Send + Sync + 'static>(
 
     let session_id = get_session_id(&req)?;
     let user_id = {
-        let session_store = req.state().session_store.lock().unwrap();
+        let session_store = req.state().session_store.lock().await;
         match session_store.get(&session_id) {
             Some(Session::LichessOAuthRegistering(LichessOAuthRegistrationInfo { user_id })) => {
                 user_id.clone()
@@ -526,7 +526,7 @@ pub async fn handle_finish_signup_with_lichess<DB: Send + Sync + 'static>(
         lichess_user_id: Some(user_id),
         registration_method: RegistrationMethod::LichessOAuth,
     });
-    req.state().session_store.lock().unwrap().set(session_id, session);
+    req.state().session_store.lock().await.set(session_id, session);
 
     let mut resp: tide::Response = req.into();
     resp.set_status(StatusCode::Ok);
@@ -538,7 +538,7 @@ pub async fn handle_logout<DB>(req: tide::Request<HttpServerState<DB>>) -> tide:
     req.state()
         .session_store
         .lock()
-        .unwrap()
+        .await
         .update_if_exists(&session_id, Session::logout);
     Ok("You are now logged out.".into())
 }
@@ -553,7 +553,7 @@ pub async fn handle_change_account<DB: Send + Sync + 'static>(
 
     let session_id = get_session_id(&req)?;
     let user_name = {
-        let session_store = req.state().session_store.lock().unwrap();
+        let session_store = req.state().session_store.lock().await;
         match session_store.get(&session_id) {
             Some(Session::LoggedIn(UserInfo { user_name, .. })) => user_name.clone(),
             _ => {
@@ -600,7 +600,7 @@ pub async fn handle_change_account<DB: Send + Sync + 'static>(
         lichess_user_id: None,
         registration_method: old_account.registration_method,
     });
-    req.state().session_store.lock().unwrap().set(session_id, session);
+    req.state().session_store.lock().await.set(session_id, session);
 
     let mut resp: tide::Response = req.into();
     resp.set_status(StatusCode::Ok);
@@ -614,7 +614,7 @@ pub async fn handle_delete_account<DB: Send + Sync + 'static>(
 
     let session_id = get_session_id(&req)?;
     let user_name = {
-        let session_store = req.state().session_store.lock().unwrap();
+        let session_store = req.state().session_store.lock().await;
         match session_store.get(&session_id) {
             Some(Session::LoggedIn(UserInfo { user_name, .. })) => user_name.clone(),
             _ => {
@@ -660,7 +660,7 @@ pub async fn handle_delete_account<DB: Send + Sync + 'static>(
     req.state()
         .session_store
         .lock()
-        .unwrap()
+        .await
         .update_if_exists(&session_id, Session::logout);
 
     let mut resp: tide::Response = req.into();
@@ -670,7 +670,7 @@ pub async fn handle_delete_account<DB: Send + Sync + 'static>(
 
 pub async fn handle_mysession<DB>(req: tide::Request<HttpServerState<DB>>) -> tide::Result {
     let session_id = get_session_id(&req)?;
-    let session_store = req.state().session_store.lock().unwrap();
+    let session_store = req.state().session_store.lock().await;
     match session_store.get(&session_id) {
         Some(Session::Unknown) => {
             panic!("Session::Unknown is a client-only state. Should never happen on server.");
