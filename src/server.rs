@@ -1804,7 +1804,7 @@ fn update_on_game_over(
         let game = game.clone();
         let hooks = Arc::clone(&ctx.hooks);
         let utc_now = ctx.utc_now;
-        async_task_spawn(async move {
+        async_std::task::spawn(async move {
             hooks
                 .record_finished_game(
                     &game,
@@ -1884,7 +1884,7 @@ fn process_get_archive_game_list(ctx: &mut Context, client_id: ClientId) {
     };
     let hooks = Arc::clone(&ctx.hooks);
     let clients = Arc::clone(&ctx.clients);
-    async_task_spawn(async move {
+    async_std::task::spawn(async move {
         match hooks.get_games_by_user(&user_name).await {
             Ok(games) => clients.send(client_id, BughouseServerEvent::ArchiveGameList { games }),
             Err(message) => clients
@@ -1896,7 +1896,7 @@ fn process_get_archive_game_list(ctx: &mut Context, client_id: ClientId) {
 fn process_get_archive_game_bpng(ctx: &mut Context, client_id: ClientId, game_id: i64) {
     let hooks = Arc::clone(&ctx.hooks);
     let clients = Arc::clone(&ctx.clients);
-    async_task_spawn(async move {
+    async_std::task::spawn(async move {
         match hooks.get_game_bpgn(game_id).await {
             Ok(bpgn) => {
                 clients.send(client_id, BughouseServerEvent::ArchiveGameBpgn { game_id, bpgn })
@@ -1909,7 +1909,7 @@ fn process_get_archive_game_bpng(ctx: &mut Context, client_id: ClientId, game_id
 
 fn process_report_performance(ctx: &Context, perf: BughouseClientPerformance) {
     let hooks = Arc::clone(&ctx.hooks);
-    async_task_spawn(async move { hooks.record_client_performance(&perf).await });
+    async_std::task::spawn(async move { hooks.record_client_performance(&perf).await });
 }
 
 fn process_report_error(ctx: &Context, client_id: ClientId, report: &BughouseClientErrorReport) {
@@ -1961,19 +1961,6 @@ fn event_name(event: &IncomingEvent) -> &'static str {
         IncomingEvent::Terminate => "Terminate",
     }
 }
-
-// Server code has to compile under WASM due to the way the project is structured, but it's not
-// actually called.
-#[cfg(not(target_arch = "wasm32"))]
-fn async_task_spawn<F, T>(future: F) -> async_std::task::JoinHandle<T>
-where
-    F: async_std::future::Future<Output = T> + Send + 'static,
-    T: Send + 'static,
-{
-    async_std::task::spawn(future)
-}
-#[cfg(target_arch = "wasm32")]
-fn async_task_spawn<F>(_future: F) -> ! { unreachable!() }
 
 fn shutdown() {
     // Note. It may seem like a good idea to terminate the process "properly": join threads, call

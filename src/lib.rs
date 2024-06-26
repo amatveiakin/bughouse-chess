@@ -37,13 +37,19 @@ pub mod player;
 pub mod role;
 pub mod rules;
 pub mod scores;
-pub mod server;
-pub mod server_chat;
-pub mod server_helpers;
-pub mod server_hooks;
 pub mod session;
-pub mod session_store;
 pub mod starter;
 pub mod test_util;
 pub mod utc_time;
 pub mod util;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod server;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod server_chat;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod server_helpers;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod server_hooks;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod session_store;
