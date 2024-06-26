@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import json
 import os
 import shutil
 from datetime import datetime, timedelta, timezone
@@ -50,7 +51,12 @@ def ask_confirmation_default_yes(message: str) -> bool:
 artifact_list = github_request("actions/artifacts")
 last_artifact = artifact_list["artifacts"][0]
 
-# print(json.dumps(last_artifact, indent=4))
+name = last_artifact["name"]
+if name != "artifacts":
+    print(f'Expected the latest artifact to be named "artifacts", but found "{name}" instead:')
+    print(json.dumps(last_artifact, indent=4))
+    print("Presumably the build is not yet complete or has failed. Aborting.")
+    exit()
 
 id = last_artifact["id"]
 build_time: str = last_artifact["created_at"]
