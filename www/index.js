@@ -432,13 +432,11 @@ function with_error_handling(f) {
             report
         );
       } else {
-        console.log(log_time(), "Unknown error: ", e);
-        ignorable_error_dialog(`Unknown error: ${e}`);
         if (socket.readyState === WebSocket.OPEN) {
           // Improvement potential. Include stack trace.
           socket.send(wasm.make_unknown_error_event(e.toString()));
         }
-        throw e;
+        throw e; // re-throw to get a console message
       }
     }
   }
