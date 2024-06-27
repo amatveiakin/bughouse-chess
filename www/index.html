@@ -172,6 +172,17 @@
   <canvas id="canvas" class="display-none"></canvas>
 
   <div id="page">
+    <!-- Search engines seems reluctant to index the About page, so repeat a brief description here. -->
+    <div class="display-none">
+      bughouse.pro is a free, adless, open-source bughouse chess server.
+      Play online now!
+      Bughouse chess (a.k.a. double chess, exchange chess, tandem chess) is a
+      chess variant with four player and two boards. On bughouse.pro, you can
+      play many versions of bughouse as well as other chess variants on top of
+      bughouse chess: Fischer random (Chess960), Duck chess, Fog of war (Dark
+      chess), Koedem and more.
+    </div>
+
     <svg id="board-primary" class="board" data-board-id="primary"></svg>
     <svg id="reserve-primary-top" class="reserve-container"></svg>
     <svg id="reserve-primary-bottom" class="reserve-container"></svg>
@@ -359,27 +370,6 @@
     </div>
 
     <div id="connection-info"></div>
-  </div>
-
-  <div id="cookie-banner" class="flex-row-full" style="display:none;">
-    <div id="cookie-warning" class="flex-grow">
-      This website uses cookies in order to function:
-      <ul>
-        <li>
-          <b>Essential cookies</b> are required to provide basic features, such as secure log-in
-          (always active);
-        </li>
-        <li>
-          <b>Performance cookies</b> are used to collect anonymous statistics that helps us improve
-          our website (if you are ok with that).
-        </li>
-      </ul>
-      We do <i>not</i> use cookies for advertising.
-    </div>
-    <div class="flex-col">
-      <button id="accept-essential-cookies-button">Essential cookies only</button>
-      <button id="accept-all-cookies-button">Accept all cookies</button>
-    </div>
   </div>
 
   <div id="menu-backdrop"></div>
@@ -826,6 +816,27 @@
       </div>
     </form>
   </dialog>
+
+  <div id="cookie-banner" class="flex-row-full" style="display:none;">
+    <div id="cookie-warning" class="flex-grow">
+      This website uses cookies in order to function:
+      <ul>
+        <li>
+          <b>Essential cookies</b> are required to provide basic features, such as secure log-in
+          (always active);
+        </li>
+        <li>
+          <b>Performance cookies</b> are used to collect anonymous statistics that helps us improve
+          our website (if you are ok with that).
+        </li>
+      </ul>
+      We do <i>not</i> use cookies for advertising.
+    </div>
+    <div class="flex-col">
+      <button id="accept-essential-cookies-button">Essential cookies only</button>
+      <button id="accept-all-cookies-button">Accept all cookies</button>
+    </div>
+  </div>
 </body>
 
 </html>
