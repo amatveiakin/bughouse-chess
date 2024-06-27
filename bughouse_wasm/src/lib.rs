@@ -820,7 +820,8 @@ impl WebClient {
                         {
                             broken_king_path(piece.force)
                         } else {
-                            piece_path(piece.kind, piece.force)
+                            let is_promoted = piece.origin == PieceOrigin::Promoted;
+                            piece_path(piece.kind, piece.force, is_promoted)
                         };
                         node.set_attribute("href", filename)?;
                         node.class_list()
@@ -1395,7 +1396,7 @@ fn svg_icon(image: &str, width: u32, height: u32, classes: &[&str]) -> JsResult<
 fn make_piece_icon(
     piece_kind: PieceKind, force: PieceForce, classes: &[&str],
 ) -> JsResult<web_sys::Element> {
-    svg_icon(piece_path(piece_kind, force), 1, 1, classes)
+    svg_icon(piece_path(piece_kind, force, false), 1, 1, classes)
 }
 
 fn make_menu_icon(images: &[&str]) -> JsResult<web_sys::Element> {
@@ -1505,7 +1506,7 @@ fn render_reserve(
     let mut x = (max_width - width - 1.0) / 2.0; // center reserve
     let y = reserve_y_pos(player_idx);
     for (piece_kind, amount) in reserve_iter {
-        let filename = piece_path(piece_kind, force.into());
+        let filename = piece_path(piece_kind, force.into(), false);
         let id = reserve_piece_id(board_idx, force, piece_kind);
         let group_node = reserve_node.append_new_svg_element("g")?;
         group_node.set_id(&id);
@@ -1598,7 +1599,7 @@ fn render_upgrade_promotion_selector(
         let id = format!("promotion-fg-{}", piece.to_full_algebraic());
         let node = document.ensure_svg_node("use", &id, &layer, |node| {
             node.set_attribute("class", "promotion-target-fg")?;
-            node.set_attribute("href", piece_path(piece, force.into()))?;
+            node.set_attribute("href", piece_path(piece, force.into(), false))?;
             Ok(())
         })?;
         node.set_attribute("x", &(x - PIECE_SIZE / 2.0).to_string())?;
@@ -2550,30 +2551,48 @@ fn square_color_class(color: Force) -> &'static str {
 
 fn archive_game_row_id(game_id: i64) -> String { format!("archive-game-row-{}", game_id) }
 
-fn piece_path(piece_kind: PieceKind, force: PieceForce) -> &'static str {
+fn piece_path(piece_kind: PieceKind, force: PieceForce, is_promoted: bool) -> &'static str {
     use PieceForce::*;
     use PieceKind::*;
-    match (force, piece_kind) {
-        (White, Pawn) => "#white-pawn",
-        (White, Knight) => "#white-knight",
-        (White, Bishop) => "#white-bishop",
-        (White, Rook) => "#white-rook",
-        (White, Queen) => "#white-queen",
-        (White, Cardinal) => "#white-cardinal",
-        (White, Empress) => "#white-empress",
-        (White, Amazon) => "#white-amazon",
-        (White, King) => "#white-king",
-        (Black, Pawn) => "#black-pawn",
-        (Black, Knight) => "#black-knight",
-        (Black, Bishop) => "#black-bishop",
-        (Black, Rook) => "#black-rook",
-        (Black, Queen) => "#black-queen",
-        (Black, Cardinal) => "#black-cardinal",
-        (Black, Empress) => "#black-empress",
-        (Black, Amazon) => "#black-amazon",
-        (Black, King) => "#black-king",
-        (_, Duck) => "#duck",
-        (Neutral, _) => panic!("There is no neutral representation for {piece_kind:?}"),
+    match (force, piece_kind, is_promoted) {
+        (White, Pawn, false) => "#white-pawn",
+        (White, Knight, false) => "#white-knight",
+        (White, Bishop, false) => "#white-bishop",
+        (White, Rook, false) => "#white-rook",
+        (White, Queen, false) => "#white-queen",
+        (White, Cardinal, false) => "#white-cardinal",
+        (White, Empress, false) => "#white-empress",
+        (White, Amazon, false) => "#white-amazon",
+        (White, King, false) => "#white-king",
+        (Black, Pawn, false) => "#black-pawn",
+        (Black, Knight, false) => "#black-knight",
+        (Black, Bishop, false) => "#black-bishop",
+        (Black, Rook, false) => "#black-rook",
+        (Black, Queen, false) => "#black-queen",
+        (Black, Cardinal, false) => "#black-cardinal",
+        (Black, Empress, false) => "#black-empress",
+        (Black, Amazon, false) => "#black-amazon",
+        (Black, King, false) => "#black-king",
+
+        (White, Knight, true) => "#white-knight-promo",
+        (White, Bishop, true) => "#white-bishop-promo",
+        (White, Rook, true) => "#white-rook-promo",
+        (White, Queen, true) => "#white-queen-promo",
+        (White, Cardinal, true) => "#white-cardinal-promo",
+        (White, Empress, true) => "#white-empress-promo",
+        (White, Amazon, true) => "#white-amazon-promo",
+        (Black, Knight, true) => "#black-knight-promo",
+        (Black, Bishop, true) => "#black-bishop-promo",
+        (Black, Rook, true) => "#black-rook-promo",
+        (Black, Queen, true) => "#black-queen-promo",
+        (Black, Cardinal, true) => "#black-cardinal-promo",
+        (Black, Empress, true) => "#black-empress-promo",
+        (Black, Amazon, true) => "#black-amazon-promo",
+
+        (_, Duck, false) => "#duck",
+
+        (Neutral, _, _) => panic!("There is no neutral representation for {piece_kind:?}"),
+        (_, Pawn | King | Duck, true) => panic!("No promoted version for {piece_kind:?}"),
     }
 }
 

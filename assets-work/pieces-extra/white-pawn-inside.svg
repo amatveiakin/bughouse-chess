@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   version="1.1"
+   id="svg447"
+   width="17.539803"
+   height="23.051624"
+   viewBox="0 0 17.539803 23.051625"
+   sodipodi:docname="white-pawn-inside.svg"
+   inkscape:version="1.2.2 (732a01da63, 2022-12-09)"
+   inkscape:export-filename="white-pawn-inside.png"
+   inkscape:export-xdpi="262.71677"
+   inkscape:export-ydpi="262.71677"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs451" />
+  <sodipodi:namedview
+     id="namedview449"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="9.4338541"
+     inkscape:cx="-14.310164"
+     inkscape:cy="6.6780766"
+     inkscape:window-width="2560"
+     inkscape:window-height="1476"
+     inkscape:window-x="-12"
+     inkscape:window-y="-12"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g453" />
+  <g
+     inkscape:groupmode="layer"
+     inkscape:label="Image"
+     id="g453"
+     transform="translate(-35.178902,-57.145513)">
+    <path
+       id="path"
+       style="display:inline;opacity:1;fill:#e7edee;fill-opacity:1;stroke:#333333;stroke-width:1;stroke-dasharray:none;stroke-opacity:1"
+       d="m 48.018211,61.844581 a 4.1902114,4.1902114 0 0 1 -1.347152,3.082738 l 2.134623,1.506832 v 2.761452 h -2.089964 c 0.100883,1.280004 0.92209,2.56097 1.984904,3.678403 a 15.819478,15.819478 0 0 0 3.385712,2.657032 l 0.13237,0.0758 v 4.0903 H 35.678902 v -4.0903 l 0.13237,-0.0758 a 15.819478,15.819478 0 0 0 3.385712,-2.657032 c 1.062814,-1.117433 1.884021,-2.398399 1.984904,-3.678403 h -2.088359 v -2.761452 l 1.988118,-1.403378 a 4.2004928,4.2004928 0 1 1 6.939777,-3.186192 z" />
+  </g>
+</svg>

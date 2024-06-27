@@ -201,27 +201,35 @@ function gtag() {
 }
 update_cookie_policy();
 
+// TODO: Load pawn images from files as well.
+const PAWNS_INSIDE = {
+  white:
+    "data:image/png;base64,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",
+  black:
+    "data:image/png;base64,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",
+};
+
 const FOG_TILE_SIZE = 1.2;
 load_svg_images([
   { path: transparent, symbol: "transparent" },
   { path: white_pawn, symbol: "white-pawn" },
-  { path: white_knight, symbol: "white-knight" },
-  { path: white_bishop, symbol: "white-bishop" },
-  { path: white_rook, symbol: "white-rook" },
-  { path: white_queen, symbol: "white-queen" },
-  { path: white_cardinal, symbol: "white-cardinal" },
-  { path: white_empress, symbol: "white-empress" },
-  { path: white_amazon, symbol: "white-amazon" },
+  { path: white_knight, symbol: "white-knight", pawn_inside: ["white", 0.14, 0.18] },
+  { path: white_bishop, symbol: "white-bishop", pawn_inside: ["white", 0, 0.2] },
+  { path: white_rook, symbol: "white-rook", pawn_inside: ["white", 0, 0.18] },
+  { path: white_queen, symbol: "white-queen", pawn_inside: ["white", 0, 0.19] },
+  { path: white_cardinal, symbol: "white-cardinal", pawn_inside: ["white", 0.14, 0.18] },
+  { path: white_empress, symbol: "white-empress", pawn_inside: ["white", 0.14, 0.18] },
+  { path: white_amazon, symbol: "white-amazon", pawn_inside: ["white", 0.14, 0.18] },
   { path: white_king, symbol: "white-king" },
   { path: white_king_broken, symbol: "white-king-broken" },
   { path: black_pawn, symbol: "black-pawn" },
-  { path: black_knight, symbol: "black-knight" },
-  { path: black_bishop, symbol: "black-bishop" },
-  { path: black_rook, symbol: "black-rook" },
-  { path: black_queen, symbol: "black-queen" },
-  { path: black_cardinal, symbol: "black-cardinal" },
-  { path: black_empress, symbol: "black-empress" },
-  { path: black_amazon, symbol: "black-amazon" },
+  { path: black_knight, symbol: "black-knight", pawn_inside: ["black", 0.14, 0.18] },
+  { path: black_bishop, symbol: "black-bishop", pawn_inside: ["black", 0, 0.2] },
+  { path: black_rook, symbol: "black-rook", pawn_inside: ["black", 0, 0.18] },
+  { path: black_queen, symbol: "black-queen", pawn_inside: ["black", 0, 0.19] },
+  { path: black_cardinal, symbol: "black-cardinal", pawn_inside: ["black", 0.14, 0.18] },
+  { path: black_empress, symbol: "black-empress", pawn_inside: ["black", 0.14, 0.18] },
+  { path: black_amazon, symbol: "black-amazon", pawn_inside: ["black", 0.14, 0.18] },
   { path: black_king, symbol: "black-king" },
   { path: black_king_broken, symbol: "black-king-broken" },
   { path: duck, symbol: "duck" },
@@ -1611,44 +1619,65 @@ function fatal_error_dialog(message) {
   fatal_error_shown = true;
 }
 
-function make_svg_image_placeholder(symbol_id, image_id, size) {
+function make_svg_image_symbol(symbol_id, data, size) {
   const symbol = document.createElementNS(SVG_NS, "symbol");
   symbol.id = symbol_id;
   const image = document.createElementNS(SVG_NS, "image");
-  image.id = image_id;
   image.setAttribute("width", size);
   image.setAttribute("height", size);
+  image.setAttribute("href", data);
   symbol.appendChild(image);
   svg_defs.appendChild(symbol);
 }
 
-async function load_image(filepath, target_id) {
+async function load_svg_image(record) {
+  loading_tracker.resource_required();
   const reader = new FileReader();
   reader.addEventListener(
     "load",
     () => {
-      const image = document.getElementById(target_id);
-      image.setAttribute("href", reader.result);
+      const size = record.size || 1;
+      make_svg_image_symbol(record.symbol, reader.result, size);
+      if (record.pawn_inside) {
+        loading_tracker.resource_required();
+        const [color, dx, dy] = record.pawn_inside;
+        const image = new Image();
+        image.addEventListener("load", () => {
+          const pawn_image = new Image();
+          pawn_image.addEventListener("load", () => {
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+            canvas.width = image.width;
+            canvas.height = image.height;
+            context.drawImage(image, 0, 0);
+            context.drawImage(
+              pawn_image,
+              Math.round((image.width - pawn_image.width) / 2 + dx * image.width),
+              Math.round((image.height - pawn_image.height) / 2 + dy * image.height)
+            );
+            const symbol_id = `${record.symbol}-promo`;
+            make_svg_image_symbol(symbol_id, canvas.toDataURL(), size);
+            loading_tracker.resource_loaded();
+          });
+          pawn_image.src = PAWNS_INSIDE[color];
+        });
+        image.src = reader.result;
+      }
       loading_tracker.resource_loaded();
     },
     false
   );
   reader.addEventListener("error", () => {
-    console.error(`Cannot load image ${filepath}`);
+    console.error(`Cannot load image ${record.path}`);
   });
-  const response = await fetch(filepath);
+  const response = await fetch(record.path);
   const blob = await response.blob();
   reader.readAsDataURL(blob);
 }
 
 function load_svg_images(image_records) {
   for (const record of image_records) {
-    const symbol_id = record.symbol;
-    const size = record.size || 1;
-    const image_id = `${symbol_id}-image`;
-    make_svg_image_placeholder(symbol_id, image_id, size);
-    load_image(record.path, image_id, size);
-    loading_tracker.resource_required();
+    load_svg_image(record);
   }
 }
 
