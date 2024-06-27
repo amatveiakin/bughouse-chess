@@ -252,6 +252,10 @@ impl Row {
     pub const _6: Row = Row { idx: 5 };
     pub const _7: Row = Row { idx: 6 };
     pub const _8: Row = Row { idx: 7 };
+    pub const _9: Row = Row { idx: 8 };
+    pub const _10: Row = Row { idx: 9 };
+    pub const _11: Row = Row { idx: 10 };
+    pub const _12: Row = Row { idx: 11 };
 }
 
 impl Col {
@@ -264,6 +268,10 @@ impl Col {
     pub const F: Col = Col { idx: 5 };
     pub const G: Col = Col { idx: 6 };
     pub const H: Col = Col { idx: 7 };
+    pub const I: Col = Col { idx: 8 };
+    pub const J: Col = Col { idx: 9 };
+    pub const K: Col = Col { idx: 10 };
+    pub const L: Col = Col { idx: 11 };
 }
 
 impl Coord {

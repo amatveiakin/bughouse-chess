@@ -838,6 +838,7 @@ impl WebClient {
                 display_board_idx,
                 upgrade_promotion_target
                     .map(|c| to_display_coord(c, board_shape, board_orientation)),
+                game.chess_rules(),
             )?;
             fog_of_war_layer
                 .class_list()
@@ -1564,7 +1565,7 @@ fn update_reserve(
 
 fn render_upgrade_promotion_selector(
     force: Option<Force>, display_board_idx: DisplayBoard,
-    upgrade_promotion_target: Option<DisplayCoord>,
+    upgrade_promotion_target: Option<DisplayCoord>, chess_rules: &ChessRules,
 ) -> JsResult<()> {
     use std::f64::consts::PI;
     const PIECE_SIZE: f64 = 1.0;
@@ -1584,7 +1585,7 @@ fn render_upgrade_promotion_selector(
     let force = force.unwrap();
 
     let promotion_targets = PieceKind::iter()
-        .filter(|&kind| kind.can_be_upgrade_promotion_target())
+        .filter(|&kind| kind.can_be_upgrade_promotion_target(chess_rules))
         .collect_vec();
     let primary_target = PieceKind::Queen;
     assert!(promotion_targets.contains(&primary_target));
@@ -1606,9 +1607,10 @@ fn render_upgrade_promotion_selector(
     };
     let pos = DisplayFCoord::square_center(display_coord);
 
+    // Improvement potential: Preserve positions of the four standard promotion targets.
     let num_steps = secondary_targets.len();
     let start_rad = PI;
-    let end_rad = 2.0 * PI;
+    let end_rad = if num_steps <= 4 { 2.0 * PI } else { 3.0 * PI };
     let step_rad = (end_rad - start_rad) / (num_steps as f64);
     for (i, &piece) in secondary_targets.iter().enumerate() {
         let from_rad = start_rad + (i as f64) * step_rad;

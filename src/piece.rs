@@ -245,18 +245,18 @@ impl PieceKind {
         }
     }
 
-    pub fn reservable(self, chess_rules: &ChessRules) -> PieceReservable {
+    pub fn reservable(self, rules: &ChessRules) -> PieceReservable {
         use FairyPieces::*;
         use PieceKind::*;
         match self {
             Pawn | Knight | Bishop | Rook | Queen => PieceReservable::Always,
-            Cardinal | Empress => match chess_rules.fairy_pieces {
+            Cardinal | Empress => match rules.fairy_pieces {
                 NoFairy | Accolade => PieceReservable::Never,
                 Capablanca => PieceReservable::Always,
             },
             Amazon => PieceReservable::Never,
             King => {
-                if chess_rules.bughouse_rules.as_ref().map_or(false, |r| r.koedem) {
+                if rules.bughouse_rules.as_ref().map_or(false, |r| r.koedem) {
                     PieceReservable::Always
                 } else {
                     // Before game start (demos) and after game over (regicide).
@@ -267,10 +267,15 @@ impl PieceKind {
         }
     }
 
-    pub fn can_be_upgrade_promotion_target(self) -> bool {
+    pub fn can_be_upgrade_promotion_target(self, rules: &ChessRules) -> bool {
+        use FairyPieces::*;
         use PieceKind::*;
         match self {
-            Pawn | Cardinal | Empress | Amazon | King | Duck => false,
+            Pawn | Amazon | King | Duck => false,
+            Cardinal | Empress => match rules.fairy_pieces {
+                NoFairy | Accolade => false,
+                Capablanca => true,
+            },
             Knight | Bishop | Rook | Queen => true,
         }
     }

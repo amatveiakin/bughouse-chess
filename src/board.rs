@@ -1347,10 +1347,10 @@ impl Board {
         if self.status != ChessGameStatus::Active {
             return Err(TurnError::GameOver);
         }
+        let rules = self.chess_rules();
+        let bughouse_rules = self.bughouse_rules();
         let force = self.turn_owner(mode);
-        if self.bughouse_rules().map_or(false, |r| r.koedem)
-            && self.reserve(force)[PieceKind::King] > 0
-        {
+        if bughouse_rules.map_or(false, |r| r.koedem) && self.reserve(force)[PieceKind::King] > 0 {
             let ok = match turn {
                 Turn::Move(_) | Turn::Castle(_) => false,
                 Turn::Drop(TurnDrop { piece_kind, .. }) => piece_kind == PieceKind::King,
@@ -1385,7 +1385,7 @@ impl Board {
                         capture_pos_or =
                             get_capture(&new_grid, mv.from, mv.to, self.en_passant_target);
                         match reachability(
-                            self.chess_rules(),
+                            rules,
                             &new_grid,
                             mv.from,
                             mv.to,
@@ -1397,8 +1397,7 @@ impl Board {
                         }
                     }
                     TurnMode::Preturn => {
-                        if !is_reachable_for_premove(self.chess_rules(), &new_grid, mv.from, mv.to)
-                        {
+                        if !is_reachable_for_premove(rules, &new_grid, mv.from, mv.to) {
                             return Err(TurnError::ImpossibleTrajectory);
                         }
                     }
@@ -1407,7 +1406,7 @@ impl Board {
                 if let Some(capture_pos) = capture_pos_or {
                     captures.extend(piece_to_captured(capture_pos, new_grid[capture_pos].unwrap()));
                     new_grid[capture_pos] = None;
-                    if self.chess_rules().atomic_chess {
+                    if rules.atomic_chess {
                         if piece.kind == PieceKind::King {
                             // Improvement potential. Should we make an exception for Koedem?
                             return Err(TurnError::KingCannotCaptureInAtomicChess);
@@ -1426,7 +1425,7 @@ impl Board {
                     }
                 }
                 // Verify that requested promotion does not violate promotion rules.
-                match (mv.promote_to, self.chess_rules().promotion()) {
+                match (mv.promote_to, rules.promotion()) {
                     // No promotion - no problem.
                     (None, _) => {}
                     // Promotion rules match.
@@ -1444,7 +1443,7 @@ impl Board {
                     };
                     match promote_to {
                         PromotionTarget::Upgrade(promo_piece_kind) => {
-                            if !promo_piece_kind.can_be_upgrade_promotion_target() {
+                            if !promo_piece_kind.can_be_upgrade_promotion_target(rules) {
                                 return Err(TurnError::InvalidUpgradePromotionTarget);
                             }
                             new_grid[mv.to] = Some(PieceOnBoard::new(
@@ -1506,12 +1505,9 @@ impl Board {
                     if mv.promote_to.is_some() {
                         return Err(TurnError::CannotPromoteHere);
                     } else if let Some(dst_piece) = new_grid[mv.to] {
-                        if let Some(combined_piece) = combine_pieces(
-                            self.chess_rules(),
-                            next_piece_id.inc(),
-                            piece,
-                            dst_piece,
-                        ) {
+                        if let Some(combined_piece) =
+                            combine_pieces(rules, next_piece_id.inc(), piece, dst_piece)
+                        {
                             new_grid[mv.to] = Some(combined_piece);
                         } else {
                             assert_eq!(mode, TurnMode::Preturn);
@@ -1521,14 +1517,13 @@ impl Board {
                         new_grid[mv.to] = Some(piece);
                     }
                 }
-                if self.chess_rules().atomic_chess && capture_pos_or.is_some() {
+                if rules.atomic_chess && capture_pos_or.is_some() {
                     captures.extend(piece_to_captured(mv.to, new_grid[mv.to].unwrap()));
                     new_grid[mv.to] = None;
                 }
             }
             Turn::Drop(drop) => {
-                let bughouse_rules =
-                    self.bughouse_rules().ok_or(TurnError::DropRequiresBughouse)?;
+                let bughouse_rules = bughouse_rules.ok_or(TurnError::DropRequiresBughouse)?;
                 if drop.piece_kind == PieceKind::Duck {
                     return Err(TurnError::DuckPlacementIsSpecialTurnKind);
                 }
@@ -1553,12 +1548,9 @@ impl Board {
                     piece_force,
                 );
                 if let Some(dst_piece) = new_grid[drop.to] {
-                    if let Some(combined_piece) = combine_pieces(
-                        self.chess_rules(),
-                        next_piece_id.inc(),
-                        new_piece,
-                        dst_piece,
-                    ) {
+                    if let Some(combined_piece) =
+                        combine_pieces(rules, next_piece_id.inc(), new_piece, dst_piece)
+                    {
                         new_piece = combined_piece;
                     } else {
                         match mode {
@@ -1612,18 +1604,18 @@ impl Board {
                 let rook = new_grid[rook_from].take();
                 assert!(matches!(rook, Some(PieceOnBoard { kind: PieceKind::Rook, .. })));
 
-                let king_to;
-                let rook_to;
-                match dir {
-                    CastleDirection::ASide => {
-                        king_to = Coord::new(row, Col::C);
-                        rook_to = Coord::new(row, Col::D);
-                    }
-                    CastleDirection::HSide => {
-                        king_to = Coord::new(row, Col::G);
-                        rook_to = Coord::new(row, Col::F);
-                    }
+                let (king_to_col, rook_to_col) = match rules.fairy_pieces {
+                    FairyPieces::NoFairy | FairyPieces::Accolade => match dir {
+                        CastleDirection::ASide => (Col::C, Col::D),
+                        CastleDirection::HSide => (Col::G, Col::F),
+                    },
+                    FairyPieces::Capablanca => match dir {
+                        CastleDirection::ASide => (Col::C, Col::D),
+                        CastleDirection::HSide => (Col::I, Col::H),
+                    },
                 };
+                let king_to = Coord::new(row, king_to_col);
+                let rook_to = Coord::new(row, rook_to_col);
 
                 match mode {
                     TurnMode::InOrder => {
@@ -1638,9 +1630,7 @@ impl Board {
                         for col in col_range_inclusive(iter_minmax(cols.into_iter()).unwrap()) {
                             let pos = Coord::new(row, col);
                             let new_grid = new_grid.scoped_set(pos, king);
-                            if !self.chess_rules().regicide()
-                                && is_check_to(self.chess_rules(), &new_grid, pos)
-                            {
+                            if !rules.regicide() && is_check_to(rules, &new_grid, pos) {
                                 return Err(TurnError::UnprotectedKing);
                             }
                         }
@@ -1656,7 +1646,7 @@ impl Board {
                 });
             }
             Turn::PlaceDuck(to) => {
-                if !self.chess_rules().duck_chess {
+                if !rules.duck_chess {
                     return Err(TurnError::NotDuckChess);
                 }
                 if !self.is_duck_turn[force] {
