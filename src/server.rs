@@ -111,6 +111,7 @@ pub enum IncomingEvent {
 // TODO: Use Prometheus instead.
 #[derive(Clone, Debug, Default)]
 pub struct ServerInfo {
+    pub num_clients: usize,
     pub num_active_matches: usize,
 }
 
@@ -532,8 +533,13 @@ impl CoreServerState {
             IncomingEvent::Tick => self.on_tick(ctx),
             IncomingEvent::Terminate => self.on_terminate(ctx),
         }
+
+        let info = ServerInfo {
+            num_clients: ctx.clients.map.len(),
+            num_active_matches: self.num_active_matches(ctx.now),
+        };
         async_std::task::block_on(async {
-            ctx.info.lock().await.num_active_matches = self.num_active_matches(ctx.now);
+            *ctx.info.lock().await = info;
         });
 
         timer.observe_duration();

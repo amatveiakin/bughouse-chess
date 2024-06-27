@@ -465,15 +465,14 @@ async fn handle_metrics<DB>(_req: tide::Request<HttpServerState<DB>>) -> tide::R
 }
 
 async fn handle_server_info<DB>(req: tide::Request<HttpServerState<DB>>) -> tide::Result {
-    let num_active_matches = req.state().server_info.lock().await.num_active_matches;
+    let info = req.state().server_info.lock().await.clone();
     let h: String = html! {
         <html>
         <head>
         </head>
         <body>
-            <p>
-                {"Active matches: "}{num_active_matches}
-            </p>
+            {"Users online: "}{info.num_clients}<br/>
+            {"Active matches: "}{info.num_active_matches}<br/>
         </body>
         </html>
     };
