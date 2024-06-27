@@ -1,5 +1,7 @@
 mod common;
 
+use std::time::Duration;
+
 use bughouse_chess::altered_game::{
     AlteredGame, ReservePieceHighlight, SquareHighlight, TurnHighlightFamily, TurnHighlightItem,
     TurnHighlightLayer, TurnInputResult, WaybackDestination,
@@ -66,6 +68,12 @@ fn duck_chess_game() -> BughouseGame {
 fn fog_of_war_bughouse_game() -> BughouseGame {
     let mut rules = default_rules();
     rules.chess_rules.fog_of_war = true;
+    BughouseGame::new(rules, Role::Client, &sample_bughouse_players())
+}
+
+fn koedem_game() -> BughouseGame {
+    let mut rules = default_rules();
+    rules.bughouse_rules_mut().unwrap().koedem = true;
     BughouseGame::new(rules, Role::Client, &sample_bughouse_players())
 }
 
@@ -617,4 +625,18 @@ fn wayback_affects_fog_of_war() {
     assert!(!alt_game.fog_of_war_area(A).contains(&Coord::D8));
     alt_game.wayback_to(WaybackDestination::Index(Some(TurnIndex(2))), None);
     assert!(alt_game.fog_of_war_area(A).contains(&Coord::D8));
+}
+
+// Regression fix: the client crashed when playing on two boards and invalidating your own preturn
+// by making a move on the other board.
+#[test]
+fn invalidate_own_preturn() {
+    let game_log = "1B.Nc3 1b.h6 2B.Nb5 2b.h5 3B.Nxc7 3b.h4 1A.e4 1a.e5";
+    let mut game = koedem_game();
+    replay_bughouse_log(&mut game, game_log, Duration::ZERO).unwrap();
+
+    let mut alt_game = AlteredGame::new(as_double_player(Team::Blue), game);
+    alt_game.try_local_turn(A, drag_move!(G8 -> F6), T0).unwrap();
+    alt_game.try_local_turn(B, drag_move!(C7 -> E8), T0).unwrap();
+    alt_game.local_game();
 }

@@ -190,7 +190,10 @@ pub struct AlteredGame {
     //   - Local turns (TurnMode::InOrder) not confirmed by the server yet, but displayed on the
     //     client. Always valid turns for the `game_confirmed`.
     //   - Local preturns (TurnMode::Preturn).
-    // The turns are executed sequentially. Preturns always follow in-order turns.
+    // The turns are executed sequentially.
+    // Invariant: preturns for both board always follow in-order turns for both board. Turn order
+    // across boards could important for situations where turns on different boards depend on each
+    // other (in Koedem or with stealing promotion).
     local_turns: Dirty<Vec<TurnRecord>>,
     // Historical position that the user is currently viewing.
     wayback_turn_index: Dirty<Option<TurnIndex>>,
@@ -289,7 +292,7 @@ impl AlteredGame {
             }
         }
 
-        self.discard_invalid_local_turns();
+        self.revise_local_turns();
 
         let local_turn_after = self.has_inorder_local_turn_per_board();
         for board_idx in BughouseBoard::iter() {
@@ -460,6 +463,7 @@ impl AlteredGame {
         // turns you can require the turn be capturing by using "x". This information will be lost
         // if using TurnInput::Explicit.
         self.local_turns.get_mut().push(TurnRecord { envoy, turn_input, time });
+        self.revise_local_turns();
         Ok(mode)
     }
 
@@ -823,22 +827,59 @@ impl AlteredGame {
         self.partial_turn_input.set(None);
     }
 
-    fn discard_invalid_local_turns(&mut self) {
-        // Although we don't allow it currently, this function is written in a way that supports
-        // turns cross-board turn dependencies.
+    // Does two things:
+    //   - Sorts local turns such that preturns follow in-order turns, while keeping the order
+    //     stable otherwise. In particular, the order of turns for any given board is preserved.
+    //   - Discards local turns that are no longer valid.
+    fn revise_local_turns(&mut self) {
+        if !self.game_confirmed.is_active() {
+            self.reset_local_changes();
+            return;
+        }
+
         let mut game = (*self.game_confirmed).clone();
+        // Used to discard all turns on a board after the first invalid turn.
         let mut is_board_ok = enum_map! { _ => true };
-        self.local_turns.get_mut().retain(|turn_record| {
-            let is_ok = game
-                .turn_mode_for_envoy(turn_record.envoy)
-                .and_then(|mode| game.apply_turn_record(turn_record, mode))
-                .is_ok();
-            if !is_ok {
-                // Whenever we find an invalid turn, discard all subsequent turns on that board.
+        let mut local_turns = vec![];
+        let mut preturns = vec![];
+
+        for turn_record in self.local_turns.get_mut().drain(..) {
+            if !is_board_ok[turn_record.envoy.board_idx] {
+                continue;
+            }
+            // Unwrap ok: could fail only when game is over.
+            let mode = game.turn_mode_for_envoy(turn_record.envoy).unwrap();
+            match mode {
+                TurnMode::InOrder => {
+                    if game.apply_turn_record(&turn_record, mode).is_ok() {
+                        local_turns.push(turn_record);
+                    } else {
+                        is_board_ok[turn_record.envoy.board_idx] = false;
+                    }
+                }
+                TurnMode::Preturn => {
+                    preturns.push(turn_record);
+                }
+            }
+        }
+
+        for turn_record in preturns {
+            if !is_board_ok[turn_record.envoy.board_idx] {
+                continue;
+            }
+            // Unwrap ok: could fail only when game is over.
+            let mode = game.turn_mode_for_envoy(turn_record.envoy).unwrap();
+            assert_eq!(mode, TurnMode::Preturn);
+            if game.apply_turn_record(&turn_record, mode).is_ok() {
+                local_turns.push(turn_record);
+            } else {
                 is_board_ok[turn_record.envoy.board_idx] = false;
             }
-            is_board_ok[turn_record.envoy.board_idx]
-        });
+        }
+
+        *self.local_turns.get_mut() = local_turns;
+
+        // Q. Should we abort partial turn if a preceding local turn was cancelled?
         if apply_partial_turn(*self.partial_turn_input, self.my_id, &mut game).is_err() {
             // Partial turn invalidated. Possible reasons: dragged piece was captured by opponent;
             // dragged piece depended on a (pre)turn that was cancelled.
@@ -960,21 +1001,22 @@ fn compute_derived_data(
 ) -> DerivedData {
     let mut local_game_inorder_turns = game_confirmed.clone();
     apply_wayback(wayback_turn_index, &mut local_game_inorder_turns);
-    let mut preturns = vec![];
-    for turn_record in local_turns.iter() {
+
+    let mut preturns_start = local_turns.len();
+    for (i, turn_record) in local_turns.iter().enumerate() {
         // Note. Not calling `test_flag`, because only server records flag defeat.
         // Unwrap ok: turn correctness (according to the `mode`) has already been verified.
         let mode = local_game_inorder_turns.turn_mode_for_envoy(turn_record.envoy).unwrap();
         if mode == TurnMode::Preturn {
-            preturns.push(turn_record.clone());
-            // Do not break because we can still get in-order turns on the other board.
-            continue;
+            preturns_start = i;
+            // Ok to break: preturns for both board always follow in-order turns for both board.
+            break;
         }
         local_game_inorder_turns.apply_turn_record(turn_record, mode).unwrap();
     }
 
     let mut local_game = local_game_inorder_turns.clone();
-    for turn_record in preturns.iter() {
+    for turn_record in local_turns[preturns_start..].iter() {
         let mode = local_game_inorder_turns.turn_mode_for_envoy(turn_record.envoy).unwrap();
         assert_eq!(mode, TurnMode::Preturn);
         // Unwrap ok: turn correctness has already been verified.
