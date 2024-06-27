@@ -2,10 +2,14 @@
 
 import argparse
 import shutil
-from pathlib import Path, PurePath
 import subprocess
+from html.parser import HTMLParser
+from pathlib import Path, PurePath
 from zipfile import ZipFile
 
+import requests
+
+SERVER_STATUS_URL = "https://bughouse.pro/dyn/server"
 SERVER_SERVICE_NAME = "bughouse-server"
 HOME = Path.home()
 SERVER_BINARY_ROOT = HOME / "server"
@@ -14,9 +18,47 @@ ARTIFACT_CLIENT_PREFIX = PurePath("www-dist")
 WEB_CLIENT_PATH = Path("/var/www/html")
 
 
+class HTMLTextExtractor(HTMLParser):
+    text = ""
+
+    def handle_data(self, data):
+        self.text += data
+
+    def handle_endtag(self, name):
+        if name in ["br", "p"]:
+            self.text += "\n"
+
+
+def ask_confirmation(message: str) -> bool:
+    while True:
+        ret = input(message + " (y/n): ").strip().lower()
+        if ret in ["y", "yes"]:
+            return True
+        if ret in ["n", "no"]:
+            return False
+
+
+def extract_html_text(html: str) -> str:
+    extractor = HTMLTextExtractor()
+    extractor.feed(html)
+    return extractor.text
+
+
+def pad_text(text: str, padding: str) -> str:
+    return "\n".join([padding + s for s in text.splitlines()])
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("artifacts_file", help="Path to the artifacts file")
 args = parser.parse_args()
+
+response = requests.get(SERVER_STATUS_URL)
+response.raise_for_status()
+print(f"{SERVER_STATUS_URL} returned:")
+print(pad_text(extract_html_text(response.text), "  "))
+
+if not ask_confirmation("Continue?"):
+    exit()
 
 print(f"Stopping {SERVER_SERVICE_NAME} service...")
 subprocess.run(["systemctl", "stop", SERVER_SERVICE_NAME])
