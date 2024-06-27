@@ -958,24 +958,24 @@ fn compute_derived_data(
     partial_turn_input: Option<(BughouseBoard, PartialTurnInput)>, local_turns: &[TurnRecord],
     wayback_turn_index: Option<TurnIndex>,
 ) -> DerivedData {
-    let mut local_game_full_turns = game_confirmed.clone();
-    apply_wayback(wayback_turn_index, &mut local_game_full_turns);
+    let mut local_game_inorder_turns = game_confirmed.clone();
+    apply_wayback(wayback_turn_index, &mut local_game_inorder_turns);
     let mut preturns = vec![];
     for turn_record in local_turns.iter() {
         // Note. Not calling `test_flag`, because only server records flag defeat.
         // Unwrap ok: turn correctness (according to the `mode`) has already been verified.
-        let mode = local_game_full_turns.turn_mode_for_envoy(turn_record.envoy).unwrap();
+        let mode = local_game_inorder_turns.turn_mode_for_envoy(turn_record.envoy).unwrap();
         if mode == TurnMode::Preturn {
             preturns.push(turn_record.clone());
             // Do not break because we can still get in-order turns on the other board.
             continue;
         }
-        local_game_full_turns.apply_turn_record(turn_record, mode).unwrap();
+        local_game_inorder_turns.apply_turn_record(turn_record, mode).unwrap();
     }
 
-    let mut local_game = local_game_full_turns.clone();
+    let mut local_game = local_game_inorder_turns.clone();
     for turn_record in preturns.iter() {
-        let mode = local_game_full_turns.turn_mode_for_envoy(turn_record.envoy).unwrap();
+        let mode = local_game_inorder_turns.turn_mode_for_envoy(turn_record.envoy).unwrap();
         assert_eq!(mode, TurnMode::Preturn);
         // Unwrap ok: turn correctness has already been verified.
         local_game.apply_turn_record(turn_record, mode).unwrap();
@@ -984,7 +984,7 @@ fn compute_derived_data(
     apply_partial_turn(partial_turn_input, my_id, &mut local_game).unwrap();
 
     let fog_of_war_area = EnumMap::from_fn(|board_idx| {
-        compute_fog_of_war_area(&local_game_full_turns, &local_game, board_idx, my_id)
+        compute_fog_of_war_area(&local_game_inorder_turns, &local_game, board_idx, my_id)
     });
 
     DerivedData { local_game, fog_of_war_area }
