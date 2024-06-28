@@ -49,7 +49,7 @@ sqlx = { workspace = true, features = ["postgres", "sqlite", "runtime-async-std-
 tide = { workspace = true }
 tide-jsx = { workspace = true }
 time = { workspace = true }
-tungstenite = { workspace = true }
+tungstenite = { workspace = true, features = ["native-tls"] }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 

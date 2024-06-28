@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 #![feature(deadline_api)]
+#![feature(thread_sleep_until)]
 #![cfg_attr(feature = "strict", deny(warnings))]
 
 extern crate clap;

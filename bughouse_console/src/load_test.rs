@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::net::{TcpStream, ToSocketAddrs};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{io, thread};
 
 use bughouse_chess::board::{Board, Turn, TurnInput, TurnMode};
 use bughouse_chess::client::{ClientState, GameState};
 use bughouse_chess::display::get_display_board_index;
-use bughouse_chess::event::BughouseServerEvent;
 use bughouse_chess::game::TOTAL_ENVOYS;
 use bughouse_chess::meter::{MeterStats, METER_SIGNIFICANT_DIGITS};
 use bughouse_chess::rules::{ChessRules, MatchRules, Rules};
@@ -17,7 +16,6 @@ use instant::Instant;
 use itertools::Itertools;
 use rand::seq::SliceRandom;
 use rand::Rng;
-use tungstenite::protocol;
 use url::Url;
 
 use crate::network;
@@ -30,8 +28,7 @@ pub struct LoadTestConfig {
 
 struct Client {
     state: ClientState,
-    rx_net: mpsc::Receiver<BughouseServerEvent>,
-    socket_out: protocol::WebSocket<TcpStream>,
+    socket: tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
     aggregated_meter_box: Arc<Mutex<AMeterBox>>,
 }
 
@@ -83,44 +80,31 @@ impl AMeter {
 
 impl Client {
     fn new(server_address: &str, aggregated_meter_box: Arc<Mutex<AMeterBox>>) -> io::Result<Self> {
-        let server_addr = (server_address, network::PORT).to_socket_addrs().unwrap().collect_vec();
+        let server_addr;
+        let ws_request;
+        if server_address == "localhost" {
+            server_addr = (server_address, network::PORT).to_socket_addrs().unwrap().collect_vec();
+            ws_request = Url::parse(&format!("ws://{}", server_address)).unwrap();
+        } else {
+            server_addr = (server_address, 443).to_socket_addrs().unwrap().collect_vec();
+            ws_request = Url::parse(&format!("wss://{}/ws", server_address)).unwrap();
+        }
         let stream = TcpStream::connect(&server_addr[..])?;
-        // Improvement potential: Test if nodelay helps. Should it be set on both sides or just one?
-        //   net_stream.set_nodelay(true)?;
-        let ws_request = Url::parse(&format!("ws://{}", server_address)).unwrap();
-        let (mut socket_in, _) = tungstenite::client(ws_request, stream).unwrap();
-        let socket_out = network::clone_websocket(&socket_in, protocol::Role::Client);
+        let (socket, _) = tungstenite::client_tls(ws_request, stream).unwrap();
+
         let user_agent = "Loadtest".to_owned();
         let time_zone = "?".to_owned();
         let mut state = ClientState::new(user_agent, time_zone);
         state.disable_performance_reporting();
-        let (tx_net, rx_net) = mpsc::channel();
-        thread::spawn(move || loop {
-            let ev = network::read_obj(&mut socket_in).unwrap();
-            tx_net.send(ev).unwrap();
-        });
-        Ok(Client {
-            state,
-            rx_net,
-            socket_out,
-            aggregated_meter_box,
-        })
+        Ok(Client { state, socket, aggregated_meter_box })
     }
 
     // Send all outgoing event and wait for one event from the server.
-    fn execute_network_round(&mut self, deadline: Option<Instant>) {
+    fn execute_network_round(&mut self) {
         while let Some(event) = self.state.next_outgoing_event() {
-            network::write_obj(&mut self.socket_out, &event).unwrap();
+            network::write_obj(&mut self.socket, &event).unwrap();
         }
-        let event = if let Some(deadline) = deadline {
-            match self.rx_net.recv_deadline(deadline) {
-                Ok(v) => v,
-                Err(mpsc::RecvTimeoutError::Disconnected) => panic!(),
-                Err(mpsc::RecvTimeoutError::Timeout) => return,
-            }
-        } else {
-            self.rx_net.recv().unwrap()
-        };
+        let event = network::read_obj(&mut self.socket).unwrap();
         self.state.process_server_event(event).unwrap();
     }
 
@@ -129,7 +113,7 @@ impl Client {
             if self.state.is_ready() == Some(false) {
                 self.state.set_ready(true);
             }
-            self.execute_network_round(None);
+            self.execute_network_round();
         }
     }
 
@@ -138,7 +122,6 @@ impl Client {
         let mut random_delay = || Duration::from_millis(rng.gen_range(100..=300));
         let mut next_action = Instant::now() + random_delay();
         loop {
-            self.execute_network_round(Some(next_action));
             let GameState { alt_game, .. } = self.state.game_state().unwrap();
             if !alt_game.is_active() {
                 break;
@@ -150,9 +133,10 @@ impl Client {
             let my_envoy = alt_game.my_id().as_player().unwrap().as_single_player().unwrap();
             let local_game = alt_game.local_game().clone();
             if !local_game.is_envoy_active(my_envoy) {
-                self.execute_network_round(None);
+                self.execute_network_round();
                 continue;
             }
+            thread::sleep_until(next_action);
             let board_idx = my_envoy.board_idx;
             let board = local_game.board(board_idx);
             let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
@@ -226,7 +210,7 @@ fn run_match(
             .set_guest_player_name(Some(player_name(&test_id, match_index, 0)));
         first_client.state.new_match(rules);
         while first_client.state.match_id().is_none() {
-            first_client.execute_network_round(None);
+            first_client.execute_network_round();
         }
         let match_id = first_client.state.match_id().unwrap();
         println!("Starting match {match_id}...");
