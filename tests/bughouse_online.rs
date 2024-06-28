@@ -120,7 +120,9 @@ impl Server {
         &mut self, events_tx: async_std::channel::Sender<BughouseServerEvent>,
         session_id: Option<SessionId>,
     ) -> server::ClientId {
-        self.clients.add_client(events_tx, session_id, "client".to_owned())
+        async_std::task::block_on(async {
+            self.clients.add_client(events_tx, session_id, "client".to_owned()).await
+        })
     }
 
     fn send_network_event(&mut self, id: server::ClientId, event: BughouseClientEvent) {
@@ -316,11 +318,15 @@ impl World {
     }
     fn disconnect_client(&mut self, client_id: TestClientId) {
         let client = &mut self.clients[client_id.0];
-        self.server.clients.remove_client(client.id.unwrap()).unwrap();
+        async_std::task::block_on(async {
+            self.server.clients.remove_client(client.id.unwrap()).await.unwrap();
+        });
     }
     fn reconnect_client(&mut self, client_id: TestClientId) {
         let client = &mut self.clients[client_id.0];
-        self.server.clients.remove_client(client.id.unwrap()).unwrap();
+        async_std::task::block_on(async {
+            self.server.clients.remove_client(client.id.unwrap()).await.unwrap();
+        });
         client.connect(&mut self.server, None);
     }
 

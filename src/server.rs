@@ -7,8 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{iter, mem, ops};
 
-use async_std::sync::Mutex;
-use dashmap::DashMap;
+use async_std::sync::{Mutex, RwLock};
 use enum_map::enum_map;
 use indoc::printdoc;
 use instant::Instant;
@@ -239,7 +238,7 @@ impl Client {
 
 #[derive(Debug)]
 pub struct Clients {
-    map: DashMap<ClientId, Client>,
+    map: RwLock<HashMap<ClientId, Client>>,
     next_id: AtomicUsize,
     welcome_event: BughouseServerEvent,
 }
@@ -253,13 +252,13 @@ impl Clients {
             max_starting_time: server_options.max_starting_time,
         };
         Clients {
-            map: DashMap::new(),
+            map: RwLock::new(HashMap::new()),
             next_id: AtomicUsize::new(1),
             welcome_event,
         }
     }
 
-    pub fn add_client(
+    pub async fn add_client(
         &self, events_tx: async_std::channel::Sender<BughouseServerEvent>,
         session_id: Option<SessionId>, logging_id: String,
     ) -> ClientId {
@@ -272,9 +271,9 @@ impl Clients {
             connection_monitor: PassiveConnectionMonitor::new(now),
         };
         let id = ClientId(self.next_id.fetch_add(1, atomic::Ordering::SeqCst));
-        let old_entry = self.map.insert(id, client);
+        let old_entry = self.map.write().await.insert(id, client);
         assert!(old_entry.is_none());
-        self.send(id, self.welcome_event.clone());
+        self.send(id, self.welcome_event.clone()).await;
         id
     }
 
@@ -284,32 +283,34 @@ impl Clients {
     //
     // TODO: Make sure network connection is closed in a reasonable timeframe whenever
     //   a client is removed.
-    pub fn remove_client(&self, id: ClientId) -> Option<String> {
-        self.map.remove(&id).map(|(_, client)| client.logging_id)
+    pub async fn remove_client(&self, id: ClientId) -> Option<String> {
+        self.map.write().await.remove(&id).map(|client| client.logging_id)
     }
 
-    fn get(&self, id: ClientId) -> Option<dashmap::mapref::one::Ref<'_, ClientId, Client>> {
-        self.map.get(&id)
-    }
-    fn get_mut(&self, id: ClientId) -> Option<dashmap::mapref::one::RefMut<'_, ClientId, Client>> {
-        self.map.get_mut(&id)
-    }
+    // fn get(&self, id: ClientId) -> Option<dashmap::mapref::one::Ref<'_, ClientId, Client>> {
+    //     self.map.get(&id)
+    // }
+    // fn get_mut(&self, id: ClientId) -> Option<dashmap::mapref::one::RefMut<'_, ClientId, Client>> {
+    //     self.map.get_mut(&id)
+    // }
 
-    fn send(&self, id: ClientId, event: BughouseServerEvent) {
-        if let Some(client) = self.get(id) {
+    async fn send(&self, id: ClientId, event: BughouseServerEvent) {
+        if let Some(client) = self.map.read().await.get(&id) {
             client.send(event);
         }
     }
-    fn send_rejection(&self, id: ClientId, rejection: BughouseServerRejection) {
-        if let Some(client) = self.get(id) {
+    async fn send_rejection(&self, id: ClientId, rejection: BughouseServerRejection) {
+        if let Some(client) = self.map.read().await.get(&id) {
             client.send_rejection(rejection);
         }
     }
 
     // Sends the event to each client in the match.
-    fn broadcast(&self, clients: &HashMap<ClientId, ParticipantId>, event: &BughouseServerEvent) {
+    async fn broadcast(
+        &self, clients: &HashMap<ClientId, ParticipantId>, event: &BughouseServerEvent,
+    ) {
         for &id in clients.keys() {
-            self.send(id, event.clone());
+            self.send(id, event.clone()).await;
         }
     }
 }
@@ -533,11 +534,11 @@ impl CoreServerState {
                 self.on_client_event(ctx, client_id, event).await
             }
             IncomingEvent::Tick => self.on_tick(ctx).await,
-            IncomingEvent::Terminate => self.on_terminate(ctx),
+            IncomingEvent::Terminate => self.on_terminate(ctx).await,
         }
 
         let info = ServerInfo {
-            num_clients: ctx.clients.map.len(),
+            num_clients: ctx.clients.map.read().await.len(),
             num_active_matches: self.num_active_matches(ctx.now),
         };
         *ctx.info.lock().await = info;
@@ -548,7 +549,7 @@ impl CoreServerState {
     async fn on_client_event(
         &mut self, ctx: &mut Context, client_id: ClientId, event: BughouseClientEvent,
     ) {
-        if !ctx.clients.map.contains_key(&client_id) {
+        if !ctx.clients.map.read().await.contains_key(&client_id) {
             // TODO: Should there be an exception for `BughouseClientEvent::ReportError`?
             // TODO: Improve logging. Consider:
             //   - include logging_id inside client_id, or
@@ -557,7 +558,7 @@ impl CoreServerState {
             return;
         }
 
-        if let Some(ref mut client) = ctx.clients.get_mut(client_id) {
+        if let Some(ref mut client) = ctx.clients.map.write().await.get_mut(&client_id) {
             client.connection_monitor.register_incoming(ctx.now);
         }
 
@@ -580,7 +581,7 @@ impl CoreServerState {
                 return;
             }
             BughouseClientEvent::Ping => {
-                process_ping(ctx, client_id);
+                process_ping(ctx, client_id).await;
                 return;
             }
             _ => {}
@@ -589,11 +590,13 @@ impl CoreServerState {
         let match_id = match &event {
             BughouseClientEvent::NewMatch { rules, .. } => {
                 if !matches!(self.execution, Execution::Running) {
-                    ctx.clients.send_rejection(client_id, BughouseServerRejection::ShuttingDown);
+                    ctx.clients
+                        .send_rejection(client_id, BughouseServerRejection::ShuttingDown)
+                        .await;
                     return;
                 }
                 let logging_id;
-                if let Some(ref mut client) = ctx.clients.get_mut(client_id) {
+                if let Some(ref mut client) = ctx.clients.map.write().await.get_mut(&client_id) {
                     client.match_id = None;
                     logging_id = client.logging_id.clone();
                 } else {
@@ -602,7 +605,7 @@ impl CoreServerState {
                 let match_id = match self.make_match(ctx.now, rules.clone()) {
                     Ok(id) => id,
                     Err(err) => {
-                        ctx.clients.send_rejection(client_id, err);
+                        ctx.clients.send_rejection(client_id, err).await;
                         return;
                     }
                 };
@@ -614,7 +617,7 @@ impl CoreServerState {
                 // Improvement potential: Log cases when a client reconnects to their current
                 //   match. This likely indicates a client error.
 
-                if let Some(ref mut client) = ctx.clients.get_mut(client_id) {
+                if let Some(ref mut client) = ctx.clients.map.write().await.get_mut(&client_id) {
                     client.match_id = None;
                 } else {
                     return;
@@ -622,7 +625,7 @@ impl CoreServerState {
                 Some(MatchId(match_id.clone()))
             }
             _ => {
-                if let Some(client) = ctx.clients.get(client_id) {
+                if let Some(client) = ctx.clients.map.read().await.get(&client_id) {
                     client.match_id.clone()
                 } else {
                     return;
@@ -632,7 +635,7 @@ impl CoreServerState {
 
         let Some(match_id) = match_id else {
             // We've already processed all events that do not depend on a match.
-            ctx.clients.send_rejection(client_id, unknown_error!());
+            ctx.clients.send_rejection(client_id, unknown_error!()).await;
             return;
         };
 
@@ -644,24 +647,26 @@ impl CoreServerState {
                 matches!(event, BughouseClientEvent::Join { .. })
                     || matches!(event, BughouseClientEvent::HotReconnect { .. })
             );
-            ctx.clients.send_rejection(client_id, BughouseServerRejection::NoSuchMatch {
-                match_id: match_id.0,
-            });
+            ctx.clients
+                .send_rejection(client_id, BughouseServerRejection::NoSuchMatch {
+                    match_id: match_id.0,
+                })
+                .await;
             return;
         };
 
         // Test flags first. Thus we make sure that turns and other actions are
         // not allowed after the time is over.
-        mtch.test_flags(ctx);
+        mtch.test_flags(ctx).await;
         mtch.process_client_event(ctx, client_id, self.execution, event).await;
         mtch.post_process(ctx, self.execution).await;
     }
 
     async fn on_tick(&mut self, ctx: &mut Context) {
         self.gc_old_matches(ctx.now);
-        self.check_client_connections(ctx);
+        self.check_client_connections(ctx).await;
         for mtch in self.matches.values_mut() {
-            mtch.test_flags(ctx);
+            mtch.test_flags(ctx).await;
             mtch.post_process(ctx, self.execution).await;
         }
         if !matches!(self.execution, Execution::Running) && self.num_active_matches(ctx.now) == 0 {
@@ -670,7 +675,7 @@ impl CoreServerState {
         }
     }
 
-    fn on_terminate(&mut self, ctx: &mut Context) {
+    async fn on_terminate(&mut self, ctx: &mut Context) {
         const ABORT_INSTRUCTION: &str = "Press Ctrl+C twice within a second to abort immediately.";
         let num_active_matches = self.num_active_matches(ctx.now);
         match self.execution {
@@ -689,7 +694,7 @@ impl CoreServerState {
                         shutting_down_since: ctx.now,
                         last_termination_request: ctx.now,
                     };
-                    self.matches.values().for_each(|mtch| {
+                    for mtch in self.matches.values() {
                         // Immediately notify clients who are still in the lobby: they wouldn't be
                         // able to do anything meaningful. Let other players finish their games.
                         //
@@ -706,9 +711,10 @@ impl CoreServerState {
                                 &BughouseServerEvent::Rejection(
                                     BughouseServerRejection::ShuttingDown,
                                 ),
-                            );
+                            )
+                            .await;
                         }
-                    });
+                    }
                 }
             }
             Execution::ShuttingDown {
@@ -753,17 +759,17 @@ impl CoreServerState {
         });
     }
 
-    fn check_client_connections(&mut self, ctx: &mut Context) {
+    async fn check_client_connections(&mut self, ctx: &mut Context) {
         use PassiveConnectionStatus::*;
         if ctx.disable_connection_health_check {
             return;
         }
-        ctx.clients
-            .map
-            .retain(|_, client| match client.connection_monitor.status(ctx.now) {
+        ctx.clients.map.write().await.retain(|_, client| {
+            match client.connection_monitor.status(ctx.now) {
                 Healthy | TemporaryLost => true,
                 PermanentlyLost => false,
-            });
+            }
+        });
     }
 }
 
@@ -790,7 +796,7 @@ impl Match {
         }
     }
 
-    fn test_flags(&mut self, ctx: &mut Context) {
+    async fn test_flags(&mut self, ctx: &mut Context) {
         let Some(GameState {
             game_index,
             game_start,
@@ -827,22 +833,22 @@ impl Match {
                 game_start_utc_time,
                 game_end,
             );
-            self.add_game_updates(ctx, vec![update]);
-            self.send_lobby_updated(ctx);
+            self.add_game_updates(ctx, vec![update]).await;
+            self.send_lobby_updated(ctx).await;
         }
     }
 
-    fn add_game_updates(&mut self, ctx: &mut Context, new_updates: Vec<GameUpdate>) {
+    async fn add_game_updates(&mut self, ctx: &mut Context, new_updates: Vec<GameUpdate>) {
         let Some(GameState { ref mut updates, .. }) = self.game_state else {
             return;
         };
         updates.extend_from_slice(&new_updates);
         let ev = BughouseServerEvent::GameUpdated { updates: new_updates };
-        self.broadcast(ctx, &ev);
+        self.broadcast(ctx, &ev).await;
     }
 
-    fn broadcast(&self, ctx: &mut Context, event: &BughouseServerEvent) {
-        ctx.clients.broadcast(&self.clients, event);
+    async fn broadcast(&self, ctx: &mut Context, event: &BughouseServerEvent) {
+        ctx.clients.broadcast(&self.clients, event).await;
     }
 
     async fn process_client_event(
@@ -896,7 +902,7 @@ impl Match {
             BughouseClientEvent::Ping => unreachable!(),
         };
         if let Err(err) = result {
-            ctx.clients.send_rejection(client_id, err);
+            ctx.clients.send_rejection(client_id, err).await;
         }
     }
 
@@ -908,7 +914,8 @@ impl Match {
         {
             // Locks for the new client and potential existing client (below) must not overlap in
             // order to avoid deadlocks.
-            let Some(client) = ctx.clients.get(client_id) else {
+            let clients_lock = ctx.clients.map.read().await;
+            let Some(client) = clients_lock.get(&client_id) else {
                 return Ok(());
             };
             assert!(client.match_id.is_none());
@@ -949,7 +956,10 @@ impl Match {
                     if existing_client_id != client_id {
                         let is_existing_user_connection_healthy = ctx
                             .clients
-                            .get(existing_client_id)
+                            .map
+                            .read()
+                            .await
+                            .get(&existing_client_id)
                             .map_or(false, |c| c.connection_monitor.status(ctx.now).is_healthy());
                         let is_existing_user_registered =
                             self.participants[existing_participant_id].is_registered_user;
@@ -959,11 +969,13 @@ impl Match {
                             || (both_guests
                                 && (hot_reconnect || !is_existing_user_connection_healthy))
                         {
-                            ctx.clients.send_rejection(
-                                existing_client_id,
-                                BughouseServerRejection::JoinedInAnotherClient,
-                            );
-                            ctx.clients.remove_client(existing_client_id);
+                            ctx.clients
+                                .send_rejection(
+                                    existing_client_id,
+                                    BughouseServerRejection::JoinedInAnotherClient,
+                                )
+                                .await;
+                            ctx.clients.remove_client(existing_client_id).await;
                         } else {
                             return Err(BughouseServerRejection::PlayerAlreadyExists {
                                 player_name,
@@ -972,7 +984,7 @@ impl Match {
                     }
                 }
             }
-            if let Some(ref mut client) = ctx.clients.get_mut(client_id) {
+            if let Some(ref mut client) = ctx.clients.map.write().await.get_mut(&client_id) {
                 client.match_id = Some(self.match_id.clone());
             } else {
                 return Ok(());
@@ -1000,19 +1012,24 @@ impl Match {
                 })
             };
             self.clients.insert(client_id, participant_id);
-            ctx.clients.send(client_id, self.make_match_welcome_event());
+            ctx.clients.send(client_id, self.make_match_welcome_event()).await;
             // LobbyUpdated should precede GameStarted, because this is how the client gets their
             // team in FixedTeam mode.
-            self.send_lobby_updated(ctx);
+            self.send_lobby_updated(ctx).await;
             ctx.clients
-                .send(client_id, self.make_game_start_event(ctx.now, Some(participant_id)));
-            self.send_messages(ctx, Some(client_id), self.chat.all_messages());
-            ctx.clients.send(client_id, BughouseServerEvent::ChalkboardUpdated {
-                chalkboard: game_state.chalkboard.clone(),
-            });
-            ctx.clients.send(client_id, BughouseServerEvent::SharedWaybackUpdated {
-                turn_index: game_state.shared_wayback_turn_index,
-            });
+                .send(client_id, self.make_game_start_event(ctx.now, Some(participant_id)))
+                .await;
+            self.send_messages(ctx, Some(client_id), self.chat.all_messages()).await;
+            ctx.clients
+                .send(client_id, BughouseServerEvent::ChalkboardUpdated {
+                    chalkboard: game_state.chalkboard.clone(),
+                })
+                .await;
+            ctx.clients
+                .send(client_id, BughouseServerEvent::SharedWaybackUpdated {
+                    turn_index: game_state.shared_wayback_turn_index,
+                })
+                .await;
             Ok(())
         } else {
             let existing_participant_id = self.participants.find_by_name(&player_name);
@@ -1023,7 +1040,10 @@ impl Match {
                             self.participants[existing_participant_id].is_registered_user;
                         let is_existing_user_connection_healthy = ctx
                             .clients
-                            .get(existing_client_id)
+                            .map
+                            .read()
+                            .await
+                            .get(&existing_client_id)
                             .map_or(false, |c| c.connection_monitor.status(ctx.now).is_healthy());
                         if is_registered_user {
                             let rejection = if is_existing_user_registered {
@@ -1031,16 +1051,18 @@ impl Match {
                             } else {
                                 BughouseServerRejection::NameClashWithRegisteredUser
                             };
-                            ctx.clients.send_rejection(existing_client_id, rejection);
-                            ctx.clients.remove_client(existing_client_id);
+                            ctx.clients.send_rejection(existing_client_id, rejection).await;
+                            ctx.clients.remove_client(existing_client_id).await;
                         } else if !is_existing_user_registered
                             && (hot_reconnect || !is_existing_user_connection_healthy)
                         {
-                            ctx.clients.send_rejection(
-                                existing_client_id,
-                                BughouseServerRejection::JoinedInAnotherClient,
-                            );
-                            ctx.clients.remove_client(existing_client_id);
+                            ctx.clients
+                                .send_rejection(
+                                    existing_client_id,
+                                    BughouseServerRejection::JoinedInAnotherClient,
+                                )
+                                .await;
+                            ctx.clients.remove_client(existing_client_id).await;
                         } else {
                             return Err(BughouseServerRejection::PlayerAlreadyExists {
                                 player_name,
@@ -1053,7 +1075,7 @@ impl Match {
                 return Err(BughouseServerRejection::ShuttingDown);
             }
             let client_logging_id;
-            if let Some(ref mut client) = ctx.clients.get_mut(client_id) {
+            if let Some(ref mut client) = ctx.clients.map.write().await.get_mut(&client_id) {
                 client.match_id = Some(self.match_id.clone());
                 client_logging_id = client.logging_id.clone();
             } else {
@@ -1084,8 +1106,8 @@ impl Match {
                 })
             };
             self.clients.insert(client_id, participant_id);
-            ctx.clients.send(client_id, self.make_match_welcome_event());
-            self.send_lobby_updated(ctx);
+            ctx.clients.send(client_id, self.make_match_welcome_event()).await;
+            self.send_lobby_updated(ctx).await;
             Ok(())
         }
     }
@@ -1105,7 +1127,7 @@ impl Match {
         if !is_game_active {
             participant.active_faction = faction;
         }
-        self.send_lobby_updated(ctx);
+        self.send_lobby_updated(ctx).await;
         if let Some(GameState { game_index, ref game, .. }) = self.game_state {
             if !game.is_active() {
                 self.chat.add(
@@ -1219,9 +1241,9 @@ impl Match {
                 game_over = true;
                 updates.push(game_over_update);
             }
-            self.add_game_updates(ctx, updates);
+            self.add_game_updates(ctx, updates).await;
             if game_over {
-                self.send_lobby_updated(ctx);
+                self.send_lobby_updated(ctx).await;
             }
         }
         Ok(())
@@ -1288,8 +1310,8 @@ impl Match {
             game_start_utc_time,
             game_end,
         );
-        self.add_game_updates(ctx, vec![update]);
-        self.send_lobby_updated(ctx);
+        self.add_game_updates(ctx, vec![update]).await;
+        self.send_lobby_updated(ctx).await;
         Ok(())
     }
 
@@ -1304,7 +1326,7 @@ impl Match {
             }
         }
         self.participants[participant_id].is_ready = is_ready;
-        self.send_lobby_updated(ctx);
+        self.send_lobby_updated(ctx).await;
         Ok(())
     }
 
@@ -1313,7 +1335,7 @@ impl Match {
         // message could also be sent in `update_on_game_over`.
         self.process_set_faction(ctx, client_id, Faction::Observer).await?;
         self.clients.remove(&client_id);
-        if let Some(ref mut client) = ctx.clients.get_mut(client_id) {
+        if let Some(ref mut client) = ctx.clients.map.write().await.get_mut(&client_id) {
             client.match_id = None;
         }
         // Participant will be removed automatically if required.
@@ -1323,7 +1345,7 @@ impl Match {
     async fn process_leave_server(
         &mut self, ctx: &mut Context, client_id: ClientId,
     ) -> EventResult {
-        if let Some(logging_id) = ctx.clients.remove_client(client_id) {
+        if let Some(logging_id) = ctx.clients.remove_client(client_id).await {
             info!("Client {} left", logging_id);
         }
         // Note. Player will be removed automatically. This has to be the case, otherwise
@@ -1400,7 +1422,8 @@ impl Match {
         }
         chalkboard.set_drawing(self.participants[participant_id].name.clone(), drawing);
         let chalkboard = chalkboard.clone();
-        self.broadcast(ctx, &BughouseServerEvent::ChalkboardUpdated { chalkboard });
+        self.broadcast(ctx, &BughouseServerEvent::ChalkboardUpdated { chalkboard })
+            .await;
         Ok(())
     }
 
@@ -1412,23 +1435,32 @@ impl Match {
             return Ok(());
         };
         *shared_wayback_turn_index = turn_index;
-        self.broadcast(ctx, &BughouseServerEvent::SharedWaybackUpdated { turn_index });
+        self.broadcast(ctx, &BughouseServerEvent::SharedWaybackUpdated { turn_index })
+            .await;
         Ok(())
     }
 
     async fn post_process(&mut self, ctx: &mut Context, execution: Execution) {
         let new_chat_messages = fetch_new_chat_messages!(self.chat);
-        self.send_messages(ctx, None, new_chat_messages);
+        self.send_messages(ctx, None, new_chat_messages).await;
 
         // Improvement potential: Collapse `send_lobby_updated` events generated during one event
         //   processing cycle. Right now there could up to three: one from the event (SetTeam/SetReady),
         //   one from here and one from `self.start_game`.
         //   Idea: Add `ctx.should_update_lobby` bit and check it in the end.
         // TODO: Show lobby participants as offline when `!c.heart.is_online()`.
+        let client_macthes: HashMap<_, _> = ctx
+            .clients
+            .map
+            .read()
+            .await
+            .iter()
+            .map(|(id, c)| (*id, c.match_id.clone()))
+            .collect();
         self.clients.retain(|&client_id, _| {
-            ctx.clients
-                .get(client_id)
-                .map_or(false, |c| c.match_id.as_ref() == Some(&self.match_id))
+            client_macthes
+                .get(&client_id)
+                .map_or(false, |match_id| match_id.as_ref() == Some(&self.match_id))
         });
         let active_participant_ids: HashSet<_> = self.clients.values().copied().collect();
         let mut lobby_updated = false;
@@ -1461,11 +1493,12 @@ impl Match {
             true
         });
         if lobby_updated {
-            self.send_lobby_updated(ctx);
+            self.send_lobby_updated(ctx).await;
         }
         if chalkboard_updated {
             let chalkboard = self.game_state.as_ref().unwrap().chalkboard.clone();
-            self.broadcast(ctx, &BughouseServerEvent::ChalkboardUpdated { chalkboard });
+            self.broadcast(ctx, &BughouseServerEvent::ChalkboardUpdated { chalkboard })
+                .await;
         }
 
         let can_start_game =
@@ -1473,18 +1506,19 @@ impl Match {
         if let Some(first_game_countdown_start) = self.first_game_countdown_since {
             if !can_start_game {
                 self.first_game_countdown_since = None;
-                self.send_lobby_updated(ctx);
+                self.send_lobby_updated(ctx).await;
             } else if ctx.now.duration_since(first_game_countdown_start)
                 >= FIRST_GAME_COUNTDOWN_DURATION
             {
-                self.start_game(ctx);
+                self.start_game(ctx).await;
             }
         } else if can_start_game {
             if !matches!(execution, Execution::Running) {
                 self.broadcast(
                     ctx,
                     &BughouseServerEvent::Rejection(BughouseServerRejection::ShuttingDown),
-                );
+                )
+                .await;
                 self.reset_readiness();
                 return;
             }
@@ -1505,27 +1539,27 @@ impl Match {
                     game: game.clone(),
                     game_start_utc_time,
                 });
-                self.start_game(ctx);
+                self.start_game(ctx).await;
             } else if self.first_game_countdown_since.is_none() {
                 // Show final teams when countdown begins.
                 fix_teams_if_needed(&mut self.participants);
-                self.send_lobby_updated(ctx);
+                self.send_lobby_updated(ctx).await;
 
                 if ctx.disable_countdown {
-                    self.start_game(ctx);
+                    self.start_game(ctx).await;
                 } else {
                     // TODO: Add some way of blocking last-moment faction changes, e.g.:
                     //   - Forbid all changes other than resetting readiness;
                     //   - Allow changes, but restart the count-down;
                     //   - Blizzard-style: allow changes during the first half of the count-down.
                     self.first_game_countdown_since = Some(ctx.now);
-                    self.send_lobby_updated(ctx);
+                    self.send_lobby_updated(ctx).await;
                 }
             }
         }
     }
 
-    fn start_game(&mut self, ctx: &mut Context) {
+    async fn start_game(&mut self, ctx: &mut Context) {
         self.reset_readiness();
 
         // Non-trivial only in the beginning of a match, when the first game starts. Moreover, we've
@@ -1554,8 +1588,8 @@ impl Match {
             chalkboard: Chalkboard::new(),
             shared_wayback_turn_index: None,
         });
-        self.broadcast(ctx, &self.make_game_start_event(ctx.now, None));
-        self.send_lobby_updated(ctx); // update readiness flags
+        self.broadcast(ctx, &self.make_game_start_event(ctx.now, None)).await;
+        self.send_lobby_updated(ctx).await; // update readiness flags
     }
 
     fn init_scores(&mut self, teaming: Teaming) {
@@ -1605,10 +1639,11 @@ impl Match {
         }
     }
 
-    fn send_lobby_updated(&self, ctx: &mut Context) {
+    async fn send_lobby_updated(&self, ctx: &mut Context) {
         let participants = self.participants.iter().cloned().collect();
         let countdown_elapsed = self.first_game_countdown_since.map(|t| ctx.now.duration_since(t));
-        self.broadcast(ctx, &BughouseServerEvent::LobbyUpdated { participants, countdown_elapsed });
+        self.broadcast(ctx, &BughouseServerEvent::LobbyUpdated { participants, countdown_elapsed })
+            .await;
     }
 
     fn reset_readiness(&mut self) { self.participants.iter_mut().for_each(|p| p.is_ready = false); }
@@ -1617,12 +1652,12 @@ impl Match {
     // from client_id to (messages, message_confirmations) and update it as we traverse the messages
     // in one go. In practice it doesn't matter much, since we either have one message (in a regular
     // chat workflow) or one client (in case of a reconnect).
-    fn send_messages(
+    async fn send_messages(
         &self, ctx: &mut Context, limit_to_client_id: Option<ClientId>,
         messages_to_send: impl IntoIterator<Item = &(ChatRecipientExpanded, ChatMessage)>,
     ) {
         let messages_to_send = messages_to_send.into_iter().collect_vec();
-        let send_to_client = |client_id: ClientId| {
+        let send_to_client = async |client_id: ClientId| {
             let Some(participant_id) = self.clients.get(&client_id).copied() else {
                 return;
             };
@@ -1652,18 +1687,20 @@ impl Match {
             // we are sending all messages back to the client, so there will always be new
             // messages whenever `confirmed_local_message_id` advances.
             if !messages.is_empty() {
-                ctx.clients.send(client_id, BughouseServerEvent::ChatMessages {
-                    messages,
-                    confirmed_local_message_id: p_extra.confirmed_local_message_id,
-                });
+                ctx.clients
+                    .send(client_id, BughouseServerEvent::ChatMessages {
+                        messages,
+                        confirmed_local_message_id: p_extra.confirmed_local_message_id,
+                    })
+                    .await;
             }
         };
 
         if let Some(limit_to_client_id) = limit_to_client_id {
-            send_to_client(limit_to_client_id);
+            send_to_client(limit_to_client_id).await;
         } else {
             for &client_id in self.clients.keys() {
-                send_to_client(client_id);
+                send_to_client(client_id).await;
             }
         }
     }
@@ -1880,21 +1917,25 @@ fn player_turn_requests(
 }
 
 async fn process_get_archive_game_list(ctx: &mut Context, client_id: ClientId) {
-    let user_name = match ctx.clients.get(client_id) {
+    let user_name = match ctx.clients.map.read().await.get(&client_id) {
         Some(c) => c.registered_user_name(&ctx.session_store).await,
         None => return,
     };
     let Some(user_name) = user_name else {
         ctx.clients
-            .send_rejection(client_id, BughouseServerRejection::MustRegisterForGameArchive);
+            .send_rejection(client_id, BughouseServerRejection::MustRegisterForGameArchive)
+            .await;
         return;
     };
     let hooks = Arc::clone(&ctx.hooks);
     let clients = Arc::clone(&ctx.clients);
     match hooks.get_games_by_user(&user_name).await {
-        Ok(games) => clients.send(client_id, BughouseServerEvent::ArchiveGameList { games }),
-        Err(message) => clients
-            .send_rejection(client_id, BughouseServerRejection::ErrorFetchingData { message }),
+        Ok(games) => clients.send(client_id, BughouseServerEvent::ArchiveGameList { games }).await,
+        Err(message) => {
+            clients
+                .send_rejection(client_id, BughouseServerRejection::ErrorFetchingData { message })
+                .await
+        }
     }
 }
 
@@ -1902,9 +1943,16 @@ async fn process_get_archive_game_bpng(ctx: &mut Context, client_id: ClientId, g
     let hooks = Arc::clone(&ctx.hooks);
     let clients = Arc::clone(&ctx.clients);
     match hooks.get_game_bpgn(game_id).await {
-        Ok(bpgn) => clients.send(client_id, BughouseServerEvent::ArchiveGameBpgn { game_id, bpgn }),
-        Err(message) => clients
-            .send_rejection(client_id, BughouseServerRejection::ErrorFetchingData { message }),
+        Ok(bpgn) => {
+            clients
+                .send(client_id, BughouseServerEvent::ArchiveGameBpgn { game_id, bpgn })
+                .await
+        }
+        Err(message) => {
+            clients
+                .send_rejection(client_id, BughouseServerRejection::ErrorFetchingData { message })
+                .await
+        }
     }
 }
 
@@ -1917,7 +1965,9 @@ async fn process_report_error(
     ctx: &Context, client_id: ClientId, report: &BughouseClientErrorReport,
 ) {
     // TODO: Save errors to DB.
-    let Some(logging_id) = ctx.clients.get(client_id).map(|c| c.logging_id.clone()) else {
+    let Some(logging_id) =
+        ctx.clients.map.read().await.get(&client_id).map(|c| c.logging_id.clone())
+    else {
         return;
     };
     match report {
@@ -1933,8 +1983,8 @@ async fn process_report_error(
     }
 }
 
-fn process_ping(ctx: &mut Context, client_id: ClientId) {
-    ctx.clients.send(client_id, BughouseServerEvent::Pong);
+async fn process_ping(ctx: &mut Context, client_id: ClientId) {
+    ctx.clients.send(client_id, BughouseServerEvent::Pong).await;
 }
 
 fn event_name(event: &IncomingEvent) -> &'static str {

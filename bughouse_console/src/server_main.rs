@@ -60,7 +60,7 @@ async fn handle_connection<
         None
     };
 
-    let client_id = clients.add_client(client_tx, session_id.clone(), peer_addr.to_string());
+    let client_id = clients.add_client(client_tx, session_id.clone(), peer_addr.to_string()).await;
     let clients_remover1 = ClientRemover {
         client_id,
         session_id,
@@ -440,7 +440,7 @@ impl ClientRemover {
                 .await
                 .unsubscribe(&session_id, session_store_subscription_id);
         }
-        self.clients.remove_client(self.client_id)
+        self.clients.remove_client(self.client_id).await
     }
 }
 
