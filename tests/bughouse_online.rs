@@ -421,6 +421,7 @@ impl World {
         }
     }
     fn process_all_events(&mut self) {
+        self.process_events_for_clients(&ClientFilter::all());
         self.server.tick();
         self.process_events_for_clients(&ClientFilter::all());
     }

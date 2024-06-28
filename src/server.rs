@@ -665,9 +665,18 @@ impl CoreServerState {
     async fn on_tick(&mut self, ctx: &mut Context) {
         self.gc_old_matches(ctx.now);
         self.check_client_connections(ctx).await;
+        let client_matches = ctx
+            .clients
+            .map
+            .read()
+            .await
+            .iter()
+            .map(|(id, c)| (*id, c.match_id.clone()))
+            .collect();
         for mtch in self.matches.values_mut() {
             mtch.test_flags(ctx).await;
             mtch.post_process(ctx, self.execution).await;
+            mtch.gc_inactive_players(ctx, &client_matches).await;
         }
         if !matches!(self.execution, Execution::Running) && self.num_active_matches(ctx.now) == 0 {
             println!("No more active matches left. Shutting down.");
@@ -1441,65 +1450,13 @@ impl Match {
     }
 
     async fn post_process(&mut self, ctx: &mut Context, execution: Execution) {
+        // Improvement potential: Collapse `send_lobby_updated` events generated during one event
+        //   processing cycle. Right now there could be two: one from the event (SetTeam/SetReady),
+        //   and one from `self.start_game`. Note also `gc_inactive_players`.
+        //   Idea: Add `ctx.should_update_lobby` bit and check it in the end.
+
         let new_chat_messages = fetch_new_chat_messages!(self.chat);
         self.send_messages(ctx, None, new_chat_messages).await;
-
-        // Improvement potential: Collapse `send_lobby_updated` events generated during one event
-        //   processing cycle. Right now there could up to three: one from the event (SetTeam/SetReady),
-        //   one from here and one from `self.start_game`.
-        //   Idea: Add `ctx.should_update_lobby` bit and check it in the end.
-        // TODO: Show lobby participants as offline when `!c.heart.is_online()`.
-        let client_macthes: HashMap<_, _> = ctx
-            .clients
-            .map
-            .read()
-            .await
-            .iter()
-            .map(|(id, c)| (*id, c.match_id.clone()))
-            .collect();
-        self.clients.retain(|&client_id, _| {
-            client_macthes
-                .get(&client_id)
-                .map_or(false, |match_id| match_id.as_ref() == Some(&self.match_id))
-        });
-        let active_participant_ids: HashSet<_> = self.clients.values().copied().collect();
-        let mut lobby_updated = false;
-        let mut chalkboard_updated = false;
-        self.participants.map.retain(|id, (p, _)| {
-            let is_online = active_participant_ids.contains(id);
-            if !is_online {
-                if self.game_state.is_none() {
-                    lobby_updated = true;
-                    return false;
-                }
-                // whether participant was, is, or is going to be a player
-                let is_ever_player = p.games_played > 0
-                    || p.active_faction.is_player()
-                    || p.desired_faction.is_player();
-                if !is_ever_player {
-                    if let Some(ref mut game_state) = self.game_state {
-                        chalkboard_updated |=
-                            game_state.chalkboard.clear_drawings_by_player(p.name.clone());
-                    }
-                    lobby_updated = true;
-                    return false;
-                }
-            }
-            if p.is_online != is_online {
-                p.is_online = is_online;
-                p.is_ready &= is_online;
-                lobby_updated = true;
-            }
-            true
-        });
-        if lobby_updated {
-            self.send_lobby_updated(ctx).await;
-        }
-        if chalkboard_updated {
-            let chalkboard = self.game_state.as_ref().unwrap().chalkboard.clone();
-            self.broadcast(ctx, &BughouseServerEvent::ChalkboardUpdated { chalkboard })
-                .await;
-        }
 
         let can_start_game =
             verify_participants(&self.rules, self.participants.iter()).can_start_now();
@@ -1556,6 +1513,55 @@ impl Match {
                     self.send_lobby_updated(ctx).await;
                 }
             }
+        }
+    }
+
+    async fn gc_inactive_players(
+        &mut self, ctx: &mut Context, client_matches: &HashMap<ClientId, Option<MatchId>>,
+    ) {
+        // TODO: Show lobby participants as offline when `!c.heart.is_online()`.
+        self.clients.retain(|&client_id, _| {
+            client_matches
+                .get(&client_id)
+                .map_or(false, |match_id| match_id.as_ref() == Some(&self.match_id))
+        });
+        let active_participant_ids: HashSet<_> = self.clients.values().copied().collect();
+        let mut lobby_updated = false;
+        let mut chalkboard_updated = false;
+        self.participants.map.retain(|id, (p, _)| {
+            let is_online = active_participant_ids.contains(id);
+            if !is_online {
+                if self.game_state.is_none() {
+                    lobby_updated = true;
+                    return false;
+                }
+                // whether participant was, is, or is going to be a player
+                let is_ever_player = p.games_played > 0
+                    || p.active_faction.is_player()
+                    || p.desired_faction.is_player();
+                if !is_ever_player {
+                    if let Some(ref mut game_state) = self.game_state {
+                        chalkboard_updated |=
+                            game_state.chalkboard.clear_drawings_by_player(p.name.clone());
+                    }
+                    lobby_updated = true;
+                    return false;
+                }
+            }
+            if p.is_online != is_online {
+                p.is_online = is_online;
+                p.is_ready &= is_online;
+                lobby_updated = true;
+            }
+            true
+        });
+        if lobby_updated {
+            self.send_lobby_updated(ctx).await;
+        }
+        if chalkboard_updated {
+            let chalkboard = self.game_state.as_ref().unwrap().chalkboard.clone();
+            self.broadcast(ctx, &BughouseServerEvent::ChalkboardUpdated { chalkboard })
+                .await;
         }
     }
 
