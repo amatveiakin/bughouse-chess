@@ -127,9 +127,6 @@ impl Client {
                 break;
             }
             let now = Instant::now();
-            if now < next_action {
-                continue;
-            }
             let my_envoy = alt_game.my_id().as_player().unwrap().as_single_player().unwrap();
             let local_game = alt_game.local_game().clone();
             if !local_game.is_envoy_active(my_envoy) {
@@ -199,11 +196,13 @@ fn run_match(
     let server_address = server_address.to_owned();
     let test_id = test_id.to_owned();
     let aggregated_meter_box_copy = Arc::clone(&aggregated_meter_box);
+
     thread::spawn(move || {
         let rules = Rules {
             match_rules: MatchRules::unrated(),
             chess_rules: ChessRules::bughouse_rush(),
         };
+
         let mut first_client = Client::new(&server_address, aggregated_meter_box).unwrap();
         first_client
             .state
@@ -214,6 +213,7 @@ fn run_match(
         }
         let match_id = first_client.state.match_id().unwrap();
         println!("Starting match {match_id}...");
+
         for player_index in 1..TOTAL_ENVOYS {
             let aggregated_meter_box = Arc::clone(&aggregated_meter_box_copy);
             let server_address = server_address.to_owned();
@@ -229,6 +229,11 @@ fn run_match(
                 client.state.join(match_id.clone());
                 client.run_main_loop();
             });
+        }
+
+        // Implement a barrier: the first player wouldn't set ready until all players have joined.
+        while first_client.state.mtch().unwrap().participants.len() < TOTAL_ENVOYS {
+            first_client.execute_network_round();
         }
         first_client.run_main_loop();
     });
