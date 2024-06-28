@@ -111,7 +111,7 @@ async fn handle_connection<
     Ok(())
 }
 
-fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
+async fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     config: ServerConfig, db: DB, secret_db: Box<dyn SecretDatabaseRW>,
     session_store: Arc<Mutex<SessionStore>>, clients: Arc<Clients>,
     server_info: Arc<Mutex<ServerInfo>>, tx: mpsc::SyncSender<IncomingEvent>,
@@ -255,7 +255,8 @@ fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
             Ok(http_types_resp)
         }
     });
-    async_std::task::block_on(async { app.listen(format!("0.0.0.0:{}", network::PORT)).await })
+    app.listen(format!("0.0.0.0:{}", network::PORT))
+        .await
         .expect("Failed to start the tide server");
 }
 
@@ -300,23 +301,23 @@ pub async fn run(config: ServerConfig) {
         DatabaseOptions::NoDatabase => None,
         DatabaseOptions::Sqlite(address) => {
             let db = database::SqlxDatabase::<sqlx::Sqlite>::new(&address)
+                .await
                 .unwrap_or_else(|_| panic!("Cannot connect to SQLite DB {address}"));
-            let h = async_std::task::block_on(DatabaseServerHooks::new(db))
-                .expect("Cannot initialize hooks");
+            let h = DatabaseServerHooks::new(db).await.expect("Cannot initialize hooks");
             Some(Arc::new(h) as Arc<dyn ServerHooks + Send + Sync>)
         }
 
         DatabaseOptions::Postgres(address) => {
             let db = database::SqlxDatabase::<sqlx::Postgres>::new(&address)
+                .await
                 .unwrap_or_else(|_| panic!("Cannot connect to Postgres DB {address}"));
-            let h = async_std::task::block_on(DatabaseServerHooks::new(db))
-                .expect("Cannot initialize hooks");
+            let h = DatabaseServerHooks::new(db).await.expect("Cannot initialize hooks");
             Some(Arc::new(h) as Arc<dyn ServerHooks + Send + Sync>)
         }
     };
 
-    let secret_database = make_database(&config.secret_database_options).unwrap();
-    let _ = async_std::task::block_on(secret_database.create_tables()).map_err(|err| {
+    let secret_database = make_database(&config.secret_database_options).await.unwrap();
+    let _ = secret_database.create_tables().await.map_err(|err| {
         error!("Failed to create tables: {}", err);
         // Proceed even if table creation failed.
     });
@@ -328,11 +329,9 @@ pub async fn run(config: ServerConfig) {
 
         // It's OK to instantiate a separate connection.
         let secret_database_for_sessions: Arc<dyn SecretDatabaseRW> =
-            make_database(&config.secret_database_options).unwrap().into();
+            make_database(&config.secret_database_options).await.unwrap().into();
 
-        if let Err(e) =
-            async_std::task::block_on(secret_database_for_sessions.gc_expired_sessions(expire_in))
-        {
+        if let Err(e) = secret_database_for_sessions.gc_expired_sessions(expire_in).await {
             error!("Failed to GC expired sessions: {}", e);
         }
         if let Err(e) =
@@ -377,33 +376,42 @@ pub async fn run(config: ServerConfig) {
     });
 
     match config.database_options.clone() {
-        DatabaseOptions::NoDatabase => run_tide(
-            config,
-            database::UnimplementedDatabase {},
-            secret_database,
-            session_store,
-            clients,
-            server_info,
-            tx,
-        ),
-        DatabaseOptions::Sqlite(address) => run_tide(
-            config,
-            database::SqlxDatabase::<sqlx::Sqlite>::new(&address).unwrap(),
-            secret_database,
-            session_store,
-            clients,
-            server_info,
-            tx,
-        ),
-        DatabaseOptions::Postgres(address) => run_tide(
-            config,
-            database::SqlxDatabase::<sqlx::Postgres>::new(&address).unwrap(),
-            secret_database,
-            session_store,
-            clients,
-            server_info,
-            tx,
-        ),
+        DatabaseOptions::NoDatabase => {
+            run_tide(
+                config,
+                database::UnimplementedDatabase {},
+                secret_database,
+                session_store,
+                clients,
+                server_info,
+                tx,
+            )
+            .await
+        }
+        DatabaseOptions::Sqlite(address) => {
+            run_tide(
+                config,
+                database::SqlxDatabase::<sqlx::Sqlite>::new(&address).await.unwrap(),
+                secret_database,
+                session_store,
+                clients,
+                server_info,
+                tx,
+            )
+            .await
+        }
+        DatabaseOptions::Postgres(address) => {
+            run_tide(
+                config,
+                database::SqlxDatabase::<sqlx::Postgres>::new(&address).await.unwrap(),
+                secret_database,
+                session_store,
+                clients,
+                server_info,
+                tx,
+            )
+            .await
+        }
     }
 }
 
@@ -430,14 +438,14 @@ impl ClientRemover {
     }
 }
 
-fn make_database(options: &DatabaseOptions) -> anyhow::Result<Box<dyn SecretDatabaseRW>> {
+async fn make_database(options: &DatabaseOptions) -> anyhow::Result<Box<dyn SecretDatabaseRW>> {
     Ok(match options {
         DatabaseOptions::NoDatabase => Box::new(database::UnimplementedDatabase {}),
         DatabaseOptions::Sqlite(address) => {
-            Box::new(database::SqlxDatabase::<sqlx::Sqlite>::new(address)?)
+            Box::new(database::SqlxDatabase::<sqlx::Sqlite>::new(address).await?)
         }
         DatabaseOptions::Postgres(address) => {
-            Box::new(database::SqlxDatabase::<sqlx::Postgres>::new(address)?)
+            Box::new(database::SqlxDatabase::<sqlx::Postgres>::new(address).await?)
         }
     })
 }

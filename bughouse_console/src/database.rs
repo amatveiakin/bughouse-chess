@@ -60,20 +60,20 @@ impl<DB: sqlx::Database> Clone for SqlxDatabase<DB> {
 }
 
 impl SqlxDatabase<sqlx::Sqlite> {
-    pub fn new(db_address: &str) -> Result<Self, anyhow::Error> {
+    pub async fn new(db_address: &str) -> Result<Self, anyhow::Error> {
         let options = sqlx::sqlite::SqliteConnectOptions::new()
             .filename(db_address)
             .create_if_missing(true);
-        let pool = async_std::task::block_on(sqlx::SqlitePool::connect_with(options))?;
+        let pool = sqlx::SqlitePool::connect_with(options).await?;
         Ok(Self { pool })
     }
 }
 
 #[allow(dead_code)]
 impl SqlxDatabase<sqlx::Postgres> {
-    pub fn new(db_address: &str) -> Result<Self, anyhow::Error> {
+    pub async fn new(db_address: &str) -> Result<Self, anyhow::Error> {
         let options = sqlx::postgres::PgPoolOptions::new();
-        let pool = async_std::task::block_on(options.connect(db_address))?;
+        let pool = options.connect(db_address).await?;
         Ok(Self { pool })
     }
 }
