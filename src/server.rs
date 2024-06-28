@@ -228,12 +228,6 @@ impl Client {
     fn send_rejection(&self, rejection: BughouseServerRejection) {
         self.send(BughouseServerEvent::Rejection(rejection));
     }
-    async fn registered_user_name(
-        &self, session_store: &Arc<Mutex<SessionStore>>,
-    ) -> Option<String> {
-        let session_id = self.session_id.as_ref()?;
-        Some(session_store.lock().await.get(session_id)?.user_info()?.user_name.clone())
-    }
 }
 
 #[derive(Debug)]
@@ -919,17 +913,19 @@ impl Match {
         &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution,
         player_name: String, hot_reconnect: bool,
     ) -> EventResult {
-        let registered_user_name;
+        let session_id;
         {
             // Locks for the new client and potential existing client (below) must not overlap in
-            // order to avoid deadlocks.
+            // order to avoid deadlocks. Also avoid overlap with `session_store` lock.
             let clients_lock = ctx.clients.map.read().await;
             let Some(client) = clients_lock.get(&client_id) else {
                 return Ok(());
             };
             assert!(client.match_id.is_none());
-            registered_user_name = client.registered_user_name(&ctx.session_store).await;
+            session_id = client.session_id.clone();
         }
+        let registered_user_name =
+            get_registered_user_name(&*ctx.session_store.lock().await, session_id.as_ref());
 
         let is_registered_user = registered_user_name.is_some();
         if let Some(registered_user_name) = registered_user_name {
@@ -1712,6 +1708,12 @@ impl Match {
     }
 }
 
+fn get_registered_user_name(
+    session_store: &SessionStore, session_id: Option<&SessionId>,
+) -> Option<String> {
+    Some(session_store.get(session_id?)?.user_info()?.user_name.clone())
+}
+
 fn current_game_time(game_state: &GameState, now: Instant) -> Option<GameInstant> {
     if !game_state.game.started() {
         None
@@ -1923,10 +1925,9 @@ fn player_turn_requests(
 }
 
 async fn process_get_archive_game_list(ctx: &mut Context, client_id: ClientId) {
-    let user_name = match ctx.clients.map.read().await.get(&client_id) {
-        Some(c) => c.registered_user_name(&ctx.session_store).await,
-        None => return,
-    };
+    let session_id =
+        ctx.clients.map.read().await.get(&client_id).and_then(|c| c.session_id.clone());
+    let user_name = get_registered_user_name(&*ctx.session_store.lock().await, session_id.as_ref());
     let Some(user_name) = user_name else {
         ctx.clients
             .send_rejection(client_id, BughouseServerRejection::MustRegisterForGameArchive)
