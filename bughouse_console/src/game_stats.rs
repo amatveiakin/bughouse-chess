@@ -110,11 +110,11 @@ pub enum ComputeMetaStats {
     Yes,
 }
 
-fn default_elo() -> EloRating { EloRating { rating: 1600.0 } }
+fn default_elo() -> EloRating { EloRating { rating: 1500.0 } }
 
 fn elo_config() -> EloConfig { EloConfig { k: 10.0 } }
 
-fn default_weng_lin() -> WengLinRating { WengLinRating { rating: 1600., uncertainty: 60.2 } }
+fn default_weng_lin() -> WengLinRating { WengLinRating { rating: 1500., uncertainty: 60.2 } }
 
 fn weng_lin_config() -> WengLinConfig { WengLinConfig { beta: 120.4, ..Default::default() } }
 
