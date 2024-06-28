@@ -179,7 +179,13 @@ Add this to `/etc/apache2/sites-available/<site>`:
 </VirtualHost>
 ```
 
-And apply Apache config changes:
+Go to `/etc/apache2/mods-available/mpm_event.conf` and increase
+`MaxRequestWorkers`. It determines the number of connections that Apache is able
+to maintain. With WebSockets connections stay alive the entire time, so this
+should be set to 4 times the number of expected concurrent games. I set it to
+1000 on a very weak VM and it worked fine.
+
+Apply Apache config changes:
 
 ```
 sudo service apache2 reload
