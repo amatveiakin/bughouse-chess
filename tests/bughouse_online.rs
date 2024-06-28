@@ -124,19 +124,19 @@ impl Server {
     }
 
     fn send_network_event(&mut self, id: server::ClientId, event: BughouseClientEvent) {
-        self.state.apply_event(
+        async_std::task::block_on(self.state.apply_event(
             server::IncomingEvent::Network(id, event),
             self.current_instant(),
             UtcDateTime::now(),
-        );
+        ));
     }
     fn tick(&mut self) {
         println!(">>> Tick");
-        self.state.apply_event(
+        async_std::task::block_on(self.state.apply_event(
             server::IncomingEvent::Tick,
             self.current_instant(),
             UtcDateTime::now(),
-        );
+        ));
     }
 }
 

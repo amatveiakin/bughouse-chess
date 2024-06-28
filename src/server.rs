@@ -229,11 +229,11 @@ impl Client {
     fn send_rejection(&self, rejection: BughouseServerRejection) {
         self.send(BughouseServerEvent::Rejection(rejection));
     }
-    fn registered_user_name(&self, session_store: &Arc<Mutex<SessionStore>>) -> Option<String> {
+    async fn registered_user_name(
+        &self, session_store: &Arc<Mutex<SessionStore>>,
+    ) -> Option<String> {
         let session_id = self.session_id.as_ref()?;
-        async_std::task::block_on(async {
-            Some(session_store.lock().await.get(session_id)?.user_info()?.user_name.clone())
-        })
+        Some(session_store.lock().await.get(session_id)?.user_info()?.user_name.clone())
     }
 }
 
@@ -413,7 +413,7 @@ impl ServerState {
         }
     }
 
-    pub fn apply_event(&mut self, event: IncomingEvent, now: Instant, utc_now: UtcDateTime) {
+    pub async fn apply_event(&mut self, event: IncomingEvent, now: Instant, utc_now: UtcDateTime) {
         // Improvement potential. Consider adding `execution` to `Context`.
         let mut ctx = Context {
             now,
@@ -427,7 +427,7 @@ impl ServerState {
             disable_connection_health_check: self.disable_connection_health_check,
         };
 
-        self.core.apply_event(&mut ctx, event);
+        self.core.apply_event(&mut ctx, event).await;
     }
 
     #[allow(non_snake_case)]
@@ -523,14 +523,16 @@ impl CoreServerState {
         Ok(id)
     }
 
-    fn apply_event(&mut self, ctx: &mut Context, event: IncomingEvent) {
+    async fn apply_event(&mut self, ctx: &mut Context, event: IncomingEvent) {
         let timer = EVENT_PROCESSING_HISTOGRAM
             .with_label_values(&[event_name(&event)])
             .start_timer();
 
         match event {
-            IncomingEvent::Network(client_id, event) => self.on_client_event(ctx, client_id, event),
-            IncomingEvent::Tick => self.on_tick(ctx),
+            IncomingEvent::Network(client_id, event) => {
+                self.on_client_event(ctx, client_id, event).await
+            }
+            IncomingEvent::Tick => self.on_tick(ctx).await,
             IncomingEvent::Terminate => self.on_terminate(ctx),
         }
 
@@ -538,14 +540,12 @@ impl CoreServerState {
             num_clients: ctx.clients.map.len(),
             num_active_matches: self.num_active_matches(ctx.now),
         };
-        async_std::task::block_on(async {
-            *ctx.info.lock().await = info;
-        });
+        *ctx.info.lock().await = info;
 
         timer.observe_duration();
     }
 
-    fn on_client_event(
+    async fn on_client_event(
         &mut self, ctx: &mut Context, client_id: ClientId, event: BughouseClientEvent,
     ) {
         if !ctx.clients.map.contains_key(&client_id) {
@@ -564,19 +564,19 @@ impl CoreServerState {
         // First, process events that don't require a match.
         match &event {
             BughouseClientEvent::GetArchiveGameList => {
-                process_get_archive_game_list(ctx, client_id);
+                process_get_archive_game_list(ctx, client_id).await;
                 return;
             }
             BughouseClientEvent::GetArchiveGameBpgn { game_id } => {
-                process_get_archive_game_bpng(ctx, client_id, *game_id);
+                process_get_archive_game_bpng(ctx, client_id, *game_id).await;
                 return;
             }
             BughouseClientEvent::ReportPerformace(perf) => {
-                process_report_performance(ctx, perf.clone());
+                process_report_performance(ctx, perf.clone()).await;
                 return;
             }
             BughouseClientEvent::ReportError(report) => {
-                process_report_error(ctx, client_id, report);
+                process_report_error(ctx, client_id, report).await;
                 return;
             }
             BughouseClientEvent::Ping => {
@@ -653,16 +653,16 @@ impl CoreServerState {
         // Test flags first. Thus we make sure that turns and other actions are
         // not allowed after the time is over.
         mtch.test_flags(ctx);
-        mtch.process_client_event(ctx, client_id, self.execution, event);
-        mtch.post_process(ctx, self.execution);
+        mtch.process_client_event(ctx, client_id, self.execution, event).await;
+        mtch.post_process(ctx, self.execution).await;
     }
 
-    fn on_tick(&mut self, ctx: &mut Context) {
+    async fn on_tick(&mut self, ctx: &mut Context) {
         self.gc_old_matches(ctx.now);
         self.check_client_connections(ctx);
         for mtch in self.matches.values_mut() {
             mtch.test_flags(ctx);
-            mtch.post_process(ctx, self.execution);
+            mtch.post_process(ctx, self.execution).await;
         }
         if !matches!(self.execution, Execution::Running) && self.num_active_matches(ctx.now) == 0 {
             println!("No more active matches left. Shutting down.");
@@ -845,47 +845,47 @@ impl Match {
         ctx.clients.broadcast(&self.clients, event);
     }
 
-    fn process_client_event(
+    async fn process_client_event(
         &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution,
         event: BughouseClientEvent,
     ) {
         let result = match event {
             BughouseClientEvent::NewMatch { player_name, .. } => {
                 // The match was created earlier.
-                self.join_participant(ctx, client_id, execution, player_name, false)
+                self.join_participant(ctx, client_id, execution, player_name, false).await
             }
             BughouseClientEvent::Join { match_id: _, player_name } => {
-                self.join_participant(ctx, client_id, execution, player_name, false)
+                self.join_participant(ctx, client_id, execution, player_name, false).await
             }
             BughouseClientEvent::HotReconnect { match_id: _, player_name } => {
-                self.join_participant(ctx, client_id, execution, player_name, true)
+                self.join_participant(ctx, client_id, execution, player_name, true).await
             }
             BughouseClientEvent::SetFaction { faction } => {
-                self.process_set_faction(ctx, client_id, faction)
+                self.process_set_faction(ctx, client_id, faction).await
             }
             BughouseClientEvent::SetTurns { turns } => {
-                self.process_set_turns(ctx, client_id, turns)
+                self.process_set_turns(ctx, client_id, turns).await
             }
             BughouseClientEvent::MakeTurn { board_idx, turn_input } => {
-                self.process_make_turn(ctx, client_id, board_idx, turn_input)
+                self.process_make_turn(ctx, client_id, board_idx, turn_input).await
             }
             BughouseClientEvent::CancelPreturn { board_idx } => {
-                self.process_cancel_preturn(ctx, client_id, board_idx)
+                self.process_cancel_preturn(ctx, client_id, board_idx).await
             }
-            BughouseClientEvent::Resign => self.process_resign(ctx, client_id),
+            BughouseClientEvent::Resign => self.process_resign(ctx, client_id).await,
             BughouseClientEvent::SetReady { is_ready } => {
-                self.process_set_ready(ctx, client_id, is_ready)
+                self.process_set_ready(ctx, client_id, is_ready).await
             }
-            BughouseClientEvent::LeaveMatch => self.process_leave_match(ctx, client_id),
-            BughouseClientEvent::LeaveServer => self.process_leave_server(ctx, client_id),
+            BughouseClientEvent::LeaveMatch => self.process_leave_match(ctx, client_id).await,
+            BughouseClientEvent::LeaveServer => self.process_leave_server(ctx, client_id).await,
             BughouseClientEvent::SendChatMessage { message } => {
-                self.process_send_chat_message(ctx, client_id, message)
+                self.process_send_chat_message(ctx, client_id, message).await
             }
             BughouseClientEvent::UpdateChalkDrawing { drawing } => {
-                self.process_update_chalk_drawing(ctx, client_id, drawing)
+                self.process_update_chalk_drawing(ctx, client_id, drawing).await
             }
             BughouseClientEvent::SetSharedWayback { turn_index } => {
-                self.process_set_shared_wayback(ctx, turn_index)
+                self.process_set_shared_wayback(ctx, turn_index).await
             }
             // Match-independent events must be processed separately. Keep the event entities
             // separate, so that we know which one it was if it crashes.
@@ -900,7 +900,7 @@ impl Match {
         }
     }
 
-    fn join_participant(
+    async fn join_participant(
         &mut self, ctx: &mut Context, client_id: ClientId, execution: Execution,
         player_name: String, hot_reconnect: bool,
     ) -> EventResult {
@@ -912,7 +912,7 @@ impl Match {
                 return Ok(());
             };
             assert!(client.match_id.is_none());
-            registered_user_name = client.registered_user_name(&ctx.session_store);
+            registered_user_name = client.registered_user_name(&ctx.session_store).await;
         }
 
         let is_registered_user = registered_user_name.is_some();
@@ -1090,7 +1090,7 @@ impl Match {
         }
     }
 
-    fn process_set_faction(
+    async fn process_set_faction(
         &mut self, ctx: &mut Context, client_id: ClientId, faction: Faction,
     ) -> EventResult {
         if faction == Faction::Random && self.teaming == Some(Teaming::FixedTeams) {
@@ -1132,7 +1132,7 @@ impl Match {
         Ok(())
     }
 
-    fn process_set_turns(
+    async fn process_set_turns(
         &mut self, ctx: &mut Context, client_id: ClientId, turns: Vec<(BughouseBoard, TurnInput)>,
     ) -> EventResult {
         let Some(GameState { ref game, ref mut turn_requests, .. }) = self.game_state else {
@@ -1144,12 +1144,12 @@ impl Match {
             .ok_or_else(|| unknown_error!())?;
         turn_requests.retain(|r| !player_bughouse_id.plays_for(r.envoy));
         for (board_idx, turn_input) in turns {
-            self.process_make_turn(ctx, client_id, board_idx, turn_input)?;
+            self.process_make_turn(ctx, client_id, board_idx, turn_input).await?;
         }
         Ok(())
     }
 
-    fn process_make_turn(
+    async fn process_make_turn(
         &mut self, ctx: &mut Context, client_id: ClientId, board_idx: BughouseBoard,
         turn_input: TurnInput,
     ) -> EventResult {
@@ -1227,7 +1227,7 @@ impl Match {
         Ok(())
     }
 
-    fn process_cancel_preturn(
+    async fn process_cancel_preturn(
         &mut self, _ctx: &mut Context, client_id: ClientId, board_idx: BughouseBoard,
     ) -> EventResult {
         let Some(GameState { ref game, ref mut turn_requests, .. }) = self.game_state else {
@@ -1247,7 +1247,7 @@ impl Match {
         Ok(())
     }
 
-    fn process_resign(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
+    async fn process_resign(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
         let Some(GameState {
             game_index,
             ref mut game,
@@ -1293,7 +1293,7 @@ impl Match {
         Ok(())
     }
 
-    fn process_set_ready(
+    async fn process_set_ready(
         &mut self, ctx: &mut Context, client_id: ClientId, is_ready: bool,
     ) -> EventResult {
         let participant_id = *self.clients.get(&client_id).ok_or_else(|| unknown_error!())?;
@@ -1308,10 +1308,10 @@ impl Match {
         Ok(())
     }
 
-    fn process_leave_match(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
+    async fn process_leave_match(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
         // TODO: Better chat message ("X left" rather than "X became an observer"). Note that the
         // message could also be sent in `update_on_game_over`.
-        self.process_set_faction(ctx, client_id, Faction::Observer)?;
+        self.process_set_faction(ctx, client_id, Faction::Observer).await?;
         self.clients.remove(&client_id);
         if let Some(ref mut client) = ctx.clients.get_mut(client_id) {
             client.match_id = None;
@@ -1320,7 +1320,9 @@ impl Match {
         Ok(())
     }
 
-    fn process_leave_server(&mut self, ctx: &mut Context, client_id: ClientId) -> EventResult {
+    async fn process_leave_server(
+        &mut self, ctx: &mut Context, client_id: ClientId,
+    ) -> EventResult {
         if let Some(logging_id) = ctx.clients.remove_client(client_id) {
             info!("Client {} left", logging_id);
         }
@@ -1331,7 +1333,7 @@ impl Match {
         Ok(())
     }
 
-    fn process_send_chat_message(
+    async fn process_send_chat_message(
         &mut self, ctx: &mut Context, client_id: ClientId, message: OutgoingChatMessage,
     ) -> EventResult {
         let participant_id = *self.clients.get(&client_id).ok_or_else(|| unknown_error!())?;
@@ -1384,7 +1386,7 @@ impl Match {
         Ok(())
     }
 
-    fn process_update_chalk_drawing(
+    async fn process_update_chalk_drawing(
         &mut self, ctx: &mut Context, client_id: ClientId, drawing: ChalkDrawing,
     ) -> EventResult {
         let Some(GameState { ref mut chalkboard, ref game, .. }) = self.game_state else {
@@ -1402,7 +1404,7 @@ impl Match {
         Ok(())
     }
 
-    fn process_set_shared_wayback(
+    async fn process_set_shared_wayback(
         &mut self, ctx: &mut Context, turn_index: Option<TurnIndex>,
     ) -> EventResult {
         let Some(GameState { ref mut shared_wayback_turn_index, .. }) = self.game_state else {
@@ -1414,7 +1416,7 @@ impl Match {
         Ok(())
     }
 
-    fn post_process(&mut self, ctx: &mut Context, execution: Execution) {
+    async fn post_process(&mut self, ctx: &mut Context, execution: Execution) {
         let new_chat_messages = fetch_new_chat_messages!(self.chat);
         self.send_messages(ctx, None, new_chat_messages);
 
@@ -1877,11 +1879,10 @@ fn player_turn_requests(
         .collect()
 }
 
-fn process_get_archive_game_list(ctx: &mut Context, client_id: ClientId) {
-    let Some(user_name) =
-        ctx.clients.get(client_id).map(|c| c.registered_user_name(&ctx.session_store))
-    else {
-        return;
+async fn process_get_archive_game_list(ctx: &mut Context, client_id: ClientId) {
+    let user_name = match ctx.clients.get(client_id) {
+        Some(c) => c.registered_user_name(&ctx.session_store).await,
+        None => return,
     };
     let Some(user_name) = user_name else {
         ctx.clients
@@ -1890,35 +1891,31 @@ fn process_get_archive_game_list(ctx: &mut Context, client_id: ClientId) {
     };
     let hooks = Arc::clone(&ctx.hooks);
     let clients = Arc::clone(&ctx.clients);
-    async_std::task::spawn(async move {
-        match hooks.get_games_by_user(&user_name).await {
-            Ok(games) => clients.send(client_id, BughouseServerEvent::ArchiveGameList { games }),
-            Err(message) => clients
-                .send_rejection(client_id, BughouseServerRejection::ErrorFetchingData { message }),
-        }
-    });
+    match hooks.get_games_by_user(&user_name).await {
+        Ok(games) => clients.send(client_id, BughouseServerEvent::ArchiveGameList { games }),
+        Err(message) => clients
+            .send_rejection(client_id, BughouseServerRejection::ErrorFetchingData { message }),
+    }
 }
 
-fn process_get_archive_game_bpng(ctx: &mut Context, client_id: ClientId, game_id: i64) {
+async fn process_get_archive_game_bpng(ctx: &mut Context, client_id: ClientId, game_id: i64) {
     let hooks = Arc::clone(&ctx.hooks);
     let clients = Arc::clone(&ctx.clients);
-    async_std::task::spawn(async move {
-        match hooks.get_game_bpgn(game_id).await {
-            Ok(bpgn) => {
-                clients.send(client_id, BughouseServerEvent::ArchiveGameBpgn { game_id, bpgn })
-            }
-            Err(message) => clients
-                .send_rejection(client_id, BughouseServerRejection::ErrorFetchingData { message }),
-        }
-    });
+    match hooks.get_game_bpgn(game_id).await {
+        Ok(bpgn) => clients.send(client_id, BughouseServerEvent::ArchiveGameBpgn { game_id, bpgn }),
+        Err(message) => clients
+            .send_rejection(client_id, BughouseServerRejection::ErrorFetchingData { message }),
+    }
 }
 
-fn process_report_performance(ctx: &Context, perf: BughouseClientPerformance) {
+async fn process_report_performance(ctx: &Context, perf: BughouseClientPerformance) {
     let hooks = Arc::clone(&ctx.hooks);
-    async_std::task::spawn(async move { hooks.record_client_performance(&perf).await });
+    hooks.record_client_performance(&perf).await;
 }
 
-fn process_report_error(ctx: &Context, client_id: ClientId, report: &BughouseClientErrorReport) {
+async fn process_report_error(
+    ctx: &Context, client_id: ClientId, report: &BughouseClientErrorReport,
+) {
     // TODO: Save errors to DB.
     let Some(logging_id) = ctx.clients.get(client_id).map(|c| c.logging_id.clone()) else {
         return;

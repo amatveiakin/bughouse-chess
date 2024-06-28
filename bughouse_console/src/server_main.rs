@@ -359,7 +359,7 @@ pub async fn run(config: ServerConfig) {
     }
 
     let session_store_copy = Arc::clone(&session_store);
-    thread::spawn(move || {
+    async_std::task::spawn(async {
         let mut server_state = ServerState::new(
             options,
             clients_copy,
@@ -370,7 +370,7 @@ pub async fn run(config: ServerConfig) {
         );
 
         for event in rx {
-            server_state.apply_event(event, Instant::now(), UtcDateTime::now());
+            server_state.apply_event(event, Instant::now(), UtcDateTime::now()).await;
         }
         panic!("Unexpected end of events stream");
     });
