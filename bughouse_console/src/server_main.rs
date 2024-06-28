@@ -2,10 +2,10 @@
 //   We should figure out a proper concurrency story: either transition fully to async code, or
 //   get systematic about how we use threads vs async tasks.
 
-use std::sync::{mpsc, Arc};
-use std::thread;
+use std::sync::Arc;
 use std::time::Duration;
 
+use async_std::channel;
 use async_std::sync::Mutex;
 use async_tungstenite::WebSocketStream;
 use bughouse_chess::event::BughouseServerEvent;
@@ -38,7 +38,7 @@ async fn handle_connection<
     DB: Sync + Send + 'static,
     S: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
 >(
-    peer_addr: String, stream: WebSocketStream<S>, tx: mpsc::SyncSender<IncomingEvent>,
+    peer_addr: String, stream: WebSocketStream<S>, tx: channel::Sender<IncomingEvent>,
     clients: Arc<Clients>, session_id: Option<SessionId>, http_server_state: HttpServerState<DB>,
 ) -> tide::Result<()> {
     let (mut stream_tx, mut stream_rx) = stream.split();
@@ -75,7 +75,7 @@ async fn handle_connection<
         loop {
             match network::read_obj_async(&mut stream_rx).await {
                 Ok(ev) => {
-                    tx.send(IncomingEvent::Network(client_id, ev)).unwrap();
+                    tx.send(IncomingEvent::Network(client_id, ev)).await.unwrap();
                 }
                 Err(err) => {
                     if let Some(logging_id) = clients_remover1.remove().await {
@@ -114,7 +114,7 @@ async fn handle_connection<
 async fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     config: ServerConfig, db: DB, secret_db: Box<dyn SecretDatabaseRW>,
     session_store: Arc<Mutex<SessionStore>>, clients: Arc<Clients>,
-    server_info: Arc<Mutex<ServerInfo>>, tx: mpsc::SyncSender<IncomingEvent>,
+    server_info: Arc<Mutex<ServerInfo>>, tx: channel::Sender<IncomingEvent>,
 ) {
     let (auth_callback_is_https, google_auth, lichess_auth) = match config.auth_options {
         None => (false, None, None),
@@ -281,7 +281,7 @@ pub async fn run(config: ServerConfig) {
     // Limited buffer for data streaming from clients into the server.
     // When this is full because ServerState::apply_event isn't coping with
     // the load, we start putting back pressure on client websockets.
-    let (tx, rx) = mpsc::sync_channel(100000);
+    let (tx, rx) = channel::bounded(100000);
     let tx_tick = tx.clone();
     let tx_terminate = tx.clone();
     let server_info = Arc::new(Mutex::new(ServerInfo::new()));
@@ -289,12 +289,18 @@ pub async fn run(config: ServerConfig) {
     let clients = Arc::new(Clients::new(&options));
     let clients_copy = Arc::clone(&clients);
 
-    ctrlc::set_handler(move || tx_terminate.send(IncomingEvent::Terminate).unwrap())
-        .expect("Error setting Ctrl-C handler");
+    ctrlc::set_handler(move || {
+        async_std::task::block_on(async {
+            tx_terminate.send(IncomingEvent::Terminate).await.unwrap()
+        })
+    })
+    .expect("Error setting Ctrl-C handler");
 
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_millis(100));
-        tx_tick.send(IncomingEvent::Tick).unwrap();
+    async_std::task::spawn(async move {
+        loop {
+            async_std::task::sleep(Duration::from_millis(100)).await;
+            tx_tick.send(IncomingEvent::Tick).await.unwrap();
+        }
     });
 
     let hooks = match config.database_options.clone() {
@@ -359,7 +365,7 @@ pub async fn run(config: ServerConfig) {
     }
 
     let session_store_copy = Arc::clone(&session_store);
-    async_std::task::spawn(async {
+    async_std::task::spawn(async move {
         let mut server_state = ServerState::new(
             options,
             clients_copy,
@@ -369,10 +375,10 @@ pub async fn run(config: ServerConfig) {
             hooks,
         );
 
-        for event in rx {
+        loop {
+            let event = rx.recv().await.unwrap();
             server_state.apply_event(event, Instant::now(), UtcDateTime::now()).await;
         }
-        panic!("Unexpected end of events stream");
     });
 
     match config.database_options.clone() {
