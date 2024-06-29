@@ -9,7 +9,7 @@ PURGE_GAMES = False
 
 def check_user_name(user_name: str) -> bool:
     ret = subprocess.run(
-        [BUGHOUSE_BINARY, "check-user-name", user_name],
+        [BUGHOUSE_BINARY, "check-name", user_name],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )

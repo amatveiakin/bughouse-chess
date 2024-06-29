@@ -10,7 +10,7 @@ pub fn run(user_name: &str) -> io::Result<()> {
             Ok(())
         }
         Err(err) => {
-            eprintln!("Invalid user name {}: {}", user_name, err);
+            eprintln!("Invalid player name {}: {}", user_name, err);
             Err(io::Error::from(io::ErrorKind::InvalidData))
         }
     }
