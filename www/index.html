@@ -490,10 +490,7 @@
       </div>
       <div class="menu-page-body">
         <label for="login-user-name">Account name</label>
-        <input type="text" id="login-user-name" name="user_name"
-          placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
-          maxlength="20" pattern="[A-Za-z0-9_\-]+"
-          title="Player name may contain Latin letters, numbers, underscores ('_') and dashes ('-')" />
+        <input type="text" id="login-user-name" name="user_name" />
         <div></div>
 
         <label for="login-password">Password</label>
@@ -512,10 +509,7 @@
       </div>
       <div class="menu-page-body">
         <label for="signup-user-name">Account name *</label>
-        <input type="text" id="signup-user-name" name="user_name"
-          placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
-          maxlength="20" pattern="[A-Za-z0-9_\-]+"
-          title="Player name may contain Latin letters, numbers, underscores ('_') and dashes ('-')" />
+        <input type="text" id="signup-user-name" name="user_name" />
         <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
@@ -562,10 +556,7 @@
       </div>
       <div class="menu-page-body">
         <label for="signup-with-google-user-name">Account name *</label>
-        <input type="text" id="signup-with-google-user-name" name="user_name"
-          placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
-          maxlength="20" pattern="[A-Za-z0-9_\-]+"
-          title="Player name may contain Latin letters, numbers, underscores ('_') and dashes ('-')" />
+        <input type="text" id="signup-with-google-user-name" name="user_name" />
         <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
@@ -590,10 +581,7 @@
       </div>
       <div class="menu-page-body">
         <label for="signup-with-lichess-user-name">Account name *</label>
-        <input type="text" id="signup-with-lichess-user-name" name="user_name"
-          placeholder="&nbsp;" spellcheck="false" autocomplete="username" required
-          maxlength="20" pattern="[A-Za-z0-9_\-]+"
-          title="Player name may contain Latin letters, numbers, underscores ('_') and dashes ('-')" />
+        <input type="text" id="signup-with-lichess-user-name" name="user_name" />
         <div class="tooltip-standalone">
           <div class="tooltip-text">
             <p>
@@ -716,14 +704,8 @@
         </div>
       </div>
       <div class="menu-page-body">
-        <!-- `pattern` and `maxlength` must be in sync with join match player name field and with `is_valid_player_name` -->
-        <!-- Improvement potential. Dedup player name properties (like `pattern` and `title`),
-              or reuse the same <input> via dynamic css grids. -->
         <label for="create-match-player-name" class="guest-player-name">Player name</label>
-        <input type="text" id="create-match-player-name" name="player_name" class="guest-player-name"
-          placeholder="&nbsp;" spellcheck="false" required
-          maxlength="20" pattern="[A-Za-z0-9_\-]+"
-          title="Player name may consist of Latin letters, numbers, underscores ('_') and dashes ('-')" />
+        <input type="text" id="create-match-player-name" name="player_name" class="guest-player-name" />
         <div class="guest-player-name"></div>
       </div>
       <div class="align-center">
@@ -765,12 +747,8 @@
           title="Match ID consists of Latin letters and numbers" />
         <div></div>
 
-        <!-- `pattern` and `maxlength` must be in sync with join match player name field and with `is_valid_player_name` -->
         <label for="join-match-player-name" class="guest-player-name">Player name</label>
-        <input type="text" id="join-match-player-name" name="player_name" class="guest-player-name"
-          placeholder="&nbsp;" spellcheck="false" required
-          maxlength="20" pattern="[A-Za-z0-9_\-]+"
-          title="Player name may consist of Latin letters, numbers, underscores ('_') and dashes ('-')" />
+        <input type="text" id="join-match-player-name" name="player_name" class="guest-player-name" />
         <div class="guest-player-name"></div>
       </div>
       <div class="align-center">

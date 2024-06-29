@@ -41,6 +41,8 @@ import defeat_sound from "../assets/sounds/defeat.ogg";
 import draw_sound from "../assets/sounds/draw.ogg";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+const NBSP = "\u00A0"; // &nbsp; - non-breaking space
+const NUMSP = "\u2007"; // &numsp; - figure space
 
 class WasmClientDoesNotExist {}
 class WasmClientPanicked {}
@@ -306,7 +308,8 @@ let is_processing_wayback = false;
 
 const Meter = make_meters();
 
-postprocess_html();
+set_up_buttons();
+set_up_player_name_inputs();
 set_up_drag_and_drop();
 set_up_chalk_drawing();
 set_up_menu_pointers();
@@ -871,10 +874,9 @@ function update_lobby_countdown() {
 }
 
 function update_connection_status() {
-  const FIGURE_SPACE = " "; // &numsp;
   const s = wasm_client().current_turnaround_time();
   const ms = Math.round(s * 1000);
-  const ms_str = ms.toString().padStart(4, FIGURE_SPACE);
+  const ms_str = ms.toString().padStart(4, NUMSP);
   if (s < 3.0) {
     connection_info.textContent = `Ping: ${ms_str} ms`;
     connection_info.classList.toggle("bad-connection", false);
@@ -1036,7 +1038,7 @@ function server_websocket_address() {
   return url;
 }
 
-function postprocess_html() {
+function set_up_buttons() {
   for (const button of document.getElementsByClassName("back-button")) {
     button.title = "Go back";
     const icon = make_svg_from_symbol("back-arrow", 100);
@@ -1416,6 +1418,21 @@ function set_up_log_navigation() {
         update();
       });
     });
+  }
+}
+
+function set_up_player_name_inputs() {
+  for (const input of document.getElementsByTagName("input")) {
+    if (input.name === "player_name" || input.name === "user_name") {
+      input.placeholder = NBSP; // suppress red cursor on empty input
+      input.spellcheck = false;
+      input.required = true;
+      // `maxlength` and `pattern` must be in sync with `is_valid_player_name`.
+      input.maxLength = 20;
+      input.pattern = "[A-Za-z0-9_\\-]+";
+      input.title =
+        "Player name may consist of Latin letters, numbers, underscores ('_') and dashes ('-')";
+    }
   }
 }
 
