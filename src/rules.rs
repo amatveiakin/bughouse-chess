@@ -26,8 +26,8 @@ pub const FIRST_GAME_COUNTDOWN_DURATION: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter, AsRefStr, Serialize, Deserialize)]
 pub enum RulesPreset {
-    Rush,
-    Twist,
+    International,
+    Modern,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -205,7 +205,7 @@ impl MatchRules {
 impl ChessRules {
     pub fn from_preset(preset: RulesPreset) -> Self {
         match preset {
-            RulesPreset::Rush => Self {
+            RulesPreset::International => Self {
                 bughouse_rules: Some(BughouseRules {
                     koedem: false,
                     promotion: Promotion::Upgrade,
@@ -214,7 +214,7 @@ impl ChessRules {
                 }),
                 ..Self::chess_blitz()
             },
-            RulesPreset::Twist => Self {
+            RulesPreset::Modern => Self {
                 starting_position: StartingPosition::FischerRandom,
                 bughouse_rules: Some(BughouseRules {
                     koedem: false,
@@ -243,8 +243,8 @@ impl ChessRules {
         }
     }
 
-    pub fn bughouse_rush() -> Self { Self::from_preset(RulesPreset::Rush) }
-    pub fn bughouse_twist() -> Self { Self::from_preset(RulesPreset::Twist) }
+    pub fn bughouse_international() -> Self { Self::from_preset(RulesPreset::International) }
+    pub fn bughouse_modern() -> Self { Self::from_preset(RulesPreset::Modern) }
 
     pub fn board_shape(&self) -> BoardShape {
         use FairyPieces::*;

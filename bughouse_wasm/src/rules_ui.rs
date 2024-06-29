@@ -649,31 +649,31 @@ fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Elemen
     ])
 }
 
-fn preset_rush_tooltip() -> JsResult<web_sys::Element> {
+fn preset_international_tooltip() -> JsResult<web_sys::Element> {
     combine_elements([
         web_document()
             .create_element("p")?
-            .append_text_i("Rush preset. ")?
-            .append_text("Closer to classic chess. Unstoppable fierce attacks.")?,
+            .append_text_i("International preset. ")?
+            .append_text("Classic bughouse ruleset.")?,
         web_document().create_element("p")?.append_text(
             "Standard starting position and promotion rules.
-            Can drop with a checkmate, can drop pawns one move away from promotion,
-            so even few reserve pieces can create a lot of pressure.",
+            Can drop mate, can drop pawns one move away from promotion,
+            so even a few reserve pieces can create a lot of pressure.",
         )?,
     ])
 }
 
-fn preset_twist_tooltip() -> JsResult<web_sys::Element> {
+fn preset_modern_tooltip() -> JsResult<web_sys::Element> {
     combine_elements([
         web_document()
             .create_element("p")?
-            .append_text_i("Twist preset. ")?
-            .append_text("Varied and dynamic experience. Longer, more strategic attacks.")?,
+            .append_text_i("Modern preset. ")?
+            .append_text("Slower and more varied games.")?,
         web_document().create_element("p")?.append_text(
-            "Random starting position makes each game unique from the start.
-            Stealing promotion opens new modes of attack and defense.
-            Cannot drop with a checkmate, pawns have to be dropped at least two
-            moves away from promotion, so the attack has to be planned in advance.",
+            "Random starting positions.
+            Stealing promotion opens new avenues of attack and defense.
+            Cannot drop mate, pawns have to be dropped at least two
+            moves away from promotion, so attacks are less fierce.",
         )?,
     ])
 }
@@ -695,14 +695,14 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
     presets_node.remove_all_children();
     presets_node.append_text_span("Preset:", [])?;
     presets_node.append_element(preset_button(
-        RulesPreset::Rush,
-        "Rush",
-        preset_rush_tooltip()?,
+        RulesPreset::International,
+        "International",
+        preset_international_tooltip()?,
     )?)?;
     presets_node.append_element(preset_button(
-        RulesPreset::Twist,
-        "Twist",
-        preset_twist_tooltip()?,
+        RulesPreset::Modern,
+        "Modern",
+        preset_modern_tooltip()?,
     )?)?;
 
     variants_node.remove_all_children();
@@ -821,7 +821,7 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
         ])?;
     }
 
-    new_match_apply_preset(RulesPreset::Twist)?;
+    new_match_apply_preset(RulesPreset::Modern)?;
     Ok(())
 }
 

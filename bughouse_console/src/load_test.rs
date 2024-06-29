@@ -200,7 +200,7 @@ fn run_match(
     thread::spawn(move || {
         let rules = Rules {
             match_rules: MatchRules::unrated(),
-            chess_rules: ChessRules::bughouse_rush(),
+            chess_rules: ChessRules::bughouse_international(),
         };
 
         let mut first_client = Client::new(&server_address, aggregated_meter_box).unwrap();

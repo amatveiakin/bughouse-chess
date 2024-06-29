@@ -1444,7 +1444,7 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 }
 .rule-preset-button {
   padding: 0.3em 0;
-  width: 6em;
+  width: 7em;
 }
 #create-match-rule-variants {
   margin: 0.5em 0 1em 0;

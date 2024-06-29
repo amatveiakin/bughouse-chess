@@ -230,7 +230,7 @@ impl ClientState {
         let turn_confirmed_meter = meter_box.meter("turn_confirmation".to_owned());
         let default_setup_demo_state = make_setup_demo_state(Rules {
             match_rules: MatchRules::unrated(),
-            chess_rules: ChessRules::bughouse_twist(),
+            chess_rules: ChessRules::bughouse_modern(),
         });
         ClientState {
             user_agent,
