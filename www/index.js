@@ -1421,6 +1421,23 @@ function set_up_log_navigation() {
   }
 }
 
+async function on_name_input(request_kind, event) {
+  // Improvement potential. Indicate that the name is being verified.
+  const input = event.target;
+  const name_to_check = input.value;
+  const request = new Request(request_kind, {
+    method: "POST",
+    body: name_to_check,
+  });
+  const response = await fetch(request);
+  const response_text = await response.text();
+  if (input.value === name_to_check) {
+    // Improvement potential. Do `reportValidity` after a timeout (but make sure
+    // it's not annoying if an intermediate value is invalid while typing).
+    input.setCustomValidity(response_text);
+  }
+}
+
 function set_up_player_name_inputs() {
   for (const input of document.getElementsByTagName("input")) {
     if (input.name === "player_name" || input.name === "user_name") {
@@ -1432,6 +1449,13 @@ function set_up_player_name_inputs() {
       input.pattern = "[A-Za-z0-9_\\-]+";
       input.title =
         "Player name may consist of Latin letters, numbers, underscores ('_') and dashes ('-')";
+      if (input.classList.contains("new-user-name")) {
+        input.addEventListener("input", (event) =>
+          on_name_input("auth/check-new-user-name", event)
+        );
+      } else {
+        input.addEventListener("input", (event) => on_name_input("auth/check-player-name", event));
+      }
     }
   }
 }

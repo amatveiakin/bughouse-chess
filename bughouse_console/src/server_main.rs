@@ -176,6 +176,8 @@ async fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
     app.at(AUTH_CHANGE_ACCOUNT_PATH).post(handle_change_account);
     app.at(AUTH_DELETE_ACCOUNT_PATH).post(handle_delete_account);
     app.at(AUTH_MYSESSION_PATH).get(handle_mysession);
+    app.at(AUTH_CHECK_PLAYER_NAME).post(handle_check_player_name);
+    app.at(AUTH_CHECK_NEW_USER_NAME).post(handle_check_new_user_name);
 
     app.at("/dyn/metrics").get(handle_metrics);
     app.at("/dyn/server").get(handle_server_info);

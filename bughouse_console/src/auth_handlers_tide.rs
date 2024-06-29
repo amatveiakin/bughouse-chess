@@ -28,6 +28,8 @@ pub const AUTH_FINISH_SIGNUP_WITH_LICHESS_PATH: &str = "/auth/finish-signup-with
 pub const AUTH_CHANGE_ACCOUNT_PATH: &str = "/auth/change-account";
 pub const AUTH_DELETE_ACCOUNT_PATH: &str = "/auth/delete-account";
 pub const AUTH_MYSESSION_PATH: &str = "/auth/mysession";
+pub const AUTH_CHECK_PLAYER_NAME: &str = "/auth/check-player-name";
+pub const AUTH_CHECK_NEW_USER_NAME: &str = "/auth/check-new-user-name";
 
 #[derive(Deserialize)]
 struct SignupData {
@@ -700,5 +702,34 @@ pub async fn handle_mysession<DB>(req: tide::Request<HttpServerState<DB>>) -> ti
         Some(Session::LoggedIn(user_info)) => {
             Ok(format!("You are logged in. UserInfo: {user_info:?}").into())
         }
+    }
+}
+
+pub async fn handle_check_player_name<DB>(
+    mut req: tide::Request<HttpServerState<DB>>,
+) -> tide::Result {
+    let player_name = req
+        .body_string()
+        .await
+        .map_err(|err| tide::Error::from_str(StatusCode::BadRequest, err))?;
+    match validate_player_name(&player_name) {
+        Ok(_) => Ok("".into()),
+        Err(message) => Ok(message.into()),
+    }
+}
+
+pub async fn handle_check_new_user_name<DB>(
+    mut req: tide::Request<HttpServerState<DB>>,
+) -> tide::Result {
+    let user_name = req
+        .body_string()
+        .await
+        .map_err(|err| tide::Error::from_str(StatusCode::BadRequest, err))?;
+    match validate_player_name(&user_name) {
+        Ok(_) => match req.state().secret_db.account_by_user_name(&user_name).await? {
+            Some(_) => Ok(format!("Username '{}' is already taken.", &user_name).into()),
+            None => Ok("".into()),
+        },
+        Err(message) => Ok(message.into()),
     }
 }
