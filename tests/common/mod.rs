@@ -284,7 +284,7 @@ mod tests {
         const T0: GameInstant = GameInstant::game_start();
         let rules = Rules {
             match_rules: MatchRules::unrated(),
-            chess_rules: ChessRules::chess_blitz(),
+            chess_rules: ChessRules::chess_blitz_5(),
         };
         let board_str = "
             r n b q k b n r
@@ -313,7 +313,7 @@ mod tests {
         const T0: GameInstant = GameInstant::game_start();
         let rules = Rules {
             match_rules: MatchRules::unrated(),
-            chess_rules: ChessRules::bughouse_international(),
+            chess_rules: ChessRules::bughouse_international5(),
         };
         let game_str = "
             r n b q k b n r     R N B K Q B N R

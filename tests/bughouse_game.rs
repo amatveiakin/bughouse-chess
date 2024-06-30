@@ -26,7 +26,7 @@ pub fn alg(s: &str) -> TurnInput { algebraic_turn(s) }
 fn default_rules() -> Rules {
     Rules {
         match_rules: MatchRules::unrated(),
-        chess_rules: ChessRules::bughouse_international(),
+        chess_rules: ChessRules::bughouse_international5(),
     }
 }
 

@@ -55,7 +55,7 @@ fn default_chess_rules() -> ChessRules {
             },
             drop_aggression: DropAggression::NoChessMate,
         }),
-        ..ChessRules::chess_blitz()
+        ..ChessRules::chess_blitz_5()
     }
 }
 

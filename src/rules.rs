@@ -26,7 +26,8 @@ pub const FIRST_GAME_COUNTDOWN_DURATION: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter, AsRefStr, Serialize, Deserialize)]
 pub enum RulesPreset {
-    International,
+    International3,
+    International5,
     Modern,
 }
 
@@ -204,15 +205,20 @@ impl MatchRules {
 // all `ChessRules` fields need to become private.
 impl ChessRules {
     pub fn from_preset(preset: RulesPreset) -> Self {
+        let international_bughouse = BughouseRules {
+            koedem: false,
+            promotion: Promotion::Upgrade,
+            pawn_drop_ranks: PawnDropRanks::from_one_based(2, 7),
+            drop_aggression: DropAggression::MateAllowed,
+        };
         match preset {
-            RulesPreset::International => Self {
-                bughouse_rules: Some(BughouseRules {
-                    koedem: false,
-                    promotion: Promotion::Upgrade,
-                    pawn_drop_ranks: PawnDropRanks::from_one_based(2, 7),
-                    drop_aggression: DropAggression::MateAllowed,
-                }),
-                ..Self::chess_blitz()
+            RulesPreset::International3 => Self {
+                bughouse_rules: Some(international_bughouse),
+                ..Self::chess_blitz_3()
+            },
+            RulesPreset::International5 => Self {
+                bughouse_rules: Some(international_bughouse),
+                ..Self::chess_blitz_5()
             },
             RulesPreset::Modern => Self {
                 starting_position: StartingPosition::FischerRandom,
@@ -222,7 +228,7 @@ impl ChessRules {
                     pawn_drop_ranks: PawnDropRanks::from_one_based(2, 6),
                     drop_aggression: DropAggression::NoChessMate,
                 }),
-                ..Self::chess_blitz()
+                ..Self::chess_blitz_5()
             },
         }
     }
@@ -231,19 +237,27 @@ impl ChessRules {
         RulesPreset::iter().find(|&preset| *self == Self::from_preset(preset))
     }
 
-    pub fn chess_blitz() -> Self {
+    pub fn chess_blitz_3() -> Self {
         Self {
             fairy_pieces: FairyPieces::NoFairy,
             starting_position: StartingPosition::Classic,
             duck_chess: false,
             atomic_chess: false,
             fog_of_war: false,
-            time_control: TimeControl { starting_time: Duration::from_secs(300) },
+            time_control: TimeControl { starting_time: Duration::from_secs(180) },
             bughouse_rules: None,
         }
     }
 
-    pub fn bughouse_international() -> Self { Self::from_preset(RulesPreset::International) }
+    pub fn chess_blitz_5() -> Self {
+        Self {
+            time_control: TimeControl { starting_time: Duration::from_secs(300) },
+            ..Self::chess_blitz_3()
+        }
+    }
+
+    pub fn bughouse_international3() -> Self { Self::from_preset(RulesPreset::International3) }
+    pub fn bughouse_international5() -> Self { Self::from_preset(RulesPreset::International5) }
     pub fn bughouse_modern() -> Self { Self::from_preset(RulesPreset::Modern) }
 
     pub fn board_shape(&self) -> BoardShape {

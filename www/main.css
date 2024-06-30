@@ -1123,6 +1123,7 @@ button:disabled:not(.icon-button) {
   font-weight: normal;
   font-size: calc(0.9 * var(--dialog-rem));
   color: #000000;
+  white-space: normal;
   width: 18em;
   background-color: var(--color-dialog-tooltip);
   padding: 0em 1em;
@@ -1442,9 +1443,13 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   gap: 0.4em;
   margin-bottom: 0.8em;
 }
+.presets-label {
+  font-size: 90%;
+}
 .rule-preset-button {
   padding: 0.3em 0;
   width: 7em;
+  white-space: nowrap;
 }
 #create-match-rule-variants {
   margin: 0.5em 0 1em 0;

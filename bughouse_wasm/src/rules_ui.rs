@@ -649,12 +649,12 @@ fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Elemen
     ])
 }
 
-fn preset_international_tooltip() -> JsResult<web_sys::Element> {
+fn preset_international_tooltip(time_control: &str) -> JsResult<web_sys::Element> {
     combine_elements([
         web_document()
             .create_element("p")?
             .append_text_i("International preset. ")?
-            .append_text("Classic bughouse ruleset.")?,
+            .append_text(&format!("Classic bughouse ruleset with {time_control} time control."))?,
         web_document().create_element("p")?.append_text(
             "Standard starting position and promotion rules.
             Can drop mate, can drop pawns one move away from promotion,
@@ -693,11 +693,16 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
         .with_classes(["menu-page-body"])?;
 
     presets_node.remove_all_children();
-    presets_node.append_text_span("Preset:", [])?;
+    presets_node.append_text_span("Preset:", ["presets-label"])?;
     presets_node.append_element(preset_button(
-        RulesPreset::International,
-        "International",
-        preset_international_tooltip()?,
+        RulesPreset::International3,
+        "Interntl 3m",
+        preset_international_tooltip("3+0")?,
+    )?)?;
+    presets_node.append_element(preset_button(
+        RulesPreset::International5,
+        "Interntl 5m",
+        preset_international_tooltip("5+0")?,
     )?)?;
     presets_node.append_element(preset_button(
         RulesPreset::Modern,
