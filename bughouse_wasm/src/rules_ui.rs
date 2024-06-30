@@ -549,7 +549,7 @@ fn drop_aggression_no_check_tooltip() -> JsResult<Vec<web_sys::Element>> {
 fn drop_aggression_no_chess_mate_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("No chess mate.")?
+        .append_text_i("No mate.")?
         .append_text(
             " Drop with a checkmate is forbidden, even if the opponent can escape
             the checkmate with a drop of their own.",
@@ -759,15 +759,10 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
     )?;
     details_node.append_children(
         RuleNode::new(PROMOTION, "Promotion")
-            .with_input_select([
-                ("upgrade", "Upgrade"),
-                ("discard", "Discard"),
-                ("steal", "Steal"),
-            ])?
+            .with_input_select([("upgrade", "Upgrade"), ("steal", "Steal")])?
             .with_tooltip(combine_elements(
                 [
                     promotion_upgrade_tooltip()?,
-                    promotion_discard_tooltip()?,
                     promotion_steal_general_tooltip()?,
                 ]
                 .into_iter()
@@ -785,15 +780,13 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
         RuleNode::new(DROP_AGGRESSION, "Drop aggression")
             .with_input_select([
                 ("no-check", "No check"),
-                ("no-chess-mate", "No chess mate"),
-                ("no-bughouse-mate", "No bughouse mate"),
+                ("no-chess-mate", "No mate"),
                 ("mate-allowed", "Mate allowed"),
             ])?
             .with_tooltip(combine_elements(
                 [
                     drop_aggression_no_check_tooltip()?,
                     drop_aggression_no_chess_mate_tooltip()?,
-                    drop_aggression_no_bughouse_mate_tooltip()?,
                     drop_aggression_mate_allowed_tooltip()?,
                 ]
                 .into_iter()
