@@ -60,6 +60,7 @@ pub const MATCH_ID_ALPHABET: [char; 33] = [
 const DOUBLE_TERMINATION_ABORT_THRESHOLD: Duration = Duration::from_secs(1);
 const TERMINATION_WAITING_PERIOD: Duration = Duration::from_secs(60);
 const MATCH_GC_INACTIVITY_THRESHOLD: Duration = Duration::from_secs(3600 * 24);
+const MATCH_HIDE_INACTIVITY_THRESHOLD: Duration = Duration::from_secs(60);
 
 lazy_static! {
     static ref EVENT_PROCESSING_HISTOGRAM: HistogramVec = register_histogram_vec!(
@@ -171,6 +172,7 @@ struct Participants {
 
 impl Participants {
     fn new() -> Self { Self { map: BTreeMap::new(), next_id: 1 } }
+    fn len(&self) -> usize { self.map.len() }
     fn iter(&self) -> impl Iterator<Item = &Participant> + Clone {
         self.map.values().map(|(p, _)| p)
     }
@@ -750,11 +752,19 @@ impl CoreServerState {
     }
 
     async fn update_match_list(&mut self, ctx: &mut Context) {
-        // TODO: Filter inactive empty matches.
         let match_list = self
             .matches
             .values()
             .filter(|mtch| mtch.rules.match_rules.public)
+            .filter(|mtch| {
+                mtch.participants.len() > 0
+                    || match mtch.latest_activity() {
+                        MatchActivity::Present => true,
+                        MatchActivity::Past(t) => {
+                            ctx.now.duration_since(t) <= MATCH_HIDE_INACTIVITY_THRESHOLD
+                        }
+                    }
+            })
             .map(|mtch| {
                 let num_players =
                     mtch.participants.iter().filter(|p| p.desired_faction.is_player()).count();
