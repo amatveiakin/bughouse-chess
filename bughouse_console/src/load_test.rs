@@ -199,7 +199,7 @@ fn run_match(
 
     thread::spawn(move || {
         let rules = Rules {
-            match_rules: MatchRules::unrated(),
+            match_rules: MatchRules::unrated_public(),
             chess_rules: ChessRules::bughouse_international5(),
         };
 

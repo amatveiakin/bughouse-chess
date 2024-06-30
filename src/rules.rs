@@ -91,6 +91,11 @@ pub enum DropAggression {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct MatchRules {
     pub rated: bool,
+    // Improvement potential. Tri-state:
+    //   - private,
+    //   - public lobby (allow joining before the match has started),
+    //   - public game (allow joining after the match has started).
+    pub public: bool,
 }
 
 // Some thoughts on relationship options between `ChessRules` and `BughouseRules`. The goal is to
@@ -198,7 +203,7 @@ pub enum ChessVariant {
 }
 
 impl MatchRules {
-    pub fn unrated() -> Self { Self { rated: false } }
+    pub fn unrated_public() -> Self { Self { rated: false, public: true } }
 }
 
 // Improvement potential. Precompute `variants` and `regicide_reason`. Note that this would mean

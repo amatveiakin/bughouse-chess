@@ -86,7 +86,7 @@ thread_local! {
 fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
     loop {
         let rules = Rules {
-            match_rules: MatchRules::unrated(),
+            match_rules: MatchRules::unrated_public(),
             chess_rules: ChessRules {
                 fairy_pieces: if rng.gen::<bool>() {
                     FairyPieces::NoFairy

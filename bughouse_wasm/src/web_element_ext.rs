@@ -10,7 +10,12 @@ use crate::web_error_handling::JsResult;
 
 pub trait WebElementExt {
     fn with_id(self, value: &str) -> web_sys::Element;
+    fn with_maybe_text_content(self, text: Option<&str>) -> web_sys::Element;
     fn with_text_content(self, text: &str) -> web_sys::Element;
+    // TODO: Use it where appropriate.
+    // TODO: Use our beautiful tooltips instead. Need to figure out how to fix them for elements
+    // inside `overflow: hidden` containers.
+    fn with_title(self, title_text: &str) -> JsResult<web_sys::Element>;
     fn with_attribute(self, name: &str, value: &str) -> JsResult<web_sys::Element>;
     fn with_classes(self, classes: impl IntoIterator<Item = &str>) -> JsResult<web_sys::Element>;
 
@@ -51,9 +56,17 @@ impl WebElementExt for web_sys::Element {
         self
     }
 
-    fn with_text_content(self, text: &str) -> web_sys::Element {
-        self.set_text_content(Some(text));
+    fn with_maybe_text_content(self, text: Option<&str>) -> web_sys::Element {
+        self.set_text_content(text);
         self
+    }
+
+    fn with_text_content(self, text: &str) -> web_sys::Element {
+        self.with_maybe_text_content(Some(text))
+    }
+
+    fn with_title(self, title_text: &str) -> JsResult<web_sys::Element> {
+        self.with_attribute("title", title_text)
     }
 
     fn with_attribute(self, name: &str, value: &str) -> JsResult<web_sys::Element> {

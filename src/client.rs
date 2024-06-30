@@ -21,7 +21,7 @@ use crate::clock::{duration_to_mss, GameDuration, GameInstant, WallGameTimePair}
 use crate::display::{get_board_index, get_display_board_index, DisplayBoard};
 use crate::event::{
     BughouseClientEvent, BughouseClientPerformance, BughouseServerEvent, BughouseServerRejection,
-    FinishedGameDescription, GameUpdate, SubjectiveGameResult,
+    FinishedGameDescription, GameUpdate, MatchDescription, SubjectiveGameResult,
 };
 use crate::force::Force;
 use crate::game::{
@@ -48,6 +48,7 @@ const GAME_ARCHIVE_CACHE_SIZE: usize = 1000;
 #[derive(Clone, Debug)]
 pub enum NotableEvent {
     SessionUpdated,
+    MatchListUpdated(Vec<MatchDescription>),
     MatchStarted(String), // contains MatchID
     GameStarted,
     GameOver(SubjectiveGameResult),
@@ -229,7 +230,7 @@ impl ClientState {
         let ping_meter = meter_box.meter("ping".to_owned());
         let turn_confirmed_meter = meter_box.meter("turn_confirmation".to_owned());
         let default_setup_demo_state = make_setup_demo_state(Rules {
-            match_rules: MatchRules::unrated(),
+            match_rules: MatchRules::unrated_public(),
             chess_rules: ChessRules::bughouse_modern(),
         });
         ClientState {
@@ -748,6 +749,7 @@ impl ClientState {
                 self.process_server_welcome(expected_git_version, max_starting_time)
             }
             UpdateSession { session } => self.process_update_session(session),
+            MatchList { matches } => self.process_match_list(matches),
             MatchWelcome { match_id, rules } => self.process_match_welcome(match_id, rules),
             LobbyUpdated { participants, countdown_elapsed } => {
                 self.process_lobby_updated(participants, countdown_elapsed)
@@ -869,6 +871,10 @@ impl ClientState {
     fn process_update_session(&mut self, session: Session) -> Result<(), ClientError> {
         self.session = session;
         self.notable_event_queue.push_back(NotableEvent::SessionUpdated);
+        Ok(())
+    }
+    fn process_match_list(&mut self, matches: Vec<MatchDescription>) -> Result<(), ClientError> {
+        self.notable_event_queue.push_back(NotableEvent::MatchListUpdated(matches));
         Ok(())
     }
     fn process_match_welcome(&mut self, match_id: String, rules: Rules) -> Result<(), ClientError> {

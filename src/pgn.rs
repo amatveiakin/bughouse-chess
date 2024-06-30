@@ -595,6 +595,7 @@ fn parse_variants(s: &str) -> Result<HashSet<ChessVariant>, String> {
 
 fn parse_rules(tags: &TagMap) -> Result<Rules, String> {
     let rated = tags.get("Event")?.starts_with("Rated");
+    let public = true; // TODO: Parse when this is serialized.
     let time_control = parse_time_control(tags.get("TimeControl")?)?;
     let variants = parse_variants(tags.get("Variant")?)?;
     let starting_position = if variants.contains(&ChessVariant::FischerRandom) {
@@ -624,7 +625,7 @@ fn parse_rules(tags: &TagMap) -> Result<Rules, String> {
         DropAggression::MateAllowed,
     )?;
     Ok(Rules {
-        match_rules: MatchRules { rated },
+        match_rules: MatchRules { rated, public },
         chess_rules: ChessRules {
             fairy_pieces,
             starting_position,
@@ -808,7 +809,7 @@ mod tests {
     #[test]
     fn pgn_standard_conformity() {
         let rules = Rules {
-            match_rules: MatchRules::unrated(),
+            match_rules: MatchRules::unrated_public(),
             chess_rules: ChessRules::bughouse_international5(),
         };
         let mut game =
@@ -835,7 +836,7 @@ mod tests {
         use BughouseBoard::*;
         use Force::*;
         let mut rules = Rules {
-            match_rules: MatchRules::unrated(),
+            match_rules: MatchRules::unrated_public(),
             chess_rules: ChessRules::bughouse_international5(),
         };
         rules.chess_rules.time_control.starting_time = Duration::from_secs(100);
@@ -865,7 +866,7 @@ mod tests {
     #[test]
     fn pgn_golden() {
         let rules = Rules {
-            match_rules: MatchRules::unrated(),
+            match_rules: MatchRules::unrated_public(),
             chess_rules: ChessRules::bughouse_international5(),
         };
         let mut game =

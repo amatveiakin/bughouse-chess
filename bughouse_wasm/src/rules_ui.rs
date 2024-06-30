@@ -1051,9 +1051,10 @@ pub fn new_match_rules() -> JsResult<Rules> {
         "unrated" => false,
         s => return Err(format!("Invalid rating: {s}").into()),
     };
+    let public = true; // Make this configurable.
 
     // Combine everything together
-    let match_rules = MatchRules { rated };
+    let match_rules = MatchRules { rated, public };
     let mut chess_rules = ChessRules {
         fairy_pieces,
         starting_position,
@@ -1128,4 +1129,21 @@ fn new_match_apply_rules(rules: &ChessRules) -> JsResult<()> {
     // Final touches
     update_new_match_rules_body()?;
     Ok(())
+}
+
+pub fn variant_icons(rules: &ChessRules) -> Vec<&'static str> {
+    use ChessVariant::*;
+    rules
+        .variants()
+        .into_iter()
+        .map(|variant| match variant {
+            Capablanca => PLACEHOLDER_ICON,
+            Accolade => ACCOLADE_ON_ICON,
+            FischerRandom => FISCHER_RANDOM_ON_ICON,
+            DuckChess => DUCK_CHESS_ON_ICON,
+            AtomicChess => panic!("Atomic chess disabled"),
+            FogOfWar => FOG_OF_WAR_ON_ICON,
+            Koedem => KOEDEM_ON_ICON,
+        })
+        .collect()
 }

@@ -201,6 +201,11 @@ body.symmetric #page {
   flex-direction: row;
   align-items: center;
 }
+.flex-row-stretch {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
 .flex-row-full {
   width: 100%;
   display: flex;
@@ -225,6 +230,9 @@ body.symmetric #page {
 }
 .gap-medium {
   gap: 0.5em;
+}
+.gap-large {
+  gap: 1em;
 }
 .grid-col-span-2 {
   grid-column: span 2;
@@ -1129,7 +1137,7 @@ button:disabled:not(.icon-button) {
   padding: 0em 1em;
   border-radius: 0.5em;
   position: absolute;
-  z-index: 1;
+  z-index: 20;
   top: 0%;
   left: 100%;
   margin: 0 0 0 1.8em;
@@ -1291,6 +1299,7 @@ dialog button:hover:enabled {
   background-color: #f3debd;
 }
 
+/* TODO: Split button size and button color classes. */
 .big-button {
   width: 14em;
   font-size: 1.3em;
@@ -1304,6 +1313,14 @@ dialog button:hover:enabled {
   color: #606060;
   text-shadow: none;
   background-color: #d0d0d0;
+}
+
+.big-button.compact-big-button {
+  width: 12em;
+}
+.big-button.inline-join-button {
+  width: 4em;
+  font-size: 1em;
 }
 
 .big-button.danger-button {
@@ -1427,6 +1444,16 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 .rule-variant-icon {
   display: block;
   height: 4em;
+}
+.rule-variant-icon-small {
+  height: 2em;
+  margin: 0em -0.2em;
+}
+.rule-variant-icon-small.rule-variant-icon-4 {
+  margin: 0em -0.4em;
+}
+.rule-variant-icon-small.rule-variant-icon-5 {
+  margin: 0em -0.6em;
 }
 .rule-variant-button-caption {
   min-height: 2lh;
@@ -1594,6 +1621,26 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   filter: saturate(0.9) contrast(0.7) brightness(1.1);
 }
 
+#match-list {
+  margin: 0.7em 0;
+  width: 40em;
+  height: 30em;
+  font-size: 80%;
+}
+#match-list td {
+  min-width: 1.5em;
+  max-width: 2em;
+  height: 2em;
+  padding: 0.1em 0em;
+}
+#match-list td:last-child {
+  /* Workaround button being hidden by scrollbar */
+  padding-right: 0.6em;
+}
+#match-list th {
+  padding: 0.3em 0;
+}
+
 .fixed-head-table {
   position: relative;
   overflow-x: hidden;
@@ -1605,7 +1652,19 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   top: 0;
   z-index: 1;
 }
+.fixed-head-table-buttom-padding {
+  height: 100%;
+}
+.fixed-head-placeholder-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
 .embossed-table {
+  width: 100%;
+  height: 100%;
   min-width: 36em;
   min-height: 20em;
   border-spacing: 0;
@@ -1630,14 +1689,13 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   background-color: #b4a68c;
 }
 
+#match-list-table {
+  white-space: nowrap;
+  text-align: center;
+}
+
 #archive-game-table {
   font-size: 90%;
-}
-.game-archive-placeholder-message {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
 }
 .game-archive-result-victory {
   background-color: #00ff001a;
@@ -1653,9 +1711,6 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   font-weight: bold;
   font-size: 90%;
   color: #444;
-}
-.game-archive-buttom-padding {
-  height: 100%;
 }
 
 .dot {

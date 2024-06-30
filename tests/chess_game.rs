@@ -19,7 +19,7 @@ use itertools::Itertools;
 fn chess_with_rules(chess_rules: ChessRules) -> ChessGame {
     ChessGame::new(
         Rules {
-            match_rules: MatchRules::unrated(),
+            match_rules: MatchRules::unrated_public(),
             chess_rules,
         },
         Role::ServerOrStandalone,
@@ -41,7 +41,7 @@ fn chess960_from_short_fen(pieces: &str) -> ChessGame {
     let starting_position = EffectiveStartingPosition::FischerRandom(pieces);
     ChessGame::new_with_starting_position(
         Rules {
-            match_rules: MatchRules::unrated(),
+            match_rules: MatchRules::unrated_public(),
             chess_rules,
         },
         Role::ServerOrStandalone,

@@ -45,6 +45,7 @@ use wasm_bindgen::prelude::*;
 use web_document::{web_document, WebDocument};
 use web_element_ext::WebElementExt;
 use web_error_handling::{JsResult, RustError};
+use web_iterators::IntoHtmlCollectionIterator;
 use web_sys::{ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
 use web_util::{estimate_text_width, scroll_to_bottom};
 
@@ -582,6 +583,10 @@ impl WebClient {
     pub fn next_notable_event(&mut self) -> JsResult<JsValue> {
         match self.state.next_notable_event() {
             Some(NotableEvent::SessionUpdated) => Ok(JsEventSessionUpdated {}.into()),
+            Some(NotableEvent::MatchListUpdated(matches)) => {
+                update_match_list(&matches)?;
+                Ok(JsEventNoop {}.into())
+            }
             Some(NotableEvent::MatchStarted(match_id)) => {
                 self.init_game_view(true)?;
                 init_lobby(self.state.mtch().unwrap())?;
@@ -1227,6 +1232,113 @@ fn make_match_caption_body(mtch: &Match) -> JsResult<web_sys::Element> {
         node.append_text_span(match_id, ["lobby-match-id"])?;
     }
     Ok(node)
+}
+
+fn update_match_list(matches: &[MatchDescription]) -> JsResult<()> {
+    let table = web_document().get_existing_element_by_id("match-list-table")?;
+    table.remove_all_children();
+    {
+        let thead = table.append_new_element("thead")?;
+        let tr = thead.append_new_element("tr")?;
+        tr.append_new_element("th")?.with_text_content("ID");
+        tr.append_new_element("th")?
+            .with_text_content("R")
+            .with_title("Whether the match is rated")?;
+        tr.append_new_element("th")?
+            .with_text_content("#P")
+            .with_title("Number of players in the match")?;
+        tr.append_new_element("th")?.with_text_content("Preset");
+        tr.append_new_element("th")?
+            .with_text_content("Time")
+            .with_title("Starting time")?;
+        tr.append_new_element("th")?
+            .with_text_content("PD")
+            .with_title("Pawn drop ranks")?;
+        tr.append_new_element("th")?.with_text_content("DA").with_title(concat!(
+            "Drop aggression:\nM — mate drop allowed;\n",
+            "NM — mate drop forbidden;\nNC – check drop forbidden."
+        ))?;
+        tr.append_new_element("th")?.with_text_content("Pr").with_title(
+            "Promotion:\nUpg — upgrade (regular chess promotion);\nStl — stealing promotion.",
+        )?;
+        tr.append_new_element("th")?
+            .with_text_content("Variants")
+            .with_title("Variants (besides bughouse)")?;
+        tr.append_new_element("th")?;
+    }
+    let tbody = table.append_new_element("tbody")?;
+    if matches.is_empty() {
+        tbody
+            .append_new_element("div")?
+            .with_classes(["fixed-head-placeholder-message"])?
+            .with_text_content("There no active matches. But you can start one!");
+        return Ok(());
+    }
+    for m in matches {
+        // TODO: Allow joining started matched if privacy options allow.
+        if m.started {
+            continue;
+        }
+        let chess_rules = &m.rules.chess_rules;
+        let bughouse_rules = chess_rules.bughouse_rules.as_ref().unwrap();
+        let preset = match chess_rules.get_preset() {
+            Some(RulesPreset::International3) => "Intl-3",
+            Some(RulesPreset::International5) => "Intl-5",
+            Some(RulesPreset::Modern) => "Modern",
+            None => "Custom",
+        };
+        let drop_aggression = match bughouse_rules.drop_aggression {
+            DropAggression::NoCheck => "NC",
+            DropAggression::NoChessMate => "NM",
+            DropAggression::NoBughouseMate => "NB",
+            DropAggression::MateAllowed => "M",
+        };
+        let promotion = match chess_rules.promotion() {
+            Promotion::Discard => "D",
+            Promotion::Upgrade => "Upg",
+            Promotion::Steal => "Stl",
+        };
+        let variants = rules_ui::variant_icons(chess_rules);
+        let num_variants = variants.len();
+        let variants = variants.join("");
+        let tr = tbody.append_new_element("tr")?;
+        tr.append_new_element("td")?.with_text_content(&m.match_id);
+        tr.append_new_element("td")?
+            .with_maybe_text_content(m.rules.match_rules.rated.then_some("⚔️"));
+        tr.append_new_element("td")?.with_text_content(&m.num_players.to_string());
+        tr.append_new_element("td")?.with_text_content(preset);
+        tr.append_new_element("td")?
+            .append_text(&chess_rules.time_control.to_string())?;
+        tr.append_new_element("td")?
+            .append_text(&bughouse_rules.pawn_drop_ranks.to_human_readable())?;
+        tr.append_new_element("td")?.append_text(drop_aggression)?;
+        tr.append_new_element("td")?.append_text(promotion)?;
+        {
+            // TODO: Variant names tooltip.
+            let td = tr.append_new_element("td")?;
+            td.set_inner_html(&variants);
+            for icon in td.children().into_iterator() {
+                icon.class_list().remove_1("rule-variant-icon")?;
+                icon.class_list().add_1("rule-variant-icon-small")?;
+                match num_variants {
+                    ..=3 => {}
+                    4 => icon.class_list().add_1("rule-variant-icon-4")?,
+                    5.. => icon.class_list().add_1("rule-variant-icon-5")?,
+                }
+            }
+        }
+        {
+            let td = tr.append_new_element("td")?;
+            td.append_new_element("button")?
+                .with_text_content("Join!")
+                .with_classes(["big-button", "inline-join-button"])?
+                .with_attribute("data-join-match-id", &m.match_id)?;
+        }
+    }
+    tbody
+        .append_new_element("tr")?
+        .with_classes(["fixed-head-table-buttom-padding"])?;
+    Ok(())
 }
 
 // Try to keep ordering in sync with "New match" dialog.
@@ -2205,7 +2317,7 @@ fn render_archive_game_list(
     let Some(games) = games else {
         tbody
             .append_new_element("div")?
-            .with_classes(["game-archive-placeholder-message"])?
+            .with_classes(["fixed-head-placeholder-message"])?
             .with_text_content("Loading ")
             .append_animated_dots()?;
         return Ok(());
@@ -2213,7 +2325,7 @@ fn render_archive_game_list(
     if games.is_empty() {
         tbody
             .append_new_element("div")?
-            .with_classes(["game-archive-placeholder-message"])?
+            .with_classes(["fixed-head-placeholder-message"])?
             .with_text_content("You games will appear here.");
     }
     for game in games.into_iter().rev() {
@@ -2242,12 +2354,7 @@ fn render_archive_game_list(
             };
             tr.append_new_element("td")?.set_text_content(Some(&start_time));
         }
-        {
-            let rated_td = tr.append_new_element("td")?;
-            if game.rated {
-                rated_td.set_text_content(Some("⚔️"));
-            }
-        }
+        tr.append_new_element("td")?.set_text_content(game.rated.then_some("⚔️"));
         tr.append_element(make_team_td(game.teammates)?)?;
         tr.append_element(make_team_td(game.opponents)?)?;
         tr.append_new_element("td")?.with_text_content(result);
@@ -2261,7 +2368,9 @@ fn render_archive_game_list(
             }
         }
     }
-    tbody.append_new_element("tr")?.with_classes(["game-archive-buttom-padding"])?;
+    tbody
+        .append_new_element("tr")?
+        .with_classes(["fixed-head-table-buttom-padding"])?;
     Ok(())
 }
 

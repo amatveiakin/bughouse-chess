@@ -240,7 +240,6 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
         }
         while let Some(event) = client_state.next_notable_event() {
             match event {
-                NotableEvent::SessionUpdated => {}
                 NotableEvent::MatchStarted(..) => {
                     client_state.set_ready(true);
                     // TODO: Display match ID to the user.
@@ -248,14 +247,7 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
                 NotableEvent::GameStarted => {
                     execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
                 }
-                NotableEvent::GameOver(..) => {}
-                NotableEvent::TurnMade(..) => {}
-                NotableEvent::MyReserveRestocked(..) => {}
-                NotableEvent::PieceStolen => {}
-                NotableEvent::LowTime(..) => {}
-                NotableEvent::WaybackStateUpdated(..) => {}
-                NotableEvent::GotArchiveGameList(..) => {}
-                NotableEvent::ArchiveGameLoaded(..) => {}
+                _ => {}
             }
         }
         render(&mut stdout, app_start_time, &client_state, &keyboard_input, &command_error)?;

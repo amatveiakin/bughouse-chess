@@ -283,7 +283,7 @@ mod tests {
     fn parse_ascii_board_opening() {
         const T0: GameInstant = GameInstant::game_start();
         let rules = Rules {
-            match_rules: MatchRules::unrated(),
+            match_rules: MatchRules::unrated_public(),
             chess_rules: ChessRules::chess_blitz_5(),
         };
         let board_str = "
@@ -312,7 +312,7 @@ mod tests {
         use BughouseBoard::*;
         const T0: GameInstant = GameInstant::game_start();
         let rules = Rules {
-            match_rules: MatchRules::unrated(),
+            match_rules: MatchRules::unrated_public(),
             chess_rules: ChessRules::bughouse_international5(),
         };
         let game_str = "

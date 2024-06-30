@@ -23,7 +23,7 @@ use crate::chat::{ChatMessage, ChatMessageBody, ChatRecipient, OutgoingChatMessa
 use crate::clock::GameInstant;
 use crate::event::{
     BughouseClientErrorReport, BughouseClientEvent, BughouseClientPerformance, BughouseServerEvent,
-    BughouseServerRejection, GameUpdate,
+    BughouseServerRejection, GameUpdate, MatchDescription,
 };
 use crate::game::{
     BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughousePlayer, PlayerInGame,
@@ -220,6 +220,7 @@ pub struct Client {
     match_id: Option<MatchId>,
     session_id: Option<SessionId>,
     logging_id: String,
+    need_match_list: bool,
     connection_monitor: PassiveConnectionMonitor,
 }
 
@@ -262,6 +263,7 @@ impl Clients {
             match_id: None,
             session_id,
             logging_id,
+            need_match_list: true,
             connection_monitor: PassiveConnectionMonitor::new(now),
         };
         let id = ClientId(self.next_id.fetch_add(1, atomic::Ordering::SeqCst));
@@ -365,6 +367,7 @@ struct CoreServerState {
     server_options: ServerOptions,
     execution: Execution,
     matches: HashMap<MatchId, Match>,
+    last_match_list: Vec<MatchDescription>,
 }
 
 type EventResult = Result<(), BughouseServerRejection>;
@@ -458,6 +461,7 @@ impl CoreServerState {
             server_options,
             execution: Execution::Running,
             matches: HashMap::new(),
+            last_match_list: Vec::new(),
         }
     }
 
@@ -629,7 +633,7 @@ impl CoreServerState {
 
         let Some(match_id) = match_id else {
             // We've already processed all events that do not depend on a match.
-            ctx.clients.send_rejection(client_id, unknown_error!()).await;
+            ctx.clients.send_rejection(client_id, unknown_error!("{:?}", event)).await;
             return;
         };
 
@@ -672,6 +676,7 @@ impl CoreServerState {
             mtch.post_process(ctx, self.execution).await;
             mtch.gc_inactive_players(ctx, &client_matches).await;
         }
+        self.update_match_list(ctx).await;
         if !matches!(self.execution, Execution::Running) && self.num_active_matches(ctx.now) == 0 {
             println!("No more active matches left. Shutting down.");
             shutdown();
@@ -741,6 +746,35 @@ impl CoreServerState {
                 }
                 *last_termination_request = ctx.now;
             }
+        }
+    }
+
+    async fn update_match_list(&mut self, ctx: &mut Context) {
+        // TODO: Filter inactive empty matches.
+        let match_list = self
+            .matches
+            .values()
+            .filter(|mtch| mtch.rules.match_rules.public)
+            .map(|mtch| {
+                let num_players =
+                    mtch.participants.iter().filter(|p| p.desired_faction.is_player()).count();
+                MatchDescription {
+                    match_id: mtch.match_id.0.clone(),
+                    rules: mtch.rules.clone(),
+                    num_players: num_players as u32,
+                    started: mtch.game_state.is_some(),
+                }
+            })
+            .collect_vec();
+        let match_list_updated = self.last_match_list != match_list;
+        for client in ctx.clients.map.write().await.values_mut() {
+            if (match_list_updated && client.match_id.is_none()) || client.need_match_list {
+                client.send(BughouseServerEvent::MatchList { matches: match_list.clone() });
+                client.need_match_list = false;
+            }
+        }
+        if match_list_updated {
+            self.last_match_list = match_list;
         }
     }
 
@@ -1342,6 +1376,7 @@ impl Match {
         self.clients.remove(&client_id);
         if let Some(ref mut client) = ctx.clients.map.write().await.get_mut(&client_id) {
             client.match_id = None;
+            client.need_match_list = true;
         }
         // Participant will be removed automatically if required.
         Ok(())

@@ -278,7 +278,7 @@ impl World {
         &mut self, client_id: TestClientId, player_name: &str, chess_rules: ChessRules,
     ) -> String {
         let rules = Rules {
-            match_rules: MatchRules::unrated(),
+            match_rules: MatchRules::unrated_public(),
             chess_rules,
         };
         self[client_id].state.set_guest_player_name(Some(player_name.to_owned()));

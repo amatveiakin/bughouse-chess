@@ -43,6 +43,15 @@ pub enum BughouseServerRejection {
     UnknownError { message: String },
 }
 
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct MatchDescription {
+    pub match_id: String,
+    pub rules: Rules,
+    // Improvement potential. Some info about players, particularly their rating.
+    pub num_players: u32,
+    pub started: bool,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum GameUpdate {
     TurnMade {
@@ -93,6 +102,9 @@ pub enum BughouseServerEvent {
     },
     UpdateSession {
         session: Session,
+    },
+    MatchList {
+        matches: Vec<MatchDescription>,
     },
     MatchWelcome {
         match_id: String,

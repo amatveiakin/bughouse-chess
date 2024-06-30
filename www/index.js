@@ -569,6 +569,7 @@ function set_displayed(element, value) {
 function on_document_click(event) {
   with_error_handling(function () {
     const archive_game_id = event.target.getAttribute("archive-game-id");
+    const data_join_match_id = event.target.getAttribute("data-join-match-id");
     if (archive_game_id) {
       const url = new URL(window.location);
       url.search = "";
@@ -577,6 +578,18 @@ function on_document_click(event) {
       wasm_client().view_archive_game_content(archive_game_id);
       update_events();
       close_menu();
+    }
+    if (data_join_match_id) {
+      if (is_registered_user) {
+        wasm_client().join(data_join_match_id);
+        update();
+      } else {
+        // TODO: Open join dialog without reload.
+        const url = new URL(window.location);
+        url.search = "";
+        url.searchParams.set(SearchParams.match_id, data_join_match_id);
+        location.href = url;
+      }
     }
   });
 }
