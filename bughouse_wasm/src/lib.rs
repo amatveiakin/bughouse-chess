@@ -1245,7 +1245,7 @@ fn update_match_list(matches: &[MatchDescription]) -> JsResult<()> {
             .with_text_content("R")
             .with_title("Whether the match is rated")?;
         tr.append_new_element("th")?
-            .with_text_content("#P")
+            .with_text_content("👤︎")
             .with_title("Number of players in the match")?;
         tr.append_new_element("th")?.with_text_content("Preset");
         tr.append_new_element("th")?
