@@ -1638,13 +1638,14 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   padding-right: 0.6em;
 }
 #match-list th {
+  min-width: 1.5em;
   padding: 0.3em 0;
 }
 
 .fixed-head-table {
   position: relative;
   overflow-x: hidden;
-  overflow-y: scroll;
+  overflow-y: auto;
   max-height: 75vh;
 }
 .fixed-head-table thead th {
