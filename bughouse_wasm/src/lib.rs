@@ -1267,18 +1267,16 @@ fn update_match_list(matches: &[MatchDescription]) -> JsResult<()> {
         tr.append_new_element("th")?;
     }
     let tbody = table.append_new_element("tbody")?;
-    if matches.is_empty() {
+    // TODO: Allow joining started matched if privacy options allow.
+    let mut matches_iter = matches.iter().filter(|m| !m.started).peekable();
+    if matches_iter.peek().is_none() {
         tbody
             .append_new_element("div")?
             .with_classes(["fixed-head-placeholder-message"])?
             .with_text_content("There no active matches. But you can start one!");
         return Ok(());
     }
-    for m in matches {
-        // TODO: Allow joining started matched if privacy options allow.
-        if m.started {
-            continue;
-        }
+    for m in matches_iter {
         let chess_rules = &m.rules.chess_rules;
         let bughouse_rules = chess_rules.bughouse_rules.as_ref().unwrap();
         let preset = match chess_rules.get_preset() {
