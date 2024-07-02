@@ -137,7 +137,7 @@ impl Client {
             let board_idx = my_envoy.board_idx;
             let board = local_game.board(board_idx);
             let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
-            let turn = get_random_turn(&board);
+            let turn = get_random_turn(board);
             if let Some(turn) = turn {
                 self.state.make_turn(display_board_idx, TurnInput::Explicit(turn)).unwrap();
             } else {

@@ -602,7 +602,7 @@ impl BughouseGame {
     }
 
     pub fn starting_position(&self) -> &EffectiveStartingPosition { &self.starting_position }
-    pub fn rules(&self) -> &Rules { &self.board(BughouseBoard::A).rules() }
+    pub fn rules(&self) -> &Rules { self.board(BughouseBoard::A).rules() }
     pub fn match_rules(&self) -> &MatchRules { &self.rules().match_rules }
     pub fn chess_rules(&self) -> &ChessRules { &self.rules().chess_rules }
     pub fn bughouse_rules(&self) -> &BughouseRules {
