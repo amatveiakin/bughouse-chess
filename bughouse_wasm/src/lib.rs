@@ -1274,7 +1274,6 @@ fn update_match_list(matches: &[MatchDescription]) -> JsResult<()> {
             .append_new_element("div")?
             .with_classes(["fixed-head-placeholder-message"])?
             .with_text_content("There no active matches. But you can start one!");
-        return Ok(());
     }
     for m in matches_iter {
         let chess_rules = &m.rules.chess_rules;
@@ -2292,7 +2291,7 @@ fn render_archive_game_list(
         }
         Ok(td)
     };
-    let table = document.get_existing_element_by_id("archive-game-table")?;
+    let table = document.get_existing_element_by_id("archive-game-list-table")?;
     table.remove_all_children();
     {
         let thead = table.append_new_element("thead")?;
@@ -2311,13 +2310,22 @@ fn render_archive_game_list(
         tr.append_new_element("th")?
             .with_attribute("title", "Hover the icon to preview game, click to open")?;
     }
+
     let tbody = table.append_new_element("tbody")?;
+    let add_bottom_padding = || -> JsResult<()> {
+        tbody
+            .append_new_element("tr")?
+            .with_classes(["fixed-head-table-buttom-padding"])?;
+        Ok(())
+    };
+
     let Some(games) = games else {
         tbody
             .append_new_element("div")?
             .with_classes(["fixed-head-placeholder-message"])?
             .with_text_content("Loading ")
             .append_animated_dots()?;
+        add_bottom_padding()?;
         return Ok(());
     };
     if games.is_empty() {
@@ -2326,6 +2334,7 @@ fn render_archive_game_list(
             .with_classes(["fixed-head-placeholder-message"])?
             .with_text_content("You games will appear here.");
     }
+
     for game in games.into_iter().rev() {
         let game_view_available;
         let (result, result_class) = match game.result {
@@ -2366,9 +2375,7 @@ fn render_archive_game_list(
             }
         }
     }
-    tbody
-        .append_new_element("tr")?
-        .with_classes(["fixed-head-table-buttom-padding"])?;
+    add_bottom_padding()?;
     Ok(())
 }
 
