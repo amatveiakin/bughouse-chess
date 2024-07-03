@@ -231,7 +231,7 @@ impl VariantButton {
             let _prev_id = state_id((i + self.states.len() - 1) % self.states.len());
             let next_id = state_id((i + 1) % self.states.len());
             let class_on_off = if i > 0 { "rule-variant-on" } else { "rule-variant-off" };
-            let button_node = node.append_new_element("button")?;
+            let button_node = node.new_child_element("button")?;
             button_node.set_id(&id);
             button_node.set_attribute("type", "button")?;
             button_node.class_list().add_2("rule-variant-button", class_on_off)?;
@@ -241,7 +241,7 @@ impl VariantButton {
             button_node.set_attribute("data-variant-name", &self.name)?;
             button_node.set_attribute("data-variant-value", &st.value)?;
             button_node.set_inner_html(&st.icon);
-            let caption_node = button_node.append_new_element("div")?;
+            let caption_node = button_node.new_child_element("div")?;
             caption_node.set_class_name("rule-variant-button-caption");
             caption_node.set_text_content(Some(&st.caption));
             button_node.add_event_listener_and_forget("click", move |_: web_sys::Event| {
@@ -282,7 +282,7 @@ impl RuleNode {
         node.set_attribute("name", &self.name)?;
         node.class_list().add_1(&self.class())?;
         for (value, label) in options {
-            let option_node = node.append_new_element("option")?;
+            let option_node = node.new_child_element("option")?;
             option_node.set_attribute("value", &value.to_string())?;
             option_node.set_text_content(Some(&label.to_string()));
         }
@@ -397,7 +397,7 @@ fn standalone_tooltip<'a>(
     let node = web_document()
         .create_element("div")?
         .with_classes(iter::once("tooltip-standalone").chain(additional_classes))?;
-    node.append_new_element("div")?
+    node.new_child_element("div")?
         .with_classes(iter::once("tooltip-text"))?
         .append_child(&body)?;
     Ok(node)
@@ -405,7 +405,7 @@ fn standalone_tooltip<'a>(
 
 fn add_tooltip_below(node: &web_sys::Element, tooltip_body: &web_sys::Element) -> JsResult<()> {
     node.class_list().add_1("tooltip-below")?;
-    let tooltip_node = node.append_new_element("div")?;
+    let tooltip_node = node.new_child_element("div")?;
     tooltip_node.class_list().add_1("tooltip-text")?;
     tooltip_node.append_child(tooltip_body)?;
     Ok(())
@@ -424,8 +424,8 @@ fn combine_elements(
 fn accolade_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("Accolade.")?
-        .append_text(
+        .with_more_text_i("Accolade.")?
+        .with_more_text(
             " Combine a Knight with a Bishop, a Rook or a Queen
             to get a Cardinal, an Empress or an Amazon respectively.
             Combine by moving one piece onto another or by dropping one piece onto another.
@@ -436,8 +436,8 @@ fn accolade_tooltip() -> JsResult<Vec<web_sys::Element>> {
 fn fischer_random_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("Fischer random (Chess960). ")?
-        .append_text(
+        .with_more_text_i("Fischer random (Chess960). ")?
+        .with_more_text(
             "Pawns start as usual. Pieces start on the home ranks, but their
             positions are randomized. Bishops are always of opposite colors.
             King always starts between the rooks. Castling is allowed:
@@ -450,8 +450,8 @@ fn fischer_random_tooltip() -> JsResult<Vec<web_sys::Element>> {
 fn duck_chess_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("Duck chess.")?
-        .append_text(
+        .with_more_text_i("Duck chess.")?
+        .with_more_text(
             " A duck occupies one square on the board and cannot be captured.
             Each move consists of two parts. First, a regular bughouse move.
             Second, moving the duck to any free square on the board. Quack!",
@@ -461,8 +461,8 @@ fn duck_chess_tooltip() -> JsResult<Vec<web_sys::Element>> {
 fn fog_of_war_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("Fog of war (Dark chess).")?
-        .append_text(
+        .with_more_text_i("Fog of war (Dark chess).")?
+        .with_more_text(
             " You only see squares where your pieces can legally move.
             You can drop pieces into the fog of war at your own risk.",
         )?])
@@ -471,8 +471,8 @@ fn fog_of_war_tooltip() -> JsResult<Vec<web_sys::Element>> {
 fn koedem_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("Koedem.")?
-        .append_text(
+        .with_more_text_i("Koedem.")?
+        .with_more_text(
             " Kings can be captured. Upon receiving a king, you must play it immediately.
             The game ends when one team accumulates all four kings
             or when time runs out on any board.",
@@ -495,8 +495,8 @@ fn starting_time_tooltip(max_starting_time: Option<Duration>) -> JsResult<Vec<we
 fn promotion_upgrade_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("Upgrade.")?
-        .append_text(
+        .with_more_text_i("Upgrade.")?
+        .with_more_text(
             " Regular promotion rules.
             Turn the pawn into a Queen, a Rook, a Bishop or a Knight.
             If captured, the piece goes into reserve as a pawn.",
@@ -505,22 +505,23 @@ fn promotion_upgrade_tooltip() -> JsResult<Vec<web_sys::Element>> {
 fn promotion_discard_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("Discard.")?
-        .append_text(
+        .with_more_text_i("Discard.")?
+        .with_more_text(
             " Upon reaching the last rank the pawn is lost and goes to your opponent's reserve.
             You get nothing. C'est la vie.",
         )?])
 }
 fn promotion_steal_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    Ok(vec![
-        web_document().create_element("p")?.append_text_i("Steal.")?.append_text(
+    Ok(vec![web_document()
+        .create_element("p")?
+        .with_more_text_i("Steal.")?
+        .with_more_text(
             " Expropriate your partner opponent's piece when promoting a pawn!
             Can only steal a piece from the board, not from reserve.
             Cannot expose a king to new attacks by stealing a piece
             unless regicide is on (i.e. unless king capture is allowed by
             chess variant like Fog of war or Duck chess).",
-        )?,
-    ])
+        )?])
 }
 fn promotion_steal_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Element>> {
     let exposure = if rules.regicide() {
@@ -529,28 +530,26 @@ fn promotion_steal_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys:
     } else {
         "Cannot expose a king to new attacks by stealing a piece."
     };
-    Ok(vec![
-        web_document()
-            .create_element("p")?
-            .append_text_i("Steal.")?
-            .append_text(&format!(
-                " Expropriate your partner opponent's piece when promoting a pawn!
+    Ok(vec![web_document()
+        .create_element("p")?
+        .with_more_text_i("Steal.")?
+        .with_more_text(&format!(
+            " Expropriate your partner opponent's piece when promoting a pawn!
                 Can only steal a piece from the board, not from reserve. {exposure}",
-            ))?,
-    ])
+        ))?])
 }
 
 fn drop_aggression_no_check_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("No check.")?
-        .append_text(" Drop with a check is forbidden.")?])
+        .with_more_text_i("No check.")?
+        .with_more_text(" Drop with a check is forbidden.")?])
 }
 fn drop_aggression_no_chess_mate_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("No mate.")?
-        .append_text(
+        .with_more_text_i("No mate.")?
+        .with_more_text(
             " Drop with a checkmate is forbidden, even if the opponent can escape
             the checkmate with a drop of their own.",
         )?])
@@ -558,8 +557,8 @@ fn drop_aggression_no_chess_mate_tooltip() -> JsResult<Vec<web_sys::Element>> {
 fn drop_aggression_no_bughouse_mate_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("No bughouse mate.")?
-        .append_text(
+        .with_more_text_i("No bughouse mate.")?
+        .with_more_text(
             " Drop with a checkmate is forbidden, unless the opponent can escape
             the checkmate with a drop of their own (even if their reserve
             is currently empty).",
@@ -568,13 +567,13 @@ fn drop_aggression_no_bughouse_mate_tooltip() -> JsResult<Vec<web_sys::Element>>
 fn drop_aggression_mate_allowed_tooltip() -> JsResult<Vec<web_sys::Element>> {
     Ok(vec![web_document()
         .create_element("p")?
-        .append_text_i("Mate allowed.")?
-        .append_text(" Drop with a checkmate is allowed.")?])
+        .with_more_text_i("Mate allowed.")?
+        .with_more_text(" Drop with a checkmate is allowed.")?])
 }
 
 // Improvement potential: Update based on the current board shape.
 fn pawn_drop_rank_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    let first = web_document().create_element("p")?.append_text(
+    let first = web_document().create_element("p")?.with_more_text(
         "Allowed pawn drop ranks in “min-max” format.
         Ranks are counted starting from the player, so “2-6” means
         White can drop from rank 2 to rank 6 and Black can drop
@@ -582,7 +581,7 @@ fn pawn_drop_rank_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
     )?;
     let second = web_document().create_element("p")?;
     second.append_with_str_1("Limitations:")?;
-    second.append_new_element("br")?;
+    second.new_child_element("br")?;
     second.append_with_str_1("1 ≤ min ≤ max ≤ 7")?;
     Ok(vec![first, second])
 }
@@ -609,7 +608,7 @@ fn pawn_drop_rank_specific_tooltip(
             .push_str(" Pawns on the second rank from the player can always move two squares."),
         _ => {}
     };
-    Ok(vec![web_document().create_element("p")?.append_text(&message)?])
+    Ok(vec![web_document().create_element("p")?.with_more_text(&message)?])
 }
 
 fn regicide_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
@@ -618,12 +617,15 @@ fn regicide_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
         .map(|v| v.to_human_readable())
         .join(", ");
     Ok(vec![
-        web_document().create_element("p")?.append_text_i("Regicide.")?.append_text(
-            " Capture opponent's king in order to win the game.
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("Regicide.")?
+            .with_more_text(
+                " Capture opponent's king in order to win the game.
             There are no checks and checkmates. Drop aggression is always “Mate Allowed”.
             Attacking the king does not prevent castling.",
-        )?,
-        web_document().create_element("p")?.append_text(&format!(
+            )?,
+        web_document().create_element("p")?.with_more_text(&format!(
             "This option is enabled when any of these variants is on: {regicide_variants}."
         ))?,
     ])
@@ -636,12 +638,15 @@ fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Elemen
         _ => "these chess variants: ",
     };
     Ok(vec![
-        web_document().create_element("p")?.append_text_i("Regicide.")?.append_text(
-            " Capture opponent's king in order to win the game.
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("Regicide.")?
+            .with_more_text(
+                " Capture opponent's king in order to win the game.
             There are no checks and checkmates. Drop aggression is always “Mate Allowed”.
             Attacking the king does not prevent castling.",
-        )?,
-        web_document().create_element("p")?.append_text(&format!(
+            )?,
+        web_document().create_element("p")?.with_more_text(&format!(
             "This option is enabled because of {}{}.",
             prefix,
             variants.iter().map(|v| v.to_human_readable()).join(", ")
@@ -653,9 +658,11 @@ fn preset_international_tooltip(time_control: &str) -> JsResult<web_sys::Element
     combine_elements([
         web_document()
             .create_element("p")?
-            .append_text_i("International preset. ")?
-            .append_text(&format!("Classic bughouse ruleset with {time_control} time control."))?,
-        web_document().create_element("p")?.append_text(
+            .with_more_text_i("International preset. ")?
+            .with_more_text(&format!(
+                "Classic bughouse ruleset with {time_control} time control."
+            ))?,
+        web_document().create_element("p")?.with_more_text(
             "Standard starting position and promotion rules.
             Can drop mate, can drop pawns one move away from promotion,
             so even a few reserve pieces can create a lot of pressure.",
@@ -667,9 +674,9 @@ fn preset_modern_tooltip() -> JsResult<web_sys::Element> {
     combine_elements([
         web_document()
             .create_element("p")?
-            .append_text_i("Modern preset. ")?
-            .append_text("Slower and more varied games.")?,
-        web_document().create_element("p")?.append_text(
+            .with_more_text_i("Modern preset. ")?
+            .with_more_text("Slower and more varied games.")?,
+        web_document().create_element("p")?.with_more_text(
             "Random starting positions.
             Stealing promotion opens new avenues of attack and defense.
             Cannot drop mate, pawns have to be dropped at least two
@@ -685,10 +692,10 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
         // Only create the page once, because we leak the closures.
         return Ok(());
     }
-    let presets_node = rules_node.append_new_element("div")?.with_id("create-match-rule-presets");
-    let variants_node = rules_node.append_new_element("div")?.with_id("create-match-rule-variants");
+    let presets_node = rules_node.new_child_element("div")?.with_id("create-match-rule-presets");
+    let variants_node = rules_node.new_child_element("div")?.with_id("create-match-rule-variants");
     let details_node = rules_node
-        .append_new_element("div")?
+        .new_child_element("div")?
         .with_id("create-match-rule-details")
         .with_classes(["menu-page-body"])?;
 
@@ -851,22 +858,22 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
     }
     let table = web_document().create_element("table")?;
     for (i, (icon, name, tooltip)) in variants.into_iter().enumerate() {
-        let tr = table.append_new_element("tr")?;
+        let tr = table.new_child_element("tr")?;
         if i == 0 {
-            tr.append_new_element("td")?
+            tr.new_child_element("td")?
                 .with_classes(["readonly-rule-caption", "valign-baseline"])?
                 .set_text_content(Some("Variants"));
         } else {
-            tr.append_new_element("td")?;
+            tr.new_child_element("td")?;
         };
-        tr.append_new_element("td")?
+        tr.new_child_element("td")?
             .with_classes(["readonly-rule-variant-icon"])?
             .set_inner_html(icon);
-        tr.append_new_element("td")?
+        tr.new_child_element("td")?
             .with_classes(["readonly-rule-variant", "valign-baseline"])?
             .set_text_content(Some(name));
         {
-            let td = tr.append_new_element("td")?;
+            let td = tr.new_child_element("td")?;
             if let Some(tooltip) = tooltip {
                 td.append_element(standalone_tooltip(tooltip, ["tooltip-standalone-small"])?)?;
             }
@@ -874,8 +881,8 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
     }
 
     {
-        let tr = table.append_new_element("tr")?;
-        tr.append_new_element("td")?.with_classes(["readonly-rule-separator"])?;
+        let tr = table.new_child_element("tr")?;
+        tr.new_child_element("td")?.with_classes(["readonly-rule-separator"])?;
     }
 
     let mut rule_rows = vec![];
@@ -927,19 +934,19 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
         }
     }
     for (caption, value, tooltip) in rule_rows {
-        let tr = table.append_new_element("tr")?;
+        let tr = table.new_child_element("tr")?;
         {
             let td = tr
-                .append_new_element("td")?
+                .new_child_element("td")?
                 .with_classes(["readonly-rule-caption", "valign-baseline"])?;
             td.set_text_content(Some(caption));
             td.set_attribute("colspan", "2")?;
         }
-        tr.append_new_element("td")?
+        tr.new_child_element("td")?
             .with_classes(["readonly-rule-detail", "valign-baseline"])?
             .set_text_content(Some(&value));
         {
-            let td = tr.append_new_element("td")?;
+            let td = tr.new_child_element("td")?;
             if let Some(tooltip) = tooltip {
                 td.append_element(standalone_tooltip(tooltip, ["tooltip-standalone-small"])?)?;
             }

@@ -94,7 +94,7 @@ fn new_chat_item(item: &ChatItem) -> JsResult<web_sys::Element> {
     item_node.class_list().add_1("chat-message")?;
 
     if item.sender.is_some() || item.recipient.is_some() {
-        let prefix_node = item_node.append_span(["chat-prefix"])?;
+        let prefix_node = item_node.new_child_span(["chat-prefix"])?;
         if let Some(sender) = &item.sender {
             let (sender_name, sender_class) = chat_party_name_and_class(sender, "sender");
             prefix_node.append_text_span(sender_name, ["chat-sender", &sender_class])?;
@@ -181,8 +181,8 @@ pub fn render_chat_reference_tooltip(
     reference_node.remove_all_children();
     for line in lines {
         let (input, explanation) = line;
-        let line_node = reference_node.append_new_element("div")?;
-        let input_node = line_node.append_span(["chat-reference-input"])?;
+        let line_node = reference_node.new_child_element("div")?;
+        let input_node = line_node.new_child_span(["chat-reference-input"])?;
         for element in input {
             let (text, class) = match element {
                 Command(text) => (text, "chat-reference-command"),
@@ -275,18 +275,18 @@ pub fn render_chat_reference_dialog() -> JsResult<()> {
     let document = web_document();
     let reference_node = document.get_existing_element_by_id("chat-reference-dialog-body")?;
     reference_node.remove_all_children();
-    let table = reference_node.append_new_element("table")?;
+    let table = reference_node.new_child_element("table")?;
     for (group_index, group) in line_groups.iter().enumerate() {
         if group_index > 0 {
             table
-                .append_new_element("tr")?
+                .new_child_element("tr")?
                 .with_classes(["chat-reference-group-separator"])?;
         }
         for line in group {
             let (input, explanation) = line;
-            let line_tr = table.append_new_element("tr")?;
+            let line_tr = table.new_child_element("tr")?;
             let input_td =
-                line_tr.append_new_element("td")?.with_classes(["chat-reference-input"])?;
+                line_tr.new_child_element("td")?.with_classes(["chat-reference-input"])?;
             for element in input.iter() {
                 let (text, class) = match element {
                     Command(text) => (text, "chat-reference-command"),
@@ -297,10 +297,10 @@ pub fn render_chat_reference_dialog() -> JsResult<()> {
                 input_td.append_text_span(text, [class])?;
             }
             let explanation_td =
-                line_tr.append_new_element("td")?.with_classes(["chat-reference-explanation"])?;
+                line_tr.new_child_element("td")?.with_classes(["chat-reference-explanation"])?;
             for (i, l) in explanation.iter().enumerate() {
                 if i > 0 {
-                    explanation_td.append_new_element("br")?;
+                    explanation_td.new_child_element("br")?;
                 }
                 explanation_td.append_text_span(l, [])?;
             }

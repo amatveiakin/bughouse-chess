@@ -983,7 +983,7 @@ impl WebClient {
         node.append_element(
             make_match_caption_body(mtch)?.with_classes(["readonly-rules-match-caption"])?,
         )?;
-        node.append_new_element("hr")?;
+        node.new_child_element("hr")?;
         node.append_element(rules_ui::make_readonly_rules_body(&mtch.rules)?)?;
         Ok(node)
     }
@@ -1238,40 +1238,40 @@ fn update_match_list(matches: &[MatchDescription]) -> JsResult<()> {
     let table = web_document().get_existing_element_by_id("match-list-table")?;
     table.remove_all_children();
     {
-        let thead = table.append_new_element("thead")?;
-        let tr = thead.append_new_element("tr")?;
-        tr.append_new_element("th")?.with_text_content("ID");
-        tr.append_new_element("th")?
+        let thead = table.new_child_element("thead")?;
+        let tr = thead.new_child_element("tr")?;
+        tr.new_child_element("th")?.with_text_content("ID");
+        tr.new_child_element("th")?
             .with_text_content("R")
             .with_title("Whether the match is rated")?;
-        tr.append_new_element("th")?
+        tr.new_child_element("th")?
             .with_text_content("👤︎")
             .with_title("Number of players in the match")?;
-        tr.append_new_element("th")?.with_text_content("Preset");
-        tr.append_new_element("th")?
+        tr.new_child_element("th")?.with_text_content("Preset");
+        tr.new_child_element("th")?
             .with_text_content("Time")
             .with_title("Starting time")?;
-        tr.append_new_element("th")?
+        tr.new_child_element("th")?
             .with_text_content("PD")
             .with_title("Pawn drop ranks")?;
-        tr.append_new_element("th")?.with_text_content("DA").with_title(concat!(
+        tr.new_child_element("th")?.with_text_content("DA").with_title(concat!(
             "Drop aggression:\nM — mate drop allowed;\n",
             "NM — mate drop forbidden;\nNC – check drop forbidden."
         ))?;
-        tr.append_new_element("th")?.with_text_content("Pr").with_title(
+        tr.new_child_element("th")?.with_text_content("Pr").with_title(
             "Promotion:\nUpg — upgrade (regular chess promotion);\nStl — stealing promotion.",
         )?;
-        tr.append_new_element("th")?
+        tr.new_child_element("th")?
             .with_text_content("Variants")
             .with_title("Variants (besides bughouse)")?;
-        tr.append_new_element("th")?;
+        tr.new_child_element("th")?;
     }
-    let tbody = table.append_new_element("tbody")?;
+    let tbody = table.new_child_element("tbody")?;
     // TODO: Allow joining started matched if privacy options allow.
     let mut matches_iter = matches.iter().filter(|m| !m.started).peekable();
     if matches_iter.peek().is_none() {
         tbody
-            .append_new_element("div")?
+            .new_child_element("div")?
             .with_classes(["fixed-head-placeholder-message"])?
             .with_text_content("There no active matches. But you can start one!");
     }
@@ -1298,21 +1298,21 @@ fn update_match_list(matches: &[MatchDescription]) -> JsResult<()> {
         let variants = rules_ui::variant_icons(chess_rules);
         let num_variants = variants.len();
         let variants = variants.join("");
-        let tr = tbody.append_new_element("tr")?;
-        tr.append_new_element("td")?.with_text_content(&m.match_id);
-        tr.append_new_element("td")?
+        let tr = tbody.new_child_element("tr")?;
+        tr.new_child_element("td")?.with_text_content(&m.match_id);
+        tr.new_child_element("td")?
             .with_maybe_text_content(m.rules.match_rules.rated.then_some("⚔️"));
-        tr.append_new_element("td")?.with_text_content(&m.num_players.to_string());
-        tr.append_new_element("td")?.with_text_content(preset);
-        tr.append_new_element("td")?
-            .append_text(&chess_rules.time_control.to_string())?;
-        tr.append_new_element("td")?
-            .append_text(&bughouse_rules.pawn_drop_ranks.to_human_readable())?;
-        tr.append_new_element("td")?.append_text(drop_aggression)?;
-        tr.append_new_element("td")?.append_text(promotion)?;
+        tr.new_child_element("td")?.with_text_content(&m.num_players.to_string());
+        tr.new_child_element("td")?.with_text_content(preset);
+        tr.new_child_element("td")?
+            .with_more_text(&chess_rules.time_control.to_string())?;
+        tr.new_child_element("td")?
+            .with_more_text(&bughouse_rules.pawn_drop_ranks.to_human_readable())?;
+        tr.new_child_element("td")?.with_more_text(drop_aggression)?;
+        tr.new_child_element("td")?.with_more_text(promotion)?;
         {
             // TODO: Variant names tooltip.
-            let td = tr.append_new_element("td")?;
+            let td = tr.new_child_element("td")?;
             td.set_inner_html(&variants);
             for icon in td.children().into_iterator() {
                 icon.class_list().remove_1("rule-variant-icon")?;
@@ -1325,15 +1325,15 @@ fn update_match_list(matches: &[MatchDescription]) -> JsResult<()> {
             }
         }
         {
-            let td = tr.append_new_element("td")?;
-            td.append_new_element("button")?
+            let td = tr.new_child_element("td")?;
+            td.new_child_element("button")?
                 .with_text_content("Join!")
                 .with_classes(["big-button", "inline-join-button"])?
                 .with_attribute("data-join-match-id", &m.match_id)?;
         }
     }
     tbody
-        .append_new_element("tr")?
+        .new_child_element("tr")?
         .with_classes(["fixed-head-table-buttom-padding"])?;
     Ok(())
 }
@@ -1482,7 +1482,7 @@ fn participant_node(
         "participant-status-icon",
         icon_class,
     ])?;
-    node.append_new_element("div")?.with_text_content(&p.name).with_classes([
+    node.new_child_element("div")?.with_text_content(&p.name).with_classes([
         "participant-name",
         location_class,
         width_class,
@@ -1617,14 +1617,14 @@ fn render_reserve(
     for (piece_kind, amount) in reserve_iter {
         let filename = piece_path(piece_kind, force.into(), false);
         let id = reserve_piece_id(board_idx, force, piece_kind);
-        let group_node = reserve_node.append_new_svg_element("g")?;
+        let group_node = reserve_node.new_child_svg_element("g")?;
         group_node.set_id(&id);
         group_node.class_list().add_1("reserve-piece-group")?;
         for iter in 0..amount {
             if iter > 0 {
                 x += piece_sep;
             }
-            let node = group_node.append_new_svg_element("use")?;
+            let node = group_node.new_child_svg_element("use")?;
             node.set_attribute("href", filename)?;
             node.set_attribute("data-bughouse-location", &id)?;
             node.set_attribute("x", &x.to_string())?;
@@ -1848,21 +1848,21 @@ fn update_participants_and_scores(
                         show_readiness,
                         IconPosition::Left,
                     )?;
-                    let tr = table.append_new_element("tr")?;
+                    let tr = table.new_child_element("tr")?;
                     if first {
                         first = false;
                         let score = score_map[team].as_f64();
-                        tr.append_new_element("td")?
+                        tr.new_child_element("td")?
                             .with_classes(["score-player-cell", "score-first-player-name"])?
                             .append_child(&p_node)?;
                         {
                             let td =
-                                tr.append_new_element("td")?.with_classes(["team-score-value"])?;
+                                tr.new_child_element("td")?.with_classes(["team-score-value"])?;
                             td.set_text_content(Some(&score.to_string()));
                             td.set_attribute("rowspan", &team_size.to_string())?;
                         }
                     } else {
-                        tr.append_new_element("td")?
+                        tr.new_child_element("td")?
                             .with_classes(["score-player-cell"])?
                             .append_child(&p_node)?;
                     }
@@ -1889,17 +1889,17 @@ fn update_participants_and_scores(
                     show_readiness,
                     IconPosition::Left,
                 )?;
-                let tr = table.append_new_element("tr")?;
-                tr.append_new_element("td")?
+                let tr = table.new_child_element("tr")?;
+                tr.new_child_element("td")?
                     .with_classes(["score-player-cell"])?
                     .append_child(&p_node)?;
-                tr.append_new_element("td")?
+                tr.new_child_element("td")?
                     .with_classes(["individual-score-value"])?
                     .with_text_content(&score_whole);
-                tr.append_new_element("td")?
+                tr.new_child_element("td")?
                     .with_classes(["individual-score-fraction"])?
                     .with_text_content(&score_fraction);
-                tr.append_new_element("td")?
+                tr.new_child_element("td")?
                     .with_classes(["individual-score-total"])?
                     .with_text_content(&format!("/{}", p.games_played));
             }
@@ -1911,7 +1911,7 @@ fn update_participants_and_scores(
     let observers_node = web_document().get_existing_element_by_id("observers")?;
     observers_node.remove_all_children();
     for p in observers {
-        let node = observers_node.append_new_element("div")?;
+        let node = observers_node.new_child_element("div")?;
         let p_node =
             participant_node(p, ParticipantItemLocation::Score, false, IconPosition::Left)?;
         node.append_child(&p_node)?;
@@ -2030,7 +2030,7 @@ fn update_turn_log(
                     .class_list()
                     .add_2("log-turn-record", "log-turn-record-intervention")?;
 
-                line_node.append_span(["log-turn-number"])?;
+                line_node.new_child_span(["log-turn-number"])?;
 
                 let stealing_hand_node = svg_icon("#stealing-hand", 150, 100, &["log-steal-icon"])?;
                 line_node.append_child(&stealing_hand_node)?;
@@ -2294,34 +2294,34 @@ fn render_archive_game_list(
     let table = document.get_existing_element_by_id("archive-game-list-table")?;
     table.remove_all_children();
     {
-        let thead = table.append_new_element("thead")?;
-        let tr = thead.append_new_element("tr")?;
-        tr.append_new_element("th")?.with_text_content("Game time");
-        tr.append_new_element("th")?
+        let thead = table.new_child_element("thead")?;
+        let tr = thead.new_child_element("tr")?;
+        tr.new_child_element("th")?.with_text_content("Game time");
+        tr.new_child_element("th")?
             .with_text_content("R")
             .with_attribute("title", "Whether the game was rated")?;
-        tr.append_new_element("th")?
+        tr.new_child_element("th")?
             .with_text_content("Teammates")
             .with_attribute("title", "Your team (White, Black)")?;
-        tr.append_new_element("th")?
+        tr.new_child_element("th")?
             .with_text_content("Opponents")
             .with_attribute("title", "Opposing team (White, Black)")?;
-        tr.append_new_element("th")?.with_text_content("Result");
-        tr.append_new_element("th")?
+        tr.new_child_element("th")?.with_text_content("Result");
+        tr.new_child_element("th")?
             .with_attribute("title", "Hover the icon to preview game, click to open")?;
     }
 
-    let tbody = table.append_new_element("tbody")?;
+    let tbody = table.new_child_element("tbody")?;
     let add_bottom_padding = || -> JsResult<()> {
         tbody
-            .append_new_element("tr")?
+            .new_child_element("tr")?
             .with_classes(["fixed-head-table-buttom-padding"])?;
         Ok(())
     };
 
     let Some(games) = games else {
         tbody
-            .append_new_element("div")?
+            .new_child_element("div")?
             .with_classes(["fixed-head-placeholder-message"])?
             .with_text_content("Loading ")
             .append_animated_dots()?;
@@ -2330,7 +2330,7 @@ fn render_archive_game_list(
     };
     if games.is_empty() {
         tbody
-            .append_new_element("div")?
+            .new_child_element("div")?
             .with_classes(["fixed-head-placeholder-message"])?
             .with_text_content("You games will appear here.");
     }
@@ -2344,7 +2344,7 @@ fn render_archive_game_list(
             SubjectiveGameResult::Observation => ("—", "game-archive-result-observation"),
         };
         let tr = tbody
-            .append_new_element("tr")?
+            .new_child_element("tr")?
             .with_id(&archive_game_row_id(game.game_id))
             .with_classes([result_class])?;
         {
@@ -2359,14 +2359,14 @@ fn render_archive_game_list(
             } else {
                 game_start_local.format(format_description!("[year]-[month]-[day]")).unwrap()
             };
-            tr.append_new_element("td")?.set_text_content(Some(&start_time));
+            tr.new_child_element("td")?.set_text_content(Some(&start_time));
         }
-        tr.append_new_element("td")?.set_text_content(game.rated.then_some("⚔️"));
+        tr.new_child_element("td")?.set_text_content(game.rated.then_some("⚔️"));
         tr.append_element(make_team_td(game.teammates)?)?;
         tr.append_element(make_team_td(game.opponents)?)?;
-        tr.append_new_element("td")?.with_text_content(result);
+        tr.new_child_element("td")?.with_text_content(result);
         {
-            let view_td = tr.append_new_element("td")?;
+            let view_td = tr.new_child_element("td")?;
             if game_view_available {
                 view_td
                     .with_text_content("👀")
