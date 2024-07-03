@@ -94,7 +94,7 @@ fn new_chat_item(item: &ChatItem) -> JsResult<web_sys::Element> {
     item_node.class_list().add_1("chat-message")?;
 
     if item.sender.is_some() || item.recipient.is_some() {
-        let prefix_node = item_node.new_child_span(["chat-prefix"])?;
+        let prefix_node = item_node.new_child_element("span")?.with_classes(["chat-prefix"])?;
         if let Some(sender) = &item.sender {
             let (sender_name, sender_class) = chat_party_name_and_class(sender, "sender");
             prefix_node.append_text_span(sender_name, ["chat-sender", &sender_class])?;
@@ -182,7 +182,8 @@ pub fn render_chat_reference_tooltip(
     for line in lines {
         let (input, explanation) = line;
         let line_node = reference_node.new_child_element("div")?;
-        let input_node = line_node.new_child_span(["chat-reference-input"])?;
+        let input_node =
+            line_node.new_child_element("span")?.with_classes(["chat-reference-input"])?;
         for element in input {
             let (text, class) = match element {
                 Command(text) => (text, "chat-reference-command"),

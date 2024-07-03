@@ -47,8 +47,6 @@ pub trait WebElementExt {
 
     fn new_child_element(&self, local_name: &str) -> JsResult<web_sys::Element>;
     fn new_child_svg_element(&self, local_name: &str) -> JsResult<web_sys::Element>;
-    fn new_child_span(&self, classes: impl IntoIterator<Item = &str>)
-        -> JsResult<web_sys::Element>;
 }
 
 impl WebElementExt for web_sys::Element {
@@ -151,7 +149,7 @@ impl WebElementExt for web_sys::Element {
     fn append_text_span(
         &self, text: &str, classes: impl IntoIterator<Item = &str>,
     ) -> JsResult<()> {
-        let span = self.new_child_span(classes)?;
+        let span = self.new_child_element("span")?.with_classes(classes)?;
         span.set_text_content(Some(text));
         Ok(())
     }
@@ -177,12 +175,6 @@ impl WebElementExt for web_sys::Element {
         let node = web_document().create_svg_element(local_name)?;
         self.append_child(&node)?;
         Ok(node)
-    }
-
-    fn new_child_span(
-        &self, classes: impl IntoIterator<Item = &str>,
-    ) -> JsResult<web_sys::Element> {
-        self.new_child_element("span")?.with_classes(classes)
     }
 }
 

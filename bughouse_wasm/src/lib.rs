@@ -2030,7 +2030,7 @@ fn update_turn_log(
                     .class_list()
                     .add_2("log-turn-record", "log-turn-record-intervention")?;
 
-                line_node.new_child_span(["log-turn-number"])?;
+                line_node.new_child_element("span")?.with_classes(["log-turn-number"])?;
 
                 let stealing_hand_node = svg_icon("#stealing-hand", 150, 100, &["log-steal-icon"])?;
                 line_node.append_child(&stealing_hand_node)?;
