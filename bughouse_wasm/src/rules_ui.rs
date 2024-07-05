@@ -13,7 +13,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::bughouse_prelude::*;
 use crate::web_document::web_document;
-use crate::web_element_ext::WebElementExt;
+use crate::web_element_ext::{TooltipPosition, TooltipWidth, WebElementExt};
 use crate::web_error_handling::JsResult;
 use crate::web_iterators::IntoHtmlCollectionIterator;
 use crate::{rust_error, IgnorableError};
@@ -255,7 +255,8 @@ impl VariantButton {
             })?;
         }
         if let Some(tooltip) = &self.tooltip {
-            add_tooltip_below(&node, tooltip)?;
+            node.new_child_tooltip(TooltipPosition::Below, TooltipWidth::L)?
+                .append_child(tooltip)?;
         }
         Ok(node)
     }
@@ -344,7 +345,9 @@ fn preset_button(
     button.add_event_listener_and_forget("click", move |_: web_sys::Event| {
         new_match_apply_preset(preset)
     })?;
-    add_tooltip_below(&button, &tooltip)?;
+    button
+        .new_child_tooltip(TooltipPosition::Below, TooltipWidth::L)?
+        .append_child(&tooltip)?;
     Ok(button)
 }
 
@@ -398,18 +401,9 @@ fn standalone_tooltip<'a>(
         .create_element("div")?
         .with_classes(["tooltip-standalone"])?
         .with_classes(additional_classes)?;
-    node.new_child_element("div")?
-        .with_classes(["tooltip-text", "tooltip-right"])?
+    node.new_child_tooltip(TooltipPosition::Right, TooltipWidth::M)?
         .append_child(&tooltip_body)?;
     Ok(node)
-}
-
-fn add_tooltip_below(node: &web_sys::Element, tooltip_body: &web_sys::Element) -> JsResult<()> {
-    node.class_list().add_1("tooltip-container")?;
-    node.new_child_element("div")?
-        .with_classes(["tooltip-text", "tooltip-below"])?
-        .append_child(tooltip_body)?;
-    Ok(())
 }
 
 fn combine_elements(

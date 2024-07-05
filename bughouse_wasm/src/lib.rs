@@ -43,7 +43,7 @@ use time::macros::{datetime, format_description, offset};
 use time::{OffsetDateTime, UtcOffset};
 use wasm_bindgen::prelude::*;
 use web_document::{web_document, WebDocument};
-use web_element_ext::WebElementExt;
+use web_element_ext::{TooltipPosition, TooltipWidth, WebElementExt};
 use web_error_handling::{JsResult, RustError};
 use web_iterators::IntoHtmlCollectionIterator;
 use web_sys::{ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
@@ -1236,37 +1236,50 @@ fn make_match_caption_body(mtch: &Match) -> JsResult<web_sys::Element> {
 
 fn update_match_list(matches: &[MatchDescription]) -> JsResult<()> {
     let table = web_document().get_existing_element_by_id("match-list-table")?;
-    table.remove_all_children();
-    {
+    let tbody = if table.child_element_count() > 0 {
+        table.get_unique_element_by_tag_name("tbody")?.with_children_removed()
+    } else {
+        use TooltipPosition::Above;
+        use TooltipWidth::Auto;
         let thead = table.new_child_element("thead")?;
         let tr = thead.new_child_element("tr")?;
         tr.new_child_element("th")?.with_text_content("ID");
         tr.new_child_element("th")?
             .with_text_content("R")
-            .with_title("Whether the match is rated")?;
+            .with_plaintext_portal_tooltip(Above, Auto, "Whether the match is rated")?;
         tr.new_child_element("th")?
             .with_text_content("👤︎")
-            .with_title("Number of players in the match")?;
+            .with_plaintext_portal_tooltip(Above, Auto, "Number of players in the match")?;
         tr.new_child_element("th")?.with_text_content("Preset");
         tr.new_child_element("th")?
             .with_text_content("Time")
-            .with_title("Starting time")?;
+            .with_plaintext_portal_tooltip(Above, Auto, "Starting time")?;
         tr.new_child_element("th")?
             .with_text_content("PD")
-            .with_title("Pawn drop ranks")?;
-        tr.new_child_element("th")?.with_text_content("DA").with_title(concat!(
-            "Drop aggression:\nM — mate drop allowed;\n",
-            "NM — mate drop forbidden;\nNC – check drop forbidden."
-        ))?;
-        tr.new_child_element("th")?.with_text_content("Pr").with_title(
-            "Promotion:\nUpg — upgrade (regular chess promotion);\nStl — stealing promotion.",
-        )?;
+            .with_plaintext_portal_tooltip(Above, Auto, "Pawn drop ranks")?;
+        tr.new_child_element("th")?
+            .with_text_content("DA")
+            .with_plaintext_portal_tooltip(
+                Above,
+                Auto,
+                concat!(
+                    "Drop aggression:\nM — mate drop allowed;\n",
+                    "NM — mate drop forbidden;\nNC – check drop forbidden."
+                ),
+            )?;
+        tr.new_child_element("th")?
+            .with_text_content("Pr")
+            .with_plaintext_portal_tooltip(
+                Above,
+                Auto,
+                "Promotion:\nUpg — upgrade (regular chess promotion);\nStl — stealing promotion.",
+            )?;
         tr.new_child_element("th")?
             .with_text_content("Variants")
-            .with_title("Variants (besides bughouse)")?;
+            .with_plaintext_portal_tooltip(Above, Auto, "Variants (besides bughouse)")?;
         tr.new_child_element("th")?;
-    }
-    let tbody = table.new_child_element("tbody")?;
+        table.new_child_element("tbody")?
+    };
     // TODO: Allow joining started matched if privacy options allow.
     let mut matches_iter = matches.iter().filter(|m| !m.started).peekable();
     if matches_iter.peek().is_none() {
@@ -1530,17 +1543,20 @@ fn add_lobby_participant_node(
         node.class_list().add_1(if is_me { "lobby-me" } else { "lobby-other" })
     };
     {
+        let registered_user_container = parent.new_child_element("div")?;
         let registered_user_node = match p.is_registered_user {
             false => make_menu_icon(&[])?,
             true => make_menu_icon(&["registered-user"])?,
         };
         registered_user_node.class_list().add_1("registered-user-icon")?;
+        registered_user_container.append_child(&registered_user_node)?;
         if p.is_registered_user {
-            let title_node = document.create_svg_element("title")?;
-            title_node.set_text_content(Some("This is a registered user account."));
-            registered_user_node.append_child(&title_node)?;
+            registered_user_container
+                .new_child_tooltip(TooltipPosition::Below, TooltipWidth::Auto)?
+                .new_child_element("p")?
+                .with_classes(["ws-pre"])?
+                .with_text_content("This is a registered user account.");
         }
-        parent.append_child(&registered_user_node)?;
     }
     {
         let width_class = match estimate_text_width(&p.name)? {
@@ -2292,26 +2308,31 @@ fn render_archive_game_list(
         Ok(td)
     };
     let table = document.get_existing_element_by_id("archive-game-list-table")?;
-    table.remove_all_children();
-    {
+    let tbody = if table.child_element_count() > 0 {
+        table.get_unique_element_by_tag_name("tbody")?.with_children_removed()
+    } else {
+        use TooltipPosition::Above;
+        use TooltipWidth::Auto;
         let thead = table.new_child_element("thead")?;
         let tr = thead.new_child_element("tr")?;
         tr.new_child_element("th")?.with_text_content("Game time");
         tr.new_child_element("th")?
             .with_text_content("R")
-            .with_attribute("title", "Whether the game was rated")?;
+            .with_plaintext_portal_tooltip(Above, Auto, "Whether the game was rated")?;
         tr.new_child_element("th")?
             .with_text_content("Teammates")
-            .with_attribute("title", "Your team (White, Black)")?;
+            .with_plaintext_portal_tooltip(Above, Auto, "Your team (White, Black)")?;
         tr.new_child_element("th")?
             .with_text_content("Opponents")
-            .with_attribute("title", "Opposing team (White, Black)")?;
+            .with_plaintext_portal_tooltip(Above, Auto, "Opposing team (White, Black)")?;
         tr.new_child_element("th")?.with_text_content("Result");
-        tr.new_child_element("th")?
-            .with_attribute("title", "Hover the icon to preview game, click to open")?;
-    }
-
-    let tbody = table.new_child_element("tbody")?;
+        tr.new_child_element("th")?.with_plaintext_portal_tooltip(
+            Above,
+            Auto,
+            "Hover the icon to preview game, click to open",
+        )?;
+        table.new_child_element("tbody")?
+    };
     let add_bottom_padding = || -> JsResult<()> {
         tbody
             .new_child_element("tr")?

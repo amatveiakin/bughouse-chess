@@ -178,6 +178,12 @@ body.symmetric #page {
   /* Mostly used to allow tooltips to go outside of the dialog area. */
   overflow: visible;
 }
+.ws-pre {
+  white-space: pre;
+}
+.ws-pre-line {
+  white-space: pre-line;
+}
 .full-width {
   width: 100%;
 }
@@ -1110,8 +1116,7 @@ button:disabled:not(.icon-button) {
   background-color: #d0d0d0;
 }
 
-.tooltip-container,
-.tooltip-standalone {
+.tooltip-container {
   position: relative;
 }
 .tooltip-standalone {
@@ -1135,25 +1140,40 @@ button:disabled:not(.icon-button) {
   padding: 0em 1em;
   border-radius: 0.5em;
   position: absolute;
-  z-index: 20;
+  z-index: 200;
   opacity: 0;
   box-shadow: 0.2em 0.2em 0.4em #00000080;
   transition: opacity .3s;
   transition-delay: 0.5s;
 }
+.tooltip-standalone .tooltip-text {
+  transition-delay: 0s;
+}
+
 .tooltip-text.tooltip-right {
-  width: 18em;
   top: 50%;
   left: 100%;
   margin: 0 0 0 1.8em;
   transform: translate(0, -50%);
 }
+.tooltip-text.tooltip-above {
+  top: 0%;
+  left: 50%;
+  margin: -1.2em 0 0 0;
+  transform: translate(-50%, -100%);
+}
 .tooltip-text.tooltip-below {
-  width: 20em;
   top: 100%;
   left: 50%;
   margin: 1.2em 0 0 0;
   transform: translate(-50%, 0);
+}
+
+.tooltip-width-m {
+  width: 18em;
+}
+.tooltip-width-l {
+  width: 20em;
 }
 
 /* Tooltip arrow */
@@ -1169,14 +1189,17 @@ button:disabled:not(.icon-button) {
   margin: -0.5em 0 0 0;
   border-color: transparent var(--color-dialog-tooltip) transparent transparent;
 }
+.tooltip-text.tooltip-above::after {
+  top: 100%;
+  right: 50%;
+  margin: 0 0 -1em 0;
+  border-color: var(--color-dialog-tooltip) transparent transparent transparent;
+}
 .tooltip-text.tooltip-below::after {
   top: 0%;
   right: 50%;
   margin: -1em 0 0 0;
   border-color: transparent transparent var(--color-dialog-tooltip) transparent;
-}
-.tooltip-standalone .tooltip-text {
-  transition-delay: 0s;
 }
 
 .tooltip-standalone::after {
@@ -1194,7 +1217,7 @@ button:disabled:not(.icon-button) {
   cursor: help;
 }
 .tooltip-container:hover .tooltip-text,
-.tooltip-standalone:hover .tooltip-text {
+.tooltip-text.tooltip-force-show {
   visibility: visible;
   opacity: 1;
 }

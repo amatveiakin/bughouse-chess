@@ -33,7 +33,9 @@ bughouse_chess = { path = ".." }
 workspace = true
 features = [
   'CanvasRenderingContext2d',
+  'CssStyleDeclaration',
   'Document',
+  'DomRect',
   'DomTokenList',
   'Element',
   'Event',

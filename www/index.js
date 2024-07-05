@@ -1799,13 +1799,13 @@ function update_session() {
       if (is_registered_user) {
         create_rated_match_button.disabled = false;
         game_archive_button.disabled = false;
-        set_tooltip_right(create_rated_match_button, null);
-        set_tooltip_right(game_archive_button, null);
+        set_short_tooltip_right(create_rated_match_button, null);
+        set_short_tooltip_right(game_archive_button, null);
       } else {
         create_rated_match_button.disabled = true;
         game_archive_button.disabled = true;
-        set_tooltip_right(create_rated_match_button, "Please sign in to play rated games");
-        set_tooltip_right(game_archive_button, "Please sign in to view your game history");
+        set_short_tooltip_right(create_rated_match_button, "Please sign in to play rated games");
+        set_short_tooltip_right(game_archive_button, "Please sign in to view your game history");
       }
       create_unrated_match_button.disabled = false;
       join_match_button.disabled = false;
@@ -2186,15 +2186,16 @@ function download(text, filename) {
   document.body.removeChild(element);
 }
 
-function set_tooltip_right(node, text) {
+function set_short_tooltip_right(node, text) {
   node.classList.add("tooltip-container");
   for (const tooltip_node of node.querySelectorAll(".tooltip-text")) {
     tooltip_node.remove();
   }
   if (text !== null) {
     const tooltip_node = document.createElement("div");
-    tooltip_node.classList.add("tooltip-text", "tooltip-right");
+    tooltip_node.classList.add("tooltip-text", "tooltip-right", "tooltip-width-auto");
     const p = document.createElement("p");
+    p.classList.add("ws-pre");
     p.innerText = text;
     tooltip_node.appendChild(p);
     node.appendChild(tooltip_node);

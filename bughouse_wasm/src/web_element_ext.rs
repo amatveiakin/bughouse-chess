@@ -1,15 +1,53 @@
 use std::ops;
 
+use strum::EnumIter;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::convert::FromWasmAbi;
 use wasm_bindgen::JsCast;
 
+use crate::rust_error;
 use crate::web_document::web_document;
 use crate::web_error_handling::JsResult;
+use crate::web_iterators::HtmlCollectionIterator;
 
 
-// Name convention:
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
+pub enum TooltipPosition {
+    Right,
+    Above,
+    Below,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
+pub enum TooltipWidth {
+    Auto,
+    M,
+    L,
+}
+
+impl TooltipPosition {
+    pub fn to_class_name(&self) -> &str {
+        match self {
+            TooltipPosition::Right => "tooltip-right",
+            TooltipPosition::Above => "tooltip-above",
+            TooltipPosition::Below => "tooltip-below",
+        }
+    }
+}
+
+impl TooltipWidth {
+    pub fn to_class_name(&self) -> &str {
+        match self {
+            TooltipWidth::Auto => "tooltip-width-auto",
+            TooltipWidth::M => "tooltip-width-m",
+            TooltipWidth::L => "tooltip-width-l",
+        }
+    }
+}
+
+// Name convention for functions returning `web_sys::Element`:
 //   - `with_` prefix: functions returning `self`,
+//   - `get_` prefix: functions that find existing child elements,
 //   - `new_child_` prefix: functions creating a new child element and returning it,
 //   - other functions should not return a `web_sys::Element`.
 pub trait WebElementExt {
@@ -18,15 +56,19 @@ pub trait WebElementExt {
     fn with_text_content(self, text: &str) -> web_sys::Element;
     fn with_more_text(self, text: &str) -> JsResult<web_sys::Element>;
     fn with_more_text_i(self, text: &str) -> JsResult<web_sys::Element>;
-    // TODO: Use it where appropriate.
-    // TODO: Use our beautiful tooltips instead. Need to figure out how to fix them for elements
-    // inside `overflow: hidden` containers.
-    fn with_title(self, title_text: &str) -> JsResult<web_sys::Element>;
     fn with_attribute(self, name: &str, value: &str) -> JsResult<web_sys::Element>;
     fn with_classes(self, classes: impl IntoIterator<Item = &str>) -> JsResult<web_sys::Element>;
+    // Do not use portal tooltips on temporary elements! (see `new_child_portal_tooltip`)
+    fn with_plaintext_portal_tooltip(
+        self, position: TooltipPosition, width: TooltipWidth, text: &str,
+    ) -> JsResult<web_sys::Element>;
+    fn with_children_removed(self) -> web_sys::Element;
 
     fn is_displayed(&self) -> bool;
     fn set_displayed(&self, displayed: bool) -> JsResult<()>;
+
+    fn get_unique_element_by_tag_name(&self, local_name: &str) -> JsResult<web_sys::Element>;
+    fn get_elements_by_class_name_iter(&self, class_name: &str) -> HtmlCollectionIterator;
 
     fn add_event_listener_and_forget<E: FromWasmAbi + 'static>(
         &self, event_type: &str, listener: impl FnMut(E) -> JsResult<()> + 'static,
@@ -47,6 +89,17 @@ pub trait WebElementExt {
 
     fn new_child_element(&self, local_name: &str) -> JsResult<web_sys::Element>;
     fn new_child_svg_element(&self, local_name: &str) -> JsResult<web_sys::Element>;
+    fn new_child_tooltip(
+        &self, position: TooltipPosition, width: TooltipWidth,
+    ) -> JsResult<web_sys::Element>;
+    // Produces the same visual result as `new_child_tooltip`, but uses the portal approach to
+    // escape parent element clipping. Prefer `new_child_tooltip` when possible.
+    // Do not use portal tooltips on temporary elements! There is currently no mechanism to clean up
+    // the tooltip when the element is deleted. This is always a memory leak and in the worst case
+    // the tooltip could get stuck in the displayed state until page refresh.
+    fn new_child_portal_tooltip(
+        &self, position: TooltipPosition, width: TooltipWidth,
+    ) -> JsResult<web_sys::Element>;
 }
 
 impl WebElementExt for web_sys::Element {
@@ -75,10 +128,6 @@ impl WebElementExt for web_sys::Element {
         Ok(self)
     }
 
-    fn with_title(self, title_text: &str) -> JsResult<web_sys::Element> {
-        self.with_attribute("title", title_text)
-    }
-
     fn with_attribute(self, name: &str, value: &str) -> JsResult<web_sys::Element> {
         self.set_attribute(name, value)?;
         Ok(self)
@@ -91,6 +140,22 @@ impl WebElementExt for web_sys::Element {
         Ok(self)
     }
 
+    fn with_plaintext_portal_tooltip(
+        self, position: TooltipPosition, width: TooltipWidth, text: &str,
+    ) -> JsResult<web_sys::Element> {
+        let tooltip_node = self.new_child_portal_tooltip(position, width)?;
+        tooltip_node
+            .new_child_element("p")?
+            .with_classes(["ws-pre-line"])?
+            .with_text_content(text);
+        Ok(self)
+    }
+
+    fn with_children_removed(self) -> web_sys::Element {
+        self.remove_all_children();
+        self
+    }
+
     fn is_displayed(&self) -> bool { !self.class_list().contains("display-none") }
 
     // TODO: Sync with `set_displayed` in `index.js`: either always use `display-none` class or
@@ -98,6 +163,19 @@ impl WebElementExt for web_sys::Element {
     fn set_displayed(&self, displayed: bool) -> JsResult<()> {
         self.class_list().toggle_with_force("display-none", !displayed)?;
         Ok(())
+    }
+
+    fn get_unique_element_by_tag_name(&self, local_name: &str) -> JsResult<web_sys::Element> {
+        let collection = self.get_elements_by_tag_name(local_name);
+        match collection.length() {
+            0 => Err(rust_error!("Cannot find element with tag name \"{}\"", local_name)),
+            1 => Ok(collection.get_with_index(0).unwrap()),
+            _ => Err(rust_error!("Expected exactly one element with tag name \"{}\"", local_name)),
+        }
+    }
+
+    fn get_elements_by_class_name_iter(&self, class_name: &str) -> HtmlCollectionIterator {
+        self.get_elements_by_class_name(class_name).into()
     }
 
     // TODO: Don't leak, let JS GC handle it. In order to GC the closure when the element is deleted
@@ -176,6 +254,76 @@ impl WebElementExt for web_sys::Element {
         self.append_child(&node)?;
         Ok(node)
     }
+
+    // TODO: Dedup with `set_tooltip` in `index.js`.
+    fn new_child_tooltip(
+        &self, position: TooltipPosition, width: TooltipWidth,
+    ) -> JsResult<web_sys::Element> {
+        self.class_list().add_1("tooltip-container")?;
+        for tooltip_node in self.get_elements_by_class_name_iter("tooltip-text") {
+            tooltip_node.remove();
+        }
+        Ok(self.new_child_element("div")?.with_classes([
+            "tooltip-text",
+            position.to_class_name(),
+            width.to_class_name(),
+        ])?)
+    }
+
+    fn new_child_portal_tooltip(
+        &self, position: TooltipPosition, width: TooltipWidth,
+    ) -> JsResult<web_sys::Element> {
+        if self.get_elements_by_class_name("tooltip-text").length() > 0 {
+            // Shouldn't call many times, because we leak callbacks.
+            // TODO: Fix closure leaks and allow to change tooltips.
+            return Err(rust_error!("`with_tooltip` must be called at most once"));
+        }
+        let tooltip_node = web_document().body()?.new_child_element("div")?.with_classes([
+            "tooltip-text",
+            position.to_class_name(),
+            width.to_class_name(),
+        ])?;
+        let parent = self.clone();
+        let tooltip_node1 = tooltip_node.clone().dyn_into::<web_sys::HtmlElement>()?;
+        let tooltip_node2 = tooltip_node1.clone();
+        self.add_event_listener_and_forget("mouseenter", move |_: web_sys::Event| {
+            // https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect quote:
+            // "If you need the bounding rectangle relative to the top-left corner of the document,
+            // just add the current scrolling position to the top and left properties (these can be
+            // obtained using window.scrollY and window.scrollX) to get a bounding rectangle which
+            // is independent from the current scrolling position."
+            let window = web_sys::window().unwrap();
+            let parent_rect = parent.get_bounding_client_rect();
+            let (mut x, mut y) = match position {
+                TooltipPosition::Right => {
+                    (parent_rect.right(), parent_rect.top() + parent_rect.height() / 2.0)
+                }
+                TooltipPosition::Above => {
+                    (parent_rect.left() + parent_rect.width() / 2.0, parent_rect.top())
+                }
+                TooltipPosition::Below => {
+                    (parent_rect.left() + parent_rect.width() / 2.0, parent_rect.bottom())
+                }
+            };
+            x += window.scroll_x()?;
+            y += window.scroll_y()?;
+            set_coordinates(&tooltip_node1, x, y)?;
+            tooltip_node1.class_list().add_1("tooltip-force-show")?;
+            Ok(())
+        })?;
+        self.add_event_listener_and_forget("mouseleave", move |_: web_sys::Event| {
+            tooltip_node2.class_list().remove_1("tooltip-force-show")?;
+            Ok(())
+        })?;
+        Ok(tooltip_node)
+    }
+}
+
+fn set_coordinates(node: &web_sys::HtmlElement, x: f64, y: f64) -> JsResult<()> {
+    let style = node.style();
+    style.set_property("left", &format!("{}px", x))?;
+    style.set_property("top", &format!("{}px", y))?;
+    Ok(())
 }
 
 // TODO: Show error content when the callback passed to `add_event_listener_and_forget` fails.
