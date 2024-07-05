@@ -402,8 +402,8 @@
               <span class="logged-in-as-prefix">Playing as</span><br>
               <span class="logged-in-as-account">Guest</span>
             </div>
-            <div id="guest-user-tooltip" class="tooltip-right tooltip-standalone">
-              <div class="tooltip-text">
+            <div id="guest-user-tooltip" class="tooltip-standalone">
+              <div class="tooltip-text tooltip-right">
                 <p>
                   Bughouse.pro is free and available to everybody. As a guest, you can create or
                   join unrated games without limitations. Please log in to play rated and to enable
@@ -424,13 +424,13 @@
         </div>
         <div class="flex-col-stretch">
           <div class="align-center">
-            <button id="create-rated-match-button" class="big-button compact-big-button tooltip-right">New rated match</button>
+            <button id="create-rated-match-button" class="big-button compact-big-button">New rated match</button>
           </div>
           <div class="align-center">
-            <button id="create-unrated-match-button" class="big-button compact-big-button tooltip-right">New unrated match</button>
+            <button id="create-unrated-match-button" class="big-button compact-big-button">New unrated match</button>
           </div>
           <div class="align-center">
-            <button id="join-match-button" class="big-button compact-big-button tooltip-right">Join by ID...</button>
+            <button id="join-match-button" class="big-button compact-big-button">Join by ID...</button>
           </div>
           <div class="flex-grow"></div>
           <div class="flex-row-full">
@@ -438,7 +438,7 @@
             <button data-suburl="/dyn/history" class="flex-grow">Rating hist.</button>
           </div>
           <div class="flex-row-full">
-            <button id="game-archive-button" class="flex-grow tooltip-right">My games</button>
+            <button id="game-archive-button" class="flex-grow">My games</button>
             <button data-suburl="/about/" class="flex-grow">About</button>
           </div>
           <div class="flex-row-full">
@@ -519,8 +519,8 @@
       <div class="menu-page-body">
         <label for="signup-user-name">Account name *</label>
         <input type="text" id="signup-user-name" name="user_name" class="new-user-name" />
-        <div class="tooltip-right tooltip-standalone">
-          <div class="tooltip-text">
+        <div class="tooltip-standalone">
+          <div class="tooltip-text tooltip-right">
             <p>
               Account name (required). Your unique public identifier at bughouse.pro.
               May contain letters, numbers, underscores and dashes.
@@ -531,8 +531,8 @@
         <label for="signup-email">Email</label>
         <input type="email" id="signup-email" name="email"
           placeholder="&nbsp;" autocomplete="email" />
-        <div class="tooltip-right tooltip-standalone">
-          <div class="tooltip-text">
+        <div class="tooltip-standalone">
+          <div class="tooltip-text tooltip-right">
             <p>
               Your email (optional). We do not send spam.
               The email is only used in order to restore your account if you forget your password.
@@ -543,8 +543,8 @@
         <label for="signup-password">Password *</label>
         <input type="password" id="signup-password" name="password"
           placeholder="&nbsp;" minlength="8" autocomplete="new-password" required />
-        <div class="tooltip-right tooltip-standalone">
-          <div class="tooltip-text">
+        <div class="tooltip-standalone">
+          <div class="tooltip-text tooltip-right">
             <p>Password (required). Must be at least 8 characters long. Case-sensitive.</p>
           </div>
         </div>
@@ -566,8 +566,8 @@
       <div class="menu-page-body">
         <label for="signup-with-google-user-name">Account name *</label>
         <input type="text" id="signup-with-google-user-name" name="user_name" class="new-user-name" />
-        <div class="tooltip-right tooltip-standalone">
-          <div class="tooltip-text">
+        <div class="tooltip-standalone">
+          <div class="tooltip-text tooltip-right">
             <p>
               Account name (required). Your unique public identifier at bughouse.pro.
               May contain letters, numbers, underscores and dashes.
@@ -591,8 +591,8 @@
       <div class="menu-page-body">
         <label for="signup-with-lichess-user-name">Account name *</label>
         <input type="text" id="signup-with-lichess-user-name" name="user_name" class="new-user-name" />
-        <div class="tooltip-right tooltip-standalone">
-          <div class="tooltip-text">
+        <div class="tooltip-standalone">
+          <div class="tooltip-text tooltip-right">
             <p>
               Account name (required). Your unique public identifier at bughouse.pro.
               May contain letters, numbers, underscores and dashes.
@@ -649,8 +649,8 @@
         <label for="change-account-email">Email</label>
         <input type="email" id="change-account-email" name="email"
           placeholder="no email" autocomplete="email" />
-        <div class="tooltip-right tooltip-standalone">
-          <div class="tooltip-text">
+        <div class="tooltip-standalone">
+          <div class="tooltip-text tooltip-right">
             <p>
               Your email (optional; clear the field to remove). We do not send spam.
               The email is only used in order to restore your account if you forget your password.
@@ -661,8 +661,8 @@
         <label for="change-account-new-password">New password</label>
         <input type="password" id="change-account-new-password" name="new_password"
           placeholder="keep current password" minlength="8" autocomplete="new-password" />
-        <div class="tooltip-right tooltip-standalone">
-          <div class="tooltip-text">
+        <div class="tooltip-standalone">
+          <div class="tooltip-text tooltip-right">
             <p>
               New password (leave empty to keep the current password).
               Must be at least 8 characters long. Case-sensitive.

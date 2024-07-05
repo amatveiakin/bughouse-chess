@@ -1110,9 +1110,8 @@ button:disabled:not(.icon-button) {
   background-color: #d0d0d0;
 }
 
-.tooltip-standalone,
-.tooltip-right,
-.tooltip-below {
+.tooltip-container,
+.tooltip-standalone {
   position: relative;
 }
 .tooltip-standalone {
@@ -1142,14 +1141,14 @@ button:disabled:not(.icon-button) {
   transition: opacity .3s;
   transition-delay: 0.5s;
 }
-.tooltip-right .tooltip-text {
+.tooltip-text.tooltip-right {
   width: 18em;
   top: 50%;
   left: 100%;
   margin: 0 0 0 1.8em;
   transform: translate(0, -50%);
 }
-.tooltip-below .tooltip-text {
+.tooltip-text.tooltip-below {
   width: 20em;
   top: 100%;
   left: 50%;
@@ -1164,13 +1163,13 @@ button:disabled:not(.icon-button) {
   border-width: 0.5em;
   border-style: solid;
 }
-.tooltip-right .tooltip-text::after {
+.tooltip-text.tooltip-right::after {
   top: 50%;
   right: 100%;
   margin: -0.5em 0 0 0;
   border-color: transparent var(--color-dialog-tooltip) transparent transparent;
 }
-.tooltip-below .tooltip-text::after {
+.tooltip-text.tooltip-below::after {
   top: 0%;
   right: 50%;
   margin: -1em 0 0 0;
@@ -1194,9 +1193,8 @@ button:disabled:not(.icon-button) {
 .tooltip-standalone:hover {
   cursor: help;
 }
-.tooltip-standalone:hover .tooltip-text,
-.tooltip-below:hover .tooltip-text,
-.tooltip-right:hover .tooltip-text {
+.tooltip-container:hover .tooltip-text,
+.tooltip-standalone:hover .tooltip-text {
   visibility: visible;
   opacity: 1;
 }

@@ -396,18 +396,18 @@ fn standalone_tooltip<'a>(
 ) -> JsResult<web_sys::Element> {
     let node = web_document()
         .create_element("div")?
-        .with_classes(["tooltip-right", "tooltip-standalone"])?
+        .with_classes(["tooltip-standalone"])?
         .with_classes(additional_classes)?;
     node.new_child_element("div")?
-        .with_classes(["tooltip-text"])?
+        .with_classes(["tooltip-text", "tooltip-right"])?
         .append_child(&tooltip_body)?;
     Ok(node)
 }
 
 fn add_tooltip_below(node: &web_sys::Element, tooltip_body: &web_sys::Element) -> JsResult<()> {
-    node.class_list().add_1("tooltip-below")?;
+    node.class_list().add_1("tooltip-container")?;
     node.new_child_element("div")?
-        .with_classes(["tooltip-text"])?
+        .with_classes(["tooltip-text", "tooltip-below"])?
         .append_child(tooltip_body)?;
     Ok(())
 }

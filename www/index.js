@@ -1799,13 +1799,13 @@ function update_session() {
       if (is_registered_user) {
         create_rated_match_button.disabled = false;
         game_archive_button.disabled = false;
-        set_tooltip(create_rated_match_button, null);
-        set_tooltip(game_archive_button, null);
+        set_tooltip_right(create_rated_match_button, null);
+        set_tooltip_right(game_archive_button, null);
       } else {
         create_rated_match_button.disabled = true;
         game_archive_button.disabled = true;
-        set_tooltip(create_rated_match_button, "Please sign in to play rated games");
-        set_tooltip(game_archive_button, "Please sign in to view your game history");
+        set_tooltip_right(create_rated_match_button, "Please sign in to play rated games");
+        set_tooltip_right(game_archive_button, "Please sign in to view your game history");
       }
       create_unrated_match_button.disabled = false;
       join_match_button.disabled = false;
@@ -2186,14 +2186,14 @@ function download(text, filename) {
   document.body.removeChild(element);
 }
 
-// Must have corresponding tooltip class (`tooltip-right` or `tooltip-below`).
-function set_tooltip(node, text) {
+function set_tooltip_right(node, text) {
+  node.classList.add("tooltip-container");
   for (const tooltip_node of node.querySelectorAll(".tooltip-text")) {
     tooltip_node.remove();
   }
   if (text !== null) {
     const tooltip_node = document.createElement("div");
-    tooltip_node.className = "tooltip-text";
+    tooltip_node.classList.add("tooltip-text", "tooltip-right");
     const p = document.createElement("p");
     p.innerText = text;
     tooltip_node.appendChild(p);
