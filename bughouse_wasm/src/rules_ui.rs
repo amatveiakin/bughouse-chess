@@ -3,8 +3,8 @@
 //   callback closures in order to dedup WASM code and reduce RAM usage.
 
 use std::collections::HashMap;
+use std::fmt;
 use std::time::Duration;
-use std::{fmt, iter};
 
 use bughouse_chess::client::ServerOptions;
 use itertools::Itertools;
@@ -392,22 +392,23 @@ fn activate_preset_button(preset: Option<RulesPreset>) -> JsResult<()> {
 fn rule_setting_class(name: &str) -> String { format!("rule-setting-{}", name) }
 
 fn standalone_tooltip<'a>(
-    body: web_sys::Element, additional_classes: impl IntoIterator<Item = &'a str>,
+    tooltip_body: web_sys::Element, additional_classes: impl IntoIterator<Item = &'a str>,
 ) -> JsResult<web_sys::Element> {
     let node = web_document()
         .create_element("div")?
-        .with_classes(iter::once("tooltip-standalone").chain(additional_classes))?;
+        .with_classes(["tooltip-right", "tooltip-standalone"])?
+        .with_classes(additional_classes)?;
     node.new_child_element("div")?
-        .with_classes(iter::once("tooltip-text"))?
-        .append_child(&body)?;
+        .with_classes(["tooltip-text"])?
+        .append_child(&tooltip_body)?;
     Ok(node)
 }
 
 fn add_tooltip_below(node: &web_sys::Element, tooltip_body: &web_sys::Element) -> JsResult<()> {
     node.class_list().add_1("tooltip-below")?;
-    let tooltip_node = node.new_child_element("div")?;
-    tooltip_node.class_list().add_1("tooltip-text")?;
-    tooltip_node.append_child(tooltip_body)?;
+    node.new_child_element("div")?
+        .with_classes(["tooltip-text"])?
+        .append_child(tooltip_body)?;
     Ok(())
 }
 

@@ -1132,38 +1132,42 @@ button:disabled:not(.icon-button) {
   font-size: calc(0.9 * var(--dialog-rem));
   color: #000000;
   white-space: normal;
-  width: 18em;
   background-color: var(--color-dialog-tooltip);
   padding: 0em 1em;
   border-radius: 0.5em;
   position: absolute;
   z-index: 20;
-  top: 0%;
-  left: 100%;
-  margin: 0 0 0 1.8em;
   opacity: 0;
   box-shadow: 0.2em 0.2em 0.4em #00000080;
   transition: opacity .3s;
-  transform: translate(0, -50%) translate(0, 2em);
+  transition-delay: 0.5s;
+}
+.tooltip-right .tooltip-text {
+  width: 18em;
+  top: 50%;
+  left: 100%;
+  margin: 0 0 0 1.8em;
+  transform: translate(0, -50%);
 }
 .tooltip-below .tooltip-text {
   width: 20em;
   top: 100%;
   left: 50%;
   margin: 1.2em 0 0 0;
-  transition-delay: 0.5s;
-  transform: translate(-50%, 0) translate(0, 0);
+  transform: translate(-50%, 0);
 }
 
 /* Tooltip arrow */
 .tooltip-text::after {
   content: "";
   position: absolute;
+  border-width: 0.5em;
+  border-style: solid;
+}
+.tooltip-right .tooltip-text::after {
   top: 50%;
   right: 100%;
   margin: -0.5em 0 0 0;
-  border-width: 0.5em;
-  border-style: solid;
   border-color: transparent var(--color-dialog-tooltip) transparent transparent;
 }
 .tooltip-below .tooltip-text::after {
@@ -1171,6 +1175,9 @@ button:disabled:not(.icon-button) {
   right: 50%;
   margin: -1em 0 0 0;
   border-color: transparent transparent var(--color-dialog-tooltip) transparent;
+}
+.tooltip-standalone .tooltip-text {
+  transition-delay: 0s;
 }
 
 .tooltip-standalone::after {
