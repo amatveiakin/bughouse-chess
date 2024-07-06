@@ -1540,7 +1540,6 @@ fn make_menu_icon(images: &[&str]) -> JsResult<web_sys::Element> {
     let document = web_document();
     let svg_node = document.create_svg_element("svg")?;
     svg_node.set_attribute("viewBox", "0 0 10 10")?;
-    svg_node.set_attribute("class", "lobby-icon")?;
     for img in images {
         let use_node = document.create_svg_element("use")?;
         use_node.set_attribute("href", &format!("#{img}"))?;
@@ -1548,6 +1547,41 @@ fn make_menu_icon(images: &[&str]) -> JsResult<web_sys::Element> {
         svg_node.append_child(&use_node)?;
     }
     Ok(svg_node)
+}
+
+fn lobby_faction_tooltip() -> JsResult<web_sys::Element> {
+    let make_td =
+        |tr: &web_sys::Element| tr.new_child_element("td")?.with_classes(["valign-baseline"]);
+    let make_icon = |images| make_menu_icon(images)?.with_classes(["lobby-tooltip-icon"]);
+    let p = web_document().create_element("p")?;
+    let table = p.new_child_element("table")?;
+    {
+        let tr = table.new_child_element("tr")?;
+        tr.new_child_element("td")?
+            .with_attribute("colspan", "2")?
+            .with_text_content("Team:");
+    }
+    {
+        let tr = table.new_child_element("tr")?;
+        make_td(&tr)?.append_element(make_icon(&["faction-random"])?)?;
+        make_td(&tr)?.with_text_content("Randomized each game;");
+    }
+    {
+        let tr = table.new_child_element("tr")?;
+        make_td(&tr)?.append_element(make_icon(&["faction-red"])?)?;
+        make_td(&tr)?.with_text_content("Red team;");
+    }
+    {
+        let tr = table.new_child_element("tr")?;
+        make_td(&tr)?.append_element(make_icon(&["faction-blue"])?)?;
+        make_td(&tr)?.with_text_content("Blue team;");
+    }
+    {
+        let tr = table.new_child_element("tr")?;
+        make_td(&tr)?.append_element(make_icon(&["faction-observer"])?)?;
+        make_td(&tr)?.with_text_content("Observer (can become a player later if desired).");
+    }
+    Ok(p)
 }
 
 fn add_lobby_participant_node(
@@ -1563,7 +1597,7 @@ fn add_lobby_participant_node(
             false => make_menu_icon(&[])?,
             true => make_menu_icon(&["registered-user"])?,
         };
-        registered_user_node.class_list().add_1("registered-user-icon")?;
+        registered_user_node.class_list().add_1("lobby-registered-user-icon")?;
         registered_user_container.append_child(&registered_user_node)?;
         if p.is_registered_user {
             registered_user_container
@@ -1586,17 +1620,22 @@ fn add_lobby_participant_node(
         parent.append_child(&name_node)?;
     }
     {
+        let faction_node_container = parent.new_child_element("div")?;
         let faction_node = match p.active_faction {
             Faction::Fixed(Team::Red) => make_menu_icon(&["faction-red"])?,
             Faction::Fixed(Team::Blue) => make_menu_icon(&["faction-blue"])?,
             Faction::Random => make_menu_icon(&["faction-random"])?,
             Faction::Observer => make_menu_icon(&["faction-observer"])?,
         };
+        faction_node.class_list().add_1("lobby-icon")?;
         add_relation_class(&faction_node)?;
         if is_me {
             faction_node.set_id("my-faction");
         }
-        parent.append_child(&faction_node)?;
+        faction_node_container.append_child(&faction_node)?;
+        faction_node_container
+            .new_child_tooltip(TooltipPosition::Right, TooltipWidth::M)?
+            .append_element(lobby_faction_tooltip()?)?;
     }
     {
         let readiness_node = match (p.active_faction, p.is_ready) {
@@ -1604,6 +1643,7 @@ fn add_lobby_participant_node(
             (_, false) => make_menu_icon(&["readiness-checkbox"])?,
             (_, true) => make_menu_icon(&["readiness-checkbox", "readiness-checkmark"])?,
         };
+        readiness_node.class_list().add_1("lobby-icon")?;
         add_relation_class(&readiness_node)?;
         if is_me {
             readiness_node.set_id("my-readiness");

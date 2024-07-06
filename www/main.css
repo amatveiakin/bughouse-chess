@@ -1624,9 +1624,15 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   width: 2em;
   height: 2em;
 }
-.lobby-icon.registered-user-icon {
+.lobby-registered-user-icon {
   width: 1em;
   height: 1em;
+}
+.lobby-tooltip-icon {
+  width: 1.8em;
+  height: 1.8em;
+  padding: 0 0.1em;
+  vertical-align: middle;
 }
 .lobby-name-xl {
   font-size: 90%;
