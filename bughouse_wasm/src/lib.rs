@@ -1220,6 +1220,24 @@ pub fn update_new_match_rules_body() -> JsResult<()> { rules_ui::update_new_matc
 #[wasm_bindgen]
 pub fn git_version() -> String { my_git_version!().to_owned() }
 
+// Creates new table or resets the body of the existing one while keeping the header.
+// Keeping the header is important! It's not just an optimization, it is also required for
+// correctness because header columns often use portal tooltips.
+// Returns the `tbody` element.
+fn reset_embossed_table(
+    parent: &web_sys::Element, make_head: impl FnOnce(&web_sys::Element) -> JsResult<()>,
+) -> JsResult<web_sys::Element> {
+    if parent.child_element_count() > 0 {
+        Ok(parent.get_unique_element_by_tag_name("tbody")?.with_children_removed())
+    } else {
+        let wrapper = parent.new_child_element("div")?.with_classes(["fixed-head-table"])?;
+        let table = wrapper.new_child_element("table")?.with_classes(["embossed-table"])?;
+        make_head(&table.new_child_element("thead")?)?;
+        let tbody = table.new_child_element("tbody")?;
+        Ok(tbody)
+    }
+}
+
 fn make_match_caption_body(mtch: &Match) -> JsResult<web_sys::Element> {
     let prefix = if mtch.rules.match_rules.rated {
         "Rated match "
@@ -1235,13 +1253,10 @@ fn make_match_caption_body(mtch: &Match) -> JsResult<web_sys::Element> {
 }
 
 fn update_match_list(matches: &[MatchDescription]) -> JsResult<()> {
-    let table = web_document().get_existing_element_by_id("match-list-table")?;
-    let tbody = if table.child_element_count() > 0 {
-        table.get_unique_element_by_tag_name("tbody")?.with_children_removed()
-    } else {
+    let container = web_document().get_existing_element_by_id("match-list")?;
+    let tbody = reset_embossed_table(&container, |thead| {
         use TooltipPosition::Above;
         use TooltipWidth::Auto;
-        let thead = table.new_child_element("thead")?;
         let tr = thead.new_child_element("tr")?;
         tr.new_child_element("th")?.with_text_content("ID");
         tr.new_child_element("th")?
@@ -1278,8 +1293,8 @@ fn update_match_list(matches: &[MatchDescription]) -> JsResult<()> {
             .with_text_content("Variants")
             .with_plaintext_portal_tooltip(Above, Auto, "Variants (besides bughouse)")?;
         tr.new_child_element("th")?;
-        table.new_child_element("tbody")?
-    };
+        Ok(())
+    })?;
     // TODO: Allow joining started matched if privacy options allow.
     let mut matches_iter = matches.iter().filter(|m| !m.started).peekable();
     if matches_iter.peek().is_none() {
@@ -2307,13 +2322,10 @@ fn render_archive_game_list(
         }
         Ok(td)
     };
-    let table = document.get_existing_element_by_id("archive-game-list-table")?;
-    let tbody = if table.child_element_count() > 0 {
-        table.get_unique_element_by_tag_name("tbody")?.with_children_removed()
-    } else {
+    let container = web_document().get_existing_element_by_id("archive-game-list")?;
+    let tbody = reset_embossed_table(&container, |thead| {
         use TooltipPosition::Above;
         use TooltipWidth::Auto;
-        let thead = table.new_child_element("thead")?;
         let tr = thead.new_child_element("tr")?;
         tr.new_child_element("th")?.with_text_content("Game time");
         tr.new_child_element("th")?
@@ -2331,8 +2343,8 @@ fn render_archive_game_list(
             Auto,
             "Hover the icon to preview game, click to open",
         )?;
-        table.new_child_element("tbody")?
-    };
+        Ok(())
+    })?;
     let add_bottom_padding = || -> JsResult<()> {
         tbody
             .new_child_element("tr")?

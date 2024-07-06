@@ -1652,6 +1652,7 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 #archive-game-list {
   min-width: 36em;
   height: 75vh;
+  font-size: 90%;
 }
 
 #match-list {
@@ -1659,6 +1660,8 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   width: 40em;
   height: 30em;
   font-size: 80%;
+  white-space: nowrap;
+  text-align: center;
 }
 #match-list td {
   min-width: 1.5em;
@@ -1727,14 +1730,6 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
   background-color: #b4a68c;
 }
 
-#match-list-table {
-  white-space: nowrap;
-  text-align: center;
-}
-
-#archive-game-list-table {
-  font-size: 90%;
-}
 .game-archive-result-victory {
   background-color: #00ff001a;
 }
