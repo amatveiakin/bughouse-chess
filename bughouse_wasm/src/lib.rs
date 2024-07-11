@@ -2106,12 +2106,12 @@ fn update_turn_log(
                     .algebraic
                     .format(board_shape, AlgebraicCharset::AuxiliaryUnicode)
             };
+            let captures = record.turn_expanded.captures.clone();
             let (algebraic, captures) = match record.mode {
-                TurnMode::InOrder => (algebraic, record.turn_expanded.captures.clone()),
-                TurnMode::Preturn => (
-                    format!("({})", algebraic),
-                    vec![], // don't show captures for preturns: too unpredictable and messes with braces
-                ),
+                TurnMode::InOrder => (algebraic, captures),
+                TurnMode::Virtual => (format!("({})", algebraic), captures),
+                // Don't show captures for preturns: too unpredictable and messes with braces:
+                TurnMode::Preturn => (format!("({})", algebraic), vec![]),
             };
 
             const LOG_PIECE_WIDTH: u32 = 5;

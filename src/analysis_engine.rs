@@ -4,7 +4,7 @@ use std::mem;
 use std::time::Duration;
 
 use crate::algebraic::AlgebraicCharset;
-use crate::board::{PromotionTarget, Turn, TurnDrop, TurnError, TurnInput, TurnMode, TurnMove};
+use crate::board::{PromotionTarget, Turn, TurnDrop, TurnInput, TurnMode, TurnMove};
 use crate::clock::GameInstant;
 use crate::coord::Coord;
 use crate::display::DisplayBoard;
@@ -42,7 +42,11 @@ pub enum AnalysisScore {
 #[derive(Clone, Debug)]
 pub struct AnalysisInfo {
     pub score: AnalysisScore,
-    pub best_line: Vec<(Turn, String)>,
+    // `TurnMode::InOrder` are turns that can definitely be executed.
+    // `TurnMode::Virtual` are turns that involve virtual piece drops or follow such turns.
+    // `TurnMode::Preturn` is not used.
+    // All `TurnMode::Virtual` turns always follow `TurnMode::InOrder` turns.
+    pub best_line: Vec<(TurnMode, Turn, String)>,
 }
 
 #[derive(Clone, Debug)]
@@ -155,6 +159,7 @@ impl FsfAnalysisEngine {
         };
 
         let mut best_line = Vec::new();
+        let mut turn_mode = TurnMode::InOrder;
         if let Some(cap) = pv_re.captures(line) {
             let mut game = game.clone();
             let time = GameInstant::from_game_duration(game.total_time_elapsed());
@@ -163,23 +168,23 @@ impl FsfAnalysisEngine {
             game.set_status(BughouseGameStatus::Active, time);
             for notation in cap.get(1).unwrap().as_str().split_ascii_whitespace() {
                 let turn_input = parse_fsf_algebraic(notation);
-                let mode = TurnMode::InOrder;
-                let turn = match game.try_turn(board_idx, &turn_input, mode, time) {
-                    Ok(turn) => turn,
-                    // TODO: Fix virtual piece drops.
-                    Err(TurnError::DropPieceMissing) => return None,
-                    Err(err) => {
+                if turn_mode == TurnMode::InOrder {
+                    if game.try_turn(board_idx, &turn_input, turn_mode, time).is_err() {
+                        turn_mode = TurnMode::Virtual;
+                    }
+                }
+                if turn_mode == TurnMode::Virtual {
+                    if let Some(err) = game.try_turn(board_idx, &turn_input, turn_mode, time).err()
+                    {
                         panic!("Cannot apply Fairy-Stockfish turn \"{notation}\": {err:?}")
                     }
-                };
-                let rewritten_notation = game
-                    .turn_log()
-                    .last()
-                    .unwrap()
-                    .turn_expanded
+                }
+                let last_turn_expanded = &game.turn_log().last().unwrap().turn_expanded;
+                let turn = last_turn_expanded.turn;
+                let rewritten_notation = last_turn_expanded
                     .algebraic
                     .format(game.board_shape(), AlgebraicCharset::AuxiliaryUnicode);
-                best_line.push((turn, rewritten_notation));
+                best_line.push((turn_mode, turn, rewritten_notation));
             }
         }
         Some(AnalysisInfo { score, best_line })

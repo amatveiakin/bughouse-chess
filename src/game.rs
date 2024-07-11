@@ -769,7 +769,7 @@ impl BughouseGame {
         let turn_algebraic = turn_algebraic.unwrap();
         let other_board = &mut self.boards[board_idx.other()];
         match mode {
-            TurnMode::InOrder => other_board.start_clock(now),
+            TurnMode::InOrder | TurnMode::Virtual => other_board.start_clock(now),
             TurnMode::Preturn => {}
         }
         other_board.apply_sibling_turn(&turn_facts, mode);

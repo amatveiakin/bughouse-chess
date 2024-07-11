@@ -815,6 +815,9 @@ body.symmetric #chat-box {
   92% { content: "🕛"; }
 }
 
+.chat-message-text {
+  white-space: pre-wrap;
+}
 .chat-message-dimmed .chat-message-text {
   color: #d0d0d0c0;
 }

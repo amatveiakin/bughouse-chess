@@ -1791,6 +1791,9 @@ fn resolve_one_turn(
                     // the piece was stolen, or you got a new king in Koedem.
                 }
             }
+            Ok(TurnMode::Virtual) => {
+                panic!("Virtual turns should be used only by client-side analysis tools");
+            }
             Ok(TurnMode::Preturn) => {
                 // Keep the turn for now.
                 turn_requests.push(r);

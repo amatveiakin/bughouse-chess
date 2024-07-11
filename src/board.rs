@@ -675,6 +675,12 @@ pub enum TurnMode {
     // Turn that could be applied immediately.
     InOrder,
 
+    // Potential future turn that is to be executed in due order, but it cannot be made
+    // unless something happens on the other board. Engines that consider only one board
+    // could compensate lack of full information by coming up with such potential turns
+    // (see virtual piece drops in Fairy-Stockfish).
+    Virtual,
+
     // Out-of-order turn scheduled for execution. This is normally called "premove",
     // but we reserve "move" for a turn that takes one piece from the board and moves
     // it to another place on the board.
@@ -935,7 +941,7 @@ impl Board {
     pub fn is_bughouse(&self) -> bool { self.bughouse_rules().is_some() }
     pub fn turn_owner(&self, mode: TurnMode) -> Force {
         match mode {
-            TurnMode::InOrder => self.active_force,
+            TurnMode::InOrder | TurnMode::Virtual => self.active_force,
             TurnMode::Preturn => self.active_force.opponent(),
         }
     }
@@ -997,7 +1003,7 @@ impl Board {
 
     pub fn destination_reachability(&self, from: Coord, to: Coord, mode: TurnMode) -> Reachability {
         match mode {
-            TurnMode::InOrder => {
+            TurnMode::InOrder | TurnMode::Virtual => {
                 let capture = get_capture(&self.grid, from, to, self.en_passant_target);
                 reachability(self.chess_rules(), &self.grid, from, to, capture.is_some())
             }
@@ -1172,7 +1178,7 @@ impl Board {
     fn update_turn_stage_and_active_force(&mut self, mode: TurnMode) {
         let force = self.turn_owner(mode);
         let next_active_force = match mode {
-            TurnMode::InOrder => self.active_force.opponent(),
+            TurnMode::InOrder | TurnMode::Virtual => self.active_force.opponent(),
             TurnMode::Preturn => self.active_force,
         };
         if self.chess_rules().duck_chess {
@@ -1226,18 +1232,20 @@ impl Board {
         }
         self.grid = new_grid;
         if let Some(piece_kind) = facts.reserve_reduction {
+            // TODO: Properly record negative reserve pieces for virtual turns.
             let reserve_left = &mut self.reserves[force][piece_kind];
             if *reserve_left > 0 {
                 *reserve_left -= 1;
             } else {
-                if mode == TurnMode::InOrder {
-                    panic!("Must have verified reserve earlier");
+                match mode {
+                    TurnMode::InOrder => panic!("Must have verified reserve earlier"),
+                    TurnMode::Virtual | TurnMode::Preturn => {} // ok
                 }
             }
         }
 
         match mode {
-            TurnMode::InOrder => {
+            TurnMode::InOrder | TurnMode::Virtual => {
                 if !matches!(turn, Turn::PlaceDuck(_)) {
                     self.en_passant_target = get_en_passant_target(&self.grid, turn);
                 }
@@ -1305,7 +1313,9 @@ impl Board {
     fn turn_outcome(&self, turn: Turn, mode: TurnMode) -> Result<TurnOutcome, TurnError> {
         let mut outcome = self.turn_outcome_no_check_test(turn, mode)?;
         match mode {
-            TurnMode::InOrder => self.verify_check_and_drop_aggression(turn, mode, &mut outcome)?,
+            TurnMode::InOrder | TurnMode::Virtual => {
+                self.verify_check_and_drop_aggression(turn, mode, &mut outcome)?
+            }
             TurnMode::Preturn => {}
         }
         Ok(outcome)
@@ -1391,7 +1401,7 @@ impl Board {
                 }
                 let mut capture_pos_or = None;
                 match mode {
-                    TurnMode::InOrder => {
+                    TurnMode::InOrder | TurnMode::Virtual => {
                         use Reachability::*;
                         capture_pos_or =
                             get_capture(&new_grid, mv.from, mv.to, self.en_passant_target);
@@ -1547,9 +1557,11 @@ impl Board {
                 {
                     return Err(TurnError::InvalidPawnDropRank);
                 }
-                // Improvement potential: Allow pre-turns dropping missing pieces.
                 if self.reserves[force][drop.piece_kind] < 1 {
-                    return Err(TurnError::DropPieceMissing);
+                    match mode {
+                        TurnMode::InOrder => return Err(TurnError::DropPieceMissing),
+                        TurnMode::Virtual | TurnMode::Preturn => {}
+                    }
                 }
                 let piece_force = drop.piece_kind.reserve_piece_force(force);
                 let mut new_piece = PieceOnBoard::new(
@@ -1565,7 +1577,7 @@ impl Board {
                         new_piece = combined_piece;
                     } else {
                         match mode {
-                            TurnMode::InOrder => {
+                            TurnMode::InOrder | TurnMode::Virtual => {
                                 return Err(TurnError::DropBlocked);
                             }
                             TurnMode::Preturn => {}
@@ -1629,7 +1641,7 @@ impl Board {
                 let rook_to = Coord::new(row, rook_to_col);
 
                 match mode {
-                    TurnMode::InOrder => {
+                    TurnMode::InOrder | TurnMode::Virtual => {
                         let cols = [king_from.col, king_to.col, rook_from.col, rook_to.col];
                         for col in col_range_inclusive(iter_minmax(cols.into_iter()).unwrap()) {
                             if new_grid[Coord::new(row, col)].is_some() {
@@ -1665,14 +1677,25 @@ impl Board {
                 }
                 let from = find_piece(&new_grid, |p| p.kind == PieceKind::Duck);
                 let duck = if let Some(from) = from {
-                    if to == from && mode == TurnMode::InOrder {
-                        return Err(TurnError::MustChangeDuckPosition);
+                    if to == from {
+                        match mode {
+                            TurnMode::InOrder | TurnMode::Virtual => {
+                                return Err(TurnError::MustChangeDuckPosition);
+                            }
+                            TurnMode::Preturn => {}
+                        }
                     }
                     new_grid[from].take().unwrap()
                 } else {
-                    if self.reserves[force][PieceKind::Duck] == 0 && mode == TurnMode::InOrder {
-                        // This shouldn't really happen.
-                        return Err(TurnError::DropPieceMissing);
+                    if self.reserves[force][PieceKind::Duck] == 0 {
+                        // This shouldn't really happen. This isn't a legal virtual drop either,
+                        // because you cannot expect to get a duck from the other board.
+                        match mode {
+                            TurnMode::InOrder | TurnMode::Virtual => {
+                                return Err(TurnError::DropPieceMissing);
+                            }
+                            TurnMode::Preturn => {}
+                        }
                     }
                     reserve_reduction = Some(PieceKind::Duck);
                     PieceOnBoard::new(
@@ -1682,8 +1705,13 @@ impl Board {
                         PieceForce::Neutral,
                     )
                 };
-                if new_grid[to].is_some() && mode == TurnMode::InOrder {
-                    return Err(TurnError::PathBlocked);
+                if new_grid[to].is_some() {
+                    match mode {
+                        TurnMode::InOrder | TurnMode::Virtual => {
+                            return Err(TurnError::PathBlocked)
+                        }
+                        TurnMode::Preturn => {}
+                    }
                 }
                 new_grid[to] = Some(duck);
             }
@@ -1702,8 +1730,9 @@ impl Board {
     pub fn verify_sibling_turn(
         &self, turn: Turn, mode: TurnMode, turn_owner: Force,
     ) -> Result<(), TurnError> {
-        if mode == TurnMode::Preturn {
-            return Ok(());
+        match mode {
+            TurnMode::InOrder => {}
+            TurnMode::Virtual | TurnMode::Preturn => return Ok(()),
         }
         match turn {
             Turn::Move(mv) => {
@@ -1742,11 +1771,14 @@ impl Board {
         }
         for steal in &facts.steals {
             let pos = find_piece_by_id(&self.grid, steal.piece_id);
-            if mode == TurnMode::InOrder {
-                // Tested in `verify_sibling_turn`.
-                let pos = pos.unwrap();
-                assert_eq!(self.grid[pos].unwrap().kind, steal.piece_kind);
-                assert_eq!(self.grid[pos].unwrap().force, steal.force);
+            match mode {
+                TurnMode::InOrder | TurnMode::Virtual => {
+                    // Tested in `verify_sibling_turn`.
+                    let pos = pos.unwrap();
+                    assert_eq!(self.grid[pos].unwrap().kind, steal.piece_kind);
+                    assert_eq!(self.grid[pos].unwrap().force, steal.force);
+                }
+                TurnMode::Preturn => {}
             }
             if let Some(pos) = pos {
                 self.grid[pos] = None;
@@ -1758,7 +1790,7 @@ impl Board {
     fn parse_drag_drop_turn(&self, prototurn: Turn, mode: TurnMode) -> Result<Turn, TurnError> {
         if let Turn::Move(mv) = prototurn {
             match mode {
-                TurnMode::InOrder => {
+                TurnMode::InOrder | TurnMode::Virtual => {
                     let force = self.turn_owner(mode);
                     let piece = self.grid[mv.from].ok_or(TurnError::PieceMissing)?;
                     if piece.force != force.into() {
@@ -1823,7 +1855,7 @@ impl Board {
                         {
                             let reachable;
                             match mode {
-                                TurnMode::InOrder => {
+                                TurnMode::InOrder | TurnMode::Virtual => {
                                     use Reachability::*;
                                     let capture_or = get_capture(
                                         &self.grid,
@@ -1943,7 +1975,7 @@ impl Board {
         match turn {
             Turn::Move(mv) => {
                 let details = match mode {
-                    TurnMode::InOrder => details,
+                    TurnMode::InOrder | TurnMode::Virtual => details,
                     TurnMode::Preturn => AlgebraicDetails::LongAlgebraic,
                 };
                 let include_col_row = match details {

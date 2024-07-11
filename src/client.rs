@@ -354,6 +354,7 @@ impl ClientState {
             EngineStatus::NotLoaded
         }
     }
+
     pub fn install_analysis_engine(&mut self, mut engine: Box<dyn AnalysisEngine>) {
         assert!(self.analysis_engine.is_none());
         if let Some(mtch) = self.mtch() {
@@ -364,6 +365,7 @@ impl ClientState {
         }
         self.analysis_engine = Some(engine);
     }
+
     pub fn analysis_engine_process_message(
         &mut self, line: &str, display_board: DisplayBoard,
     ) -> Option<AnalysisInfo> {
@@ -378,12 +380,14 @@ impl ClientState {
             return None;
         };
         let true_local_game = alt_game.true_local_game().clone();
+
         let info = engine.process_message(line, &true_local_game, board_idx);
         let Some(info) = info else {
             return None;
         };
         evaluation_percentages[board_idx] = Some(info.score.to_percent_score());
-        if let Some((next_turn, _)) = info.best_line.first() {
+
+        if let Some((_, next_turn, _)) = info.best_line.first() {
             // TODO: Some other display form (at least other chalk color) for analysis moves.
             self.clear_chalk_drawing(display_board);
             match *next_turn {
@@ -404,10 +408,31 @@ impl ClientState {
                     self.add_chalk_mark(display_board, ChalkMark::Arrow { from, to });
                 }
             }
-            self.add_ephemeral_system_message(
-                SystemMessageClass::Info,
-                info.best_line.iter().map(|(_, notation)| notation).join(" "),
-            );
+
+            let mut best_line = String::new();
+            let mut virtual_turns = false;
+            for (turn_mode, _, notation) in info.best_line.iter().take(10) {
+                if !best_line.is_empty() {
+                    best_line.push_str("  ");
+                }
+                match turn_mode {
+                    TurnMode::InOrder => {
+                        best_line.push_str(notation);
+                    }
+                    TurnMode::Virtual => {
+                        if !virtual_turns {
+                            best_line.push('(');
+                            virtual_turns = true;
+                        }
+                        best_line.push_str(notation);
+                    }
+                    TurnMode::Preturn => panic!(),
+                }
+            }
+            if virtual_turns {
+                best_line.push(')');
+            }
+            self.add_ephemeral_system_message(SystemMessageClass::Info, best_line);
         }
         Some(info)
     }

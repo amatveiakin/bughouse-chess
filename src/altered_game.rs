@@ -190,6 +190,7 @@ pub struct AlteredGame {
     //   - Local turns (TurnMode::InOrder) not confirmed by the server yet, but displayed on the
     //     client. Always valid turns for the `game_confirmed`.
     //   - Local preturns (TurnMode::Preturn).
+    // Does not contain TurnMode::Virtual turns.
     // The turns are executed sequentially.
     // Invariant: preturns for both board always follow in-order turns for both board. Turn order
     // across boards could important for situations where turns on different boards depend on each
@@ -411,13 +412,16 @@ impl AlteredGame {
             }
 
             for r in turn_log.iter() {
-                if r.mode == TurnMode::Preturn {
-                    square_highlights.extend(get_turn_highlights(
-                        TurnHighlightFamily::Preturn,
-                        board_idx,
-                        &r.turn_expanded,
-                        fog_cover_area,
-                    ));
+                match r.mode {
+                    TurnMode::InOrder | TurnMode::Virtual => {}
+                    TurnMode::Preturn => {
+                        square_highlights.extend(get_turn_highlights(
+                            TurnHighlightFamily::Preturn,
+                            board_idx,
+                            &r.turn_expanded,
+                            fog_cover_area,
+                        ));
+                    }
                 }
             }
 
@@ -863,7 +867,7 @@ impl AlteredGame {
             // Unwrap ok: could fail only when game is over.
             let mode = game.turn_mode_for_envoy(turn_record.envoy).unwrap();
             match mode {
-                TurnMode::InOrder => {
+                TurnMode::InOrder | TurnMode::Virtual => {
                     if game.apply_turn_record(&turn_record, mode).is_ok() {
                         local_turns.push(turn_record);
                     } else {
