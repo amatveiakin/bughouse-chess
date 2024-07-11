@@ -1,3 +1,5 @@
+// TODO: Allow to toggle analysis on and off.
+
 #![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(let_chains)]
 #![cfg_attr(feature = "strict", deny(warnings))]
@@ -24,18 +26,20 @@ mod web_error_handling;
 mod web_iterators;
 mod web_util;
 
+use core::panic;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
+use analysis_engine::{FsfAnalysisEngine, ANALYSIS_BOARD_IDX};
 use bughouse_chess::client::*;
 use bughouse_chess::client_chat::cannot_start_game_message;
 use bughouse_chess::lobby::*;
 use bughouse_chess::meter::*;
 use bughouse_chess::session::*;
-use enum_map::enum_map;
+use enum_map::{enum_map, EnumMap};
 use instant::Instant;
 use itertools::Itertools;
 use strum::{EnumIter, IntoEnumIterator};
@@ -96,6 +100,14 @@ pub struct JsSession {
     pub email: String,
     pub lichess_user_id: String,
     pub registration_method: String,
+}
+
+#[wasm_bindgen]
+extern "C" {
+    pub type JsStockfish;
+
+    #[wasm_bindgen(method, js_name = "postMessage")]
+    fn post_message(this: &JsStockfish, message: &str);
 }
 
 #[wasm_bindgen]
@@ -317,6 +329,20 @@ impl WebClient {
     pub fn clear_ephemeral_chat_items(&mut self) { self.state.clear_ephemeral_chat_items(); }
     pub fn show_command_result(&mut self, text: String) { self.state.show_command_result(text); }
     pub fn show_command_error(&mut self, text: String) { self.state.show_command_error(text); }
+
+    pub fn set_stockfish(&mut self, stockfish: JsStockfish) {
+        let engine = FsfAnalysisEngine::new(Box::new(move |msg| stockfish.post_message(msg)));
+        self.state.install_analysis_engine(Box::new(engine));
+    }
+
+    pub fn process_stockfish_message(&mut self, line: &str) -> JsResult<()> {
+        let display_board_idx = ANALYSIS_BOARD_IDX;
+        let info = self.state.analysis_engine_process_message(line, display_board_idx);
+        if info.is_some() {
+            self.update_state()?;
+        }
+        Ok(())
+    }
 
     // Why do we need both `click_element` and `click_board`? We need `click_element` because it is
     // used to click on the reserve. It is also conceivable that in the future we want to allow
@@ -696,7 +722,13 @@ impl WebClient {
 
     pub fn update_state(&self) -> JsResult<()> {
         let document = web_document();
-        let GameState { is_demo, game_index, ref alt_game, .. } = self.state.displayed_game_state();
+        let GameState {
+            is_demo,
+            game_index,
+            ref alt_game,
+            evaluation_percentages,
+            ..
+        } = self.state.displayed_game_state();
         let game = alt_game.local_game();
         let hash_seed;
         let mtch = self.state.mtch();
@@ -899,6 +931,7 @@ impl WebClient {
             .class_list()
             .toggle_with_force("active-player", is_clock_ticking(&game, my_id))?;
         self.repaint_chalk()?;
+        update_evaluation_bars(evaluation_percentages, perspective)?;
         Ok(())
     }
 
@@ -1997,6 +2030,33 @@ fn update_participants_and_scores(
 fn render_boards(board_shape: BoardShape, perspective: Perspective) -> JsResult<()> {
     for board_idx in DisplayBoard::iter() {
         render_board(board_idx, board_shape, perspective)?;
+    }
+    Ok(())
+}
+
+fn update_evaluation_bars(
+    evaluation_percentages: &EnumMap<BughouseBoard, Option<f64>>, perspective: Perspective,
+) -> JsResult<()> {
+    let display_board_idx = ANALYSIS_BOARD_IDX;
+    let board_orientation = get_board_orientation(display_board_idx, perspective);
+    let board_idx = get_board_index(display_board_idx, perspective);
+    let evaluation_bar = web_document()
+        .get_existing_element_by_id("evaluation-bar-primary")?
+        .dyn_into::<web_sys::HtmlElement>()?;
+    if let Some(score) = evaluation_percentages[board_idx] {
+        let gradient = match get_display_player(Force::White, board_orientation) {
+            DisplayPlayer::Bottom => {
+                let v = score;
+                format!("linear-gradient(to top, #fff {v}%, #000 {v}%)")
+            }
+            DisplayPlayer::Top => {
+                let v = 100.0 - score;
+                format!("linear-gradient(to top, #000 {v}%, #fff {v}%)")
+            }
+        };
+        evaluation_bar.style().set_property("background", &gradient)?;
+    } else {
+        evaluation_bar.style().set_property("background", "transparent")?;
     }
     Ok(())
 }

@@ -40,8 +40,8 @@ pub struct AlgebraicDrop {
     pub to: Coord,
 }
 
-// Parsed algebraic notations. Conversion between `AlgebraicStructured` and string can be done
-// without a board. Conversion between `AlgebraicStructured` and `Turn` requries a board.
+// Parsed algebraic notations. Conversion between `AlgebraicTurn` and string can be done
+// without a board. Conversion between `AlgebraicTurn` and `Turn` requries a board.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum AlgebraicTurn {
     Move(AlgebraicMove),

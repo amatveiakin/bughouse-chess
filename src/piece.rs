@@ -299,6 +299,12 @@ impl PieceKind {
     pub fn from_algebraic(notation: &str) -> Option<Self> {
         as_single_char(notation).and_then(Self::from_algebraic_char)
     }
+
+    pub fn from_algebraic_ignore_case(notation: &str) -> Option<Self> {
+        as_single_char(notation)
+            .map(|ch| ch.to_ascii_uppercase())
+            .and_then(Self::from_algebraic_char)
+    }
 }
 
 pub fn accolade_combine_piece_kinds(first: PieceKind, second: PieceKind) -> Option<PieceKind> {

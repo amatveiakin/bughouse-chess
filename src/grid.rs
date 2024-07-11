@@ -112,6 +112,14 @@ impl<T: Clone> ops::IndexMut<Coord> for GenericGrid<T> {
     }
 }
 
+pub trait GridExt {
+    fn without_ids(&self) -> Self;
+}
+
+impl GridExt for Grid {
+    fn without_ids(&self) -> Grid { self.map(|piece| PieceOnBoard { id: PieceId::tmp(), ..piece }) }
+}
+
 fn coord_to_index(pos: Coord) -> [usize; 2] {
     [
         pos.row.to_zero_based() as usize,

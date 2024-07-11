@@ -742,7 +742,7 @@ impl BughouseGame {
         let other_board = &self.boards[board_idx.other()];
         let envoy = BughouseEnvoy { board_idx, force: board.turn_owner(mode) };
         let turn = board.parse_turn_input(turn_input, mode, Some(other_board))?;
-        let is_duck_turn = board.is_duck_turn(envoy.force);
+        let local_number = board.full_turn_index();
         self.boards[board_idx.other()].verify_sibling_turn(turn, mode, envoy.force)?;
 
         // `turn_to_algebraic` must be called before `try_turn`, because algebraic form depend
@@ -774,20 +774,9 @@ impl BughouseGame {
         }
         other_board.apply_sibling_turn(&turn_facts, mode);
 
-        let index = TurnIndex(self.turn_log.len());
-        let prev_local_number = self
-            .turn_log
-            .iter()
-            .rev()
-            .find(|record| record.envoy.board_idx == board_idx)
-            .map_or(0, |record| record.local_number);
-        let mut local_number = prev_local_number;
-        if (envoy.force == Force::White || mode == TurnMode::Preturn) && !is_duck_turn {
-            local_number += 1;
-        }
         let turn_expanded = make_turn_expanded(turn, turn_algebraic, turn_facts);
         self.turn_log.push(TurnRecordExpanded {
-            index,
+            index: TurnIndex(self.turn_log.len()),
             local_number,
             mode,
             envoy,

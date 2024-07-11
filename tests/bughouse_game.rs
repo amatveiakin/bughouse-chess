@@ -8,6 +8,7 @@ use bughouse_chess::clock::{ClockShowing, GameInstant, TimeBreakdown, TimeDiffer
 use bughouse_chess::coord::Coord;
 use bughouse_chess::force::Force;
 use bughouse_chess::game::{BughouseBoard, BughouseGame, BughouseGameStatus};
+use bughouse_chess::grid::GridExt;
 use bughouse_chess::piece::PieceKind;
 use bughouse_chess::player::Team;
 use bughouse_chess::role::Role;

@@ -10,6 +10,7 @@
 
 pub mod algebraic;
 pub mod altered_game;
+pub mod analysis_engine;
 pub mod board;
 pub mod chalk;
 pub mod chat;

@@ -503,8 +503,8 @@ fn make_bughouse_bpng_header(game: &BughouseGame, meta: BpgnMetadata) -> BpgnHea
         StartingPosition::Classic => {}
         StartingPosition::FischerRandom => {
             // Improvement potential: Convert `EffectiveStartingPosition`to FEN directly.
-            let a = fen::starting_position_to_shredder_fen(game_at_start.board(BughouseBoard::A));
-            let b = fen::starting_position_to_shredder_fen(game_at_start.board(BughouseBoard::B));
+            let a = fen::board_to_shredder_fen(game_at_start.board(BughouseBoard::A));
+            let b = fen::board_to_shredder_fen(game_at_start.board(BughouseBoard::B));
             h.push_tag("SetUp", "1");
             h.push_tag("FEN", format!("{a} | {b}"));
         }
@@ -664,8 +664,8 @@ fn parse_starting_position(
     }
     let (a, b) = fen?.split_once('|').ok_or("invalid FEN")?;
     let mut boards = HashMap::new();
-    boards.insert(BughouseBoard::A, fen::shredder_fen_to_starting_position(rules, a)?);
-    boards.insert(BughouseBoard::B, fen::shredder_fen_to_starting_position(rules, b)?);
+    boards.insert(BughouseBoard::A, fen::shredder_fen_to_board(rules, a)?);
+    boards.insert(BughouseBoard::B, fen::shredder_fen_to_board(rules, b)?);
     // Q. Are there downsides to always using `ManualSetup` rather then `FischerRandom` for Fischer
     // random?
     Ok(EffectiveStartingPosition::ManualSetup(boards))

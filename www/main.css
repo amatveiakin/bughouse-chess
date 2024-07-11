@@ -919,7 +919,13 @@ dialog * {
 .turn-log-container {
   padding: 1.2em 0;
 }
+.evaluation-bar {
+  width: 1em;
+}
 #turn-log-container-primary {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
   text-align: right;
 }
 #turn-log-container-secondary {

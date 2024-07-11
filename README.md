@@ -152,6 +152,8 @@ Add this to `/etc/apache2/sites-available/<site>`:
     ProxyPassReverse /ws ws://localhost:14361
 
     Header set Cache-Control "public, no-cache, must-revalidate"
+    Header set Cross-Origin-Opener-Policy "same-origin"
+    Header set Cross-Origin-Embedder-Policy "require-corp"
     FileETag All
 
     SetEnvIf If-None-Match '^"((.*)-(gzip))"$' gzip

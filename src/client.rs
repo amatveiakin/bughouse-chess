@@ -13,11 +13,13 @@ use crate::altered_game::{
     AlteredGame, ApplyRemoteTurnResult, TurnConfirmation, TurnInputResult, WaybackDestination,
     WaybackState,
 };
-use crate::board::{Board, TurnError, TurnInput, TurnMode};
+use crate::analysis_engine::{AnalysisEngine, AnalysisInfo, EngineStatus, ANALYSIS_BOARD_IDX};
+use crate::board::{Board, Turn, TurnDrop, TurnError, TurnInput, TurnMode, TurnMove};
 use crate::chalk::{ChalkCanvas, ChalkMark, Chalkboard};
 use crate::chat::{ChatMessage, ChatMessageBody, ChatRecipient};
 use crate::client_chat::{ClientChat, SystemMessageClass};
 use crate::clock::{duration_to_mss, GameDuration, GameInstant, WallGameTimePair};
+use crate::coord::{Col, Coord};
 use crate::display::{get_board_index, get_display_board_index, DisplayBoard};
 use crate::event::{
     BughouseClientEvent, BughouseClientPerformance, BughouseServerEvent, BughouseServerRejection,
@@ -32,6 +34,7 @@ use crate::half_integer::HalfU32;
 use crate::lobby::Teaming;
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::import_from_bpgn;
+use crate::piece::CastleDirection;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Faction, Participant};
 use crate::role::Role;
@@ -96,6 +99,8 @@ pub struct GameState {
     pub chalkboard: Chalkboard,
     // Canvas for the current client to draw on.
     pub chalk_canvas: ChalkCanvas,
+    // Evaluation by the engine: 100% is White totally winning, 0% is Black totally winning.
+    pub evaluation_percentages: EnumMap<BughouseBoard, Option<f64>>,
     // Whether wayback state is shared with other players who enabled sharing.
     shared_wayback_enabled: bool,
     // Turn index seen by those who enabled shared wayback state (regardless of whether it is
@@ -176,6 +181,25 @@ impl Match {
     }
 }
 
+impl MatchState {
+    fn get(&self) -> Option<&Match> {
+        match self {
+            MatchState::Connected(mtch) => Some(mtch),
+            _ => None,
+        }
+    }
+    fn get_mut(&mut self) -> Option<&mut Match> {
+        match self {
+            MatchState::Connected(mtch) => Some(mtch),
+            _ => None,
+        }
+    }
+    fn game_state(&self) -> Option<&GameState> { self.get().and_then(|m| m.game_state.as_ref()) }
+    fn game_state_mut(&mut self) -> Option<&mut GameState> {
+        self.get_mut().and_then(|m| m.game_state.as_mut())
+    }
+}
+
 impl Connection {
     fn new(now: Instant) -> Self {
         Connection {
@@ -193,6 +217,7 @@ pub struct ClientState {
     connection: Connection,
     server_options: Option<ServerOptions>,
     match_state: MatchState,
+    analysis_engine: Option<Box<dyn AnalysisEngine>>,
     notable_event_queue: VecDeque<NotableEvent>,
     meter_box: MeterBox,
     ping_meter: Meter,
@@ -239,6 +264,7 @@ impl ClientState {
             connection: Connection::new(now),
             server_options: None,
             match_state: MatchState::NotConnected,
+            analysis_engine: None,
             notable_event_queue: VecDeque::new(),
             meter_box,
             ping_meter,
@@ -257,29 +283,15 @@ impl ClientState {
 
     pub fn session(&self) -> &Session { &self.session }
     pub fn server_options(&self) -> Option<&ServerOptions> { self.server_options.as_ref() }
-    pub fn mtch(&self) -> Option<&Match> {
-        if let MatchState::Connected(ref m) = self.match_state {
-            Some(m)
-        } else {
-            None
-        }
-    }
-    fn mtch_mut(&mut self) -> Option<&mut Match> {
-        if let MatchState::Connected(ref mut m) = self.match_state {
-            Some(m)
-        } else {
-            None
-        }
-    }
+    pub fn mtch(&self) -> Option<&Match> { self.match_state.get() }
+    fn mtch_mut(&mut self) -> Option<&mut Match> { self.match_state.get_mut() }
     fn is_active_match(&self) -> bool { self.mtch().map_or(false, |mtch| mtch.is_active_match()) }
     pub fn is_ready(&self) -> Option<bool> { self.mtch().map(|m| m.is_ready) }
     pub fn match_id(&self) -> Option<&String> { self.mtch().and_then(|m| m.match_id()) }
     pub fn archive_game_id(&self) -> Option<i64> { self.mtch().and_then(|m| m.archive_game_id()) }
     // TODO: Should we ever use `game_state` externally? Consider: remove `game_state`, make
     // `Match::game_state` private, always use `displayed_game_state`.
-    pub fn game_state(&self) -> Option<&GameState> {
-        self.mtch().and_then(|m| m.game_state.as_ref())
-    }
+    pub fn game_state(&self) -> Option<&GameState> { self.match_state.game_state() }
     pub fn displayed_game_state(&self) -> &GameState {
         if let Some(mtch) = self.mtch() {
             if let Some(game_state) = &mtch.game_state {
@@ -291,9 +303,7 @@ impl ClientState {
             &self.default_setup_demo_state
         }
     }
-    fn game_state_mut(&mut self) -> Option<&mut GameState> {
-        self.mtch_mut().and_then(|m| m.game_state.as_mut())
-    }
+    fn game_state_mut(&mut self) -> Option<&mut GameState> { self.match_state.game_state_mut() }
     // TODO: Reduce public mutability. This is used only for drag&drop, so limit the mutable API to that.
     pub fn alt_game_mut(&mut self) -> Option<&mut AlteredGame> {
         self.game_state_mut().map(|s| &mut s.alt_game)
@@ -335,6 +345,71 @@ impl ClientState {
             return PlayerRelation::Other;
         };
         my_player_id.relation_to(other_player_id)
+    }
+
+    pub fn analysis_engine_status(&self) -> EngineStatus {
+        if let Some(engine) = &self.analysis_engine {
+            engine.status()
+        } else {
+            EngineStatus::NotLoaded
+        }
+    }
+    pub fn install_analysis_engine(&mut self, mut engine: Box<dyn AnalysisEngine>) {
+        assert!(self.analysis_engine.is_none());
+        if let Some(mtch) = self.mtch() {
+            engine.new_match(&mtch.rules);
+            if mtch.game_state.is_some() {
+                engine.new_game();
+            }
+        }
+        self.analysis_engine = Some(engine);
+    }
+    pub fn analysis_engine_process_message(
+        &mut self, line: &str, display_board: DisplayBoard,
+    ) -> Option<AnalysisInfo> {
+        let Some(GameState {
+            alt_game, ref mut evaluation_percentages, ..
+        }) = self.match_state.game_state_mut()
+        else {
+            return None;
+        };
+        let board_idx = get_board_index(display_board, alt_game.perspective());
+        let Some(engine) = self.analysis_engine.as_mut() else {
+            return None;
+        };
+        let true_local_game = alt_game.true_local_game().clone();
+        let info = engine.process_message(line, &true_local_game, board_idx);
+        let Some(info) = info else {
+            return None;
+        };
+        evaluation_percentages[board_idx] = Some(info.score.to_percent_score());
+        if let Some((next_turn, _)) = info.best_line.first() {
+            // TODO: Some other display form (at least other chalk color) for analysis moves.
+            self.clear_chalk_drawing(display_board);
+            match *next_turn {
+                Turn::Move(TurnMove { from, to, .. }) => {
+                    self.add_chalk_mark(display_board, ChalkMark::Arrow { from, to });
+                }
+                Turn::Drop(TurnDrop { to, .. }) | Turn::PlaceDuck(to) => {
+                    self.add_chalk_mark(display_board, ChalkMark::SquareHighlight { coord: to });
+                }
+                Turn::Castle(dir) => {
+                    let board = true_local_game.board(board_idx);
+                    let from = board.find_king(board.active_force()).unwrap();
+                    let to_col = match dir {
+                        CastleDirection::ASide => Col::A,
+                        CastleDirection::HSide => Col::H,
+                    };
+                    let to = Coord::new(from.row, to_col);
+                    self.add_chalk_mark(display_board, ChalkMark::Arrow { from, to });
+                }
+            }
+            self.add_ephemeral_system_message(
+                SystemMessageClass::Info,
+                info.best_line.iter().map(|(_, notation)| notation).join(" "),
+            );
+        }
+        Some(info)
     }
 
     pub fn first_game_countdown_left(&self) -> Option<Duration> {
@@ -480,6 +555,9 @@ impl ClientState {
         self.connection.send(BughouseClientEvent::SetReady { is_ready });
     }
     pub fn leave_match(&mut self) {
+        if let Some(engine) = &mut self.analysis_engine {
+            engine.stop();
+        }
         use MatchState::*;
         match &self.match_state {
             NotConnected
@@ -904,6 +982,9 @@ impl ClientState {
                 }
                 _ => return Err(internal_client_error!()),
             };
+            if let Some(engine) = &mut self.analysis_engine {
+                engine.new_match(&rules);
+            }
             self.notable_event_queue.push_back(NotableEvent::MatchStarted(match_id.clone()));
             // `Observer` is a safe faction default that wouldn't allow us to try acting as
             // a player if we are in fact an observer. We'll get the real faction afterwards
@@ -1015,6 +1096,7 @@ impl ClientState {
             time_pair,
             chalkboard: Chalkboard::new(),
             chalk_canvas: ChalkCanvas::new(board_shape, perspective),
+            evaluation_percentages: enum_map! { _ => None },
             shared_wayback_enabled: false,
             shared_wayback_turn_index: None,
             updates_applied: 0,
@@ -1036,6 +1118,9 @@ impl ClientState {
             // Unwrap ok: this is a preturn made by this very client before reconnection.
             let mode = alt_game.try_local_turn(board_idx, preturn, game_now).unwrap();
             assert_eq!(mode, TurnMode::Preturn);
+        }
+        if let Some(engine) = &mut self.analysis_engine {
+            engine.new_game();
         }
         self.notable_event_queue.push_back(NotableEvent::GameStarted);
         self.update_low_time_warnings(false);
@@ -1296,14 +1381,18 @@ impl ClientState {
     fn wayback_to_local(
         &mut self, destination: WaybackDestination, board_idx: Option<BughouseBoard>,
     ) -> Result<Option<TurnIndex>, ()> {
-        let Some(ref mut game_state) = self.game_state_mut() else {
+        let Some(GameState { ref mut alt_game, .. }) = self.match_state.game_state_mut() else {
             return Err(());
         };
-        if game_state.alt_game.is_active() {
+        if alt_game.is_active() {
             return Err(());
         }
-        let turn_index = game_state.alt_game.wayback_to(destination, board_idx);
-        let wayback = game_state.alt_game.wayback_state();
+        let turn_index = alt_game.wayback_to(destination, board_idx);
+        let wayback = alt_game.wayback_state();
+        if let Some(engine) = &mut self.analysis_engine {
+            let analysis_board_idx = get_board_index(ANALYSIS_BOARD_IDX, alt_game.perspective());
+            engine.analyze_position(&alt_game.true_local_game(), analysis_board_idx);
+        }
         self.notable_event_queue.push_back(NotableEvent::WaybackStateUpdated(wayback));
         Ok(turn_index)
     }
@@ -1385,6 +1474,7 @@ impl ClientState {
             time_pair: None,
             chalkboard: Chalkboard::new(),
             chalk_canvas: ChalkCanvas::new(board_shape, perspective),
+            evaluation_percentages: enum_map! { _ => None },
             shared_wayback_enabled: false,
             shared_wayback_turn_index: None,
             updates_applied: 0,
@@ -1400,6 +1490,10 @@ impl ClientState {
             body: ChatMessageBody::GameOver { outcome },
         });
 
+        if let Some(engine) = &mut self.analysis_engine {
+            engine.new_match(&rules);
+            engine.new_game();
+        }
         let setup_demo_state = make_setup_demo_state(rules.clone()); // wouldn't be used
         self.match_state = MatchState::Connected(Match {
             origin: MatchOrigin::ArchiveGame(game_id),
@@ -1504,6 +1598,7 @@ fn make_setup_demo_state(rules: Rules) -> GameState {
         time_pair: None,
         chalkboard: Chalkboard::new(),
         chalk_canvas: ChalkCanvas::new(board_shape, perspective),
+        evaluation_percentages: enum_map! { _ => None },
         shared_wayback_enabled: false,
         shared_wayback_turn_index: None,
         updates_applied: 0,

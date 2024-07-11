@@ -10,8 +10,8 @@
 // Also because of duck turns.
 
 use std::cell::{Ref, RefCell};
+use std::cmp;
 use std::collections::HashSet;
-use std::{cmp, mem};
 
 use enum_map::{enum_map, EnumMap};
 use itertools::Itertools;
@@ -204,7 +204,14 @@ pub struct AlteredGame {
 
 #[derive(Clone, Debug)]
 struct DerivedData {
+    // Local game state, including local turns and preturns. Used for rendering. Thus when wayback
+    // is active this is a chimera: it has boards, reserves and clocks rolled back to the specified
+    // moment; it has game status and turn log of the finished game.
     local_game: BughouseGame,
+    // When wayback is active, `true_local_game` is the game state fully rolled back to the
+    // specified moment.
+    true_local_game: Option<BughouseGame>,
+    // Fog of war area for each board, as seen by the player.
     fog_of_war_area: EnumMap<BughouseBoard, HashSet<Coord>>,
 }
 
@@ -312,6 +319,9 @@ impl AlteredGame {
 
     pub fn local_game(&self) -> Ref<BughouseGame> {
         Ref::map(self.derived_data(), |d| &d.local_game)
+    }
+    pub fn true_local_game(&self) -> Ref<BughouseGame> {
+        Ref::map(self.derived_data(), |d| d.true_local_game.as_ref().unwrap_or(&d.local_game))
     }
     pub fn fog_of_war_area(&self, board_idx: BughouseBoard) -> Ref<HashSet<Coord>> {
         Ref::map(self.derived_data(), |d| &d.fog_of_war_area[board_idx])
@@ -742,6 +752,9 @@ impl AlteredGame {
                 }
                 let board_shape = self.board_shape();
                 let d_col = dest.col - source_coord.col;
+                // TODO: Dedup castling detection between here and `parse_drag_drop_turn`.
+                // Everything should mostly just work if we remove all castling logic from here, but
+                // early delection of `CannotCastleDroppedKing` would be nice to preserve.
                 let mut is_castling = false;
                 let mut is_promotion = false;
                 if let Ok(force) = piece_force.try_into() {
@@ -999,8 +1012,19 @@ fn compute_derived_data(
     partial_turn_input: Option<(BughouseBoard, PartialTurnInput)>, local_turns: &[TurnRecord],
     wayback_turn_index: Option<TurnIndex>,
 ) -> DerivedData {
+    let mut true_local_game = None;
     let mut local_game_inorder_turns = game_confirmed.clone();
-    apply_wayback(wayback_turn_index, &mut local_game_inorder_turns);
+    if let Some(wayback_turn_index) = wayback_turn_index {
+        assert!(local_turns.is_empty());
+        assert!(partial_turn_input.is_none());
+        let wayback_game = apply_wayback(wayback_turn_index, &local_game_inorder_turns);
+        let end_time = GameInstant::from_game_duration(wayback_game.total_time_elapsed());
+        for board_idx in BughouseBoard::iter() {
+            *local_game_inorder_turns.board_mut(board_idx) = wayback_game.board(board_idx).clone();
+            local_game_inorder_turns.board_mut(board_idx).clock_mut().stop(end_time);
+        }
+        true_local_game = Some(wayback_game)
+    }
 
     let mut preturns_start = local_turns.len();
     for (i, turn_record) in local_turns.iter().enumerate() {
@@ -1029,7 +1053,11 @@ fn compute_derived_data(
         compute_fog_of_war_area(&local_game_inorder_turns, &local_game, board_idx, my_id)
     });
 
-    DerivedData { local_game, fog_of_war_area }
+    DerivedData {
+        local_game,
+        true_local_game,
+        fog_of_war_area,
+    }
 }
 
 fn apply_partial_turn(
@@ -1092,12 +1120,9 @@ fn apply_partial_turn(
     Ok(())
 }
 
-fn apply_wayback(wayback_turn_index: Option<TurnIndex>, game: &mut BughouseGame) -> bool {
-    let Some(ref turn_idx) = wayback_turn_index else {
-        return false;
-    };
+fn apply_wayback(wayback_turn_idx: TurnIndex, game: &BughouseGame) -> BughouseGame {
     let mut replay_game = game.clone_from_start();
-    for turn in game.turn_log().iter().take_while(|turn| turn.index <= *turn_idx) {
+    for turn in game.turn_log().iter().take_while(|turn| turn.index <= wayback_turn_idx) {
         // TODO: Optimize: apply turn record quickly, without checking correctness, especially
         // mate-related stuff.
         // Idea: upgrade information in `TurnExpanded` to a more structured form that encodes all
@@ -1112,13 +1137,14 @@ fn apply_wayback(wayback_turn_index: Option<TurnIndex>, game: &mut BughouseGame)
     let turn_time = GameInstant::from_game_duration(replay_game.total_time_elapsed());
     debug_assert_eq!(
         turn_time,
-        game.turn_log().iter().rev().find(|turn| turn.index <= *turn_idx).unwrap().time
+        game.turn_log()
+            .iter()
+            .rev()
+            .find(|turn| turn.index <= wayback_turn_idx)
+            .unwrap()
+            .time
     );
-    for board_idx in BughouseBoard::iter() {
-        mem::swap(game.board_mut(board_idx), replay_game.board_mut(board_idx));
-        game.board_mut(board_idx).clock_mut().stop(turn_time);
-    }
-    true
+    replay_game
 }
 
 fn compute_fog_of_war_area(

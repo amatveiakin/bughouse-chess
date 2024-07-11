@@ -22,6 +22,7 @@ pub struct BoardSetup {
     pub castling_rights: BoardCastlingRights,
     pub en_passant_target: Option<Coord>,
     pub reserves: EnumMap<Force, Reserve>,
+    pub full_turn_index: u32,
     pub active_force: Force,
 }
 

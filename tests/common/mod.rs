@@ -138,14 +138,6 @@ impl ReserveAsHashMap for Reserve {
     fn to_map(self) -> HashMap<PieceKind, u8> { self.into_iter().filter(|&(_, n)| n > 0).collect() }
 }
 
-pub trait GridExt {
-    fn without_ids(&self) -> Self;
-}
-
-impl GridExt for Grid {
-    fn without_ids(&self) -> Grid { self.map(|piece| PieceOnBoard { id: PieceId::tmp(), ..piece }) }
-}
-
 fn parse_ascii_setup<'a>(
     rules: &Rules, board_line: impl IntoIterator<Item = &'a str>,
     board_orientation: BoardOrientation,
@@ -184,6 +176,7 @@ fn parse_ascii_setup<'a>(
         castling_rights: enum_map! { _ => enum_map! { _ => None } },
         en_passant_target: None,
         reserves: enum_map! { _ => enum_map!{ _ => 0 } },
+        full_turn_index: 42,
         active_force: Force::White,
     })
 }
@@ -274,6 +267,7 @@ mod tests {
     use bughouse_chess::board::TurnMode;
     use bughouse_chess::clock::GameInstant;
     use bughouse_chess::game::ChessGame;
+    use bughouse_chess::grid::GridExt;
     use bughouse_chess::rules::{ChessRules, MatchRules};
     use strum::IntoEnumIterator;
 

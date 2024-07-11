@@ -40,6 +40,8 @@ import victory_sound from "../assets/sounds/victory.ogg";
 import defeat_sound from "../assets/sounds/defeat.ogg";
 import draw_sound from "../assets/sounds/draw.ogg";
 
+import Stockfish from "fairy-stockfish-nnue.wasm/stockfish.js";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 const NBSP = "\u00A0"; // &nbsp; - non-breaking space
 const NUMSP = "\u2007"; // &numsp; - figure space
@@ -192,7 +194,9 @@ const loading_tracker = new (class {
     console.assert(this.#resources_loaded <= this.#resources_required);
     const ready = this.#resources_loaded === this.#resources_required;
     if (ready) {
-      console.log(`All resources loaded ${this.#resources_loaded}`);
+      console.log(`Graphics and sounds loaded (${this.#resources_loaded})`);
+      // Load Stockfish in the end to speed up the initial loading.
+      initStockfish();
     }
   }
 })();
@@ -2220,4 +2224,58 @@ function make_animated_dots() {
     parent.appendChild(dot);
   }
   return parent;
+}
+
+function isStockfishSupported() {
+  if (typeof WebAssembly !== "object") return false;
+  const source = Uint8Array.from([
+    0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 7, 8, 1, 4, 116, 101, 115, 116,
+    0, 0, 10, 15, 1, 13, 0, 65, 0, 253, 17, 65, 0, 253, 17, 253, 186, 1, 11,
+  ]);
+  if (typeof WebAssembly.validate !== "function" || !WebAssembly.validate(source)) return false;
+  if (typeof Atomics !== "object") return false;
+  if (typeof SharedArrayBuffer !== "function") return false;
+  return true;
+}
+
+async function initStockfish() {
+  if (!isStockfishSupported()) {
+    console.warn(
+      "Fairy-Stockfish not supported! For more information, see https://github.com/hi-ogawa/Stockfish/wiki"
+    );
+    return;
+  }
+  const url = "./stockfish.wasm";
+  const request = new Request(url, {
+    method: "GET",
+    headers: { Accept: "*/*" },
+  });
+  const response = await fetch(request);
+  if (!response.ok) {
+    console.error("Fairy-Stockfish download failed:", response);
+    return;
+  }
+  const data = await response.arrayBuffer();
+  loadStockfish(data);
+}
+
+// Make error catchable
+async function doLoadStockfish(params) {
+  return await Stockfish(params);
+}
+
+function loadStockfish(data) {
+  doLoadStockfish({ wasmBinary: data })
+    .then((stockfish) => {
+      console.log("Fairy-Stockfish loaded");
+      stockfish.addMessageListener((line) => {
+        // console.log("Fairy-Stockfish: ", line);
+        wasm_client().process_stockfish_message(line);
+      });
+      wasm_client().set_stockfish(stockfish);
+    })
+    .catch((e) => {
+      console.error("Fairy-Stockfish initialization failed:", e);
+      throw e;
+    });
 }

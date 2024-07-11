@@ -9,6 +9,7 @@ use crate::board::{Board, BoardCastlingRights};
 use crate::coord::{BoardShape, Col, Coord, Row, SubjectiveRow};
 use crate::force::Force;
 use crate::grid::Grid;
+use crate::once_cell_regex;
 use crate::piece::{
     piece_from_ascii, piece_to_ascii, CastleDirection, PieceId, PieceKind, PieceOnBoard,
     PieceOrigin,
@@ -118,9 +119,14 @@ fn en_passant_target_from_fen(s: &str) -> Result<Option<Coord>, String> {
     }
 }
 
-pub fn starting_position_to_shredder_fen(board: &Board) -> String {
-    let half_turn_clock = 0; // since the last capture or pawn advance, for the fifty-move rule
-    let full_turn_index = 1; // starts at 1 and is incremented after Black's move
+// Differences from classic FEN notation:
+//   - Castling uses files rather than king-side/queen-side notation (Shredder-FEN).
+//   - A tilde is added after promoted pieces (BPGN standard)
+//   - Halfmove clock is always set to 0 and ignored when reading: we don't use the fifty-move rule.
+//   - If not empty, reserve is listed in square brackets after the position (like Fairy-Stockfish).
+pub fn board_to_shredder_fen(board: &Board) -> String {
+    let half_turn_clock = 0; // we don't use the fifty-move rule
+    let full_turn_index = board.full_turn_index();
 
     let grid = board.grid();
     let grid_notation = board
@@ -137,9 +143,18 @@ pub fn starting_position_to_shredder_fen(board: &Board) -> String {
                         empty_col_count = 0;
                     }
                     row_notation.push(piece_to_ascii(piece.kind, piece.force));
-                    // Note. If this is extended to save arbitrary (not just starting) position,
-                    // then we need to include "~" after promoted pieces.
-                    // See https://bughousedb.com/Lieven_BPGN_Standard.txt, section 3.2.
+                    match piece.origin {
+                        PieceOrigin::Innate => {}
+                        PieceOrigin::Promoted => {
+                            // Include "~" after promoted pieces:
+                            // https://bughousedb.com/Lieven_BPGN_Standard.txt, section 3.2.
+                            row_notation.push('~');
+                        }
+                        PieceOrigin::Combined(_) => {
+                            // TODO: Deal with promoted combined pieces.
+                        }
+                        PieceOrigin::Dropped => {}
+                    }
                 } else {
                     empty_col_count += 1;
                 }
@@ -151,14 +166,31 @@ pub fn starting_position_to_shredder_fen(board: &Board) -> String {
         })
         .join("/");
 
+    let mut reserve_notation = Force::iter()
+        .map(|force| {
+            board
+                .reserve(force)
+                .iter()
+                .filter(|(piece_kind, _)| !piece_kind.is_neutral()) // exclude the duck
+                .map(|(piece_kind, &count)| {
+                    String::from(piece_to_ascii(piece_kind, force.into())).repeat(count.into())
+                })
+                .join("")
+        })
+        .join("");
+    if !reserve_notation.is_empty() {
+        reserve_notation = format!("[{}]", reserve_notation);
+    }
+
     let active_force_notation = force_to_fen(board.active_force());
     let castling_notation = castling_rights_to_fen(board.shape(), board.castling_rights());
     let en_passant_target_notation =
         en_passant_target_to_fen(board.shape(), board.en_passant_target());
 
     format!(
-        "{} {} {} {} {} {}",
+        "{}{} {} {} {} {} {}",
         grid_notation,
+        reserve_notation,
         active_force_notation,
         castling_notation,
         en_passant_target_notation,
@@ -167,17 +199,36 @@ pub fn starting_position_to_shredder_fen(board: &Board) -> String {
     )
 }
 
-pub fn shredder_fen_to_starting_position(
-    rules: &ChessRules, fen: &str,
-) -> Result<BoardSetup, String> {
+pub fn shredder_fen_to_board(rules: &ChessRules, fen: &str) -> Result<BoardSetup, String> {
+    let reserve_re = once_cell_regex!(r"^(.*)\[(.*)\]$");
+
     let (
-        grid_notation,
+        mut grid_notation,
         active_force_notation,
         castling_notation,
         en_passant_target_notation,
         half_turn_clock,
         full_turn_index,
-    ) = fen.split_whitespace().collect_tuple().unwrap();
+    ) = fen
+        .split_whitespace()
+        .collect_tuple()
+        .ok_or_else(|| format!("invalid FEN: {fen}"))?;
+
+    let mut reserves = enum_map! { _ => enum_map!{ _ => 0 } };
+    if let Some(cap) = reserve_re.captures(grid_notation) {
+        grid_notation = &grid_notation[cap.get(1).unwrap().range()];
+        let reserve_notation = cap.get(2).unwrap().as_str();
+        for piece in reserve_notation.chars() {
+            if let Some((kind, piece_force)) = piece_from_ascii(piece) {
+                let force = piece_force.try_into().map_err(|_| {
+                    format!("invalid FEN: unexpected neutral reserve piece: {piece}")
+                })?;
+                reserves[force][kind] += 1;
+            } else {
+                return Err(format!("invalid FEN: unknown reserve piece: {piece}"));
+            }
+        }
+    }
 
     let mut grid = Grid::new(rules.board_shape());
     let rows = grid_notation.split('/').collect_vec();
@@ -191,17 +242,25 @@ pub fn shredder_fen_to_starting_position(
     for (row, row_notation) in rows.iter().rev().enumerate() {
         let row = row as i8;
         let mut col = 0;
-        for ch in row_notation.chars() {
+        let mut row_iter = row_notation.chars().peekable();
+        while let Some(ch) = row_iter.next() {
             if let Some(n) = ch.to_digit(10) {
                 col += n as i8;
             } else if let Some((kind, force)) = piece_from_ascii(ch) {
-                grid[Coord::new(Row::from_zero_based(row), Col::from_zero_based(col))] =
-                    Some(PieceOnBoard {
-                        id: PieceId::tmp(),
-                        kind,
-                        force,
-                        origin: PieceOrigin::Innate, // because we only allow starting positions
-                    });
+                let mut piece = PieceOnBoard {
+                    id: PieceId::tmp(),
+                    kind,
+                    force,
+                    // TODO: Fix `PieceOrigin::Combined`.
+                    // TODO: How bad is it that we misidentify `Dropped` pieces as `Innate`?
+                    origin: PieceOrigin::Innate,
+                };
+                if row_iter.peek() == Some(&'~') {
+                    piece.origin = PieceOrigin::Promoted;
+                    row_iter.next();
+                }
+                let coord = Coord::new(Row::from_zero_based(row), Col::from_zero_based(col));
+                grid[coord] = Some(piece);
                 col += 1;
             }
         }
@@ -220,16 +279,13 @@ pub fn shredder_fen_to_starting_position(
     let active_force = force_from_fen(active_force_notation)?;
     let castling_rights = castling_rights_from_fen(&grid, castling_notation)?;
     let en_passant_target = en_passant_target_from_fen(en_passant_target_notation)?;
-    let reserves = Default::default(); // TODO: save reserves to FEN
-    let half_turn_clock = half_turn_clock
+    // Ignore `half_turn_clock`: we don't use the fifty-move rule.
+    let _ = half_turn_clock
         .parse::<u32>()
         .map_err(|_| format!("invalid half-turn clock: {}", half_turn_clock))?;
     let full_turn_index = full_turn_index
         .parse::<u32>()
         .map_err(|_| format!("invalid full turn index: {}", full_turn_index))?;
-    if half_turn_clock != 0 || full_turn_index != 1 {
-        return Err("only starting positions are supported".to_owned());
-    }
 
     Ok(BoardSetup {
         grid,
@@ -237,6 +293,85 @@ pub fn shredder_fen_to_starting_position(
         castling_rights,
         en_passant_target,
         reserves,
+        full_turn_index,
         active_force,
     })
+}
+
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::game::{BughouseBoard, BughouseGame};
+    use crate::role::Role;
+    use crate::rules::{MatchRules, Rules};
+    use crate::test_util::{replay_bughouse_log, sample_bughouse_players};
+
+    fn comparable(setup: BoardSetup) -> BoardSetup {
+        BoardSetup {
+            grid: setup.grid.map(|piece| {
+                // Improvement potential: The fact that we have to workaround origin is not great.
+                // Origin is important information that affects the game flow. We should either
+                // preserve the data to FEN or live without it.
+                use PieceOrigin::*;
+                let origin = match piece.origin {
+                    Innate | Combined(_) | Dropped => Innate,
+                    Promoted => Promoted,
+                };
+                PieceOnBoard { origin, id: PieceId::tmp(), ..piece }
+            }),
+            next_piece_id: PieceId::tmp(),
+            ..setup
+        }
+    }
+
+    #[test]
+    fn promoted_pieces() {
+        let rules = Rules {
+            match_rules: MatchRules::unrated_public(),
+            chess_rules: ChessRules::bughouse_international5(),
+        };
+        let mut game =
+            BughouseGame::new(rules.clone(), Role::ServerOrStandalone, &sample_bughouse_players());
+        replay_bughouse_log(
+            &mut game,
+            "1A.a4 1a.h5 2A.a5 2a.h4 3A.a6 3a.h3 4A.xb7 4a.xg2 5A.xc8/Q 5a.xh1/N",
+            Duration::from_millis(100),
+        )
+        .unwrap();
+        let board = game.board(BughouseBoard::A);
+        let fen = board_to_shredder_fen(board);
+        // Note the tildes ("~") after promoted pieces.
+        assert_eq!(fen, "rnQ~qkbnr/p1ppppp1/8/8/8/8/1PPPPP1P/RNBQKBNn~ w Aah - 0 6");
+        let parsed_board = shredder_fen_to_board(&rules.chess_rules, &fen).unwrap();
+        assert_eq!(comparable(parsed_board), comparable(board.clone().into()));
+    }
+
+    #[test]
+    fn reserves() {
+        let rules = Rules {
+            match_rules: MatchRules::unrated_public(),
+            chess_rules: ChessRules::bughouse_international5(),
+        };
+        let mut game =
+            BughouseGame::new(rules.clone(), Role::ServerOrStandalone, &sample_bughouse_players());
+        replay_bughouse_log(
+            &mut game,
+            "
+                1A.e4 1B.e4 1b.e6 1a.d5 2B.d4 2A.xd5 2a.e6 3A.xe6 2b.Be7 3a.Bxe6 3B.Nf3 4A.Nf3
+                3b.Nf6 4a.Be7 5A.d4 5a.Nf6 4B.Nc3 4b.P@b4 6A.Bg5 6a.h6 7A.Bxf6 7a.Bxf6 8A.Be2
+                5B.Bd2 8a.Nc6 5b.xc3 6B.Bxc3 6b.Nxe4 7B.Qe2 7b.Nxc3 8B.xc3 9A.P@e5 8b.O-O 9a.Be7
+            ",
+            Duration::from_millis(100),
+        )
+        .unwrap();
+        let board = game.board(BughouseBoard::A);
+        let fen = board_to_shredder_fen(board);
+        // Note the reserve pieces listed in square brackets.
+        assert_eq!(fen, "r2qk2r/ppp1bpp1/2n1b2p/4P3/3P4/5N2/PPP1BPPP/RN1QK2R[NBpn] w AHah - 0 10");
+        let parsed_board = shredder_fen_to_board(&rules.chess_rules, &fen).unwrap();
+        assert_eq!(comparable(parsed_board), comparable(board.clone().into()));
+    }
 }

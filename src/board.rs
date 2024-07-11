@@ -818,6 +818,7 @@ pub struct Board {
     total_drops: u32, // total number of drops from both sides
     position_count: HashMap<PositionForRepetitionDraw, u32>,
     clock: Clock,
+    full_turn_index: u32, // full index, as in FEN
     active_force: Force,
     is_duck_turn: EnumMap<Force, bool>, // track separately per force to allow preturns
 }
@@ -840,6 +841,7 @@ impl Board {
             castling_rights,
             en_passant_target: None,
             reserves,
+            full_turn_index: 1,
             active_force: Force::White,
         };
         Self::new_from_setup(rules, role, players, setup)
@@ -874,6 +876,7 @@ impl Board {
             total_drops: 0,
             position_count: HashMap::new(),
             clock: Clock::new(time_control, time_measurement),
+            full_turn_index: setup.full_turn_index,
             active_force: setup.active_force,
             is_duck_turn: enum_map! { _ => false },
         };
@@ -922,6 +925,7 @@ impl Board {
     pub fn reserves(&self) -> &EnumMap<Force, Reserve> { &self.reserves }
     pub fn clock(&self) -> &Clock { &self.clock }
     pub fn clock_mut(&mut self) -> &mut Clock { &mut self.clock }
+    pub fn full_turn_index(&self) -> u32 { self.full_turn_index }
     pub fn active_force(&self) -> Force { self.active_force }
     pub fn is_duck_turn(&self, force: Force) -> bool { self.is_duck_turn[force] }
     pub fn duck_position(&self) -> Option<Coord> {
@@ -988,6 +992,8 @@ impl Board {
             }
         })
     }
+
+    pub fn find_king(&self, force: Force) -> Option<Coord> { find_king(&self.grid, force) }
 
     pub fn destination_reachability(&self, from: Coord, to: Coord, mode: TurnMode) -> Reachability {
         match mode {
@@ -1178,6 +1184,11 @@ impl Board {
             }
         } else {
             self.active_force = next_active_force;
+        }
+        if (self.active_force == Force::White || mode == TurnMode::Preturn)
+            && !self.is_duck_turn[self.active_force]
+        {
+            self.full_turn_index += 1;
         }
     }
 
@@ -1754,27 +1765,26 @@ impl Board {
                         return Err(TurnError::DontControlPiece);
                     }
                     let first_row = SubjectiveRow::first().to_row(self.shape(), force);
-                    if piece.kind == PieceKind::King
-                        && mv.from.row == first_row
-                        && mv.to.row == first_row
-                    {
-                        if let Some(dst_piece) = self.grid[mv.to] {
-                            if dst_piece.force == force.into() && dst_piece.kind == PieceKind::Rook
-                            {
-                                if piece.origin == PieceOrigin::Innate {
-                                    let castle_direction = match mv.to.col.cmp(&mv.from.col) {
-                                        Ordering::Less => CastleDirection::ASide,
-                                        Ordering::Greater => CastleDirection::HSide,
-                                        Ordering::Equal => {
-                                            return Err(TurnError::ImpossibleTrajectory);
-                                        }
-                                    };
-                                    // Castling rights will be checked later when applying the turn.
-                                    return Ok(Turn::Castle(castle_direction));
-                                } else {
-                                    return Err(TurnError::CannotCastleDroppedKing);
+                    let d_col = mv.from.col - mv.to.col;
+                    let onto_rook = self.grid[mv.to].map_or(false, |dst_piece| {
+                        dst_piece.force == force.into() && dst_piece.kind == PieceKind::Rook
+                    });
+                    let is_castling = piece.kind == PieceKind::King
+                        && ((d_col.abs() >= 2) || onto_rook)
+                        && (mv.from.row == first_row && mv.to.row == first_row);
+                    if is_castling {
+                        if piece.origin == PieceOrigin::Innate {
+                            let castle_direction = match mv.to.col.cmp(&mv.from.col) {
+                                Ordering::Less => CastleDirection::ASide,
+                                Ordering::Greater => CastleDirection::HSide,
+                                Ordering::Equal => {
+                                    return Err(TurnError::ImpossibleTrajectory);
                                 }
-                            }
+                            };
+                            // Castling rights will be checked later when applying the turn.
+                            return Ok(Turn::Castle(castle_direction));
+                        } else {
+                            return Err(TurnError::CannotCastleDroppedKing);
                         }
                     }
                 }
@@ -1990,11 +2000,12 @@ impl From<Board> for BoardSetup {
     fn from(board: Board) -> BoardSetup {
         BoardSetup {
             grid: board.grid,
-            active_force: board.active_force,
+            next_piece_id: board.next_piece_id,
             castling_rights: board.castling_rights,
             en_passant_target: board.en_passant_target,
-            next_piece_id: board.next_piece_id,
             reserves: board.reserves,
+            full_turn_index: board.full_turn_index,
+            active_force: board.active_force,
         }
     }
 }
