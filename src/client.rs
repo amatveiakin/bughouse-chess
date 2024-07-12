@@ -182,6 +182,9 @@ impl Match {
     pub fn has_active_game(&self) -> bool {
         self.game_state.as_ref().map_or(false, |s| s.alt_game.is_active())
     }
+    pub fn displayed_game_state(&self) -> &GameState {
+        self.game_state.as_ref().unwrap_or(&self.setup_demo_state)
+    }
 }
 
 impl MatchState {
@@ -296,15 +299,9 @@ impl ClientState {
     // `Match::game_state` private, always use `displayed_game_state`.
     pub fn game_state(&self) -> Option<&GameState> { self.match_state.game_state() }
     pub fn displayed_game_state(&self) -> &GameState {
-        if let Some(mtch) = self.mtch() {
-            if let Some(game_state) = &mtch.game_state {
-                game_state
-            } else {
-                &mtch.setup_demo_state
-            }
-        } else {
-            &self.default_setup_demo_state
-        }
+        self.mtch()
+            .map(|m| m.displayed_game_state())
+            .unwrap_or(&self.default_setup_demo_state)
     }
     fn game_state_mut(&mut self) -> Option<&mut GameState> { self.match_state.game_state_mut() }
     // TODO: Reduce public mutability. This is used only for drag&drop, so limit the mutable API to that.

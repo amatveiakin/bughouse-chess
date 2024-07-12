@@ -341,7 +341,9 @@ impl WebClient {
         let display_board_idx = ANALYSIS_BOARD_IDX;
         let info = self.state.analysis_engine_process_message(line, display_board_idx);
         if info.is_some() {
-            self.update_state()?;
+            self.repaint_chalk()?;
+            self.update_chat()?;
+            self.update_evaluation_bars()?;
         }
         Ok(())
     }
@@ -734,13 +736,7 @@ impl WebClient {
 
     pub fn update_state(&self) -> JsResult<()> {
         let document = web_document();
-        let GameState {
-            is_demo,
-            game_index,
-            ref alt_game,
-            evaluation_percentages,
-            ..
-        } = self.state.displayed_game_state();
+        let GameState { is_demo, ref alt_game, .. } = self.state.displayed_game_state();
         let game = alt_game.local_game();
         let hash_seed;
         let mtch = self.state.mtch();
@@ -757,11 +753,6 @@ impl WebClient {
             let mtch = mtch.unwrap();
             let show_readiness = !game.status().is_active() && mtch.is_active_match();
             update_participants_and_scores(&mtch.scores, &mtch.participants, show_readiness)?;
-            let chat_node = web_document().get_existing_element_by_id("chat-text-area")?;
-            web_chat::update_chat(
-                &chat_node,
-                &mtch.chat.items(&mtch.my_name, game.chess_rules(), Some(*game_index)),
-            )?;
             update_cannot_start_alert(mtch)?;
         } else {
             update_participants_and_scores(&None, &[], false)?;
@@ -943,7 +934,8 @@ impl WebClient {
             .class_list()
             .toggle_with_force("active-player", is_clock_ticking(&game, my_id))?;
         self.repaint_chalk()?;
-        update_evaluation_bars(evaluation_percentages, perspective)?;
+        self.update_chat()?;
+        self.update_evaluation_bars()?;
         Ok(())
     }
 
@@ -1191,6 +1183,25 @@ impl WebClient {
             ))?;
             node.class_list().add_1("reserve-highlight")?;
         }
+        Ok(())
+    }
+
+    fn update_chat(&self) -> JsResult<()> {
+        let Some(mtch) = self.state.mtch() else {
+            return Ok(());
+        };
+        let GameState { game_index, ref alt_game, .. } = mtch.displayed_game_state();
+        let chat_node = web_document().get_existing_element_by_id("chat-text-area")?;
+        web_chat::update_chat(
+            &chat_node,
+            &mtch.chat.items(&mtch.my_name, alt_game.chess_rules(), Some(*game_index)),
+        )?;
+        Ok(())
+    }
+
+    fn update_evaluation_bars(&self) -> JsResult<()> {
+        let GameState { alt_game, evaluation_percentages, .. } = self.state.displayed_game_state();
+        update_evaluation_bars(evaluation_percentages, alt_game.perspective())?;
         Ok(())
     }
 
