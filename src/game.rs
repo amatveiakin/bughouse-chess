@@ -383,7 +383,7 @@ pub struct PlayerInGame {
     pub id: BughousePlayer,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PlayerRelation {
     Myself,
     Opponent,

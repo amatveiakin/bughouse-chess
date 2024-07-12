@@ -22,6 +22,11 @@ pub const ANALYSIS_BOARD_IDX: DisplayBoard = DisplayBoard::Primary;
 // Improvement potential. Allow users to configure analysis depth.
 pub const ANALYSIS_ENGINE_SEARCH_TIME: Duration = Duration::from_secs(5);
 
+// Can be used in lieu of a player name.
+pub const ANALYSIS_ENGINE_NAME_GENERIC: &str = "#engine";
+pub const ANALYSIS_ENGINE_NAME_WHITE: &str = "#engine-white"; // when playing for White
+pub const ANALYSIS_ENGINE_NAME_BLACK: &str = "#engine-black"; // when playing for Black
+
 // General engine status, regardless of whether a position is being analysed at the moment.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EngineStatus {

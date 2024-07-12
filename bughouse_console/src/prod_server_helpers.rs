@@ -13,6 +13,7 @@ pub fn validate_player_name(name: &str) -> Result<(), String> {
     // These words cannot be used inside player names, even with slight variations.
     const CUSTOM_CENSOR: &[&str] = &["admin", "guest"];
 
+    // TODO: Consider reserving names like "bot", "stockfish", etc.
     // These words cannot be used as player names to avoid confusion in system messages.
     // They can be used inside player names, though.
     #[rustfmt::skip]
@@ -104,10 +105,14 @@ impl ServerHelpers for ProdServerHelpers {
 
 #[cfg(test)]
 mod tests {
+    use bughouse_chess::analysis_engine::{
+        ANALYSIS_ENGINE_NAME_BLACK, ANALYSIS_ENGINE_NAME_GENERIC, ANALYSIS_ENGINE_NAME_WHITE,
+    };
+
     use super::*;
 
     #[test]
-    fn validate_player_name_all() {
+    fn validate_player_name_rules() {
         validate_player_name("a").unwrap_err(); // too short
         validate_player_name("123456789o123456789o").unwrap();
         validate_player_name("123456789o123456789o1").unwrap_err(); // too long
@@ -128,5 +133,12 @@ mod tests {
         validate_player_name("still__bad").unwrap_err(); // trailing special characters
         validate_player_name("_bad").unwrap_err(); // trailing special characters
         validate_player_name("bad_").unwrap_err(); // trailing special characters
+    }
+
+    #[test]
+    fn engine_cannot_coincide_with_human() {
+        validate_player_name(ANALYSIS_ENGINE_NAME_GENERIC).unwrap_err();
+        validate_player_name(ANALYSIS_ENGINE_NAME_WHITE).unwrap_err();
+        validate_player_name(ANALYSIS_ENGINE_NAME_BLACK).unwrap_err();
     }
 }

@@ -33,7 +33,9 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
-use analysis_engine::{FsfAnalysisEngine, ANALYSIS_BOARD_IDX};
+use analysis_engine::{
+    FsfAnalysisEngine, ANALYSIS_BOARD_IDX, ANALYSIS_ENGINE_NAME_BLACK, ANALYSIS_ENGINE_NAME_WHITE,
+};
 use bughouse_chess::client::*;
 use bughouse_chess::client_chat::cannot_start_game_message;
 use bughouse_chess::lobby::*;
@@ -571,7 +573,17 @@ impl WebClient {
                 .remove_all_children();
         }
         for (player_name, drawing) in chalkboard.all_drawings() {
-            let owner = self.state.relation_to(player_name);
+            let owner = match player_name.as_str() {
+                ANALYSIS_ENGINE_NAME_WHITE => ChalkOwner::EngineWhite,
+                ANALYSIS_ENGINE_NAME_BLACK => ChalkOwner::EngineBlack,
+                _ => match self.state.relation_to(player_name) {
+                    PlayerRelation::Myself => ChalkOwner::Myself,
+                    PlayerRelation::Opponent => ChalkOwner::Opponent,
+                    PlayerRelation::Partner => ChalkOwner::Partner,
+                    PlayerRelation::Diagonal => ChalkOwner::Diagonal,
+                    PlayerRelation::Other => ChalkOwner::OtherHuman,
+                },
+            };
             for board_idx in DisplayBoard::iter() {
                 for mark in drawing.board(get_board_index(board_idx, alt_game.perspective())) {
                     self.render_chalk_mark(board_idx, owner, mark)?;
@@ -580,7 +592,7 @@ impl WebClient {
         }
         if let Some(canvas) = self.state.chalk_canvas() {
             if let Some((board_idx, mark)) = canvas.current_painting() {
-                self.render_chalk_mark(*board_idx, PlayerRelation::Myself, mark)?;
+                self.render_chalk_mark(*board_idx, ChalkOwner::Myself, mark)?;
             }
         }
         Ok(())
@@ -1046,9 +1058,9 @@ impl WebClient {
     }
 
     fn render_chalk_mark(
-        &self, board_idx: DisplayBoard, owner: PlayerRelation, mark: &ChalkMark,
+        &self, board_idx: DisplayBoard, owner: ChalkOwner, mark: &ChalkMark,
     ) -> JsResult<()> {
-        use PlayerRelation::*;
+        use ChalkOwner::*;
         let GameState { alt_game, .. } = self.state.displayed_game_state();
         let document = web_document();
         let board_shape = alt_game.board_shape();
@@ -1107,7 +1119,8 @@ impl WebClient {
                     Opponent => vec![p + (0., 0.), p + (0., 0.5), p + (0.5, 0.)],
                     Partner => vec![p + (1., 1.), p + (1., 0.5), p + (0.5, 1.)],
                     Diagonal => vec![p + (1., 0.), p + (0.5, 0.), p + (1., 0.5)],
-                    Other => vec![
+                    // Engine doesn't use square highlights, so we can fallback to anything.
+                    OtherHuman | EngineWhite | EngineBlack => vec![
                         p + (0.5, 0.1),
                         p + (0.1, 0.5),
                         p + (0.5, 0.9),
@@ -1120,6 +1133,22 @@ impl WebClient {
                     "class",
                     &["chalk-square-highlight", &chalk_square_color_class(owner)].join(" "),
                 )?;
+                layer.append_child(&node)?;
+            }
+            ChalkMark::GhostPiece { coord, piece_kind } => {
+                const SIZE: u32 = 100;
+                let p =
+                    DisplayFCoord::square_pivot(to_display_coord(*coord, board_shape, orientation));
+                let layer =
+                    document.get_existing_element_by_id(&chalk_drawing_layer_id(board_idx))?;
+                let node = svg_icon(piece_outline_path(*piece_kind), SIZE, SIZE, &[
+                    "chalk-ghost-piece",
+                    &chalk_ghost_color_class(owner),
+                ])?;
+                node.set_attribute("width", "1")?;
+                node.set_attribute("height", "1")?;
+                node.set_attribute("x", &p.x.to_string())?;
+                node.set_attribute("y", &p.y.to_string())?;
                 layer.append_child(&node)?;
             }
         }
@@ -1226,6 +1255,17 @@ enum SquareHighlightLayer {
 enum ReservePresentation {
     Normal,
     Demo,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
+pub enum ChalkOwner {
+    Myself,
+    Opponent,
+    Partner,
+    Diagonal,
+    OtherHuman,
+    EngineWhite,
+    EngineBlack,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -2524,13 +2564,13 @@ fn highlight_archive_game_row(game_id: i64) -> JsResult<()> {
 fn generate_svg_markers() -> JsResult<()> {
     let document = web_document();
     let svg_defs = document.get_existing_element_by_id("svg-defs")?;
-    for relation in PlayerRelation::iter() {
+    for owner in ChalkOwner::iter() {
         // These definition are identical, but having multiple copies allows us to color them
         // differently in css. Yep, that's the only way to have multiple arrowhear colors in SVG
         // (although it might be changed in SVG2):
         // https://stackoverflow.com/questions/16664584/changing-an-svg-markers-color-css
         let marker = document.create_svg_element("marker")?;
-        marker.set_attribute("id", &arrowhead_id(relation))?;
+        marker.set_attribute("id", &arrowhead_id(owner))?;
         marker.set_attribute("viewBox", "0 0 10 10")?;
         marker.set_attribute("refX", "5")?;
         marker.set_attribute("refY", "5")?;
@@ -2753,26 +2793,30 @@ fn promotion_target_layer_id(board_idx: DisplayBoard) -> String {
     format!("promotion-target-layer-{}", board_id(board_idx))
 }
 
-fn participant_relation_id(owner: PlayerRelation) -> &'static str {
+fn chalk_owner_id(owner: ChalkOwner) -> &'static str {
     match owner {
-        PlayerRelation::Myself => "myself",
-        PlayerRelation::Opponent => "opponent",
-        PlayerRelation::Partner => "partner",
-        PlayerRelation::Diagonal => "diagonal",
-        PlayerRelation::Other => "other",
+        ChalkOwner::Myself => "myself",
+        ChalkOwner::Opponent => "opponent",
+        ChalkOwner::Partner => "partner",
+        ChalkOwner::Diagonal => "diagonal",
+        ChalkOwner::OtherHuman => "other",
+        ChalkOwner::EngineWhite => "botwhite",
+        ChalkOwner::EngineBlack => "botblack",
     }
 }
 
-fn arrowhead_id(owner: PlayerRelation) -> String {
-    format!("arrowhead-{}", participant_relation_id(owner))
+fn arrowhead_id(owner: ChalkOwner) -> String { format!("arrowhead-{}", chalk_owner_id(owner)) }
+
+fn chalk_line_color_class(owner: ChalkOwner) -> String {
+    format!("chalk-line-{}", chalk_owner_id(owner))
 }
 
-fn chalk_line_color_class(owner: PlayerRelation) -> String {
-    format!("chalk-line-{}", participant_relation_id(owner))
+fn chalk_square_color_class(owner: ChalkOwner) -> String {
+    format!("chalk-square-{}", chalk_owner_id(owner))
 }
 
-fn chalk_square_color_class(owner: PlayerRelation) -> String {
-    format!("chalk-square-{}", participant_relation_id(owner))
+fn chalk_ghost_color_class(owner: ChalkOwner) -> String {
+    format!("chalk-ghost-{}", chalk_owner_id(owner))
 }
 
 fn reserve_y_pos(player_idx: DisplayPlayer) -> f64 {
@@ -2848,6 +2892,22 @@ fn broken_king_path(force: PieceForce) -> &'static str {
         PieceForce::White => "#white-king-broken",
         PieceForce::Black => "#black-king-broken",
         PieceForce::Neutral => panic!("King cannot be neutral"),
+    }
+}
+
+fn piece_outline_path(piece_kind: PieceKind) -> &'static str {
+    use PieceKind::*;
+    match piece_kind {
+        Pawn => "#pawn-outline",
+        Knight => "#knight-outline",
+        Bishop => "#bishop-outline",
+        Rook => "#rook-outline",
+        Queen => "#queen-outline",
+        Cardinal => "#cardinal-outline",
+        Empress => "#empress-outline",
+        Amazon => "#amazon-outline",
+        King => "#king-outline",
+        Duck => "#duck-outline",
     }
 }
 

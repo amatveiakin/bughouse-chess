@@ -13,7 +13,10 @@ use crate::altered_game::{
     AlteredGame, ApplyRemoteTurnResult, TurnConfirmation, TurnInputResult, WaybackDestination,
     WaybackState,
 };
-use crate::analysis_engine::{AnalysisEngine, AnalysisInfo, EngineStatus, ANALYSIS_BOARD_IDX};
+use crate::analysis_engine::{
+    AnalysisEngine, AnalysisInfo, EngineStatus, ANALYSIS_BOARD_IDX, ANALYSIS_ENGINE_NAME_BLACK,
+    ANALYSIS_ENGINE_NAME_WHITE,
+};
 use crate::board::{Board, Turn, TurnDrop, TurnError, TurnInput, TurnMode, TurnMove};
 use crate::chalk::{ChalkCanvas, ChalkMark, Chalkboard};
 use crate::chat::{ChatMessage, ChatMessageBody, ChatRecipient};
@@ -34,7 +37,7 @@ use crate::half_integer::HalfU32;
 use crate::lobby::Teaming;
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::import_from_bpgn;
-use crate::piece::CastleDirection;
+use crate::piece::{CastleDirection, PieceKind};
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Faction, Participant};
 use crate::role::Role;
@@ -380,6 +383,7 @@ impl ClientState {
             return None;
         };
         let true_local_game = alt_game.true_local_game().clone();
+        let board = true_local_game.board(board_idx);
 
         let info = engine.process_message(line, &true_local_game, board_idx);
         let Some(info) = info else {
@@ -388,26 +392,25 @@ impl ClientState {
         evaluation_percentages[board_idx] = Some(info.score.to_percent_score());
 
         if let Some((_, next_turn, _)) = info.best_line.first() {
-            // TODO: Some other display form (at least other chalk color) for analysis moves.
-            self.clear_chalk_drawing(display_board);
-            match *next_turn {
-                Turn::Move(TurnMove { from, to, .. }) => {
-                    self.add_chalk_mark(display_board, ChalkMark::Arrow { from, to });
+            let mark = match *next_turn {
+                Turn::Move(TurnMove { from, to, .. }) => ChalkMark::Arrow { from, to },
+                Turn::Drop(TurnDrop { to, piece_kind }) => {
+                    ChalkMark::GhostPiece { coord: to, piece_kind }
                 }
-                Turn::Drop(TurnDrop { to, .. }) | Turn::PlaceDuck(to) => {
-                    self.add_chalk_mark(display_board, ChalkMark::SquareHighlight { coord: to });
+                Turn::PlaceDuck(to) => {
+                    ChalkMark::GhostPiece { coord: to, piece_kind: PieceKind::Duck }
                 }
                 Turn::Castle(dir) => {
-                    let board = true_local_game.board(board_idx);
                     let from = board.find_king(board.active_force()).unwrap();
                     let to_col = match dir {
                         CastleDirection::ASide => Col::A,
                         CastleDirection::HSide => Col::H,
                     };
                     let to = Coord::new(from.row, to_col);
-                    self.add_chalk_mark(display_board, ChalkMark::Arrow { from, to });
+                    ChalkMark::Arrow { from, to }
                 }
-            }
+            };
+            self.set_engine_chalk_drawing(display_board, vec![(board.active_force(), mark)]);
 
             let mut best_line = String::new();
             let mut virtual_turns = false;
@@ -842,6 +845,24 @@ impl ClientState {
         self.update_chalk_board(display_board, |chalkboard, my_name, board_idx| {
             chalkboard.clear_drawing(my_name, board_idx);
         });
+    }
+
+    pub fn set_engine_chalk_drawing(
+        &mut self, display_board: DisplayBoard, marks: Vec<(Force, ChalkMark)>,
+    ) {
+        let Some(GameState { alt_game, chalkboard, .. }) = self.game_state_mut() else {
+            return;
+        };
+        let board_idx = get_board_index(display_board, alt_game.perspective());
+        chalkboard.clear_drawing(ANALYSIS_ENGINE_NAME_WHITE.to_owned(), board_idx);
+        chalkboard.clear_drawing(ANALYSIS_ENGINE_NAME_BLACK.to_owned(), board_idx);
+        for (force, mark) in marks {
+            let name = match force {
+                Force::White => ANALYSIS_ENGINE_NAME_WHITE,
+                Force::Black => ANALYSIS_ENGINE_NAME_BLACK,
+            };
+            chalkboard.add_mark(name.to_owned(), board_idx, mark);
+        }
     }
 
     pub fn process_server_event(&mut self, event: BughouseServerEvent) -> Result<(), ClientError> {

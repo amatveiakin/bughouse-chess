@@ -9,6 +9,7 @@ use crate::display::{
     display_to_fcoord, get_board_orientation, DisplayBoard, DisplayFCoord, FCoord, Perspective,
 };
 use crate::game::BughouseBoard;
+use crate::piece::PieceKind;
 
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -18,6 +19,7 @@ pub enum ChalkMark {
     //   or afterwards. Or both.
     FreehandLine { points: Vec<FCoord> },
     SquareHighlight { coord: Coord },
+    GhostPiece { coord: Coord, piece_kind: PieceKind },
 }
 
 // Represents all chalk marks by a given player.
@@ -122,6 +124,7 @@ impl ChalkCanvas {
                 }
             }
             ChalkMark::SquareHighlight { .. } => {}
+            ChalkMark::GhostPiece { .. } => {}
         }
     }
 
@@ -152,5 +155,6 @@ fn is_valid_painting((_, mark): &(DisplayBoard, ChalkMark)) -> bool {
         ChalkMark::Arrow { to, from } => to != from,
         ChalkMark::FreehandLine { points } => points.len() > 1,
         ChalkMark::SquareHighlight { .. } => true,
+        ChalkMark::GhostPiece { .. } => true,
     }
 }

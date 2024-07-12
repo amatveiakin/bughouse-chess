@@ -21,6 +21,8 @@ body {
   --color-chalk-diagonal: #9a118b;
   --color-chalk-other: #404040;
   --color-chalk-other-light: #808080;
+  --color-chalk-botwhite: #ffffff;
+  --color-chalk-botblack: #303030;
   --color-main-scrollbar: #597121;
 
   --color-dialog-background: #dfceb4;
@@ -385,6 +387,11 @@ body.symmetric #page {
   opacity: 0.6;
   pointer-events: none;
 }
+.chalk-arrow.chalk-line-botwhite,
+.chalk-arrow.chalk-line-botblack {
+  stroke-width: 0.2;
+  opacity: 0.8;
+}
 .chalk-freehand-line {
   fill: none;
   stroke-width: 0.15;
@@ -398,30 +405,53 @@ body.symmetric #page {
   opacity: 1.0;
   pointer-events: none;
 }
+.chalk-ghost-piece {
+  fill: none;
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.8;
+}
 
 .chalk-line-myself { stroke: var(--color-chalk-myself); }
 .chalk-line-partner { stroke: var(--color-chalk-partner); }
 .chalk-line-opponent { stroke: var(--color-chalk-opponent); }
 .chalk-line-diagonal { stroke: var(--color-chalk-diagonal); }
 .chalk-line-other { stroke: var(--color-chalk-other); }
+.chalk-line-botwhite { stroke: var(--color-chalk-botwhite); }
+.chalk-line-botblack { stroke: var(--color-chalk-botblack); }
 
 .chalk-arrow.chalk-line-myself { marker-end: url(#arrowhead-myself); }
 .chalk-arrow.chalk-line-partner { marker-end: url(#arrowhead-partner); }
 .chalk-arrow.chalk-line-opponent { marker-end: url(#arrowhead-opponent); }
 .chalk-arrow.chalk-line-diagonal { marker-end: url(#arrowhead-diagonal); }
 .chalk-arrow.chalk-line-other { marker-end: url(#arrowhead-other); }
+.chalk-arrow.chalk-line-botwhite { marker-end: url(#arrowhead-botwhite); }
+.chalk-arrow.chalk-line-botblack { marker-end: url(#arrowhead-botblack); }
 
 .chalk-square-myself { fill: var(--color-chalk-myself); }
 .chalk-square-partner { fill: var(--color-chalk-partner); }
 .chalk-square-opponent { fill: var(--color-chalk-opponent); }
 .chalk-square-diagonal { fill: var(--color-chalk-diagonal); }
 .chalk-square-other { fill: var(--color-chalk-other-light); }
+.chalk-square-botwhite { fill: var(--color-chalk-botwhite); }
+.chalk-square-botblack { fill: var(--color-chalk-botblack); }
+
+.chalk-ghost-myself { stroke: var(--color-chalk-myself); }
+.chalk-ghost-partner { stroke: var(--color-chalk-partner); }
+.chalk-ghost-opponent { stroke: var(--color-chalk-opponent); }
+.chalk-ghost-diagonal { stroke: var(--color-chalk-diagonal); }
+.chalk-ghost-other { stroke: var(--color-chalk-other); }
+.chalk-ghost-botwhite { stroke: var(--color-chalk-botwhite); }
+.chalk-ghost-botblack { stroke: var(--color-chalk-botblack); }
 
 #arrowhead-myself { fill: var(--color-chalk-myself); }
 #arrowhead-partner { fill: var(--color-chalk-partner); }
 #arrowhead-opponent { fill: var(--color-chalk-opponent); }
 #arrowhead-diagonal { fill: var(--color-chalk-diagonal); }
 #arrowhead-other { fill: var(--color-chalk-other); }
+#arrowhead-botwhite { fill: var(--color-chalk-botwhite); }
+#arrowhead-botblack { fill: var(--color-chalk-botblack); }
 
 .board,
 .reserve-container {
