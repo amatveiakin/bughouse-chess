@@ -255,7 +255,7 @@ impl AnalysisEngine for FsfAnalysisEngine {
         if self.status != EngineStatus::Ready {
             return;
         }
-        let fen = fen::board_to_shredder_fen(&game.board(board_idx));
+        let fen = fen::board_to_shredder_fen(game.board(board_idx));
         let request = AnalysisRequest { fen };
         self.stop();
         self.analysis_state = match self.analysis_state {
@@ -310,8 +310,8 @@ fn bool_to_str(v: bool) -> &'static str {
 fn parse_fsf_algebraic(notation: &str) -> TurnInput {
     let move_re = once_cell_regex!(r"^([a-h][1-8])([a-h][1-8])([a-zA-Z])?$");
     let drop_re = once_cell_regex!(r"^([A-Z])@([a-h][1-8])$");
-    const A_CASTLING: &'static str = "O-O-O";
-    const H_CASTLING: &'static str = "O-O";
+    const A_CASTLING: &str = "O-O-O";
+    const H_CASTLING: &str = "O-O";
     let turn = if let Some(cap) = move_re.captures(notation) {
         let from = Coord::from_algebraic(cap.get(1).unwrap().as_str()).unwrap();
         let to = Coord::from_algebraic(cap.get(2).unwrap().as_str()).unwrap();

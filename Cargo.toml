@@ -67,6 +67,7 @@ web-sys = "0.3.69"
 # Clippy philosophy. The goal is to have zero warnings from `cargo clippy` on the main branch.
 # Thus silencing all warning that I don't want to fix now. These decisions could be revised.
 [workspace.lints.clippy]
+collapsible_if = "allow"
 collapsible_else_if = "allow"
 large_enum_variant = "allow"
 manual_is_ascii_check = "allow"

@@ -26,7 +26,7 @@ pub enum TooltipWidth {
 }
 
 impl TooltipPosition {
-    pub fn to_class_name(&self) -> &str {
+    pub fn to_class_name(self) -> &'static str {
         match self {
             TooltipPosition::Right => "tooltip-right",
             TooltipPosition::Above => "tooltip-above",
@@ -36,7 +36,7 @@ impl TooltipPosition {
 }
 
 impl TooltipWidth {
-    pub fn to_class_name(&self) -> &str {
+    pub fn to_class_name(self) -> &'static str {
         match self {
             TooltipWidth::Auto => "tooltip-width-auto",
             TooltipWidth::M => "tooltip-width-m",
@@ -263,11 +263,11 @@ impl WebElementExt for web_sys::Element {
         for tooltip_node in self.get_elements_by_class_name_iter("tooltip-text") {
             tooltip_node.remove();
         }
-        Ok(self.new_child_element("div")?.with_classes([
+        self.new_child_element("div")?.with_classes([
             "tooltip-text",
             position.to_class_name(),
             width.to_class_name(),
-        ])?)
+        ])
     }
 
     fn new_child_portal_tooltip(

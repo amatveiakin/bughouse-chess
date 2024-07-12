@@ -396,26 +396,18 @@ impl ClientState {
     pub fn analysis_engine_process_message(
         &mut self, line: &str, display_board: DisplayBoard,
     ) -> Option<AnalysisInfo> {
-        let Some(GameState {
+        let GameState {
             alt_game,
             analysis_enabled,
             ref mut evaluation_percentages,
             ..
-        }) = self.match_state.game_state_mut()
-        else {
-            return None;
-        };
+        } = self.match_state.game_state_mut()?;
         let board_idx = get_board_index(display_board, alt_game.perspective());
-        let Some(engine) = self.analysis_engine.as_mut() else {
-            return None;
-        };
+        let engine = self.analysis_engine.as_mut()?;
         let game = alt_game.true_local_game().clone();
         let board = game.board(board_idx);
 
-        let info = engine.process_message(line, &game, board_idx);
-        let Some(info) = info else {
-            return None;
-        };
+        let info = engine.process_message(line, &game, board_idx)?;
         if !*analysis_enabled {
             return None;
         }
