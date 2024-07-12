@@ -209,24 +209,28 @@ fn castling_destinations(
     let Ok(force) = Force::try_from(piece.force) else {
         return vec![];
     };
-    let mut dst_cols = vec![];
+    let mut destinations = vec![];
     for (dir, rook_col) in castling_rights[force] {
-        if let Some(rook_col) = rook_col {
-            let d = match dir {
-                CastleDirection::ASide => -1,
-                CastleDirection::HSide => 1,
-            };
-            let jump2_col = from.col + d * 2;
-            let jump1_col = from.col + d;
-            if grid.contains_col(jump2_col) {
-                dst_cols.push(jump2_col);
-            } else {
-                assert_eq!(jump1_col, rook_col);
-                dst_cols.push(jump1_col);
-            }
+        if rook_col.is_some() {
+            destinations.push(castling_destination(grid.shape(), from, dir))
         }
     }
-    dst_cols.into_iter().map(|col| Coord::new(from.row, col)).collect()
+    destinations
+}
+
+fn castling_destination(shape: BoardShape, from: Coord, dir: CastleDirection) -> Coord {
+    let d = match dir {
+        CastleDirection::ASide => -1,
+        CastleDirection::HSide => 1,
+    };
+    let jump2_col = from.col + d * 2;
+    let jump1_col = from.col + d;
+    let to_col = if shape.contains_col(jump2_col) {
+        jump2_col
+    } else {
+        jump1_col
+    };
+    Coord::new(from.row, to_col)
 }
 
 // TODO: Exclude moves when the path is blocked.
@@ -1097,6 +1101,14 @@ impl Board {
             }
         }
         ret
+    }
+
+    pub fn castling_relocation(
+        &self, force: Force, dir: CastleDirection,
+    ) -> Option<(Coord, Coord)> {
+        let from = find_king(&self.grid, force)?;
+        let to = castling_destination(self.shape(), from, dir);
+        Some((from, to))
     }
 
     pub fn stealing_result(&self, pos: Coord, thief: Force) -> Result<(), TurnError> {

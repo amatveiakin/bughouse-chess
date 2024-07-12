@@ -22,7 +22,6 @@ use crate::chalk::{ChalkCanvas, ChalkMark, Chalkboard};
 use crate::chat::{ChatMessage, ChatMessageBody, ChatRecipient};
 use crate::client_chat::{ClientChat, SystemMessageClass};
 use crate::clock::{duration_to_mss, GameDuration, GameInstant, WallGameTimePair};
-use crate::coord::{Col, Coord};
 use crate::display::{get_board_index, get_display_board_index, DisplayBoard};
 use crate::event::{
     BughouseClientEvent, BughouseClientPerformance, BughouseServerEvent, BughouseServerRejection,
@@ -37,7 +36,7 @@ use crate::half_integer::HalfU32;
 use crate::lobby::Teaming;
 use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::import_from_bpgn;
-use crate::piece::{CastleDirection, PieceKind};
+use crate::piece::PieceKind;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Faction, Participant};
 use crate::role::Role;
@@ -379,10 +378,10 @@ impl ClientState {
         let Some(engine) = self.analysis_engine.as_mut() else {
             return None;
         };
-        let true_local_game = alt_game.true_local_game().clone();
-        let board = true_local_game.board(board_idx);
+        let game = alt_game.true_local_game().clone();
+        let board = game.board(board_idx);
 
-        let info = engine.process_message(line, &true_local_game, board_idx);
+        let info = engine.process_message(line, &game, board_idx);
         let Some(info) = info else {
             return None;
         };
@@ -398,12 +397,7 @@ impl ClientState {
                     ChalkMark::GhostPiece { coord: to, piece_kind: PieceKind::Duck }
                 }
                 Turn::Castle(dir) => {
-                    let from = board.find_king(board.active_force()).unwrap();
-                    let to_col = match dir {
-                        CastleDirection::ASide => Col::A,
-                        CastleDirection::HSide => Col::H,
-                    };
-                    let to = Coord::new(from.row, to_col);
+                    let (from, to) = board.castling_relocation(board.active_force(), dir).unwrap();
                     ChalkMark::Arrow { from, to }
                 }
             };
