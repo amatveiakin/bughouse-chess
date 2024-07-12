@@ -1,5 +1,3 @@
-// TODO: Allow to toggle analysis on and off.
-
 #![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(let_chains)]
 #![cfg_attr(feature = "strict", deny(warnings))]
@@ -34,7 +32,8 @@ use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 use analysis_engine::{
-    FsfAnalysisEngine, ANALYSIS_BOARD_IDX, ANALYSIS_ENGINE_NAME_BLACK, ANALYSIS_ENGINE_NAME_WHITE,
+    EngineStatus, FsfAnalysisEngine, ANALYSIS_BOARD_IDX, ANALYSIS_ENGINE_NAME_BLACK,
+    ANALYSIS_ENGINE_NAME_WHITE,
 };
 use bughouse_chess::client::*;
 use bughouse_chess::client_chat::cannot_start_game_message;
@@ -331,6 +330,19 @@ impl WebClient {
     pub fn clear_ephemeral_chat_items(&mut self) { self.state.clear_ephemeral_chat_items(); }
     pub fn show_command_result(&mut self, text: String) { self.state.show_command_result(text); }
     pub fn show_command_error(&mut self, text: String) { self.state.show_command_error(text); }
+
+    pub fn analysis_engine_status(&self) -> String {
+        match self.state.analysis_engine_status() {
+            EngineStatus::NotLoaded => "not_loaded",
+            EngineStatus::AwaitingRules => "awaiting_rules",
+            EngineStatus::IncompatibleRules => "incompatible_rules",
+            EngineStatus::Ready => "ready",
+        }
+        .to_owned()
+    }
+
+    pub fn analysis_enabled(&self) -> bool { self.state.analysis_enabled() }
+    pub fn toggle_analysis(&mut self) { self.state.toggle_analysis(); }
 
     pub fn set_stockfish(&mut self, stockfish: JsStockfish) {
         let engine = FsfAnalysisEngine::new(Box::new(move |msg| stockfish.post_message(msg)));

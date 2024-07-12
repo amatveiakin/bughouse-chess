@@ -101,6 +101,10 @@ pub struct GameState {
     pub chalkboard: Chalkboard,
     // Canvas for the current client to draw on.
     pub chalk_canvas: ChalkCanvas,
+    // Whether engine analysis is on. If this is disabled, we will still load and the engine and
+    // communicate with it (e.g. to find out if it's ready to analyse a given game), but no
+    // heavy-lifting will be done.
+    pub analysis_enabled: bool,
     // Evaluation by the engine: 100% is White totally winning, 0% is Black totally winning.
     pub evaluation_percentages: EnumMap<BughouseBoard, Option<f64>>,
     // Whether wayback state is shared with other players who enabled sharing.
@@ -365,11 +369,38 @@ impl ClientState {
         self.analysis_engine = Some(engine);
     }
 
+    pub fn analysis_enabled(&self) -> bool {
+        self.game_state().map_or(false, |s| s.analysis_enabled)
+    }
+    pub fn toggle_analysis(&mut self) {
+        let Some(GameState { alt_game, ref mut analysis_enabled, .. }) =
+            self.match_state.game_state_mut()
+        else {
+            return;
+        };
+        *analysis_enabled = !*analysis_enabled;
+        if *analysis_enabled {
+            if let Some(engine) = &mut self.analysis_engine {
+                let analysis_board_idx =
+                    get_board_index(ANALYSIS_BOARD_IDX, alt_game.perspective());
+                engine.analyze_position(&alt_game.true_local_game(), analysis_board_idx);
+            }
+        } else {
+            if let Some(engine) = &mut self.analysis_engine {
+                engine.stop();
+            }
+            self.clear_engine_output();
+        }
+    }
+
     pub fn analysis_engine_process_message(
         &mut self, line: &str, display_board: DisplayBoard,
     ) -> Option<AnalysisInfo> {
         let Some(GameState {
-            alt_game, ref mut evaluation_percentages, ..
+            alt_game,
+            analysis_enabled,
+            ref mut evaluation_percentages,
+            ..
         }) = self.match_state.game_state_mut()
         else {
             return None;
@@ -385,6 +416,9 @@ impl ClientState {
         let Some(info) = info else {
             return None;
         };
+        if !*analysis_enabled {
+            return None;
+        }
         evaluation_percentages[board_idx] = Some(info.score.to_percent_score());
 
         if let Some((_, next_turn, _)) = info.best_line.first() {
@@ -429,6 +463,16 @@ impl ClientState {
             self.add_ephemeral_system_message(SystemMessageClass::Info, best_line);
         }
         Some(info)
+    }
+
+    fn clear_engine_output(&mut self) {
+        if let Some(GameState { ref mut evaluation_percentages, .. }) = self.game_state_mut() {
+            *evaluation_percentages = enum_map! { _ => None };
+        };
+        for display_board in DisplayBoard::iter() {
+            self.set_engine_chalk_drawing(display_board, vec![]);
+        }
+        self.clear_ephemeral_chat_items();
     }
 
     pub fn first_game_countdown_left(&self) -> Option<Duration> {
@@ -1133,6 +1177,7 @@ impl ClientState {
             time_pair,
             chalkboard: Chalkboard::new(),
             chalk_canvas: ChalkCanvas::new(board_shape, perspective),
+            analysis_enabled: false,
             evaluation_percentages: enum_map! { _ => None },
             shared_wayback_enabled: false,
             shared_wayback_turn_index: None,
@@ -1418,7 +1463,9 @@ impl ClientState {
     fn wayback_to_local(
         &mut self, destination: WaybackDestination, board_idx: Option<BughouseBoard>,
     ) -> Result<Option<TurnIndex>, ()> {
-        let Some(GameState { ref mut alt_game, .. }) = self.match_state.game_state_mut() else {
+        let Some(GameState { ref mut alt_game, analysis_enabled, .. }) =
+            self.match_state.game_state_mut()
+        else {
             return Err(());
         };
         if alt_game.is_active() {
@@ -1426,7 +1473,7 @@ impl ClientState {
         }
         let turn_index = alt_game.wayback_to(destination, board_idx);
         let wayback = alt_game.wayback_state();
-        if let Some(engine) = &mut self.analysis_engine {
+        if *analysis_enabled && let Some(engine) = &mut self.analysis_engine {
             let analysis_board_idx = get_board_index(ANALYSIS_BOARD_IDX, alt_game.perspective());
             engine.analyze_position(&alt_game.true_local_game(), analysis_board_idx);
         }
@@ -1511,6 +1558,7 @@ impl ClientState {
             time_pair: None,
             chalkboard: Chalkboard::new(),
             chalk_canvas: ChalkCanvas::new(board_shape, perspective),
+            analysis_enabled: false,
             evaluation_percentages: enum_map! { _ => None },
             shared_wayback_enabled: false,
             shared_wayback_turn_index: None,
@@ -1635,6 +1683,7 @@ fn make_setup_demo_state(rules: Rules) -> GameState {
         time_pair: None,
         chalkboard: Chalkboard::new(),
         chalk_canvas: ChalkCanvas::new(board_shape, perspective),
+        analysis_enabled: false,
         evaluation_percentages: enum_map! { _ => None },
         shared_wayback_enabled: false,
         shared_wayback_turn_index: None,

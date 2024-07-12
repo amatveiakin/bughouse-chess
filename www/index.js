@@ -165,6 +165,7 @@ const rules_button = document.getElementById("rules-button");
 const export_button = document.getElementById("export-button");
 const volume_button = document.getElementById("volume-button");
 const shared_wayback_button = document.getElementById("shared-wayback-button");
+const toggle_analysis_button = document.getElementById("toggle-analysis-button");
 
 const svg_defs = document.getElementById("svg-defs");
 
@@ -350,6 +351,7 @@ rules_button.addEventListener("click", () => execute_input("/rules"));
 export_button.addEventListener("click", () => execute_input("/save"));
 volume_button.addEventListener("click", next_volume);
 shared_wayback_button.addEventListener("click", toggle_shared_wayback);
+toggle_analysis_button.addEventListener("click", toggle_analysis);
 
 accept_essential_cookies_button.addEventListener("click", on_accept_essential_cookies);
 accept_all_cookies_button.addEventListener("click", on_accept_all_cookies);
@@ -935,9 +937,17 @@ function update_shared_wayback_button() {
     : "Viewing game history independently from other players when navigating game log via mouse or ↑↓ arrow keys. Click to toggle";
 }
 
+function update_toggle_analysis_button() {
+  const analysis_enabled = wasm_client().analysis_enabled();
+  toggle_analysis_button.title = analysis_enabled
+    ? "Evaluation enabled. Click to disable"
+    : "Evaluation disabled. Click to enable";
+}
+
 function update_buttons() {
   const observer_status = wasm_client().observer_status();
   const game_status = wasm_client().game_status();
+  const engine_status = wasm_client().analysis_engine_status();
   switch (game_status) {
     case "active":
       set_displayed(leave_match_button, observer_status !== "no");
@@ -946,6 +956,7 @@ function update_buttons() {
       set_displayed(toggle_faction_button, true);
       set_displayed(export_button, false);
       set_displayed(shared_wayback_button, false);
+      set_displayed(toggle_analysis_button, false);
       break;
     case "over":
       set_displayed(leave_match_button, true);
@@ -955,6 +966,7 @@ function update_buttons() {
       // TODO: Add "get game permalink" button.
       set_displayed(export_button, false);
       set_displayed(shared_wayback_button, true);
+      set_displayed(toggle_analysis_button, engine_status === "ready");
       break;
     case "archive":
       set_displayed(leave_match_button, true);
@@ -963,6 +975,7 @@ function update_buttons() {
       set_displayed(toggle_faction_button, false);
       set_displayed(export_button, true);
       set_displayed(shared_wayback_button, false); // TODO: allow watching archive games together and set to `true`
+      set_displayed(toggle_analysis_button, engine_status === "ready");
       break;
     case "none":
       set_displayed(leave_match_button, false);
@@ -971,6 +984,7 @@ function update_buttons() {
       set_displayed(toggle_faction_button, false);
       set_displayed(export_button, false);
       set_displayed(shared_wayback_button, false);
+      set_displayed(toggle_analysis_button, false);
       break;
     default:
       throw new Error(`Unknown game status: ${game_status}`);
@@ -978,6 +992,7 @@ function update_buttons() {
   update_ready_button();
   update_toggle_faction_button();
   update_shared_wayback_button();
+  update_toggle_analysis_button();
 }
 
 async function leave_match() {
@@ -2106,6 +2121,13 @@ function update_chat_reference_tooltip() {
 function toggle_shared_wayback() {
   with_error_handling(function () {
     wasm_client().toggle_shared_wayback();
+    update();
+  });
+}
+
+function toggle_analysis() {
+  with_error_handling(function () {
+    wasm_client().toggle_analysis();
     update();
   });
 }
