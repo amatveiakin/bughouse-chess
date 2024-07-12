@@ -366,9 +366,11 @@ impl WebClient {
     // the right way to click on empty squares. Introducing an element for each empty square would
     // not work, because for example fog tiles are larger than the squares.
     pub fn click_element(&mut self, source: &str) -> JsResult<()> {
+        let Some(alt_game) = self.state.alt_game_mut() else {
+            return Ok(());
+        };
         let (display_board_idx, loc) = parse_location_id(source)
             .ok_or_else(|| rust_error!("Illegal click source: {source:?}"))?;
-        let alt_game = self.state.alt_game_mut().ok_or_else(|| rust_error!())?;
         let board_idx = get_board_index(display_board_idx, alt_game.perspective());
         let turn_or_error = alt_game.click(board_idx, loc);
         self.state.apply_turn_or_error(turn_or_error);
