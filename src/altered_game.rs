@@ -1020,7 +1020,6 @@ fn compute_derived_data(
     let mut local_game_inorder_turns = game_confirmed.clone();
     if let Some(wayback_turn_index) = wayback_turn_index {
         assert!(local_turns.is_empty());
-        assert!(partial_turn_input.is_none());
         let wayback_game = apply_wayback(wayback_turn_index, &local_game_inorder_turns);
         let end_time = GameInstant::from_game_duration(wayback_game.total_time_elapsed());
         for board_idx in BughouseBoard::iter() {
