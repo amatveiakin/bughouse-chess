@@ -135,7 +135,8 @@ impl FsfAnalysisEngine {
 
         match self.analysis_state {
             AnalysisState::Idle => {
-                panic!("Was not expecting info messages from Fairy-Stockfish, got: {line}")
+                // Ignore. We shouldn't get any evaluation messages at this point, but info messages
+                // could contain various information, e.g. variant confirmation.
             }
             AnalysisState::Active => {}
             AnalysisState::Stopping(_) => {
@@ -204,9 +205,11 @@ impl FsfAnalysisEngine {
     //   > Directly before that the engine should send a final "info" command with the final search
     //   > information
     // We also know that FSF always includes the best line in the info messages.
-    fn process_bestmove_message(&mut self) {
+    fn process_bestmove_message(&mut self, line: &str) {
         self.analysis_state = match mem::take(&mut self.analysis_state) {
-            AnalysisState::Idle => unreachable!(),
+            AnalysisState::Idle => {
+                panic!("Was not expecting bestmove messages from Fairy-Stockfish, got: {line}")
+            }
             AnalysisState::Active | AnalysisState::Stopping(None) => AnalysisState::Idle,
             AnalysisState::Stopping(Some(request)) => {
                 self.post_analisys_request(request);
@@ -278,7 +281,7 @@ impl AnalysisEngine for FsfAnalysisEngine {
         if line.starts_with("info") {
             self.process_info_message(line, game, board_idx)
         } else if line.starts_with("bestmove") {
-            self.process_bestmove_message();
+            self.process_bestmove_message(line);
             None
         } else {
             None
