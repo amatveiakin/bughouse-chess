@@ -1,4 +1,5 @@
 body {
+  --length-unit: min(5vw, 9vh);  /* same for both layouts */
   --sq-size-primary: min(5vw, 9vh);
   --sq-size-secondary: calc(var(--sq-size-primary) / 1.5);
   --board-size-primary: calc(var(--sq-size-primary) * 8);
@@ -1828,15 +1829,15 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 
 .icon-button {
   box-sizing: border-box;
-  padding: 0;
+  padding: 0.1em;
   margin: 0;
-  border: none;
-  border-radius: calc(var(--sq-size-primary) * 0.2);  /* for hover hightlight */
+  border: 0.1em solid #00000030;
+  border-radius: calc(var(--length-unit) * 0.1);
   background-color: transparent;
   background-image: none;
   box-shadow: none;
-  width: calc(var(--sq-size-primary) * 0.6);
-  height: calc(var(--sq-size-primary) * 0.6);
+  width: calc(var(--length-unit) * 0.55);
+  height: calc(var(--length-unit) * 0.55);
   cursor: pointer;
 }
 .icon-button:hover {
@@ -1844,6 +1845,9 @@ dialog input[type=text]:invalid:not(:placeholder-shown) {
 }
 .icon-button:active {
   background-color: #ffffff50;
+}
+#ready-button {
+  border: none;
 }
 
 .inline-icon {
