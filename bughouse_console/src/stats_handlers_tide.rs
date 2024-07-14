@@ -10,8 +10,6 @@ use crate::game_stats::{ComputeMetaStats, GroupStats, RawStats};
 use crate::history_graphs;
 use crate::persistence::{self, DatabaseReader};
 
-const IMPORT_PLOTLY: &str = r#"<script src="https://cdn.plot.ly/plotly-2.16.1.min.js"></script>"#;
-
 pub trait SuitableServerState: Sync + Send + Clone + 'static {
     type DB: Sync + Send + DatabaseReader;
     fn db(&self) -> &Self::DB;
@@ -310,7 +308,9 @@ impl<ST: SuitableServerState> Handlers<ST> {
         let h: String = html! {
             <html>
             <head>
-                {raw!(IMPORT_PLOTLY)}
+                <script src={req.state().static_content_url_prefix().to_owned() + "/plotly.js"}>
+                    {";"}
+                </script>
             </head>
             <body>
                 {raw!(players_history_graph_html.as_str())}
@@ -339,7 +339,9 @@ impl<ST: SuitableServerState> Handlers<ST> {
         let h: String = html! {
             <html>
             <head>
-                {raw!(IMPORT_PLOTLY)}
+                <script src={req.state().static_content_url_prefix().to_owned() + "/plotly.js"}>
+                    {";"}
+                </script>
             </head>
             <body>
                 {raw!(graph_html.as_str())}
@@ -361,7 +363,9 @@ impl<ST: SuitableServerState> Handlers<ST> {
         let h: String = html! {
             <html>
             <head>
-                {raw!(IMPORT_PLOTLY)}
+                <script src={req.state().static_content_url_prefix().to_owned() + "/plotly.js"}>
+                    {";"}
+                </script>
             </head>
             <body>
                 {raw!(graph_html.as_str())}

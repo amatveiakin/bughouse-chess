@@ -29,6 +29,10 @@ module.exports = {
           to: "jstable.js",
         },
         {
+          from: "./node_modules/plotly.js-dist/plotly.js",
+          to: "plotly.js",
+        },
+        {
           from: "./node_modules/fairy-stockfish-nnue.wasm/stockfish.wasm",
           to: "stockfish.wasm",
         },

@@ -26,14 +26,15 @@
   "homepage": "https://github.com/amatveiakin/bughouse-chess#readme",
   "dependencies": {
     "bughouse-chess": "file:../bughouse_wasm/pkg",
-    "fairy-stockfish-nnue.wasm": "^1.1.8"
+    "fairy-stockfish-nnue.wasm": "^1.1.8",
+    "plotly.js-dist": "^2.33.0"
   },
   "devDependencies": {
+    "@jstable/jstable": "^1.6.5",
     "copy-webpack-plugin": "^10.0.0",
     "css-loader": "^6.7.1",
     "eslint": "^8.29.0",
     "eslint-plugin-only-warn": "^1.1.0",
-    "@jstable/jstable": "^1.6.5",
     "style-loader": "^3.3.1",
     "webpack": "^5.0.0",
     "webpack-cli": "^4.0.0",
