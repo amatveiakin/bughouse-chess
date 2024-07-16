@@ -938,6 +938,7 @@ function update_shared_wayback_button() {
 }
 
 function update_toggle_analysis_button() {
+  // TODO: Show disabled analysis button while the engine is loading.
   const analysis_enabled = wasm_client().analysis_enabled();
   toggle_analysis_button.title = analysis_enabled
     ? "Evaluation enabled. Click to disable"
@@ -2295,6 +2296,7 @@ function loadStockfish(data) {
         wasm_client().process_stockfish_message(line);
       });
       wasm_client().set_stockfish(stockfish);
+      update();
     })
     .catch((e) => {
       console.error("Fairy-Stockfish initialization failed:", e);
