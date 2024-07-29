@@ -454,7 +454,7 @@ impl AlteredGame {
         }
     }
 
-    pub fn see_though_fog(&self) -> bool { !self.is_active() }
+    pub fn see_though_fog(&self) -> bool { !self.is_active() || self.my_id.is_observer() }
 
     pub fn try_local_turn(
         &mut self, board_idx: BughouseBoard, turn_input: TurnInput, time: GameInstant,
