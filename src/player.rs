@@ -2,6 +2,7 @@ use enum_map::Enum;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
+use crate::game::BughousePlayer;
 use crate::half_integer::HalfU32;
 
 
@@ -66,6 +67,25 @@ impl Faction {
             Faction::Fixed(_) => true,
             Faction::Random => true,
             Faction::Observer => false,
+        }
+    }
+}
+
+impl Participant {
+    pub fn update_counters(
+        participants: impl Iterator<Item = &mut Participant>,
+        get_player_id: impl Fn(&str) -> Option<BughousePlayer>,
+    ) {
+        for p in participants {
+            if let Some(player_id) = get_player_id(&p.name) {
+                p.games_played += 1;
+                match player_id {
+                    BughousePlayer::SinglePlayer(_) => {}
+                    BughousePlayer::DoublePlayer(_) => p.double_games_played += 1,
+                }
+            } else if p.active_faction.is_player() {
+                p.games_missed += 1;
+            }
         }
     }
 }

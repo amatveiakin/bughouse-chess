@@ -1917,6 +1917,7 @@ fn update_on_game_over(
                 .await
         });
     }
+    Participant::update_counters(participants.iter_mut(), |name| players.get(name).map(|p| p.id));
     chat.add(
         Some(game_index),
         ctx.utc_now,
@@ -1924,14 +1925,6 @@ fn update_on_game_over(
         ChatMessageBody::GameOver { outcome: game.outcome() },
     );
     for p in participants.iter_mut() {
-        if let Some(pl) = players.get(&p.name) {
-            p.games_played += 1;
-            if matches!(pl.id, BughousePlayer::DoublePlayer(_)) {
-                p.double_games_played += 1;
-            }
-        } else if p.active_faction.is_player() {
-            p.games_missed += 1;
-        }
         if p.active_faction != p.desired_faction {
             chat.add(
                 Some(game_index),

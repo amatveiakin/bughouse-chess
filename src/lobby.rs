@@ -400,16 +400,9 @@ mod tests {
 
     fn simulate_play(players: &[PlayerInGame], participants: &mut Participants) {
         let players: HashMap<_, _> = players.iter().map(|p| (p.name.clone(), p)).collect();
-        for (_, p) in participants.iter_mut() {
-            if let Some(pl) = players.get(&p.name) {
-                p.games_played += 1;
-                if matches!(pl.id, BughousePlayer::DoublePlayer(_)) {
-                    p.double_games_played += 1;
-                }
-            } else if p.active_faction.is_player() {
-                p.games_missed += 1;
-            }
-        }
+        Participant::update_counters(participants.values_mut(), |name| {
+            players.get(name).map(|p| p.id)
+        });
     }
 
     fn collect_stats(players: &[PlayerInGame], stats: &mut ParticipantStatsMap) {
