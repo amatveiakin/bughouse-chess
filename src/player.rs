@@ -2,7 +2,6 @@ use enum_map::Enum;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::game::BughousePlayer;
 use crate::half_integer::HalfU32;
 
 
@@ -30,6 +29,22 @@ pub enum Faction {
     Observer,
 }
 
+// Note. `High` is the default in order to prioritize new players for the next game. Note that this
+// system cannot be cheated by toggle observer bit back and forth of leaving and rejoined the match,
+// because `Participant` object for players who played at least one game is persistent.
+#[derive(
+    Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize,
+)]
+pub enum PlayerSchedulingPriority {
+    UltraLow, // only used temporarily for computations
+    Low,      // played more games than others
+    Normal,   // played less games than others
+    #[default]
+    High, // should be in the next game if possible
+}
+
+// Improvement potential. Similarly to how we replaced `games_missed` with `scheduling_priority`, it
+// probably makes sense to replace `double_games_played` with `double_play_scheduling_priority`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Participant {
     pub name: String,             // fixed for the entire match
@@ -37,9 +52,9 @@ pub struct Participant {
     pub active_faction: Faction,
     pub desired_faction: Faction,
     pub games_played: u32,
-    pub games_missed: u32, // was ready to play, but had to seat out
     pub double_games_played: u32,
     pub individual_score: HalfU32, // meaningful for Teaming::IndividualMode
+    pub scheduling_priority: PlayerSchedulingPriority,
     pub is_online: bool,
     pub is_ready: bool,
 }
@@ -67,25 +82,6 @@ impl Faction {
             Faction::Fixed(_) => true,
             Faction::Random => true,
             Faction::Observer => false,
-        }
-    }
-}
-
-impl Participant {
-    pub fn update_counters(
-        participants: impl Iterator<Item = &mut Participant>,
-        get_player_id: impl Fn(&str) -> Option<BughousePlayer>,
-    ) {
-        for p in participants {
-            if let Some(player_id) = get_player_id(&p.name) {
-                p.games_played += 1;
-                match player_id {
-                    BughousePlayer::SinglePlayer(_) => {}
-                    BughousePlayer::DoublePlayer(_) => p.double_games_played += 1,
-                }
-            } else if p.active_faction.is_player() {
-                p.games_missed += 1;
-            }
         }
     }
 }

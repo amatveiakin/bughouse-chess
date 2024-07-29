@@ -38,7 +38,7 @@ use crate::meter::{Meter, MeterBox, MeterStats};
 use crate::pgn::import_from_bpgn;
 use crate::piece::PieceKind;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
-use crate::player::{Faction, Participant};
+use crate::player::{Faction, Participant, PlayerSchedulingPriority};
 use crate::role::Role;
 use crate::rules::{ChessRules, DropAggression, MatchRules, Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
@@ -1511,9 +1511,9 @@ impl ClientState {
                 active_faction: Faction::Fixed(p.id.team()),
                 desired_faction: Faction::Fixed(p.id.team()),
                 games_played: 0,
-                games_missed: 0,
                 double_games_played: 0,
                 individual_score: HalfU32::ZERO,
+                scheduling_priority: PlayerSchedulingPriority::default(),
                 is_online: true,
                 is_ready: false,
             })

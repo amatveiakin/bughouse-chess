@@ -14,7 +14,7 @@ use crate::game::{
     TOTAL_ENVOYS, TOTAL_ENVOYS_PER_TEAM, TOTAL_TEAMS,
 };
 use crate::iterable_mut::IterableMut;
-use crate::player::{Faction, Participant, Team};
+use crate::player::{Faction, Participant, PlayerSchedulingPriority, Team};
 use crate::rules::Rules;
 
 
@@ -184,7 +184,7 @@ pub fn assign_boards<'a>(
         .map(|p| {
             let high_priority =
                 current_assignment.map_or(false, |current| current.contains_key(&p.name));
-            let priority_key = (cmp::Reverse(high_priority), cmp::Reverse(p.games_missed));
+            let priority_key = (cmp::Reverse(high_priority), cmp::Reverse(p.scheduling_priority));
             (p, priority_key)
         })
         .collect_vec();
@@ -318,6 +318,61 @@ pub fn assign_boards<'a>(
         .collect_vec()
 }
 
+pub fn post_game_update_participant_counters(
+    participants: &mut impl IterableMut<Participant>,
+    get_player_id: impl Fn(&str) -> Option<BughousePlayer>,
+) {
+    use PlayerSchedulingPriority::*;
+    let mut bump_priority = true;
+    for p in participants.get_iter_mut() {
+        if let Some(player_id) = get_player_id(&p.name) {
+            p.games_played += 1;
+            match player_id {
+                BughousePlayer::SinglePlayer(_) => {}
+                BughousePlayer::DoublePlayer(_) => p.double_games_played += 1,
+            }
+            // Set low priority for players who just played a game. `High` goes directly to
+            // `Low`, because `High` should only prioritize the player for one game.
+            p.scheduling_priority = match p.scheduling_priority {
+                High | Normal => Low,
+                Low => UltraLow,
+                UltraLow => {
+                    debug_assert!(
+                        false,
+                        "UltraLow priority should exist only internally in this function"
+                    );
+                    UltraLow
+                }
+            };
+        }
+        if p.desired_faction.is_player() {
+            bump_priority &= p.scheduling_priority <= Low;
+        }
+    }
+    // Different states of the system are possible in the edge cases: players joining the middle
+    // of the match, players forced to double-play a lot, etc. In the typical case of 4+ random
+    // players playing game after game, we expect one of the following:
+    //   - bump_priority == false and each scheduling_priority is `Normal` or `Low`;
+    //   - bump_priority == true and each scheduling_priority is `Low` or `UltraLow`.
+    // The second case is going to be reduced to the first case by the bumping logic below.
+    for p in participants.get_iter_mut() {
+        if bump_priority {
+            // Only bump priority up to `Normal`; `High` is reserved for special cases.
+            p.scheduling_priority = match p.scheduling_priority {
+                High => High,
+                Normal | Low => Normal,
+                UltraLow => Low,
+            }
+        } else {
+            // Never keep `UltraLow` priority: this is a transient state used only in this function.
+            p.scheduling_priority = match p.scheduling_priority {
+                High | Normal | Low => p.scheduling_priority,
+                UltraLow => Low,
+            }
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -328,6 +383,7 @@ mod tests {
     use crate::force::Force;
     use crate::game::{double_player, single_player};
     use crate::half_integer::HalfU32;
+    use crate::player::PlayerSchedulingPriority;
     use crate::rules::{ChessRules, MatchRules};
     use crate::test_util::deterministic_rng;
 
@@ -355,9 +411,9 @@ mod tests {
                 active_faction: faction,
                 desired_faction: faction,
                 games_played: 0,
-                games_missed: 0,
                 double_games_played: 0,
                 individual_score: HalfU32::ZERO,
+                scheduling_priority: PlayerSchedulingPriority::default(),
                 is_online: true,
                 is_ready: true,
             });
@@ -370,17 +426,20 @@ mod tests {
                 active_faction: faction,
                 desired_faction: faction,
                 games_played: 0,
-                games_missed: 0,
                 double_games_played: 0,
                 individual_score: HalfU32::ZERO,
+                scheduling_priority: PlayerSchedulingPriority::default(),
                 is_online: true,
                 is_ready,
             });
         }
     }
 
+    // Some information is duplicated from `Participant`. This allows to measure stats for a
+    // segment of a match more easily.
     #[derive(Debug, Default)]
     struct ParticipantStats {
+        games_played: u32,
         played_for_single_force: EnumMap<Force, usize>,
         played_for_team: EnumMap<Team, usize>,
     }
@@ -400,14 +459,13 @@ mod tests {
 
     fn simulate_play(players: &[PlayerInGame], participants: &mut Participants) {
         let players: HashMap<_, _> = players.iter().map(|p| (p.name.clone(), p)).collect();
-        Participant::update_counters(participants.values_mut(), |name| {
-            players.get(name).map(|p| p.id)
-        });
+        post_game_update_participant_counters(participants, |name| players.get(name).map(|p| p.id));
     }
 
     fn collect_stats(players: &[PlayerInGame], stats: &mut ParticipantStatsMap) {
         for player in players {
             let st = stats.entry(player.name.clone()).or_default();
+            st.games_played += 1;
             match player.id {
                 BughousePlayer::DoublePlayer(team) => {
                     st.played_for_team[team] += 1;
@@ -427,6 +485,14 @@ mod tests {
             // This is for random tests, no floating point errors, so the marging should be big.
             let margin = rhs / 10;
             assert!(lhs.abs_diff(rhs) < margin, $($arg)+);
+        }};
+    }
+
+    macro_rules! assert_in {
+        ($lhs:expr, $rhs:expr) => {{
+            let lhs = $lhs;
+            let rhs = $rhs;
+            assert!(rhs.contains(&lhs), "{lhs:?} is not in {rhs:?}");
         }};
     }
 
@@ -614,6 +680,22 @@ mod tests {
     }
 
     #[test]
+    fn assign_board_balances_zillion_players() {
+        let rng = &mut deterministic_rng();
+        let mut participants = Participants::new();
+        for i in 1..=18 {
+            participants.add(&format!("p{}", i), Faction::Random);
+        }
+        for _ in 0..180 {
+            let players = assign_boards(participants.values(), None, rng);
+            simulate_play(&players, &mut participants);
+        }
+        for p in participants.values() {
+            assert_eq!(p.games_played, 40);
+        }
+    }
+
+    #[test]
     fn assign_board_randomizes_evenly_with_all_random() {
         let rng = &mut deterministic_rng();
         let mut participants = Participants::new();
@@ -716,6 +798,98 @@ mod tests {
         }
     }
 
+    // A player who joins late should play as frequently as the rest. Note that for testing purposes
+    // it is important that there were more than four players beforehand. Only this setup would
+    // catch the bug that we had in the old implementation that relied on `games_missed` instead of
+    // `scheduling_priority`.
+    #[test]
+    fn assign_board_fair_towards_late_joiners() {
+        let rng = &mut deterministic_rng();
+        let mut participants = Participants::new();
+        participants.add("p1", Faction::Random);
+        participants.add("p2", Faction::Random);
+        participants.add("p3", Faction::Random);
+        participants.add("p4", Faction::Random);
+        participants.add("p5", Faction::Random);
+        for _ in 0..77 {
+            let players = assign_boards(participants.values(), None, rng);
+            simulate_play(&players, &mut participants);
+        }
+
+        participants.add("p6", Faction::Random);
+        let mut stats = ParticipantStatsMap::new();
+        for _ in 0..120 {
+            let players = assign_boards(participants.values(), None, rng);
+            collect_stats(&players, &mut stats);
+            simulate_play(&players, &mut participants);
+        }
+        // The number of games played by each player after the new player joined should not differ
+        // by more than one from the uniform distribution (80).
+        for st in stats.values() {
+            assert_in!(st.games_played, 79..=81);
+        }
+        // Adding a new player should not break the property that players who were there from the
+        // beginning should not have a difference of more than one in the number of games played.
+        for name in ["p1", "p2", "p3", "p4", "p5"] {
+            assert_in!(participants[name].games_played, 141..=142);
+        }
+    }
+
+    // Spending time as a voluntary observer should not affect how often you are assigned to games
+    // when you become a player. Similar to `assign_board_fair_towards_late_joiners`.
+    #[test]
+    fn assign_board_fair_towards_former_observers() {
+        let rng = &mut deterministic_rng();
+        let mut participants = Participants::new();
+        participants.add("p1", Faction::Random);
+        participants.add("p2", Faction::Random);
+        participants.add("p3", Faction::Random);
+        participants.add("p4", Faction::Random);
+        participants.add("p5", Faction::Random);
+        participants.add("p6", Faction::Observer);
+        for _ in 0..77 {
+            let players = assign_boards(participants.values(), None, rng);
+            simulate_play(&players, &mut participants);
+        }
+
+        let p5 = participants.get_mut("p6").unwrap();
+        p5.active_faction = Faction::Random;
+        p5.desired_faction = Faction::Random;
+        let mut stats = ParticipantStatsMap::new();
+        for _ in 0..120 {
+            let players = assign_boards(participants.values(), None, rng);
+            collect_stats(&players, &mut stats);
+            simulate_play(&players, &mut participants);
+        }
+        for st in stats.values() {
+            assert_in!(st.games_played, 79..=81);
+        }
+    }
+
+    // While we want later-joiners to participate in game a the same frequency *on average*, it's
+    // nice to force them into the first game after they join.
+    #[test]
+    fn assign_board_prioritizes_new_players() {
+        let rng = &mut deterministic_rng();
+        for i in 0..20 {
+            // Play at least one game to make sure there are <= 4 new players.
+            const MIN_GAMES_PLAYED: u32 = 1;
+            let mut participants = Participants::new();
+            participants.add("p1", Faction::Random);
+            participants.add("p2", Faction::Random);
+            participants.add("p3", Faction::Random);
+            participants.add("p4", Faction::Random);
+            participants.add("p5", Faction::Random);
+            for _ in 0..(MIN_GAMES_PLAYED + i) {
+                let players = assign_boards(participants.values(), None, rng);
+                simulate_play(&players, &mut participants);
+            }
+            participants.add("p6", Faction::Random);
+            let players = assign_boards(participants.values(), None, rng);
+            assert!(players.iter().find(|p| p.name == "p6").is_some());
+        }
+    }
+
     #[test]
     fn reassignment_is_idempotent_when_possible() {
         let rng = &mut deterministic_rng();
@@ -808,7 +982,6 @@ mod tests {
             assert_ne!(p1.id.team(), p2.id.team());
         }
     }
-
 
     #[test]
     fn reassignment_changes_team_if_needed() {

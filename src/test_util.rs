@@ -16,6 +16,8 @@ use crate::once_cell_regex;
 
 // In theory random tests verify statistical properties that should always hold, but let's fix
 // the seed to avoid sporadic failures.
+// TODO: In order to avoid sporadic failures we should use something truly deterministic across time
+// and platforms. https://docs.rs/rand/latest/rand/rngs/struct.StdRng.html recommends `rand_chacha`.
 pub fn deterministic_rng() -> impl Rng { rand::rngs::StdRng::from_seed([0; 32]) }
 
 pub fn sample_chess_players() -> EnumMap<Force, String> {

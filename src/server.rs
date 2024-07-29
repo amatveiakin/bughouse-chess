@@ -32,11 +32,11 @@ use crate::game::{
 use crate::half_integer::HalfU32;
 use crate::iterable_mut::IterableMut;
 use crate::lobby::{
-    assign_boards, fix_teams_if_needed, verify_participants, ParticipantsStatus,
-    ParticipantsWarning, Teaming,
+    assign_boards, fix_teams_if_needed, post_game_update_participant_counters, verify_participants,
+    ParticipantsStatus, ParticipantsWarning, Teaming,
 };
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
-use crate::player::{Faction, Participant};
+use crate::player::{Faction, Participant, PlayerSchedulingPriority};
 use crate::role::Role;
 use crate::rules::{Rules, FIRST_GAME_COUNTDOWN_DURATION};
 use crate::scores::Scores;
@@ -1053,9 +1053,9 @@ impl Match {
                     active_faction: faction,
                     desired_faction: faction,
                     games_played: 0,
-                    games_missed: 0,
                     double_games_played: 0,
                     individual_score: HalfU32::ZERO,
+                    scheduling_priority: PlayerSchedulingPriority::default(),
                     is_online: true,
                     is_ready: false,
                 })
@@ -1147,9 +1147,9 @@ impl Match {
                     active_faction: faction,
                     desired_faction: faction,
                     games_played: 0,
-                    games_missed: 0,
                     double_games_played: 0,
                     individual_score: HalfU32::ZERO,
+                    scheduling_priority: PlayerSchedulingPriority::default(),
                     is_online: true,
                     is_ready: false,
                 })
@@ -1917,7 +1917,7 @@ fn update_on_game_over(
                 .await
         });
     }
-    Participant::update_counters(participants.iter_mut(), |name| players.get(name).map(|p| p.id));
+    post_game_update_participant_counters(participants, |name| players.get(name).map(|p| p.id));
     chat.add(
         Some(game_index),
         ctx.utc_now,
