@@ -1637,7 +1637,6 @@ fn make_piece_icon(
 fn make_menu_icon(images: &[&str]) -> JsResult<web_sys::Element> {
     let document = web_document();
     let svg_node = document.create_svg_element("svg")?;
-    svg_node.set_attribute("viewBox", "0 0 10 10")?;
     for img in images {
         let use_node = document.create_svg_element("use")?;
         use_node.set_attribute("href", &format!("#{img}"))?;

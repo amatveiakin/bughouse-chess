@@ -44,7 +44,7 @@
         <path d="m14.9 50 30.8-30.8h13.1l-26.1 26.3h52.4v9.08h-52.4l26.1 26.3h-13.1z"/>
       </symbol>
 
-      <symbol id="registered-user">
+      <symbol id="registered-user" viewBox="0 0 10 10">
         <path id="path" d="m4.047 2.5141a0.66 0.66 0 1 0-0.3186 0.0388l-0.2943 2.381-1.4189-1.2323a0.6575 0.6575 0 1 0-0.2643 0.15l0.7392 2.5343 0.7644 1.2508-0.7644 0.1352v0.99h5.0262v-0.99l-0.7742-0.1358 0.764-1.25 0.7392-2.5342a0.66 0.66 0 1 0-0.2643-0.15l-1.4189 1.232-0.294-2.381a0.66 0.66 0 1 0-0.3186-0.0388l-0.9514 2.1558z"/>
       </symbol>
 
@@ -52,21 +52,33 @@
         <path d="m80.2 88.8q3.56 0 6.1-2.54 2.54-2.54 2.54-6.1v-60.4q0-3.56-2.54-6.1-2.54-2.54-6.1-2.54h-30.2v8.63h30.2v60.4h-30.2v8.63zm-47.5-17.3 5.93-6.26-11-11h35.3v-8.63h-35.3l11-11-5.93-6.26-21.6 21.6z"/>
       </symbol>
 
-      <radialGradient id="faction-red-gradient" cx="3.9267" cy="3.3585" r="3.4093" gradientTransform="matrix(-.1146 .84997 -1.0222 -.13782 7.776 .43219)" gradientUnits="userSpaceOnUse">
-        <stop stop-color="#ffafaf" offset="0"/>
-        <stop stop-color="#cb0000" offset="1"/>
-      </radialGradient>
-      <symbol id="faction-red">
-        <circle cx="5" cy="5" r="3.5164" fill="url(#faction-red-gradient)"/>
+      <linearGradient id="faction-red-gradient" x1="29.3" x2="76.6" y1="0" y2="0" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#ff0a0a" offset="0"/>
+        <stop stop-color="#ff2929" offset=".317"/>
+        <stop stop-color="#d60000" offset=".5"/>
+        <stop stop-color="#ff2929" offset=".673"/>
+        <stop stop-color="#ff0a0a" offset="1"/>
+      </linearGradient>
+      <symbol id="faction-red" viewBox="0 0 100 100">
+        <g stroke="#000" stroke-linecap="square">
+          <path d="m27.7 18.5v67.9" fill="#f00" stroke-width="5"/>
+          <path d="m28.2 17.3s10.4-1.9 15.7-2.21c5.79-0.336 11.1 4.78 16.9 4.42 5.67-0.358 16.9-2.21 16.9-2.21v31s-11.2 1.85-16.9 2.21c-5.79 0.366-11.1-4.75-16.9-4.42-5.26 0.306-15.7 2.21-15.7 2.21z" fill="url(#faction-red-gradient)" stroke-width="2.4"/>
+        </g>
       </symbol>
-      <radialGradient id="faction-blue-gradient" cx="3.3836" cy=".70436" r="3.0134" gradientTransform="matrix(-.2759 3.7305 -1.4061 -.10399 5.8869 -15.657)" gradientUnits="userSpaceOnUse">
-        <stop stop-color="#8080ff" offset="0"/>
-        <stop stop-color="#0000e8" offset="1"/>
-      </radialGradient>
-      <symbol id="faction-blue">
-        <rect transform="rotate(45)" x="3.963" y="-3.1081" width="6.2162" height="6.2162" fill="url(#faction-blue-gradient)"/>
+      <linearGradient id="faction-blue-gradient" x1="29.3" x2="82.5" y1="0" y2="0" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#33f" offset="0"/>
+        <stop stop-color="#4747ff" offset=".309"/>
+        <stop stop-color="#00f" offset=".512"/>
+        <stop stop-color="#4747ff" offset=".704"/>
+        <stop stop-color="#33f" offset="1"/>
+      </linearGradient>
+      <symbol id="faction-blue" viewBox="0 0 100 100">
+        <g stroke="#000" stroke-linecap="square">
+          <path d="m27.7 18.5v67.9" fill="#f00" stroke-width="5"/>
+          <path d="m85.2 37c-4.88 4.82-11 8.32-17.8 9.71-8.48 1.73-14.4-1.05-21.4 2.1-6.17 2.78-11.1 8.23-17.8 8.92v-40.5c6.37-0.234 12.3-0.118 17.8 3.14 8.96 5.34 13.7 10.3 21.4 12.9 5.77 1.94 11.6 3.07 17.8 3.75z" fill="url(#faction-blue-gradient)" stroke-width="2.4"/>
+        </g>
       </symbol>
-      <symbol id="faction-random">
+      <symbol id="faction-random" viewBox="0 0 10 10">
         <rect transform="matrix(.7061 .70811 -.25745 .96629 0 0)" x="2.7099" y="-.011564" width="4.3367" height="4.3367" fill="#dbdbdb" stroke="#000" stroke-linejoin="bevel" stroke-width=".237"/>
         <rect transform="matrix(-.96629 .25745 -.70811 -.7061 0 0)" x="-4.3252" y="-7.0467" width="4.3367" height="4.3367" fill="#f4f4f4" stroke="#000" stroke-linejoin="bevel" stroke-width=".237"/>
         <rect transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" x="7.0582" y="-11.395" width="4.3367" height="4.3367" fill="#c3c3c3" stroke="#000" stroke-linejoin="bevel" stroke-width=".237"/>
@@ -80,7 +92,7 @@
         <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="8.1418" cy="-8.1418" r=".39052"/>
         <circle transform="matrix(-.26019 .96556 -.96556 .26019 0 0)" cx="10.311" cy="-8.1418" r=".39052"/>
       </symbol>
-      <symbol id="faction-observer">
+      <symbol id="faction-observer" viewBox="0 0 10 10">
         <ellipse cx="3.2668" cy="5" rx="1.9963" ry="3.2489" fill="#fff" stroke="#000" stroke-linejoin="bevel" stroke-width=".3"/>
         <circle cx="2.573" cy="4.948" r=".83036"/>
         <circle cx="2.7855" cy="4.5745" r=".32224" fill="#fff"/>
@@ -89,12 +101,12 @@
         <circle cx="6.252" cy="4.5745" r=".32224" fill="#fff"/>
       </symbol>
 
-      <symbol id="readiness-checkbox">
+      <symbol id="readiness-checkbox" viewBox="0 0 10 10">
         <rect
           style="fill:none;stroke-width:0.4"
           width="6.8" height="6.8" x="1.6" y="1.6" ry="0.8" />
       </symbol>
-      <symbol id="readiness-checkmark">
+      <symbol id="readiness-checkmark" viewBox="0 0 10 10">
         <path
           style="fill:none;stroke-width:0.6"
           d="m 2.709561,4.5122919 c 0.4485028,0.8339431 0.7905735,1.8026437 1.1275222,2.6521436 0,0 0.1038835,0.1746166 0.192985,0.193073 0.093101,0.019291 0.270922,0.015018 0.3584346,-0.086292 C 5.7977495,5.26227 6.790862,2.777499 7.8933261,0.79319363 L 7.7826679,0.84283693 C 6.7062234,2.849886 5.6932692,5.0471417 4.5856085,6.8504341 4.2080204,7.4898828 4.3659627,6.9230289 4.1212491,7.0039093 3.6603713,6.1540468 3.3781129,5.1395962 3.1187998,4.2792776 Z" />
