@@ -325,8 +325,8 @@ where
                     email=$3,
                     password_hash=$4,
                     lichess_user_id=$5,
-                    registration_method=$5
-                WHERE rowid=$6",
+                    registration_method=$6
+                WHERE rowid=$7",
             )
             .bind(live_account.creation_time)
             .bind(live_account.user_name)
