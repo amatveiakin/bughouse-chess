@@ -1142,12 +1142,11 @@ impl WebClient {
                 layer.append_child(&node)?;
             }
             ChalkMark::GhostPiece { coord, piece_kind } => {
-                const SIZE: u32 = 100;
                 let p =
                     DisplayFCoord::square_pivot(to_display_coord(*coord, board_shape, orientation));
                 let layer =
                     document.get_existing_element_by_id(&chalk_drawing_layer_id(board_idx))?;
-                let node = svg_icon(piece_outline_path(*piece_kind), SIZE, SIZE, &[
+                let node = svg_icon(piece_outline_path(*piece_kind), None, &[
                     "chalk-ghost-piece",
                     &chalk_ghost_color_class(owner),
                 ])?;
@@ -1616,10 +1615,13 @@ fn participant_node(
     Ok(node)
 }
 
-fn svg_icon(image: &str, width: u32, height: u32, classes: &[&str]) -> JsResult<web_sys::Element> {
+// TODO: Completely remove `size` argument. Elements should know their own viewBox.
+fn svg_icon(image: &str, size: Option<(u32, u32)>, classes: &[&str]) -> JsResult<web_sys::Element> {
     let document = web_document();
     let svg_node = document.create_svg_element("svg")?;
-    svg_node.set_attribute("viewBox", &format!("0 0 {width} {height}"))?;
+    if let Some((width, height)) = size {
+        svg_node.set_attribute("viewBox", &format!("0 0 {width} {height}"))?;
+    }
     svg_node.set_attribute("class", &classes.iter().join(" "))?;
     let use_node = document.create_svg_element("use")?;
     use_node.set_attribute("href", image)?;
@@ -1628,10 +1630,11 @@ fn svg_icon(image: &str, width: u32, height: u32, classes: &[&str]) -> JsResult<
 }
 
 // Standalone chess piece icon to be used outside of SVG area.
+// TODO: Consider embedding piece icons directly via <img> element without the SVG wrapper.
 fn make_piece_icon(
     piece_kind: PieceKind, force: PieceForce, classes: &[&str],
 ) -> JsResult<web_sys::Element> {
-    svg_icon(piece_path(piece_kind, force, false), 1, 1, classes)
+    svg_icon(piece_path(piece_kind, force, false), Some((1, 1)), classes)
 }
 
 fn make_menu_icon(images: &[&str]) -> JsResult<web_sys::Element> {
@@ -2227,7 +2230,7 @@ fn update_turn_log(
 
                 line_node.new_child_element("span")?.with_classes(["log-turn-number"])?;
 
-                let stealing_hand_node = svg_icon("#stealing-hand", 150, 100, &["log-steal-icon"])?;
+                let stealing_hand_node = svg_icon("#stealing-hand", None, &["log-steal-icon"])?;
                 line_node.append_child(&stealing_hand_node)?;
 
                 for steal in record.turn_expanded.steals.iter() {
