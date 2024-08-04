@@ -2,6 +2,7 @@ use enum_map::Enum;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
+use crate::game::BughousePlayer;
 use crate::half_integer::HalfU32;
 
 
@@ -49,8 +50,12 @@ pub enum PlayerSchedulingPriority {
 pub struct Participant {
     pub name: String,             // fixed for the entire match
     pub is_registered_user: bool, // fixed for the entire match
-    pub active_faction: Faction,
-    pub desired_faction: Faction,
+    // Faction prepresents participant desired for the next. Faction can be changed at any time and
+    // fall out of sync with `active_player`.
+    pub faction: Faction,
+    // If there is an active game, `active_player` is participant role there.
+    // TODO: Remove circular dependency on `game.rs`.
+    pub active_player: Option<BughousePlayer>,
     pub games_played: u32,
     pub double_games_played: u32,
     pub individual_score: HalfU32, // meaningful for Teaming::IndividualMode
@@ -83,5 +88,31 @@ impl Faction {
             Faction::Random => true,
             Faction::Observer => false,
         }
+    }
+}
+
+impl Participant {
+    pub fn active_team(&self) -> Option<Team> { self.active_player.map(|p| p.team()) }
+
+    pub fn team_affiliation(&self) -> Option<Team> {
+        let active_team = self.active_team();
+        let faction_team = match self.faction {
+            Faction::Fixed(team) => Some(team),
+            Faction::Random => None,
+            Faction::Observer => None,
+        };
+        active_team.or(faction_team)
+    }
+
+    // Returns whether the participant has ever played or wants to play in the future.
+    // If false, the participant is exclusively an observer.
+    pub fn is_ever_player(&self) -> bool {
+        // Note. Faction can change in the middle of the game when a player requests to be an
+        // observer (which will come into effect starting from the next game), so we need to check
+        // the current game separately.
+        let was_player = self.games_played > 0;
+        let is_player = self.active_player.is_some();
+        let wanna_be_player = self.faction.is_player();
+        was_player || is_player || wanna_be_player
     }
 }

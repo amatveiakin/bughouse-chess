@@ -919,7 +919,7 @@ function update_ready_button() {
 }
 
 function update_toggle_faction_button() {
-  const faction = wasm_client().my_desired_faction();
+  const faction = wasm_client().my_faction();
   const is_observer = faction === "observer";
   set_displayed(document.getElementById("toggle-faction-observer"), is_observer);
   set_displayed(document.getElementById("toggle-faction-player"), !is_observer);
@@ -1028,7 +1028,7 @@ async function request_resign() {
 }
 
 async function toggle_faction_ingame() {
-  const current_faction = wasm_client().my_desired_faction();
+  const current_faction = wasm_client().my_faction();
   if (current_faction === "none") {
     // unavailable
   } else if (current_faction === "observer") {

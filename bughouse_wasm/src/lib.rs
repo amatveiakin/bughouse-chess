@@ -25,7 +25,7 @@ mod web_iterators;
 mod web_util;
 
 use core::panic;
-use std::cmp::Ordering;
+use std::cmp::{self, Ordering};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
@@ -206,28 +206,22 @@ impl WebClient {
     }
 
     pub fn fixed_teams(&self) -> bool { self.state.teaming() == Some(Teaming::FixedTeams) }
-    pub fn my_active_faction(&self) -> String {
-        self.state.my_active_faction().map_or("none", faction_id).to_owned()
-    }
-    pub fn my_desired_faction(&self) -> String {
-        self.state.my_desired_faction().map_or("none", faction_id).to_owned()
+    pub fn my_faction(&self) -> String {
+        self.state.my_faction().map_or("none", faction_id).to_owned()
     }
     pub fn observer_status(&self) -> String {
-        let Some(my_faction) = self.state.my_active_faction() else {
+        if self.state.mtch().is_some_and(|m| m.has_active_game())
+            && self.state.my_id().is_some_and(|id| id.is_player())
+        {
+            return "no".to_owned();
+        }
+        let Some(my_faction) = self.state.my_faction() else {
             return "no".to_owned();
         };
         match my_faction {
-            Faction::Observer => "permanently",
-            Faction::Fixed(_) | Faction::Random => {
-                let my_id = self.state.my_id();
-                if my_id.is_some_and(|id| !id.is_player()) {
-                    "temporary"
-                } else {
-                    "no"
-                }
-            }
+            Faction::Observer => "permanently".to_owned(),
+            Faction::Fixed(_) | Faction::Random => "temporary".to_owned(),
         }
-        .to_owned()
     }
 
     pub fn game_status(&self) -> String {
@@ -1056,7 +1050,7 @@ impl WebClient {
         let Some(mtch) = self.state.mtch() else {
             return;
         };
-        let current = ALL_FACTIONS.iter().position(|&f| f == mtch.my_desired_faction).unwrap();
+        let current = ALL_FACTIONS.iter().position(|&f| f == mtch.my_faction).unwrap();
         let new = faction_modifier(current.try_into().unwrap());
         let new = new.rem_euclid(ALL_FACTIONS.len().try_into().unwrap());
         let new: usize = new.try_into().unwrap();
@@ -1557,24 +1551,39 @@ fn clear_square_highlight_layer(layer: SquareHighlightLayer) -> JsResult<()> {
     Ok(())
 }
 
-// TODO: Use SVG images instead.
-// TODO: Show leave icon rather than error when a player in seat-out leaves.
-// Improvement potential: Add a tooltip explaining the meaning of the icons.
+// Improvement potential: Add a tooltips explaining the meaning of the icons.
 // Improvement potential: Add small red/blue icons for fixed teams in individual mode.
-fn participant_status_icon(p: &Participant, show_readiness: bool) -> &'static str {
-    match (p.active_faction, p.is_online) {
-        (Faction::Observer, true) => "👀",
-        (Faction::Observer, false) => "⮐",
-        (Faction::Fixed(_) | Faction::Random, false) => "⚠️",
-        (Faction::Fixed(_) | Faction::Random, true) => {
+fn participant_status_icon(
+    p: &Participant, show_readiness: bool, location: ParticipantItemLocation,
+) -> JsResult<Option<web_sys::Element>> {
+    let make_icon = |symbol: &str| svg_icon(symbol, None, &[]);
+    let uncoditional_icon = |symbol: &str| Ok(Some(make_icon(symbol)?));
+    let score_only_icon = |symbol: &str| match location {
+        ParticipantItemLocation::Board => Ok(None),
+        ParticipantItemLocation::Score => uncoditional_icon(symbol),
+    };
+    match (p.active_player, p.faction, p.is_online) {
+        (None, Faction::Observer, true) => score_only_icon("#participant-icon-observer"),
+        (None, Faction::Observer, false) => score_only_icon("#participant-icon-left-match"),
+        (Some(_), _, false) | (_, Faction::Fixed(_) | Faction::Random, false) => {
+            uncoditional_icon("#participant-icon-connection-lost")
+        }
+        // When switching from player to observer while in game we need a special icon:
+        //   - it would be weird to show an active player as an observer;
+        //   - not showing the current status would be misleading.
+        // Not that the reverse is not true. It's ok to simply remove observer icon from observers
+        // who decided to become players while a game is active, because they are indistinguishable
+        // from players in seat-out.
+        (Some(_), Faction::Observer, true) => score_only_icon("#participant-icon-future-observer"),
+        (_, Faction::Fixed(_) | Faction::Random, true) => {
             if show_readiness {
                 if p.is_ready {
-                    "☑"
+                    score_only_icon("#participant-icon-ready")
                 } else {
-                    "☐"
+                    score_only_icon("#participant-icon-not-ready")
                 }
             } else {
-                ""
+                Ok(None)
             }
         }
     }
@@ -1603,10 +1612,10 @@ fn participant_node(
         IconPosition::Right => "participant-status-icon-right",
     };
     let node = web_document().create_element("div")?.with_classes(["participant-item"])?;
-    node.append_text_span(participant_status_icon(p, show_readiness), [
-        "participant-status-icon",
-        icon_class,
-    ])?;
+    if let Some(icon_node) = participant_status_icon(p, show_readiness, location)? {
+        icon_node.class_list().add_2("participant-status-icon", icon_class)?;
+        node.append_child(&icon_node)?;
+    }
     node.new_child_element("div")?.with_text_content(&p.name).with_classes([
         "participant-name",
         location_class,
@@ -1721,7 +1730,7 @@ fn add_lobby_participant_node(
     }
     {
         let faction_node_container = parent.new_child_element("div")?;
-        let faction_node = match p.active_faction {
+        let faction_node = match p.faction {
             Faction::Fixed(Team::Red) => make_menu_icon(&["faction-red"])?,
             Faction::Fixed(Team::Blue) => make_menu_icon(&["faction-blue"])?,
             Faction::Random => make_menu_icon(&["faction-random"])?,
@@ -1738,7 +1747,7 @@ fn add_lobby_participant_node(
             .append_element(lobby_faction_tooltip()?)?;
     }
     {
-        let readiness_node = match (p.active_faction, p.is_ready) {
+        let readiness_node = match (p.faction, p.is_ready) {
             (Faction::Observer, _) => make_menu_icon(&[])?,
             (_, false) => make_menu_icon(&["readiness-checkbox"])?,
             (_, true) => make_menu_icon(&["readiness-checkbox", "readiness-checkmark"])?,
@@ -2003,10 +2012,9 @@ fn update_participants_and_scores(
             table.class_list().add_1("team-score-table")?;
             let mut team_players = enum_map! { _ => vec![] };
             for p in participants {
-                match p.active_faction {
-                    Faction::Fixed(team) => team_players[team].push(p),
-                    Faction::Random => panic!("Unexpected Faction::Random with Scores::PerTeam"),
-                    Faction::Observer => observers.push(p),
+                match p.team_affiliation() {
+                    Some(team) => team_players[team].push(p),
+                    None => observers.push(p),
                 }
             }
             for (team, players) in team_players {
@@ -2044,10 +2052,13 @@ fn update_participants_and_scores(
             // TODO: More robust seat out detection to identify obscure cases like playing 1 on 3.
             table.class_list().add_1("individual-score-table")?;
             let mut players;
-            (players, observers) = participants
-                .iter()
-                .partition(|p| p.games_played > 0 || p.active_faction.is_player());
-            players.sort_by_key(|p| (!p.active_faction.is_player(), p.games_played == 0));
+            (players, observers) = participants.iter().partition(|p| p.is_ever_player());
+            players.sort_by_key(|p| {
+                (
+                    cmp::Reverse(p.active_player.is_some() || p.faction.is_player()),
+                    cmp::Reverse(p.games_played > 0),
+                )
+            });
             for p in players {
                 let score = p.individual_score.as_f64().to_string();
                 let (score_whole, score_fraction) = match score.split_once('.') {
@@ -2293,10 +2304,15 @@ fn setup_participation_mode(participant_id: BughouseParticipant) -> JsResult<()>
 }
 
 fn update_cannot_start_alert(mtch: &Match) -> JsResult<()> {
+    let game_active = mtch.game_state.as_ref().map_or(false, |s| s.alt_game.is_active());
     let particpants_status = verify_participants(&mtch.rules, mtch.participants.iter());
-    let alert = match particpants_status {
-        ParticipantsStatus::CanStart { .. } => None,
-        ParticipantsStatus::CannotStart(error) => Some(cannot_start_game_message(error)),
+    let alert = if game_active {
+        None
+    } else {
+        match particpants_status {
+            ParticipantsStatus::CanStart { .. } => None,
+            ParticipantsStatus::CannotStart(error) => Some(cannot_start_game_message(error)),
+        }
     };
     set_cannot_start_alert(alert)
 }

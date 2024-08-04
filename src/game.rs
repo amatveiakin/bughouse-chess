@@ -25,7 +25,7 @@
 
 #![allow(unused_parens)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
 use std::mem;
@@ -358,6 +358,7 @@ pub fn get_bughouse_force(team: Team, board_idx: BughouseBoard) -> Force {
     }
 }
 
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub struct BughouseEnvoy {
     pub board_idx: BughouseBoard,
@@ -659,6 +660,9 @@ impl BughouseGame {
             }
         }
         ret
+    }
+    pub fn player_map(&self) -> HashMap<String, BughousePlayer> {
+        self.players().into_iter().map(|p| (p.name, p.id)).collect()
     }
     pub fn find_player(&self, player_name: &str) -> Option<BughousePlayer> {
         // Improvement potential: Avoid constructing `players` vector.

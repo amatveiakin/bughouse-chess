@@ -567,15 +567,20 @@ body.observer .player-name {
   font-stretch: condensed;
   font-size: 80%;
 }
+.participant-status-icon {
+  height: 1.2lh;
+}
 .participant-status-icon-left {
   position: absolute;
   left: 0;
-  transform: translateX(calc(-50% - 0.6em));
+  top: 50%;
+  transform: translate(calc(-50% - 0.65em), -50%);
 }
 .participant-status-icon-right {
   position: absolute;
   right: 0;
-  transform: translateX(calc(+50% + 0.6em));
+  top: 50%;
+  transform: translate(calc(+50% + 0.65em), -50%);
 }
 
 #score-body,

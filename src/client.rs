@@ -1,4 +1,9 @@
-use core::panic;
+// TODO: Fix race conditions: local state could be temporarily reverted when the server sends a
+// batch state update for all players because of an external update. This affects:
+//   - local drawings (`chalk_canvas`);
+//   - toggling observer mode (`my_faction`);
+//   - toggling ready flag (`is_ready`).
+
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
@@ -95,9 +100,6 @@ pub struct GameState {
     // Game start time: `None` before first move, non-`None` afterwards.
     pub time_pair: Option<WallGameTimePair>,
     // Chalk drawings from all players, including unconfirmed local marks.
-    // TODO: Fix race condition: local drawings could be temporary reverted when the
-    //   server sends drawings from other players. This is the same problem that we
-    //   have for `is_ready` and `my_team`.
     pub chalkboard: Chalkboard,
     // Canvas for the current client to draw on.
     pub chalk_canvas: ChalkCanvas,
@@ -130,8 +132,7 @@ pub enum MatchOrigin {
 pub struct Match {
     pub origin: MatchOrigin,
     pub my_name: String,
-    pub my_active_faction: Faction,
-    pub my_desired_faction: Faction,
+    pub my_faction: Faction,
     // Rules applied in every game of the match.
     pub rules: Rules,
     // All players including those not participating in the current game.
@@ -318,10 +319,7 @@ impl ClientState {
             Scores::PerPlayer => Teaming::DynamicTeams,
         })
     }
-    pub fn my_active_faction(&self) -> Option<Faction> { self.mtch().map(|m| m.my_active_faction) }
-    pub fn my_desired_faction(&self) -> Option<Faction> {
-        self.mtch().map(|m| m.my_desired_faction)
-    }
+    pub fn my_faction(&self) -> Option<Faction> { self.mtch().map(|m| m.my_faction) }
     pub fn my_id(&self) -> Option<BughouseParticipant> {
         self.game_state().map(|s| s.alt_game.my_id())
     }
@@ -583,11 +581,7 @@ impl ClientState {
         if !mtch.is_active_match() {
             return;
         }
-        // Don't update `mtch.my_active_action` until we get a response from server. It's nice to
-        // apply changes immediately because it makes UI more responsive, but (especially in case of
-        // an ongoing match) having faction not match the official record on server is potentially
-        // problematic.
-        mtch.my_desired_faction = faction;
+        mtch.my_faction = faction;
         self.connection.send(BughouseClientEvent::SetFaction { faction });
     }
     pub fn resign(&mut self) {
@@ -1067,8 +1061,7 @@ impl ClientState {
             self.match_state = MatchState::Connected(Match {
                 origin: MatchOrigin::ActiveMatch(match_id),
                 my_name,
-                my_active_faction: my_faction,
-                my_desired_faction: my_faction,
+                my_faction,
                 rules,
                 participants: Vec::new(),
                 scores: None,
@@ -1093,13 +1086,9 @@ impl ClientState {
             //   - Annotate each event with a unique match ID.
             return Ok(());
         };
-        // TODO: Fix race condition: is_ready will toggle back and forth if a lobby update
-        //   (e.g. is_ready from another player) arrived before is_ready update from this
-        //   client reached the server. Same for `my_team`.
         let me = participants.iter().find(|p| p.name == mtch.my_name).unwrap();
         mtch.is_ready = me.is_ready;
-        mtch.my_active_faction = me.active_faction;
-        mtch.my_desired_faction = me.desired_faction;
+        mtch.my_faction = me.faction;
         mtch.participants = participants;
         mtch.first_game_countdown_since = countdown_elapsed.map(|t| now - t);
         Ok(())
@@ -1508,8 +1497,8 @@ impl ClientState {
             .map(|p| Participant {
                 name: p.name.clone(),
                 is_registered_user: false,
-                active_faction: Faction::Fixed(p.id.team()),
-                desired_faction: Faction::Fixed(p.id.team()),
+                faction: Faction::Fixed(p.id.team()),
+                active_player: None,
                 games_played: 0,
                 double_games_played: 0,
                 individual_score: HalfU32::ZERO,
@@ -1575,8 +1564,7 @@ impl ClientState {
         self.match_state = MatchState::Connected(Match {
             origin: MatchOrigin::ArchiveGame(game_id),
             my_name: String::new(),
-            my_active_faction: Faction::Observer,
-            my_desired_faction: Faction::Observer,
+            my_faction: Faction::Observer,
             rules,
             participants,
             scores: Some(scores),

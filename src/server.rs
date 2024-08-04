@@ -448,7 +448,7 @@ impl ServerState {
             if let Some(player) =
                 mtch.participants.iter().find(|p| p.name == player_assignment.name)
             {
-                if let Faction::Fixed(team) = player.active_faction {
+                if let Faction::Fixed(team) = player.faction {
                     assert_eq!(team, player_assignment.id.team());
                 }
             }
@@ -767,7 +767,7 @@ impl CoreServerState {
             })
             .map(|mtch| {
                 let num_players =
-                    mtch.participants.iter().filter(|p| p.desired_faction.is_player()).count();
+                    mtch.participants.iter().filter(|p| p.faction.is_player()).count();
                 MatchDescription {
                     match_id: mtch.match_id.0.clone(),
                     rules: mtch.rules.clone(),
@@ -1044,14 +1044,11 @@ impl Match {
                 if let Err(reason) = ctx.helpers.validate_player_name(&player_name) {
                     return Err(BughouseServerRejection::InvalidPlayerName { player_name, reason });
                 }
-                // Improvement potential. Allow joining mid-game in individual mode.
-                //   Q. How to balance score in this case?
-                let faction = Faction::Observer;
                 self.participants.add_participant(Participant {
                     name: player_name,
                     is_registered_user,
-                    active_faction: faction,
-                    desired_faction: faction,
+                    faction: Faction::Observer,
+                    active_player: None,
                     games_played: 0,
                     double_games_played: 0,
                     individual_score: HalfU32::ZERO,
@@ -1140,12 +1137,11 @@ impl Match {
                     "Client {} join match {} as {}",
                     client_logging_id, self.match_id.0, player_name
                 );
-                let faction = Faction::Random;
                 self.participants.add_participant(Participant {
                     name: player_name,
                     is_registered_user,
-                    active_faction: faction,
-                    desired_faction: faction,
+                    faction: Faction::Random,
+                    active_player: None,
                     games_played: 0,
                     double_games_played: 0,
                     individual_score: HalfU32::ZERO,
@@ -1169,26 +1165,22 @@ impl Match {
         }
         let participant_id = *self.clients.get(&client_id).ok_or_else(|| unknown_error!())?;
         let participant = &mut self.participants[participant_id];
-        let old_faction = participant.desired_faction;
+        let old_faction = participant.faction;
         let name = participant.name.clone();
-        participant.desired_faction = faction;
-        let is_game_active = self.game_state.as_ref().is_some_and(|s| s.game.is_active());
-        if !is_game_active {
-            participant.active_faction = faction;
-        }
+        participant.faction = faction;
         self.send_lobby_updated(ctx).await;
         if let Some(GameState { game_index, ref game, .. }) = self.game_state {
+            self.chat.add(
+                self.game_state.as_ref().map(|s| s.game_index),
+                ctx.utc_now,
+                ChatRecipientExpanded::All,
+                ChatMessageBody::FactionChanged {
+                    participant: name,
+                    old_faction,
+                    new_faction: faction,
+                },
+            );
             if !game.is_active() {
-                self.chat.add(
-                    Some(game_index),
-                    ctx.utc_now,
-                    ChatRecipientExpanded::All,
-                    ChatMessageBody::FactionChanged {
-                        participant: name,
-                        old_faction,
-                        new_faction: faction,
-                    },
-                );
                 update_board_assigment(
                     ctx,
                     &self.rules,
@@ -1416,28 +1408,23 @@ impl Match {
                 let teaming = self.teaming.ok_or_else(|| unknown_error!())?;
                 match teaming {
                     Teaming::DynamicTeams => {
-                        let Some(GameState { ref game, .. }) = self.game_state else {
-                            return Err(unknown_error!());
-                        };
-                        let Some(sender_team) = game.find_player(&sender.name).map(|p| p.team())
-                        else {
+                        let Some(sender_active_team) = sender.active_team() else {
                             return Err(unknown_error!());
                         };
                         ChatRecipientExpanded::Participants(
                             self.participants
                                 .iter()
+                                .filter(|p| p.active_team() == Some(sender_active_team))
                                 .map(|p| p.name.clone())
-                                .filter(|name| {
-                                    game.find_player(name).is_some_and(|p| p.team() == sender_team)
-                                })
                                 .collect(),
                         )
                     }
-                    Teaming::FixedTeams => match sender.active_faction {
-                        Faction::Fixed(team) => ChatRecipientExpanded::FixedTeam(team),
-                        Faction::Random => unreachable!(),
-                        Faction::Observer => return Err(unknown_error!()),
-                    },
+                    Teaming::FixedTeams => {
+                        let Some(sender_team) = sender.team_affiliation() else {
+                            return Err(unknown_error!());
+                        };
+                        ChatRecipientExpanded::FixedTeam(sender_team)
+                    }
                 }
             }
             ChatRecipient::Participant(name) => {
@@ -1566,21 +1553,17 @@ impl Match {
                 .get(&client_id)
                 .map_or(false, |match_id| match_id.as_ref() == Some(&self.match_id))
         });
-        let active_participant_ids: HashSet<_> = self.clients.values().copied().collect();
+        let online_participant_ids: HashSet<_> = self.clients.values().copied().collect();
         let mut lobby_updated = false;
         let mut chalkboard_updated = false;
         self.participants.map.retain(|id, (p, _)| {
-            let is_online = active_participant_ids.contains(id);
+            let is_online = online_participant_ids.contains(id);
             if !is_online {
                 if self.game_state.is_none() {
                     lobby_updated = true;
                     return false;
                 }
-                // whether participant was, is, or is going to be a player
-                let is_ever_player = p.games_played > 0
-                    || p.active_faction.is_player()
-                    || p.desired_faction.is_player();
-                if !is_ever_player {
+                if !p.is_ever_player() {
                     if let Some(ref mut game_state) = self.game_state {
                         chalkboard_updated |=
                             game_state.chalkboard.clear_drawings_by_player(p.name.clone());
@@ -1622,6 +1605,10 @@ impl Match {
             assign_boards(self.participants.iter(), None, &mut rand::thread_rng())
         });
         let game = BughouseGame::new(self.rules.clone(), Role::ServerOrStandalone, &players);
+        let player_map = game.player_map();
+        for p in self.participants.iter_mut() {
+            p.active_player = player_map.get(&p.name).copied();
+        }
         let game_index = self.game_history.len() as u64;
         self.game_state = Some(GameState {
             game_index,
@@ -1636,7 +1623,7 @@ impl Match {
             shared_wayback_turn_index: None,
         });
         self.broadcast(ctx, &self.make_game_start_event(ctx.now, None)).await;
-        self.send_lobby_updated(ctx).await; // update readiness flags
+        self.send_lobby_updated(ctx).await; // update readiness flags and player statuses
     }
 
     fn init_scores(&mut self, teaming: Teaming) {
@@ -1721,9 +1708,7 @@ impl Match {
                 };
                 let is_recipient = match recipient_expanded {
                     ChatRecipientExpanded::All => true,
-                    ChatRecipientExpanded::FixedTeam(team) => {
-                        matches!(p.active_faction, Faction::Fixed(t) if t == *team)
-                    }
+                    ChatRecipientExpanded::FixedTeam(team) => p.team_affiliation() == Some(*team),
                     ChatRecipientExpanded::Participants(names) => names.contains(&p.name),
                 };
                 if is_sender || is_recipient {
@@ -1852,7 +1837,7 @@ fn update_board_assigment(
     }
 }
 
-// Must also send lobby update in order to update `games_played` and `active_faction`.
+// Must also send lobby update in order to update counters and `active_player`.
 //
 // Improvement potential. Find a way to make this a member function instead of passing so many
 // arguments separately.
@@ -1866,7 +1851,10 @@ fn update_on_game_over(
     assert!(game_end.is_none());
     *game_end = Some(ctx.now);
     turn_requests.clear();
-    let players: HashMap<_, _> = game.players().into_iter().map(|p| (p.name.clone(), p)).collect();
+    let player_map = game.player_map();
+    for p in participants.iter_mut() {
+        p.active_player = None;
+    }
     let registered_users: HashSet<_> = participants
         .iter()
         .filter(|p| p.is_registered_user)
@@ -1891,8 +1879,8 @@ fn update_on_game_over(
         }
         Scores::PerPlayer => {
             for p in participants.iter_mut() {
-                if let Some(pl) = players.get(&p.name) {
-                    p.individual_score += team_scores[pl.id.team()];
+                if let Some(id) = player_map.get(&p.name) {
+                    p.individual_score += team_scores[id.team()];
                 }
             }
         }
@@ -1917,28 +1905,13 @@ fn update_on_game_over(
                 .await
         });
     }
-    post_game_update_participant_counters(participants, |name| players.get(name).map(|p| p.id));
+    post_game_update_participant_counters(participants, |name| player_map.get(name).copied());
     chat.add(
         Some(game_index),
         ctx.utc_now,
         ChatRecipientExpanded::All,
         ChatMessageBody::GameOver { outcome: game.outcome() },
     );
-    for p in participants.iter_mut() {
-        if p.active_faction != p.desired_faction {
-            chat.add(
-                Some(game_index),
-                ctx.utc_now,
-                ChatRecipientExpanded::All,
-                ChatMessageBody::FactionChanged {
-                    participant: p.name.clone(),
-                    old_faction: p.active_faction,
-                    new_faction: p.desired_faction,
-                },
-            );
-            p.active_faction = p.desired_faction;
-        }
-    }
     update_board_assigment(
         ctx,
         rules,

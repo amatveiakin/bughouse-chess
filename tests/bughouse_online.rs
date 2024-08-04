@@ -820,7 +820,7 @@ fn cold_reconnect_game_active() {
     let cl5 = world.new_client();
     world[cl5].join(&mtch, "p5");
     world.process_all_events();
-    assert_eq!(world[cl5].mtch().my_active_faction, Faction::Observer);
+    assert_eq!(world[cl5].mtch().my_faction, Faction::Observer);
 
     // Cannot reconnect as an active player.
     let cl2_new = world.new_client();
@@ -916,7 +916,7 @@ fn hot_reconnect_lobby() {
             .iter()
             .find(|p| p.name == "p2")
             .unwrap();
-        assert_eq!(p.active_faction, Faction::Fixed(Team::Red));
+        assert_eq!(p.faction, Faction::Fixed(Team::Red));
         assert!(!p.is_ready);
     }
 
@@ -1705,25 +1705,6 @@ fn rejoin_from_live_client() {
     assert!(world[cl2].mtch().participants.iter().all(|p| p.is_online));
 }
 
-// Regression test: both active and desired factions should be updated when auto-fixing teams.
-#[test]
-fn faction_auto_fix() {
-    let mut world = World::new();
-    let [cl1, cl2] = world.new_clients();
-    let mtch = world.new_match(cl1, "p1");
-    world[cl2].join(&mtch, "p2");
-    world.process_all_events();
-    world[cl1].state.set_faction(Faction::Fixed(Team::Red));
-    world.process_all_events();
-    world[cl1].state.set_ready(true);
-    world[cl2].state.set_ready(true);
-    world.process_all_events();
-    let p2_record = world[cl1].mtch().participants.iter().find(|p| p.name == "p2").unwrap();
-    assert_eq!(p2_record.active_faction, Faction::Fixed(Team::Blue));
-    assert_eq!(p2_record.desired_faction, Faction::Fixed(Team::Blue));
-}
-
-// TODO: Midgame faction change test.
 #[test]
 fn mid_match_faction_change() {
     let mut world = World::new();
@@ -1737,12 +1718,10 @@ fn mid_match_faction_change() {
     world.process_all_events();
     let p5_view = world[cl1].mtch().participants.last().unwrap();
     assert_eq!(p5_view.name, "p5");
-    assert_eq!(p5_view.active_faction, Faction::Observer);
+    assert_eq!(p5_view.faction, Faction::Observer);
 
     world[cl5].state.set_faction(Faction::Fixed(Team::Red));
     world.process_all_events();
-
-    assert!(world[cl1].chat_item_text().is_empty());
 
     world[cl1].state.resign();
     world.process_all_events();
@@ -1751,8 +1730,8 @@ fn mid_match_faction_change() {
     world.process_all_events();
 
     let mut chat_iter = world[cl1].chat_item_text().into_iter();
-    assert_eq!(chat_iter.next().unwrap(), "Game over! p3 & p4 won: p1 & p2 resigned.");
     assert_eq!(chat_iter.next().unwrap(), "p5 joined team Red");
+    assert_eq!(chat_iter.next().unwrap(), "Game over! p3 & p4 won: p1 & p2 resigned.");
     assert!(chat_iter.next().unwrap().starts_with("Next up:"));
     assert_eq!(chat_iter.next().unwrap(), "p1 became an observer");
     assert!(chat_iter.next().is_none());
