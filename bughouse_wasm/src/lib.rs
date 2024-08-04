@@ -1848,7 +1848,7 @@ fn render_upgrade_promotion_selector(
     use std::f64::consts::PI;
     const PIECE_SIZE: f64 = 1.0;
     // Make central circle in promotion UI cover the entire square. Of course, 0.7 is slightly less
-    // than sqrt(2), but there's also stroke width.
+    // than 1 / sqrt(2), but there's also stroke width.
     const INNER_RADIUS: f64 = 0.7;
     const OUTER_RADIUS: f64 = 1.7;
     const MID_RADIUS: f64 = (INNER_RADIUS + OUTER_RADIUS) / 2.0;

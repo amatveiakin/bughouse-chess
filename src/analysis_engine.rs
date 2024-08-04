@@ -1,5 +1,3 @@
-// TODO: Make site more responsive when the engine is on. Right now it visibly lags.
-
 use std::mem;
 use std::time::Duration;
 
