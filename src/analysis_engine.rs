@@ -289,13 +289,7 @@ impl AnalysisEngine for FsfAnalysisEngine {
 
 fn sigmoid(x: f64) -> f64 { 1.0 / (1.0 + (-x).exp()) }
 
-fn bool_to_str(v: bool) -> &'static str {
-    if v {
-        "true"
-    } else {
-        "false"
-    }
-}
+fn bool_to_str(v: bool) -> &'static str { if v { "true" } else { "false" } }
 
 // Differences from regular algebraic notation:
 //   - Both starting and ending squares are required;

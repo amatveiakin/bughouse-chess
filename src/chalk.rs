@@ -6,7 +6,7 @@ use strum::IntoEnumIterator;
 
 use crate::coord::{BoardShape, Coord};
 use crate::display::{
-    display_to_fcoord, get_board_orientation, DisplayBoard, DisplayFCoord, FCoord, Perspective,
+    DisplayBoard, DisplayFCoord, FCoord, Perspective, display_to_fcoord, get_board_orientation,
 };
 use crate::game::BughouseBoard;
 use crate::piece::PieceKind;

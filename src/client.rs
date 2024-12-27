@@ -7,7 +7,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
-use enum_map::{enum_map, EnumMap};
+use enum_map::{EnumMap, enum_map};
 use hdrhistogram::Histogram;
 use instant::Instant;
 use itertools::Itertools;
@@ -19,15 +19,15 @@ use crate::altered_game::{
     WaybackState,
 };
 use crate::analysis_engine::{
-    AnalysisEngine, AnalysisInfo, EngineStatus, ANALYSIS_BOARD_IDX, ANALYSIS_ENGINE_NAME_BLACK,
-    ANALYSIS_ENGINE_NAME_WHITE,
+    ANALYSIS_BOARD_IDX, ANALYSIS_ENGINE_NAME_BLACK, ANALYSIS_ENGINE_NAME_WHITE, AnalysisEngine,
+    AnalysisInfo, EngineStatus,
 };
 use crate::board::{Board, Turn, TurnDrop, TurnError, TurnInput, TurnMode, TurnMove};
 use crate::chalk::{ChalkCanvas, ChalkMark, Chalkboard};
 use crate::chat::{ChatMessage, ChatMessageBody, ChatRecipient};
 use crate::client_chat::{ClientChat, SystemMessageClass};
-use crate::clock::{duration_to_mss, GameDuration, GameInstant, WallGameTimePair};
-use crate::display::{get_board_index, get_display_board_index, DisplayBoard};
+use crate::clock::{GameDuration, GameInstant, WallGameTimePair, duration_to_mss};
+use crate::display::{DisplayBoard, get_board_index, get_display_board_index};
 use crate::event::{
     BughouseClientEvent, BughouseClientPerformance, BughouseServerEvent, BughouseServerRejection,
     FinishedGameDescription, GameUpdate, MatchDescription, SubjectiveGameResult,
@@ -45,7 +45,7 @@ use crate::piece::PieceKind;
 use crate::ping_pong::{ActiveConnectionMonitor, ActiveConnectionStatus};
 use crate::player::{Faction, Participant, PlayerSchedulingPriority};
 use crate::role::Role;
-use crate::rules::{ChessRules, DropAggression, MatchRules, Rules, FIRST_GAME_COUNTDOWN_DURATION};
+use crate::rules::{ChessRules, DropAggression, FIRST_GAME_COUNTDOWN_DURATION, MatchRules, Rules};
 use crate::scores::Scores;
 use crate::session::Session;
 use crate::starter::EffectiveStartingPosition;

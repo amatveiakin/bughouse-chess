@@ -3,15 +3,15 @@
 use std::collections::HashMap;
 use std::{cmp, mem};
 
-use enum_map::{enum_map, EnumMap};
+use enum_map::{EnumMap, enum_map};
 use itertools::Itertools;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use crate::game::{
-    get_bughouse_force, BughouseBoard, BughouseEnvoy, BughousePlayer, PlayerInGame, MIN_PLAYERS,
-    TOTAL_ENVOYS, TOTAL_ENVOYS_PER_TEAM, TOTAL_TEAMS,
+    BughouseBoard, BughouseEnvoy, BughousePlayer, MIN_PLAYERS, PlayerInGame, TOTAL_ENVOYS,
+    TOTAL_ENVOYS_PER_TEAM, TOTAL_TEAMS, get_bughouse_force,
 };
 use crate::iterable_mut::IterableMut;
 use crate::player::{Faction, Participant, PlayerSchedulingPriority, Team};

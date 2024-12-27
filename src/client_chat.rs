@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use enum_map::enum_map;
 
 use crate::chat::{
-    ChatMessage, ChatMessageBody, ChatRecipient, OutgoingChatMessage, MAX_CHAT_MESSAGES,
+    ChatMessage, ChatMessageBody, ChatRecipient, MAX_CHAT_MESSAGES, OutgoingChatMessage,
 };
 use crate::lobby::ParticipantsError;
 use crate::player::{Faction, Team};

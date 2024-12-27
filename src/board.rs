@@ -6,8 +6,8 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
-use enum_map::{enum_map, EnumMap};
-use itertools::{iproduct, Itertools};
+use enum_map::{EnumMap, enum_map};
+use itertools::{Itertools, iproduct};
 use serde::{Deserialize, Serialize};
 
 use crate::algebraic::{
@@ -18,15 +18,15 @@ use crate::coord::{BoardShape, Col, Coord, Row, SubjectiveRow};
 use crate::force::Force;
 use crate::grid::{Grid, GridForRepetitionDraw, GridItem};
 use crate::piece::{
-    accolade_combine_pieces, CastleDirection, PieceForRepetitionDraw, PieceForce, PieceId,
-    PieceKind, PieceMovement, PieceOnBoard, PieceOrigin, PieceReservable,
+    CastleDirection, PieceForRepetitionDraw, PieceForce, PieceId, PieceKind, PieceMovement,
+    PieceOnBoard, PieceOrigin, PieceReservable, accolade_combine_pieces,
 };
 use crate::role::Role;
 use crate::rules::{
     BughouseRules, ChessRules, DropAggression, FairyPieces, MatchRules, Promotion, Rules,
 };
 use crate::starter::{
-    generate_starting_grid, starting_piece_row, BoardSetup, EffectiveStartingPosition,
+    BoardSetup, EffectiveStartingPosition, generate_starting_grid, starting_piece_row,
 };
 use crate::util::sort_two;
 
@@ -1720,7 +1720,7 @@ impl Board {
                 if new_grid[to].is_some() {
                     match mode {
                         TurnMode::InOrder | TurnMode::Virtual => {
-                            return Err(TurnError::PathBlocked)
+                            return Err(TurnError::PathBlocked);
                         }
                         TurnMode::Preturn => {}
                     }

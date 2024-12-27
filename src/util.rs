@@ -41,20 +41,8 @@ impl<T: Ord> Relax for T {
     }
 }
 
-pub fn sort_two<T: Ord>((a, b): (T, T)) -> (T, T) {
-    if a < b {
-        (a, b)
-    } else {
-        (b, a)
-    }
-}
-pub fn sort_two_desc<T: Ord>((a, b): (T, T)) -> (T, T) {
-    if a > b {
-        (a, b)
-    } else {
-        (b, a)
-    }
-}
+pub fn sort_two<T: Ord>((a, b): (T, T)) -> (T, T) { if a < b { (a, b) } else { (b, a) } }
+pub fn sort_two_desc<T: Ord>((a, b): (T, T)) -> (T, T) { if a > b { (a, b) } else { (b, a) } }
 
 // If a string consists of a single character, returns the character. Otherwise returns none.
 pub fn as_single_char(s: &str) -> Option<char> {

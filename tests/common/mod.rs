@@ -10,17 +10,17 @@
 use std::collections::HashMap;
 
 use bughouse_chess::board::{Board, Reserve, TurnInput};
-use bughouse_chess::display::{from_display_coord, BoardOrientation, DisplayCoord};
+use bughouse_chess::display::{BoardOrientation, DisplayCoord, from_display_coord};
 use bughouse_chess::force::Force;
 use bughouse_chess::game::{BughouseBoard, BughouseGame};
 use bughouse_chess::grid::Grid;
 use bughouse_chess::once_cell_regex;
 use bughouse_chess::piece::{
-    piece_from_ascii, PieceForce, PieceId, PieceKind, PieceOnBoard, PieceOrigin,
+    PieceForce, PieceId, PieceKind, PieceOnBoard, PieceOrigin, piece_from_ascii,
 };
 use bughouse_chess::role::Role;
 use bughouse_chess::rules::Rules;
-use bughouse_chess::starter::{assign_piece_ids, BoardSetup, EffectiveStartingPosition};
+use bughouse_chess::starter::{BoardSetup, EffectiveStartingPosition, assign_piece_ids};
 use bughouse_chess::test_util::{sample_bughouse_players, sample_chess_players};
 use bughouse_chess::util::as_single_char;
 use enum_map::enum_map;

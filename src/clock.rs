@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::time::Duration;
 use std::{fmt, iter, ops};
 
-use enum_map::{enum_map, EnumMap};
+use enum_map::{EnumMap, enum_map};
 use instant::Instant;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;

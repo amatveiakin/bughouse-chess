@@ -143,17 +143,23 @@ pub fn run(config: ClientConfig) -> io::Result<()> {
     let tx_net = tx.clone();
     let tx_local = tx.clone();
     let tx_tick = tx;
-    thread::spawn(move || loop {
-        let ev = network::read_obj(&mut socket_in).unwrap();
-        tx_net.send(IncomingEvent::Network(ev)).unwrap();
+    thread::spawn(move || {
+        loop {
+            let ev = network::read_obj(&mut socket_in).unwrap();
+            tx_net.send(IncomingEvent::Network(ev)).unwrap();
+        }
     });
-    thread::spawn(move || loop {
-        let ev = term_event::read().unwrap();
-        tx_local.send(IncomingEvent::Terminal(ev)).unwrap();
+    thread::spawn(move || {
+        loop {
+            let ev = term_event::read().unwrap();
+            tx_local.send(IncomingEvent::Terminal(ev)).unwrap();
+        }
     });
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_millis(100));
-        tx_tick.send(IncomingEvent::Tick).unwrap();
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_millis(100));
+            tx_tick.send(IncomingEvent::Tick).unwrap();
+        }
     });
 
     let (server_tx, server_rx) = mpsc::channel();

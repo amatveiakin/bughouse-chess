@@ -13,7 +13,7 @@ use std::cell::{Ref, RefCell};
 use std::cmp;
 use std::collections::HashSet;
 
-use enum_map::{enum_map, EnumMap};
+use enum_map::{EnumMap, enum_map};
 use itertools::Itertools;
 use strum::IntoEnumIterator;
 
@@ -27,8 +27,8 @@ use crate::dirty::Dirty;
 use crate::display::Perspective;
 use crate::force::Force;
 use crate::game::{
-    get_bughouse_force, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
-    BughouseParticipant, TurnIndex, TurnRecord, TurnRecordExpanded,
+    BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant, TurnIndex,
+    TurnRecord, TurnRecordExpanded, get_bughouse_force,
 };
 use crate::piece::{CastleDirection, PieceForce, PieceId, PieceKind, PieceOnBoard, PieceOrigin};
 use crate::rules::{BughouseRules, ChessRules, Promotion};
@@ -564,7 +564,7 @@ impl AlteredGame {
         if let Some((input_board_idx, partial_input)) = *self.partial_turn_input {
             match partial_input {
                 PartialTurnInput::Drag { .. } => {
-                    return TurnInputResult::Error(TurnError::PreviousTurnNotFinished)
+                    return TurnInputResult::Error(TurnError::PreviousTurnNotFinished);
                 }
                 PartialTurnInput::ClickMove(regular_partial_turn) => {
                     match loc {

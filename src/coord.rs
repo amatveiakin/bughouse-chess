@@ -210,13 +210,7 @@ impl Coord {
             _ => None,
         }
     }
-    fn to_sign_val(v: i8) -> (char, i8) {
-        if v < 0 {
-            ('n', -v)
-        } else {
-            ('p', v)
-        }
-    }
+    fn to_sign_val(v: i8) -> (char, i8) { if v < 0 { ('n', -v) } else { ('p', v) } }
 }
 
 impl ops::Add<(i8, i8)> for Coord {

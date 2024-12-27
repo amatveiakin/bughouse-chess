@@ -31,7 +31,7 @@ use std::hash::Hash;
 use std::mem;
 use std::str::FromStr;
 
-use enum_map::{enum_map, Enum, EnumMap};
+use enum_map::{Enum, EnumMap, enum_map};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoEnumIterator};
@@ -49,7 +49,7 @@ use crate::piece::PieceKind;
 use crate::player::Team;
 use crate::role::Role;
 use crate::rules::{BughouseRules, ChessRules, MatchRules, Rules};
-use crate::starter::{generate_starting_position, EffectiveStartingPosition};
+use crate::starter::{EffectiveStartingPosition, generate_starting_position};
 
 
 pub const MIN_PLAYERS: usize = TOTAL_TEAMS;

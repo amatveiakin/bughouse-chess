@@ -26,28 +26,28 @@ mod web_util;
 
 use core::panic;
 use std::cmp::{self, Ordering};
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 use analysis_engine::{
-    EngineStatus, FsfAnalysisEngine, ANALYSIS_BOARD_IDX, ANALYSIS_ENGINE_NAME_BLACK,
-    ANALYSIS_ENGINE_NAME_WHITE,
+    ANALYSIS_BOARD_IDX, ANALYSIS_ENGINE_NAME_BLACK, ANALYSIS_ENGINE_NAME_WHITE, EngineStatus,
+    FsfAnalysisEngine,
 };
 use bughouse_chess::client::*;
 use bughouse_chess::client_chat::cannot_start_game_message;
 use bughouse_chess::lobby::*;
 use bughouse_chess::meter::*;
 use bughouse_chess::session::*;
-use enum_map::{enum_map, EnumMap};
+use enum_map::{EnumMap, enum_map};
 use instant::Instant;
 use itertools::Itertools;
 use strum::{EnumIter, IntoEnumIterator};
 use time::macros::{datetime, format_description, offset};
 use time::{OffsetDateTime, UtcOffset};
 use wasm_bindgen::prelude::*;
-use web_document::{web_document, WebDocument};
+use web_document::{WebDocument, web_document};
 use web_element_ext::{TooltipPosition, TooltipWidth, WebElementExt};
 use web_error_handling::{JsResult, RustError};
 use web_iterators::IntoHtmlCollectionIterator;

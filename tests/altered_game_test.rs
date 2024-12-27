@@ -2,6 +2,7 @@ mod common;
 
 use std::time::Duration;
 
+use BughouseBoard::{A, B};
 use bughouse_chess::altered_game::{
     AlteredGame, ReservePieceHighlight, SquareHighlight, TurnHighlightFamily, TurnHighlightItem,
     TurnHighlightLayer, TurnInputResult, WaybackDestination,
@@ -22,7 +23,6 @@ use bughouse_chess::rules::{ChessRules, FairyPieces, MatchRules, Promotion, Rule
 use bughouse_chess::test_util::*;
 use common::*;
 use pretty_assertions::assert_eq;
-use BughouseBoard::{A, B};
 
 
 pub fn alg(s: &str) -> TurnInput { algebraic_turn(s) }

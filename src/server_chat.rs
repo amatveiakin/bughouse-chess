@@ -1,6 +1,6 @@
 use std::collections::{HashSet, VecDeque};
 
-use crate::chat::{ChatMessage, ChatMessageBody, MAX_CHAT_MESSAGES, MAX_CHAT_MESSAGE_LENGTH};
+use crate::chat::{ChatMessage, ChatMessageBody, MAX_CHAT_MESSAGE_LENGTH, MAX_CHAT_MESSAGES};
 use crate::player::Team;
 use crate::utc_time::UtcDateTime;
 

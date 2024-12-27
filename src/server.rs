@@ -2,8 +2,8 @@
 //   with a direct mapping (participant_id -> player_bughouse_id).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::atomic::{self, AtomicUsize};
 use std::sync::Arc;
+use std::sync::atomic::{self, AtomicUsize};
 use std::time::Duration;
 use std::{iter, mem, ops};
 
@@ -14,7 +14,7 @@ use instant::Instant;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use log::{info, warn};
-use prometheus::{register_histogram_vec, HistogramVec};
+use prometheus::{HistogramVec, register_histogram_vec};
 use rand::prelude::*;
 
 use crate::board::{TurnInput, TurnMode, VictoryReason};
@@ -32,13 +32,13 @@ use crate::game::{
 use crate::half_integer::HalfU32;
 use crate::iterable_mut::IterableMut;
 use crate::lobby::{
-    assign_boards, fix_teams_if_needed, post_game_update_participant_counters, verify_participants,
-    ParticipantsStatus, ParticipantsWarning, Teaming,
+    ParticipantsStatus, ParticipantsWarning, Teaming, assign_boards, fix_teams_if_needed,
+    post_game_update_participant_counters, verify_participants,
 };
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Faction, Participant, PlayerSchedulingPriority};
 use crate::role::Role;
-use crate::rules::{Rules, FIRST_GAME_COUNTDOWN_DURATION};
+use crate::rules::{FIRST_GAME_COUNTDOWN_DURATION, Rules};
 use crate::scores::Scores;
 use crate::server_chat::{ChatRecipientExpanded, ServerChat};
 use crate::server_helpers::ServerHelpers;
@@ -67,7 +67,9 @@ lazy_static! {
         "event_processing_time_seconds",
         "Incoming event processing time in seconds.",
         &["event"],
-        vec![0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1],
+        vec![
+            0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1
+        ],
     )
     .unwrap();
 }
@@ -741,9 +743,7 @@ impl CoreServerState {
                         ctx.now.duration_since(shutting_down_since).as_secs();
                     println!(
                         "Shutdown was requested {}s ago. Waiting for {} active matches to finish.\n{}",
-                        shutdown_duration_sec,
-                        num_active_matches,
-                        ABORT_INSTRUCTION,
+                        shutdown_duration_sec, num_active_matches, ABORT_INSTRUCTION,
                     );
                 }
                 *last_termination_request = ctx.now;

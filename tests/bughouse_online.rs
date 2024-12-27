@@ -11,18 +11,20 @@ use std::collections::{HashMap, HashSet};
 use std::ops;
 use std::sync::Arc;
 
+use BughouseBoard::{A, B};
+use Force::{Black, White};
 use async_std::sync::Mutex;
 use bughouse_chess::altered_game::{AlteredGame, WaybackDestination};
 use bughouse_chess::board::{Board, TurnError, TurnInput, VictoryReason};
 use bughouse_chess::chat::ChatRecipient;
 use bughouse_chess::clock::GameInstant;
 use bughouse_chess::coord::{Coord, SubjectiveRow};
-use bughouse_chess::display::{get_display_board_index, DisplayBoard, Perspective};
+use bughouse_chess::display::{DisplayBoard, Perspective, get_display_board_index};
 use bughouse_chess::event::{BughouseClientEvent, BughouseServerEvent};
 use bughouse_chess::force::Force;
 use bughouse_chess::game::{
-    double_player, single_player, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
-    BughouseParticipant, BughousePlayer, TurnIndex,
+    BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughouseParticipant,
+    BughousePlayer, TurnIndex, double_player, single_player,
 };
 use bughouse_chess::piece::PieceKind;
 use bughouse_chess::player::{Faction, Team};
@@ -40,8 +42,6 @@ use common::*;
 use instant::Instant;
 use itertools::Itertools;
 use time::Duration;
-use BughouseBoard::{A, B};
-use Force::{Black, White};
 
 
 fn default_chess_rules() -> ChessRules {

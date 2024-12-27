@@ -16,7 +16,7 @@ use crate::web_document::web_document;
 use crate::web_element_ext::{TooltipPosition, TooltipWidth, WebElementExt};
 use crate::web_error_handling::JsResult;
 use crate::web_iterators::IntoHtmlCollectionIterator;
-use crate::{rust_error, IgnorableError};
+use crate::{IgnorableError, rust_error};
 
 const RATING: &str = "rating"; // filled by JSs
 const FAIRY_PIECES: &str = "fairy_pieces";
@@ -417,67 +417,78 @@ fn combine_elements(
 }
 
 fn accolade_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    Ok(vec![web_document()
-        .create_element("p")?
-        .with_more_text_i("Accolade.")?
-        .with_more_text(
-            " Combine a Knight with a Bishop, a Rook or a Queen
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("Accolade.")?
+            .with_more_text(
+                " Combine a Knight with a Bishop, a Rook or a Queen
             to get a Cardinal, an Empress or an Amazon respectively.
             Combine by moving one piece onto another or by dropping one piece onto another.
             If captured, the piece falls back apart.",
-        )?])
+            )?,
+    ])
 }
 
 fn fischer_random_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    Ok(vec![web_document()
-        .create_element("p")?
-        .with_more_text_i("Fischer random (Chess960). ")?
-        .with_more_text(
-            "Pawns start as usual. Pieces start on the home ranks, but their
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("Fischer random (Chess960). ")?
+            .with_more_text(
+                "Pawns start as usual. Pieces start on the home ranks, but their
             positions are randomized. Bishops are always of opposite colors.
             King always starts between the rooks. Castling is allowed:
             A-side castling puts the kind and left rook on files C and\u{00a0}D respectively,
             H-side castling puts the kind and right rook on files G and\u{00a0}F respectively.
             All four players start with the same setup.",
-        )?])
+            )?,
+    ])
 }
 
 fn duck_chess_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    Ok(vec![web_document()
-        .create_element("p")?
-        .with_more_text_i("Duck chess.")?
-        .with_more_text(
-            " A duck occupies one square on the board and cannot be captured.
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("Duck chess.")?
+            .with_more_text(
+                " A duck occupies one square on the board and cannot be captured.
             Each move consists of two parts. First, a regular bughouse move.
             Second, moving the duck to any free square on the board. Quack!",
-        )?])
+            )?,
+    ])
 }
 
 fn fog_of_war_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    Ok(vec![web_document()
-        .create_element("p")?
-        .with_more_text_i("Fog of war (Dark chess).")?
-        .with_more_text(
-            " You only see squares where your pieces can legally move.
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("Fog of war (Dark chess).")?
+            .with_more_text(
+                " You only see squares where your pieces can legally move.
             You can drop pieces into the fog of war at your own risk.",
-        )?])
+            )?,
+    ])
 }
 
 fn koedem_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    Ok(vec![web_document()
-        .create_element("p")?
-        .with_more_text_i("Koedem.")?
-        .with_more_text(
-            " Kings can be captured. Upon receiving a king, you must play it immediately.
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("Koedem.")?
+            .with_more_text(
+                " Kings can be captured. Upon receiving a king, you must play it immediately.
             The game ends when one team accumulates all four kings
             or when time runs out on any board.",
-        )?])
+            )?,
+    ])
 }
 
 fn starting_time_tooltip(max_starting_time: Option<Duration>) -> JsResult<Vec<web_sys::Element>> {
-    let mut paragraphs = vec![web_document()
-        .create_element("p")?
-        .with_text_content("Starting time in “m:ss” format. There are no increments or delays.")];
+    let mut paragraphs =
+        vec![web_document().create_element("p")?.with_text_content(
+            "Starting time in “m:ss” format. There are no increments or delays.",
+        )];
     if let Some(max_starting_time) = max_starting_time {
         paragraphs.push(web_document().create_element("p")?.with_text_content(&format!(
             "Must not exceed {}.",
@@ -488,35 +499,38 @@ fn starting_time_tooltip(max_starting_time: Option<Duration>) -> JsResult<Vec<we
 }
 
 fn promotion_upgrade_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    Ok(vec![web_document()
-        .create_element("p")?
-        .with_more_text_i("Upgrade.")?
-        .with_more_text(
-            " Regular promotion rules.
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("Upgrade.")?
+            .with_more_text(
+                " Regular promotion rules.
             Turn the pawn into a Queen, a Rook, a Bishop or a Knight.
             If captured, the piece goes into reserve as a pawn.",
-        )?])
+            )?,
+    ])
 }
 fn promotion_discard_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    Ok(vec![web_document()
-        .create_element("p")?
-        .with_more_text_i("Discard.")?
-        .with_more_text(
-            " Upon reaching the last rank the pawn is lost and goes to your opponent's reserve.
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("Discard.")?
+            .with_more_text(
+                " Upon reaching the last rank the pawn is lost and goes to your opponent's reserve.
             You get nothing. C'est la vie.",
-        )?])
+            )?,
+    ])
 }
 fn promotion_steal_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    Ok(vec![web_document()
-        .create_element("p")?
-        .with_more_text_i("Steal.")?
-        .with_more_text(
+    Ok(vec![
+        web_document().create_element("p")?.with_more_text_i("Steal.")?.with_more_text(
             " Expropriate your partner opponent's piece when promoting a pawn!
             Can only steal a piece from the board, not from reserve.
             Cannot expose a king to new attacks by stealing a piece
             unless regicide is on (i.e. unless king capture is allowed by
             chess variant like Fog of war or Duck chess).",
-        )?])
+        )?,
+    ])
 }
 fn promotion_steal_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Element>> {
     let exposure = if rules.regicide() {
@@ -525,45 +539,54 @@ fn promotion_steal_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys:
     } else {
         "Cannot expose a king to new attacks by stealing a piece."
     };
-    Ok(vec![web_document()
-        .create_element("p")?
-        .with_more_text_i("Steal.")?
-        .with_more_text(&format!(
-            " Expropriate your partner opponent's piece when promoting a pawn!
+    Ok(vec![
+        web_document().create_element("p")?.with_more_text_i("Steal.")?.with_more_text(
+            &format!(
+                " Expropriate your partner opponent's piece when promoting a pawn!
                 Can only steal a piece from the board, not from reserve. {exposure}",
-        ))?])
+            ),
+        )?,
+    ])
 }
 
 fn drop_aggression_no_check_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    Ok(vec![web_document()
-        .create_element("p")?
-        .with_more_text_i("No check.")?
-        .with_more_text(" Drop with a check is forbidden.")?])
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("No check.")?
+            .with_more_text(" Drop with a check is forbidden.")?,
+    ])
 }
 fn drop_aggression_no_chess_mate_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    Ok(vec![web_document()
-        .create_element("p")?
-        .with_more_text_i("No mate.")?
-        .with_more_text(
-            " Drop with a checkmate is forbidden, even if the opponent can escape
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("No mate.")?
+            .with_more_text(
+                " Drop with a checkmate is forbidden, even if the opponent can escape
             the checkmate with a drop of their own.",
-        )?])
+            )?,
+    ])
 }
 fn drop_aggression_no_bughouse_mate_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    Ok(vec![web_document()
-        .create_element("p")?
-        .with_more_text_i("No bughouse mate.")?
-        .with_more_text(
-            " Drop with a checkmate is forbidden, unless the opponent can escape
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("No bughouse mate.")?
+            .with_more_text(
+                " Drop with a checkmate is forbidden, unless the opponent can escape
             the checkmate with a drop of their own (even if their reserve
             is currently empty).",
-        )?])
+            )?,
+    ])
 }
 fn drop_aggression_mate_allowed_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    Ok(vec![web_document()
-        .create_element("p")?
-        .with_more_text_i("Mate allowed.")?
-        .with_more_text(" Drop with a checkmate is allowed.")?])
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("Mate allowed.")?
+            .with_more_text(" Drop with a checkmate is allowed.")?,
+    ])
 }
 
 // Improvement potential: Update based on the current board shape.

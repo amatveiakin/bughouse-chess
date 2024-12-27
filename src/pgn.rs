@@ -15,8 +15,8 @@ use crate::coord::BoardShape;
 use crate::fen;
 use crate::force::Force;
 use crate::game::{
-    get_bughouse_board, BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus,
-    BughousePlayer, GameOutcome, PlayerInGame,
+    BughouseBoard, BughouseEnvoy, BughouseGame, BughouseGameStatus, BughousePlayer, GameOutcome,
+    PlayerInGame, get_bughouse_board,
 };
 use crate::player::Team;
 use crate::role::Role;

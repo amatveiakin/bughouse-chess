@@ -54,7 +54,7 @@ mod stress_test;
 use std::io;
 
 use bughouse_chess::role::Role;
-use clap::{arg, Command};
+use clap::{Command, arg};
 use server_config::ServerConfig;
 
 fn main() -> io::Result<()> {

@@ -8,7 +8,7 @@ use strum::EnumIter;
 
 use crate::coord::{BoardShape, Col, Coord, Row};
 use crate::force::Force;
-use crate::game::{get_bughouse_board, BughouseBoard, BughouseParticipant, BughousePlayer};
+use crate::game::{BughouseBoard, BughouseParticipant, BughousePlayer, get_bughouse_board};
 
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, EnumIter)]

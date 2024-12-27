@@ -318,7 +318,7 @@ pub async fn handle_continue_sign_with_google<DB: Send + Sync + 'static>(
                     format!(
                         "Cannot log in with Google: {} authentification method was used during sign-up.",
                         account.registration_method.to_string()
-                    )
+                    ),
                 ));
             }
             Session::LoggedIn(UserInfo {
@@ -396,7 +396,7 @@ pub async fn handle_continue_sign_with_lichess<DB: Send + Sync + 'static>(
                     format!(
                         "Cannot log in with Lichess: {} authentification method was used during sign-up.",
                         account.registration_method.to_string()
-                    )
+                    ),
                 ));
             }
             Session::LoggedIn(UserInfo {

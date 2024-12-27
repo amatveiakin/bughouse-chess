@@ -8,14 +8,14 @@ use bughouse_chess::board::{Board, Turn, TurnInput, TurnMode};
 use bughouse_chess::client::{ClientState, GameState};
 use bughouse_chess::display::get_display_board_index;
 use bughouse_chess::game::TOTAL_ENVOYS;
-use bughouse_chess::meter::{MeterStats, METER_SIGNIFICANT_DIGITS};
+use bughouse_chess::meter::{METER_SIGNIFICANT_DIGITS, MeterStats};
 use bughouse_chess::rules::{ChessRules, MatchRules, Rules};
 use bughouse_chess::server::MATCH_ID_ALPHABET;
 use hdrhistogram::Histogram;
 use instant::Instant;
 use itertools::Itertools;
-use rand::seq::SliceRandom;
 use rand::Rng;
+use rand::seq::SliceRandom;
 use url::Url;
 
 use crate::network;

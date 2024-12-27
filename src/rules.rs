@@ -289,13 +289,7 @@ impl ChessRules {
 
     // Conceptually we always allow a single preturn, but this may technically require several
     // preturns in game modes where each turn has multiple stages.
-    pub fn max_preturns_per_board(&self) -> usize {
-        if self.duck_chess {
-            2
-        } else {
-            1
-        }
-    }
+    pub fn max_preturns_per_board(&self) -> usize { if self.duck_chess { 2 } else { 1 } }
 
     pub fn variants(&self) -> Vec<ChessVariant> {
         let mut v = vec![];

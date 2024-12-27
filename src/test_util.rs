@@ -1,6 +1,6 @@
 // Test utilities that cannot be moved to the "tests" folder, because stress_test uses them.
 
-use enum_map::{enum_map, EnumMap};
+use enum_map::{EnumMap, enum_map};
 use instant::Duration;
 use itertools::Itertools;
 use rand::{Rng, SeedableRng};

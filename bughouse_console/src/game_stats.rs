@@ -4,10 +4,10 @@ use std::collections::HashMap;
 
 use lazy_static::lazy_static;
 use log::error;
-use prometheus::{register_histogram, Histogram};
-use skillratings::elo::{self, elo, EloConfig, EloRating};
-use skillratings::weng_lin::{self, weng_lin, weng_lin_two_teams, WengLinConfig, WengLinRating};
+use prometheus::{Histogram, register_histogram};
 use skillratings::Outcomes;
+use skillratings::elo::{self, EloConfig, EloRating, elo};
+use skillratings::weng_lin::{self, WengLinConfig, WengLinRating, weng_lin, weng_lin_two_teams};
 use time::OffsetDateTime;
 
 use crate::persistence::{GameResultRow, RowId};

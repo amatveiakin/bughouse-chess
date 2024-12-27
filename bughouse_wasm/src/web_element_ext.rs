@@ -1,9 +1,9 @@
 use std::ops;
 
 use strum::EnumIter;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::convert::FromWasmAbi;
-use wasm_bindgen::JsCast;
 
 use crate::rust_error;
 use crate::web_document::web_document;
@@ -84,7 +84,7 @@ pub trait WebElementExt {
         &self, children: impl IntoIterator<Item = impl ops::Deref<Target = web_sys::Node>>,
     ) -> JsResult<()>;
     fn append_text_span(&self, text: &str, classes: impl IntoIterator<Item = &str>)
-        -> JsResult<()>;
+    -> JsResult<()>;
     fn append_animated_dots(&self) -> JsResult<()>;
 
     fn new_child_element(&self, local_name: &str) -> JsResult<web_sys::Element>;

@@ -6,7 +6,7 @@ use std::net::TcpStream;
 
 use futures_util::sink::SinkExt;
 use futures_util::stream::StreamExt;
-use serde::{de, Serialize};
+use serde::{Serialize, de};
 use tungstenite::protocol::Role;
 use tungstenite::{Message, WebSocket};
 

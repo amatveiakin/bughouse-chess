@@ -11,11 +11,11 @@ use crate::force::Force;
 use crate::grid::Grid;
 use crate::once_cell_regex;
 use crate::piece::{
-    piece_from_ascii, piece_to_ascii, CastleDirection, PieceId, PieceKind, PieceOnBoard,
-    PieceOrigin,
+    CastleDirection, PieceId, PieceKind, PieceOnBoard, PieceOrigin, piece_from_ascii,
+    piece_to_ascii,
 };
 use crate::rules::ChessRules;
-use crate::starter::{assign_piece_ids, BoardSetup};
+use crate::starter::{BoardSetup, assign_piece_ids};
 use crate::util::as_single_char;
 
 
@@ -63,11 +63,7 @@ fn castling_rights_to_fen(
             }
         }
     }
-    if s.is_empty() {
-        "-".to_owned()
-    } else {
-        s
-    }
+    if s.is_empty() { "-".to_owned() } else { s }
 }
 fn castling_rights_from_fen(grid: &Grid, s: &str) -> Result<BoardCastlingRights, String> {
     let mut castling_rights = BoardCastlingRights::default();
