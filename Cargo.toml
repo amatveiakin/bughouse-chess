@@ -82,7 +82,7 @@ useless_format = "allow"  # could look better next to other formats
 name = "bughouse_chess"
 version = "0.1.0"
 authors = ["Andrei Matveiakin <a.matveiakin@gmail.com>"]
-edition = "2021"
+edition = "2024"
 
 [features]
 strict = []  # treat warnings as a build error
