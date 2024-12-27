@@ -1,7 +1,6 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(feature = "strict", deny(warnings))]
 #![feature(anonymous_lifetime_in_impl_trait)]
-#![feature(async_closure)]
 #![feature(fn_traits)]
 #![feature(int_roundings)]
 #![feature(let_chains)]
