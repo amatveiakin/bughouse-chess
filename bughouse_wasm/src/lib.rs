@@ -492,7 +492,7 @@ impl WebClient {
     }
 
     pub fn drag_state(&self) -> String {
-        (if let Some(GameState { ref alt_game, .. }) = self.state.game_state() {
+        (if let Some(&GameState { ref alt_game, .. }) = self.state.game_state() {
             match alt_game.piece_drag_state() {
                 PieceDragState::NoDrag => "no",
                 PieceDragState::Dragging { .. } => "yes",
@@ -656,7 +656,7 @@ impl WebClient {
                 Ok(JsEventGameOver { result }.into())
             }
             Some(NotableEvent::TurnMade(envoy)) => {
-                let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
+                let Some(&GameState { ref alt_game, .. }) = self.state.game_state() else {
                     return Err(rust_error!());
                 };
                 let display_board_idx =
@@ -726,7 +726,7 @@ impl WebClient {
     }
 
     fn init_game_view(&self, need_reset_chat: bool) -> JsResult<()> {
-        let GameState { ref alt_game, .. } = self.state.displayed_game_state();
+        let &GameState { ref alt_game, .. } = self.state.displayed_game_state();
         let my_id = alt_game.my_id();
         render_boards(alt_game.board_shape(), alt_game.perspective())?;
         setup_participation_mode(my_id)?;
@@ -744,7 +744,7 @@ impl WebClient {
 
     pub fn update_state(&self) -> JsResult<()> {
         let document = web_document();
-        let GameState { is_demo, ref alt_game, .. } = self.state.displayed_game_state();
+        let &GameState { ref is_demo, ref alt_game, .. } = self.state.displayed_game_state();
         let game = alt_game.local_game();
         let hash_seed;
         let mtch = self.state.mtch();
@@ -950,7 +950,7 @@ impl WebClient {
     // Improvement potential. Time difference is the same for all players (modulo sign). Consider
     // showing it only once, e.g. add a colored hourglass/progressbar somewhere in the middle.
     pub fn update_clock(&self) -> JsResult<()> {
-        let GameState { ref alt_game, time_pair, .. } = &self.state.displayed_game_state();
+        let &&GameState { ref alt_game, ref time_pair, .. } = &self.state.displayed_game_state();
         let now = Instant::now();
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         let game = alt_game.local_game();
@@ -1197,7 +1197,7 @@ impl WebClient {
         let Some(mtch) = self.state.mtch() else {
             return Ok(());
         };
-        let GameState { game_index, ref alt_game, .. } = mtch.displayed_game_state();
+        let &GameState { ref game_index, ref alt_game, .. } = mtch.displayed_game_state();
         let chat_node = web_document().get_existing_element_by_id("chat-text-area")?;
         web_chat::update_chat(
             &chat_node,
@@ -1213,7 +1213,7 @@ impl WebClient {
     }
 
     fn get_game_audio_pan(&self, board_idx: BughouseBoard) -> JsResult<f64> {
-        let Some(GameState { ref alt_game, .. }) = self.state.game_state() else {
+        let Some(&GameState { ref alt_game, .. }) = self.state.game_state() else {
             return Err(rust_error!());
         };
         let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
@@ -1828,7 +1828,7 @@ fn update_reserve(
     };
     let reserve_iter = reserve
         .iter()
-        .filter(|(kind, &amount)| {
+        .filter(|&(ref kind, &amount)| {
             match kind.reservable(chess_rules) {
                 // Leave space for all `PieceReservable::Always` pieces, so that the icons
                 // don't shift too much and the user does not misclick after receiving a new

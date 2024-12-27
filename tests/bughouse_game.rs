@@ -530,14 +530,14 @@ fn clock_showings_match() {
         let mut t = Duration::ZERO;
         loop {
             // Increase the probability of small time increments.
-            let dt = if rng.gen() {
+            let dt = if rng.r#gen() {
                 Duration::from_millis(rng.gen_range(0..1000))
             } else {
                 Duration::from_millis(rng.gen_range(1000..20_000))
             };
             t += dt;
             let game_t = GameInstant::from_duration(t);
-            let board = if rng.gen() { A } else { B };
+            let board = if rng.r#gen() { A } else { B };
             game.test_flag(game_t);
             if !game.is_active() {
                 // Improvement potential. Test that time diff matches the time diagonally from the

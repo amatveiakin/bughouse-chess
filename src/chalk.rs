@@ -113,10 +113,10 @@ impl ChalkCanvas {
         };
         let fcoord = to_fcoord(self.board_shape, self.perspective, board_idx, pos);
         match mark {
-            ChalkMark::Arrow { ref mut to, .. } => {
+            &mut ChalkMark::Arrow { ref mut to, .. } => {
                 *to = fcoord.to_coord_snapped(self.board_shape);
             }
-            ChalkMark::FreehandLine { ref mut points } => {
+            &mut ChalkMark::FreehandLine { ref mut points } => {
                 let fcoord = fcoord.snap(self.board_shape);
                 // Possible optimization: also filter out consequent points that are very close.
                 if points.last() != Some(&fcoord) {

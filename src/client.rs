@@ -371,8 +371,11 @@ impl ClientState {
         self.game_state().map_or(false, |s| s.analysis_enabled)
     }
     pub fn toggle_analysis(&mut self) {
-        let Some(GameState { alt_game, ref mut analysis_enabled, .. }) =
-            self.match_state.game_state_mut()
+        let Some(&mut GameState {
+            ref mut alt_game,
+            ref mut analysis_enabled,
+            ..
+        }) = self.match_state.game_state_mut()
         else {
             return;
         };
@@ -394,9 +397,9 @@ impl ClientState {
     pub fn analysis_engine_process_message(
         &mut self, line: &str, display_board: DisplayBoard,
     ) -> Option<AnalysisInfo> {
-        let GameState {
-            alt_game,
-            analysis_enabled,
+        let &mut GameState {
+            ref mut alt_game,
+            ref mut analysis_enabled,
             ref mut evaluation_percentages,
             ..
         } = self.match_state.game_state_mut()?;
@@ -456,7 +459,7 @@ impl ClientState {
     }
 
     fn clear_engine_output(&mut self) {
-        if let Some(GameState { ref mut evaluation_percentages, .. }) = self.game_state_mut() {
+        if let Some(&mut GameState { ref mut evaluation_percentages, .. }) = self.game_state_mut() {
             *evaluation_percentages = enum_map! { _ => None };
         };
         for display_board in DisplayBoard::iter() {
@@ -728,9 +731,9 @@ impl ClientState {
         &mut self, display_board: DisplayBoard, turn_input: TurnInput,
     ) -> Result<(), TurnError> {
         let game_state = self.game_state_mut().ok_or(TurnError::NoGameInProgress)?;
-        let GameState {
+        let &mut GameState {
             ref mut alt_game,
-            time_pair,
+            ref mut time_pair,
             ref mut awaiting_turn_confirmation_since,
             ..
         } = game_state;
@@ -812,7 +815,7 @@ impl ClientState {
     }
 
     pub fn team_chat_enabled(&self) -> bool {
-        if let Some(GameState { ref alt_game, .. }) = self.game_state() {
+        if let Some(&GameState { ref alt_game, .. }) = self.game_state() {
             match alt_game.my_id() {
                 BughouseParticipant::Player(BughousePlayer::SinglePlayer(_)) => true,
                 // Note. If we ever allow to double-play while having a fixed team with 2+ people,
@@ -1268,7 +1271,7 @@ impl ClientState {
             return Err(internal_client_error!());
         };
         let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_client_error!())?;
-        let GameState { ref mut alt_game, ref mut time_pair, .. } = game_state;
+        let &mut GameState { ref mut alt_game, ref mut time_pair, .. } = game_state;
         if !alt_game.is_active() {
             return Err(internal_client_error!("Cannot make turn {:?}: game over", turn_input));
         }
@@ -1333,7 +1336,7 @@ impl ClientState {
     ) -> Result<(), ClientError> {
         let mtch = self.mtch_mut().ok_or_else(|| internal_client_error!())?;
         let game_state = mtch.game_state.as_mut().ok_or_else(|| internal_client_error!())?;
-        let GameState { ref mut alt_game, .. } = game_state;
+        let &mut GameState { ref mut alt_game, .. } = game_state;
 
         mtch.scores = Some(scores);
 
@@ -1444,8 +1447,11 @@ impl ClientState {
     fn wayback_to_local(
         &mut self, destination: WaybackDestination, board_idx: Option<BughouseBoard>,
     ) -> Result<Option<TurnIndex>, ()> {
-        let Some(GameState { ref mut alt_game, analysis_enabled, .. }) =
-            self.match_state.game_state_mut()
+        let Some(&mut GameState {
+            ref mut alt_game,
+            ref mut analysis_enabled,
+            ..
+        }) = self.match_state.game_state_mut()
         else {
             return Err(());
         };
@@ -1593,9 +1599,9 @@ impl ClientState {
         let Some(game_state) = self.game_state_mut() else {
             return;
         };
-        let GameState {
+        let &mut GameState {
             ref alt_game,
-            time_pair,
+            ref mut time_pair,
             ref mut next_low_time_warning_idx,
             ..
         } = game_state;

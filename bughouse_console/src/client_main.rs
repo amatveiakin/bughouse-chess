@@ -104,7 +104,7 @@ fn render(
     if let Some(msg) = additional_message {
         writeln_raw(stdout, msg)?;
     }
-    if let Some(ref err) = command_error {
+    if let &Some(ref err) = command_error {
         writeln_raw(stdout, err.clone().with(style::Color::Red))?;
     }
     Ok(())

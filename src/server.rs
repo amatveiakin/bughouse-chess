@@ -1872,7 +1872,7 @@ fn update_on_game_over(
         BughouseGameStatus::Draw(_) => enum_map! { _ => HalfU32::HALF },
     };
     match scores {
-        Scores::PerTeam(ref mut score_map) => {
+        &mut Scores::PerTeam(ref mut score_map) => {
             for (team, score) in team_scores {
                 score_map[team] += score;
             }

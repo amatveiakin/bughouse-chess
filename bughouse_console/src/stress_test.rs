@@ -88,22 +88,22 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
         let rules = Rules {
             match_rules: MatchRules::unrated_public(),
             chess_rules: ChessRules {
-                fairy_pieces: if rng.gen::<bool>() {
+                fairy_pieces: if rng.r#gen::<bool>() {
                     FairyPieces::NoFairy
                 } else {
                     FairyPieces::Accolade
                 },
-                starting_position: if rng.gen::<bool>() {
+                starting_position: if rng.r#gen::<bool>() {
                     StartingPosition::Classic
                 } else {
                     StartingPosition::FischerRandom
                 },
-                duck_chess: rng.gen::<bool>(),
-                atomic_chess: rng.gen::<bool>(),
-                fog_of_war: rng.gen::<bool>(),
+                duck_chess: rng.r#gen::<bool>(),
+                atomic_chess: rng.r#gen::<bool>(),
+                fog_of_war: rng.r#gen::<bool>(),
                 time_control: TimeControl { starting_time: Duration::from_secs(300) },
                 bughouse_rules: Some(BughouseRules {
-                    koedem: rng.gen::<bool>(),
+                    koedem: rng.r#gen::<bool>(),
                     // Improvement potential: Test other promotion strategies.
                     promotion: Promotion::Upgrade,
                     // Improvement potential: Wider range of pawn drop ranks for larger boards.
@@ -145,7 +145,7 @@ fn random_piece(rng: &mut rand::rngs::ThreadRng) -> PieceKind {
 }
 
 fn random_force(rng: &mut rand::rngs::ThreadRng) -> Force {
-    if rng.gen::<bool>() {
+    if rng.r#gen::<bool>() {
         Force::White
     } else {
         Force::Black
@@ -153,7 +153,7 @@ fn random_force(rng: &mut rand::rngs::ThreadRng) -> Force {
 }
 
 fn random_board(rng: &mut rand::rngs::ThreadRng) -> BughouseBoard {
-    if rng.gen::<bool>() {
+    if rng.r#gen::<bool>() {
         BughouseBoard::A
     } else {
         BughouseBoard::B

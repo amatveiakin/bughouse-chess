@@ -931,7 +931,7 @@ impl AlteredGame {
     }
 
     fn invalidate_partial_turn(&mut self) {
-        let Some((_, ref mut input)) = self.partial_turn_input.get_mut() else {
+        let &mut Some((_, ref mut input)) = self.partial_turn_input.get_mut() else {
             return;
         };
         match input {

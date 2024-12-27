@@ -43,13 +43,13 @@ impl BoardShape {
         self.contains_row(coord.row) && self.contains_col(coord.col)
     }
 
-    pub fn rows(&self) -> impl DoubleEndedIterator<Item = Row> + Clone {
+    pub fn rows(&self) -> impl DoubleEndedIterator<Item = Row> + Clone + use<> {
         (0..self.num_rows as i8).map(Row::from_zero_based)
     }
-    pub fn cols(&self) -> impl DoubleEndedIterator<Item = Col> + Clone {
+    pub fn cols(&self) -> impl DoubleEndedIterator<Item = Col> + Clone + use<> {
         (0..self.num_cols as i8).map(Col::from_zero_based)
     }
-    pub fn coords(&self) -> impl Iterator<Item = Coord> + Clone {
+    pub fn coords(&self) -> impl Iterator<Item = Coord> + Clone + use<> {
         self.rows().cartesian_product(self.cols()).map(|(row, col)| Coord { row, col })
     }
 }
