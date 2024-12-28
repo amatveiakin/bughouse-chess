@@ -48,7 +48,7 @@ impl ClientPerformanceStats {
     pub fn from_values(records: Vec<ClientPerformanceRecord>) -> Self {
         let points = records
             .into_iter()
-            .group_by(|record| record.git_version.clone())
+            .chunk_by(|record| record.git_version.clone())
             .into_iter()
             .map(|(git_version, records)| {
                 let mut ping_values = vec![];
@@ -103,7 +103,7 @@ pub fn performance_stats_graph_html(stats: &ClientPerformanceStats) -> String {
     let layout = plot
         .layout()
         .clone()
-        .title("Client performance: mean time per operation (milliseconds)".into());
+        .title("Client performance: mean time per operation (milliseconds)");
     plot.set_layout(layout);
     let xs = stats.points.iter().map(|p| p.git_version.clone()).collect_vec();
     plot.add_trace(make_trace(stats, &xs, "ping_50", |p| &p.ping_stats.p50s));

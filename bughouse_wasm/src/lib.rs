@@ -2281,11 +2281,10 @@ fn scroll_to_wayback_turn(wayback: WaybackState) {
             web_document().get_element_by_id(&turn_record_node_id(index, turn_record_board))
         });
         if let Some(node) = node {
-            node.scroll_into_view_with_scroll_into_view_options(
-                ScrollIntoViewOptions::new()
-                    .behavior(ScrollBehavior::Instant)
-                    .block(ScrollLogicalPosition::Nearest),
-            );
+            let options = ScrollIntoViewOptions::new();
+            options.set_behavior(ScrollBehavior::Instant);
+            options.set_block(ScrollLogicalPosition::Nearest);
+            node.scroll_into_view_with_scroll_into_view_options(&options);
         }
     }
 }

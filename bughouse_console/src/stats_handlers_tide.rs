@@ -496,7 +496,7 @@ fn keep_last_point_per_date(points: &mut Vec<RawStats>) {
     *points = points
         .iter_mut()
         .filter(|p| p.last_update.is_some())
-        .group_by(|p| p.last_update.unwrap().date())
+        .chunk_by(|p| p.last_update.unwrap().date())
         .into_iter()
         .map(|(_, group)| *group.last().unwrap())
         .collect();

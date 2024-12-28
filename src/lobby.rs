@@ -186,7 +186,7 @@ pub fn assign_boards<'a>(
         })
         .collect_vec();
     let priority_buckets =
-        players.into_iter().sorted_by_key(|(_, key)| *key).group_by(|(_, key)| *key);
+        players.into_iter().sorted_by_key(|(_, key)| *key).chunk_by(|(_, key)| *key);
 
     // Note. Even though we randomize the team for players with `Faction::Random`, randomizing
     // the order within each bucket is still necessary for multiple reasons:

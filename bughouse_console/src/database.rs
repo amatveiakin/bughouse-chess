@@ -88,7 +88,7 @@ where
     for<'q> OffsetDateTime: sqlx::Type<DB> + sqlx::Encode<'q, DB>,
     for<'q> PrimitiveDateTime: sqlx::Type<DB> + sqlx::Decode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
-    for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
+    for<'a> <DB as sqlx::Database>::Arguments<'a>: sqlx::IntoArguments<'a, DB>,
     for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
     usize: sqlx::ColumnIndex<DB::Row>,
 {
@@ -277,7 +277,7 @@ where
     Option<OffsetDateTime>: Type<DB> + for<'q> Encode<'q, DB>,
     bool: Type<DB> + for<'q> Encode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
-    for<'a> <DB as sqlx::database::HasArguments<'a>>::Arguments: sqlx::IntoArguments<'a, DB>,
+    for<'a> <DB as sqlx::Database>::Arguments<'a>: sqlx::IntoArguments<'a, DB>,
 {
     async fn create_tables(&self) -> anyhow::Result<()> {
         // TODO: Include match_id in finished_games.

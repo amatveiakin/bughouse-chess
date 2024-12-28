@@ -69,7 +69,7 @@ pub fn players_rating_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxi
     let layout = plot
         .layout()
         .clone()
-        .title("Player rating history".into())
+        .title("Player rating history")
         .y_axis(plotly::layout::Axis::new().hover_format(".0f"));
     let mut stats: Vec<(&String, &Vec<RawStats>)> = stats.per_player.iter().collect();
     stats.sort_by_key(|(p, _)| *p);
@@ -135,7 +135,7 @@ pub fn teams_elo_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxis) ->
     let layout = plot
         .layout()
         .clone()
-        .title("Team Elo history".into())
+        .title("Team Elo history")
         .y_axis(plotly::layout::Axis::new().hover_format(".0f"));
     plot.set_layout(layout);
     let mut stats: Vec<(&[String; 2], &Vec<RawStats>)> = stats.per_team.iter().collect();
@@ -171,10 +171,7 @@ pub fn teams_elo_graph_html(stats: &GroupStats<Vec<RawStats>>, x_axis: XAxis) ->
 
 pub fn meta_stats_graph_html<T>(stats: &GroupStats<T>) -> String {
     let mut plot = plotly::Plot::new();
-    let layout = plot
-        .layout()
-        .clone()
-        .title("Cumulative mean-square error for score predicion".into());
+    let layout = plot.layout().clone().title("Cumulative mean-square error for score predicion");
     plot.set_layout(layout);
     let ms = &stats.meta_stats;
     let xs = (0..ms.len()).collect::<Vec<_>>();
