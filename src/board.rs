@@ -9,6 +9,7 @@ use std::mem;
 use enum_map::{EnumMap, enum_map};
 use itertools::{Itertools, iproduct};
 use serde::{Deserialize, Serialize};
+use strum::IntoEnumIterator;
 
 use crate::algebraic::{
     AlgebraicDetails, AlgebraicDrop, AlgebraicMove, AlgebraicPromotionTarget, AlgebraicTurn,
@@ -532,10 +533,16 @@ fn initial_castling_rights(
     rights
 }
 
-fn remove_castling_right(castling_rights: &mut EnvoyCastlingRights, col: Col) {
-    for (_, col_rights) in castling_rights.iter_mut() {
-        if *col_rights == Some(col) {
-            *col_rights = None;
+fn remove_castling_right(
+    castling_rights: &mut BoardCastlingRights, board_shape: BoardShape, pos: Coord,
+) {
+    for force in Force::iter() {
+        if pos.row == SubjectiveRow::first().to_row(board_shape, force) {
+            for (_, c) in castling_rights[force].iter_mut() {
+                if *c == Some(pos.col) {
+                    *c = None;
+                }
+            }
         }
     }
 }
@@ -1213,34 +1220,28 @@ impl Board {
     fn apply_turn(
         &mut self, turn: Turn, mode: TurnMode, new_grid: Grid, facts: &TurnFacts, now: GameInstant,
     ) {
+        let shape = self.shape();
         self.next_piece_id = facts.next_piece_id;
         let force = self.turn_owner(mode);
         assert_eq!(self.is_duck_turn[force], matches!(turn, Turn::PlaceDuck(_)));
         match &turn {
             Turn::Move(mv) => {
-                let first_row = SubjectiveRow::first().to_row(self.shape(), force);
-                let piece = &mut self.grid[mv.from].unwrap();
-                if piece.kind == PieceKind::King {
-                    self.castling_rights[force].clear();
-                } else if piece.kind == PieceKind::Rook && mv.from.row == first_row {
-                    remove_castling_right(&mut self.castling_rights[force], mv.from.col);
-                }
-                for capture in facts.captures.iter() {
-                    if let Ok(f) = capture.force.try_into() {
-                        let first_row = SubjectiveRow::first().to_row(self.shape(), f);
-                        if mv.to.row == first_row && capture.piece_kind == PieceKind::Rook {
-                            remove_castling_right(&mut self.castling_rights[f], mv.to.col);
-                        }
-                    }
-                }
+                remove_castling_right(&mut self.castling_rights, shape, mv.from);
+                remove_castling_right(&mut self.castling_rights, shape, mv.to);
             }
-            Turn::Drop(_) => {
+            Turn::Drop(drop) => {
+                remove_castling_right(&mut self.castling_rights, shape, drop.to);
                 self.total_drops += 1;
             }
             Turn::Castle(_) => {
                 self.castling_rights[force].clear();
             }
             Turn::PlaceDuck(_) => {}
+        }
+        for capture in facts.captures.iter() {
+            if let Some(capture_pos) = capture.from {
+                remove_castling_right(&mut self.castling_rights, shape, capture_pos);
+            }
         }
         self.grid = new_grid;
         if let Some(piece_kind) = facts.reserve_reduction {
