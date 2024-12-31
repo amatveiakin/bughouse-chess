@@ -1284,7 +1284,7 @@ impl Board {
                         }
                     }
                 } else {
-                    if self.bughouse_rules().map_or(false, |r| r.koedem) {
+                    if self.bughouse_rules().is_some_and(|r| r.koedem) {
                         // Cannot check victory condition here, need to see both boards.
                     } else {
                         let captured_kings = facts
@@ -1384,7 +1384,7 @@ impl Board {
         let rules = self.chess_rules();
         let bughouse_rules = self.bughouse_rules();
         let force = self.turn_owner(mode);
-        if bughouse_rules.map_or(false, |r| r.koedem) && self.reserve(force)[PieceKind::King] > 0 {
+        if bughouse_rules.is_some_and(|r| r.koedem) && self.reserve(force)[PieceKind::King] > 0 {
             let ok = match turn {
                 Turn::Move(_) | Turn::Castle(_) => false,
                 Turn::Drop(TurnDrop { piece_kind, .. }) => piece_kind == PieceKind::King,
@@ -1811,7 +1811,7 @@ impl Board {
                     }
                     let first_row = SubjectiveRow::first().to_row(self.shape(), force);
                     let d_col = mv.from.col - mv.to.col;
-                    let onto_rook = self.grid[mv.to].map_or(false, |dst_piece| {
+                    let onto_rook = self.grid[mv.to].is_some_and(|dst_piece| {
                         dst_piece.force == force.into() && dst_piece.kind == PieceKind::Rook
                     });
                     let is_castling = piece.kind == PieceKind::King

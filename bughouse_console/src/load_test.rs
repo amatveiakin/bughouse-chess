@@ -109,7 +109,7 @@ impl Client {
     }
 
     fn ensure_active_game(&mut self) {
-        while !self.state.mtch().map_or(false, |m| m.has_active_game()) {
+        while !self.state.mtch().is_some_and(|m| m.has_active_game()) {
             if self.state.is_ready() == Some(false) {
                 self.state.set_ready(true);
             }

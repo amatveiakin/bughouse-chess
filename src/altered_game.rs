@@ -508,7 +508,7 @@ impl AlteredGame {
             .game_confirmed
             .turn_log()
             .iter()
-            .filter(move |r| board_idx.map_or(true, |b| r.envoy.board_idx == b))
+            .filter(move |r| board_idx.is_none_or(|b| r.envoy.board_idx == b))
             .map(|r| r.index);
         let new_index = match destination {
             WaybackDestination::Index(index) => index,

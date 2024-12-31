@@ -256,7 +256,7 @@ impl PieceKind {
             },
             Amazon => PieceReservable::Never,
             King => {
-                if rules.bughouse_rules.as_ref().map_or(false, |r| r.koedem) {
+                if rules.bughouse_rules.as_ref().is_some_and(|r| r.koedem) {
                     PieceReservable::Always
                 } else {
                     // Before game start (demos) and after game over (regicide).

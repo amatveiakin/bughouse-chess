@@ -180,7 +180,7 @@ pub fn assign_boards<'a>(
         .filter(|p| p.faction.is_player())
         .map(|p| {
             let high_priority =
-                current_assignment.map_or(false, |current| current.contains_key(&p.name));
+                current_assignment.is_some_and(|current| current.contains_key(&p.name));
             let priority_key = (cmp::Reverse(high_priority), cmp::Reverse(p.scheduling_priority));
             (p, priority_key)
         })
@@ -298,8 +298,7 @@ pub fn assign_boards<'a>(
                         .collect_vec();
                     let need_swap = players.iter().any(|p| {
                         current_assignment
-                            .and_then(|current| current.get(&p.name))
-                            .map_or(false, |&id| id.is_single_player() && id != p.id)
+                            .and_then(|current| current.get(&p.name)).is_some_and(|&id| id.is_single_player() && id != p.id)
                     });
                     if need_swap {
                         let name_a = mem::take(&mut players[0].name);
@@ -882,7 +881,7 @@ mod tests {
             }
             participants.add("p6", Faction::Random);
             let players = assign_boards(participants.values(), None, rng);
-            assert!(players.iter().find(|p| p.name == "p6").is_some());
+            assert!(players.iter().any(|p| p.name == "p6"));
         }
     }
 

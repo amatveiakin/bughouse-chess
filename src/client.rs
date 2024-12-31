@@ -184,7 +184,7 @@ impl Match {
     }
     pub fn has_started(&self) -> bool { self.game_state.is_some() }
     pub fn has_active_game(&self) -> bool {
-        self.game_state.as_ref().map_or(false, |s| s.alt_game.is_active())
+        self.game_state.as_ref().is_some_and(|s| s.alt_game.is_active())
     }
     pub fn displayed_game_state(&self) -> &GameState {
         self.game_state.as_ref().unwrap_or(&self.setup_demo_state)
@@ -295,7 +295,7 @@ impl ClientState {
     pub fn server_options(&self) -> Option<&ServerOptions> { self.server_options.as_ref() }
     pub fn mtch(&self) -> Option<&Match> { self.match_state.get() }
     fn mtch_mut(&mut self) -> Option<&mut Match> { self.match_state.get_mut() }
-    fn is_active_match(&self) -> bool { self.mtch().map_or(false, |mtch| mtch.is_active_match()) }
+    fn is_active_match(&self) -> bool { self.mtch().is_some_and(|mtch| mtch.is_active_match()) }
     pub fn is_ready(&self) -> Option<bool> { self.mtch().map(|m| m.is_ready) }
     pub fn match_id(&self) -> Option<&String> { self.mtch().and_then(|m| m.match_id()) }
     pub fn archive_game_id(&self) -> Option<i64> { self.mtch().and_then(|m| m.archive_game_id()) }
@@ -368,7 +368,7 @@ impl ClientState {
     }
 
     pub fn analysis_enabled(&self) -> bool {
-        self.game_state().map_or(false, |s| s.analysis_enabled)
+        self.game_state().is_some_and(|s| s.analysis_enabled)
     }
     pub fn toggle_analysis(&mut self) {
         let Some(&mut GameState {
@@ -815,7 +815,7 @@ impl ClientState {
     }
 
     pub fn team_chat_enabled(&self) -> bool {
-        if let Some(&GameState { ref alt_game, .. }) = self.game_state() {
+        if let Some(GameState { alt_game, .. }) = self.game_state() {
             match alt_game.my_id() {
                 BughouseParticipant::Player(BughousePlayer::SinglePlayer(_)) => true,
                 // Note. If we ever allow to double-play while having a fixed team with 2+ people,
@@ -1413,7 +1413,7 @@ impl ClientState {
     }
 
     pub fn shared_wayback_enabled(&self) -> bool {
-        self.game_state().map_or(false, |s| s.shared_wayback_enabled)
+        self.game_state().is_some_and(|s| s.shared_wayback_enabled)
     }
     pub fn set_shared_wayback(&mut self, enabled: bool) {
         if !self.is_active_match() {

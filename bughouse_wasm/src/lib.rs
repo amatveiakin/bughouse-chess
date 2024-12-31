@@ -492,7 +492,7 @@ impl WebClient {
     }
 
     pub fn drag_state(&self) -> String {
-        (if let Some(&GameState { ref alt_game, .. }) = self.state.game_state() {
+        (if let Some(GameState { alt_game, .. }) = self.state.game_state() {
             match alt_game.piece_drag_state() {
                 PieceDragState::NoDrag => "no",
                 PieceDragState::Dragging { .. } => "yes",
@@ -510,7 +510,7 @@ impl WebClient {
     }
 
     pub fn is_chalk_active(&self) -> bool {
-        self.state.chalk_canvas().map_or(false, |c| c.is_painting())
+        self.state.chalk_canvas().is_some_and(|c| c.is_painting())
     }
     pub fn chalk_down(
         &mut self, board_node: &str, x: f64, y: f64, alternative_mode: bool,
@@ -656,7 +656,7 @@ impl WebClient {
                 Ok(JsEventGameOver { result }.into())
             }
             Some(NotableEvent::TurnMade(envoy)) => {
-                let Some(&GameState { ref alt_game, .. }) = self.state.game_state() else {
+                let Some(GameState { alt_game, .. }) = self.state.game_state() else {
                     return Err(rust_error!());
                 };
                 let display_board_idx =
@@ -726,7 +726,7 @@ impl WebClient {
     }
 
     fn init_game_view(&self, need_reset_chat: bool) -> JsResult<()> {
-        let &GameState { ref alt_game, .. } = self.state.displayed_game_state();
+        let GameState { alt_game, .. } = self.state.displayed_game_state();
         let my_id = alt_game.my_id();
         render_boards(alt_game.board_shape(), alt_game.perspective())?;
         setup_participation_mode(my_id)?;
@@ -744,7 +744,7 @@ impl WebClient {
 
     pub fn update_state(&self) -> JsResult<()> {
         let document = web_document();
-        let &GameState { ref is_demo, ref alt_game, .. } = self.state.displayed_game_state();
+        let GameState { is_demo, alt_game, .. } = self.state.displayed_game_state();
         let game = alt_game.local_game();
         let hash_seed;
         let mtch = self.state.mtch();
@@ -776,8 +776,7 @@ impl WebClient {
             let is_piece_draggable = |piece_force: PieceForce| {
                 !is_demo
                     && my_id
-                        .envoy_for(board_idx)
-                        .map_or(false, |e| piece_force.is_owned_by_or_neutral(e.force))
+                        .envoy_for(board_idx).is_some_and(|e| piece_force.is_owned_by_or_neutral(e.force))
             };
             let is_glowing_steal = |coord: Coord| {
                 let Some((input_board_idx, partial_input)) = alt_game.partial_turn_input() else {
@@ -950,7 +949,7 @@ impl WebClient {
     // Improvement potential. Time difference is the same for all players (modulo sign). Consider
     // showing it only once, e.g. add a colored hourglass/progressbar somewhere in the middle.
     pub fn update_clock(&self) -> JsResult<()> {
-        let &&GameState { ref alt_game, ref time_pair, .. } = &self.state.displayed_game_state();
+        let &GameState { alt_game, time_pair, .. } = &self.state.displayed_game_state();
         let now = Instant::now();
         let game_now = GameInstant::from_pair_game_maybe_active(*time_pair, now);
         let game = alt_game.local_game();
@@ -1197,7 +1196,7 @@ impl WebClient {
         let Some(mtch) = self.state.mtch() else {
             return Ok(());
         };
-        let &GameState { ref game_index, ref alt_game, .. } = mtch.displayed_game_state();
+        let GameState { game_index, alt_game, .. } = mtch.displayed_game_state();
         let chat_node = web_document().get_existing_element_by_id("chat-text-area")?;
         web_chat::update_chat(
             &chat_node,
@@ -1213,7 +1212,7 @@ impl WebClient {
     }
 
     fn get_game_audio_pan(&self, board_idx: BughouseBoard) -> JsResult<f64> {
-        let Some(&GameState { ref alt_game, .. }) = self.state.game_state() else {
+        let Some(GameState { alt_game, .. }) = self.state.game_state() else {
             return Err(rust_error!());
         };
         let display_board_idx = get_display_board_index(board_idx, alt_game.perspective());
@@ -2175,7 +2174,7 @@ fn update_turn_log(
             }
             let is_in_fog = game.chess_rules().fog_of_war
                 && game.is_active()
-                && my_id.as_player().map_or(false, |p| p.team() != record.envoy.team());
+                && my_id.as_player().is_some_and(|p| p.team() != record.envoy.team());
             let algebraic = if is_in_fog {
                 record.turn_expanded.algebraic.format_in_the_fog(board_shape)
             } else {
@@ -2303,7 +2302,7 @@ fn setup_participation_mode(participant_id: BughouseParticipant) -> JsResult<()>
 }
 
 fn update_cannot_start_alert(mtch: &Match) -> JsResult<()> {
-    let game_active = mtch.game_state.as_ref().map_or(false, |s| s.alt_game.is_active());
+    let game_active = mtch.game_state.as_ref().is_some_and(|s| s.alt_game.is_active());
     let particpants_status = verify_participants(&mtch.rules, mtch.participants.iter());
     let alert = if game_active {
         None

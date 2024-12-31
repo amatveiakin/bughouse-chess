@@ -192,7 +192,7 @@ impl GameOutcome {
         match self.status {
             Active => "Unterminated".to_owned(),
             Victory(_, Checkmate) => {
-                if rules.bughouse_rules.as_ref().map_or(false, |r| r.koedem) {
+                if rules.bughouse_rules.as_ref().is_some_and(|r| r.koedem) {
                     format!("{winners} won: {losers} lost all kings")
                 } else if rules.regicide() {
                     format!("{winners} won: {losers} lost a king")
@@ -529,10 +529,10 @@ impl BughouseParticipant {
         self.as_player().and_then(|p| p.envoy_for(board_idx))
     }
     pub fn plays_on_board(self, board_idx: BughouseBoard) -> bool {
-        self.as_player().map_or(false, |p| p.plays_on_board(board_idx))
+        self.as_player().is_some_and(|p| p.plays_on_board(board_idx))
     }
     pub fn plays_for(self, envoy: BughouseEnvoy) -> bool {
-        self.as_player().map_or(false, |p| p.plays_for(envoy))
+        self.as_player().is_some_and(|p| p.plays_for(envoy))
     }
     pub fn envoys(self) -> Vec<BughouseEnvoy> { self.as_player().map_or(vec![], |p| p.envoys()) }
 }
