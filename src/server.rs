@@ -1008,7 +1008,8 @@ impl Match {
                             .map
                             .read()
                             .await
-                            .get(&existing_client_id).is_some_and(|c| c.connection_monitor.status(ctx.now).is_healthy());
+                            .get(&existing_client_id)
+                            .is_some_and(|c| c.connection_monitor.status(ctx.now).is_healthy());
                         let is_existing_user_registered =
                             self.participants[existing_participant_id].is_registered_user;
                         let both_registered = is_registered_user && is_existing_user_registered;
@@ -1088,7 +1089,8 @@ impl Match {
                             .map
                             .read()
                             .await
-                            .get(&existing_client_id).is_some_and(|c| c.connection_monitor.status(ctx.now).is_healthy());
+                            .get(&existing_client_id)
+                            .is_some_and(|c| c.connection_monitor.status(ctx.now).is_healthy());
                         if is_registered_user {
                             let rejection = if is_existing_user_registered {
                                 BughouseServerRejection::JoinedInAnotherClient // this is us
@@ -1548,7 +1550,8 @@ impl Match {
         // TODO: Show lobby participants as offline when `!c.heart.is_online()`.
         self.clients.retain(|&client_id, _| {
             client_matches
-                .get(&client_id).is_some_and(|match_id| match_id.as_ref() == Some(&self.match_id))
+                .get(&client_id)
+                .is_some_and(|match_id| match_id.as_ref() == Some(&self.match_id))
         });
         let online_participant_ids: HashSet<_> = self.clients.values().copied().collect();
         let mut lobby_updated = false;

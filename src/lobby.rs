@@ -298,7 +298,8 @@ pub fn assign_boards<'a>(
                         .collect_vec();
                     let need_swap = players.iter().any(|p| {
                         current_assignment
-                            .and_then(|current| current.get(&p.name)).is_some_and(|&id| id.is_single_player() && id != p.id)
+                            .and_then(|current| current.get(&p.name))
+                            .is_some_and(|&id| id.is_single_player() && id != p.id)
                     });
                     if need_swap {
                         let name_a = mem::take(&mut players[0].name);

@@ -776,7 +776,8 @@ impl WebClient {
             let is_piece_draggable = |piece_force: PieceForce| {
                 !is_demo
                     && my_id
-                        .envoy_for(board_idx).is_some_and(|e| piece_force.is_owned_by_or_neutral(e.force))
+                        .envoy_for(board_idx)
+                        .is_some_and(|e| piece_force.is_owned_by_or_neutral(e.force))
             };
             let is_glowing_steal = |coord: Coord| {
                 let Some((input_board_idx, partial_input)) = alt_game.partial_turn_input() else {

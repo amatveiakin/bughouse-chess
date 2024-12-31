@@ -367,9 +367,7 @@ impl ClientState {
         self.analysis_engine = Some(engine);
     }
 
-    pub fn analysis_enabled(&self) -> bool {
-        self.game_state().is_some_and(|s| s.analysis_enabled)
-    }
+    pub fn analysis_enabled(&self) -> bool { self.game_state().is_some_and(|s| s.analysis_enabled) }
     pub fn toggle_analysis(&mut self) {
         let Some(&mut GameState {
             ref mut alt_game,
