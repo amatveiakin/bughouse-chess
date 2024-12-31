@@ -127,3 +127,4 @@ workspace = true
 
 [profile.release]
 panic = "abort"
+strip = true
