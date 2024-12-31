@@ -31,6 +31,7 @@ pub struct BoardShape {
 
 impl BoardShape {
     pub fn standard() -> Self { BoardShape { num_rows: 8, num_cols: 8 } }
+    pub fn max() -> Self { BoardShape { num_rows: MAX_ROWS, num_cols: MAX_COLS } }
     pub fn contains_row(&self, row: Row) -> bool {
         let row = row.to_zero_based();
         (0..self.num_rows as i8).contains(&row)
@@ -111,6 +112,7 @@ impl Row {
             char::from_u32(idx as u32 + '①' as u32).unwrap()
         }
     }
+    pub fn to_debug_algebraic(self) -> String { (self.idx + 1).to_string() }
 }
 
 impl ops::Add<i8> for Row {
@@ -188,6 +190,9 @@ impl Coord {
     pub fn to_algebraic(&self, board_shape: BoardShape) -> String {
         format!("{}{}", self.col.to_algebraic(board_shape), self.row.to_algebraic(board_shape))
     }
+    pub fn to_debug_algebraic(&self) -> String {
+        format!("{}{}", self.col.to_algebraic(BoardShape::max()), self.row.to_debug_algebraic())
+    }
     pub fn to_id(self) -> String {
         let (row_sign, row_val) = Self::to_sign_val(self.row.to_zero_based());
         let (col_sign, col_val) = Self::to_sign_val(self.col.to_zero_based());
@@ -230,7 +235,7 @@ impl ops::Sub for Coord {
 
 impl fmt::Debug for Coord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Coord({})", self.to_id())
+        write!(f, "{}", self.to_debug_algebraic())
     }
 }
 
