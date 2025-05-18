@@ -777,7 +777,9 @@ impl BughouseGame {
             TurnMode::Preturn => {}
         }
         other_board.apply_sibling_turn(&turn_facts, mode);
-
+        // CHANGED
+        let this_board = &mut self.boards[board_idx.other().other()];
+        this_board.apply_sibling_turn(&turn_facts, mode);
         let turn_expanded = make_turn_expanded(turn, turn_algebraic, turn_facts);
         self.turn_log.push(TurnRecordExpanded {
             index: TurnIndex(self.turn_log.len()),
