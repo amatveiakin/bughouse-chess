@@ -760,6 +760,10 @@ impl BughouseGame {
 
         let turn_facts = self.boards[board_idx].try_turn(turn, mode, now)?;
 
+        if self.bughouse_rules().duplicate {
+            self.boards[board_idx].check_duplicate(&turn_facts);
+        }
+
         // Changes to the board have been made. The function must not fail from this point on!
         //
         // An alternative solution would be clone the game state (like we do in `Board::try_turn`)
@@ -777,9 +781,7 @@ impl BughouseGame {
             TurnMode::Preturn => {}
         }
         other_board.apply_sibling_turn(&turn_facts, mode);
-        // CHANGED
-        let this_board = &mut self.boards[board_idx.other().other()];
-        this_board.apply_sibling_turn(&turn_facts, mode);
+
         let turn_expanded = make_turn_expanded(turn, turn_algebraic, turn_facts);
         self.turn_log.push(TurnRecordExpanded {
             index: TurnIndex(self.turn_log.len()),

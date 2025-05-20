@@ -1774,6 +1774,15 @@ impl Board {
         Ok(())
     }
 
+    pub fn check_duplicate(&mut self, facts: &TurnFacts) {
+        for capture in &facts.captures {
+            assert!(capture.piece_kind.reservable(self.chess_rules()) != PieceReservable::Never);
+            // Unwrap ok: duck cannot be captured.
+            let force: Force = capture.force.try_into().unwrap();
+            self.reserves[force.opponent()][capture.piece_kind] += 1;
+        }
+    }
+
     // Applies changes caused by the turn on the other board.
     pub fn apply_sibling_turn(&mut self, facts: &TurnFacts, mode: TurnMode) {
         for capture in &facts.captures {

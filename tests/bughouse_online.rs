@@ -48,6 +48,7 @@ fn default_chess_rules() -> ChessRules {
     ChessRules {
         bughouse_rules: Some(BughouseRules {
             koedem: false,
+            duplicate: false,
             promotion: Promotion::Upgrade,
             pawn_drop_ranks: PawnDropRanks {
                 min: SubjectiveRow::from_one_based(2),

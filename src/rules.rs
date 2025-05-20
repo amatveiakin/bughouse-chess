@@ -180,6 +180,7 @@ pub struct ChessRules {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct BughouseRules {
     pub koedem: bool,
+    pub duplicate: bool,
     pub promotion: Promotion,
     pub pawn_drop_ranks: PawnDropRanks, // TODO: Update when board shape changes
     pub drop_aggression: DropAggression,
@@ -200,6 +201,7 @@ pub enum ChessVariant {
     AtomicChess,
     FogOfWar,
     Koedem,
+    Duplicate,
 }
 
 impl MatchRules {
@@ -212,6 +214,7 @@ impl ChessRules {
     pub fn from_preset(preset: RulesPreset) -> Self {
         let international_bughouse = BughouseRules {
             koedem: false,
+            duplicate: false,
             promotion: Promotion::Upgrade,
             pawn_drop_ranks: PawnDropRanks::from_one_based(2, 7),
             drop_aggression: DropAggression::MateAllowed,
@@ -229,6 +232,7 @@ impl ChessRules {
                 starting_position: StartingPosition::FischerRandom,
                 bughouse_rules: Some(BughouseRules {
                     koedem: false,
+                    duplicate: false,
                     promotion: Promotion::Steal,
                     pawn_drop_ranks: PawnDropRanks::from_one_based(2, 6),
                     drop_aggression: DropAggression::NoChessMate,
@@ -320,6 +324,9 @@ impl ChessRules {
         if let Some(bughouse_rules) = &self.bughouse_rules {
             if bughouse_rules.koedem {
                 v.push(ChessVariant::Koedem);
+            }
+            if bughouse_rules.duplicate {
+                v.push(ChessVariant::Duplicate);
             }
         }
         v
@@ -425,7 +432,7 @@ impl ChessVariant {
     pub fn enables_regicide(self) -> bool {
         use ChessVariant::*;
         match self {
-            Capablanca | Accolade | FischerRandom => false,
+            Capablanca | Accolade | FischerRandom | Duplicate => false,
             DuckChess | AtomicChess | FogOfWar | Koedem => true,
         }
     }
@@ -441,6 +448,7 @@ impl ChessVariant {
             // confusing. If renaming, don't forget to update existing PGNs!
             ChessVariant::FogOfWar => "DarkChess",
             ChessVariant::Koedem => "Koedem",
+            ChessVariant::Duplicate => "Duplicate",
         }
     }
 
@@ -454,6 +462,7 @@ impl ChessVariant {
             "Atomic" => Some(ChessVariant::AtomicChess),
             "DarkChess" | "FogOfWar" => Some(ChessVariant::FogOfWar),
             "Koedem" => Some(ChessVariant::Koedem),
+            "Duplicate" => Some(ChessVariant::Duplicate),
             _ => None,
         }
     }
@@ -467,6 +476,7 @@ impl ChessVariant {
             ChessVariant::AtomicChess => "Atomic chess",
             ChessVariant::FogOfWar => "Fog of war",
             ChessVariant::Koedem => "Koedem",
+            ChessVariant::Duplicate => "Duplicate",
         }
     }
 }

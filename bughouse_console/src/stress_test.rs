@@ -104,6 +104,7 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
                 time_control: TimeControl { starting_time: Duration::from_secs(300) },
                 bughouse_rules: Some(BughouseRules {
                     koedem: rng.r#gen::<bool>(),
+                    duplicate: rng.r#gen::<bool>(),
                     // Improvement potential: Test other promotion strategies.
                     promotion: Promotion::Upgrade,
                     // Improvement potential: Wider range of pawn drop ranks for larger boards.
