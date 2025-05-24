@@ -98,33 +98,86 @@ apply after a page refresh. Changes to Rust code must be recompiled via
 
 ## Full Ubuntu/Apache server setup
 
-Install tools and libraries:
+#### Install tools and libraries:
 
-```
-apt update
-apt install curl npm pkg-config libssl-dev apache2
+```bash
+sudo apt update
+
+# Set up Node.js (v18.x)
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs  # npm is included
+
+# Install required packages
+sudo apt install -y curl pkg-config libssl-dev apache2 python3-certbot-apache
+
+# Install Rust and wasm-pack
 curl https://sh.rustup.rs -sSf | sh -s -- -y
+source $HOME/.cargo/env
 cargo install wasm-pack
 ```
 
-Move Certbot data. On the old server:
+---
+**Using Certbot with Apache** *(Reccomended but Optional)*:
 
+If this is the first time using Certbot, run the following, replacing yourdomain.com with your domain:
+
+Edit the Apache Config using the following:
+```bash
+sudo nano /etc/apache2/sites-available/tardbug.duckdns.org.conf
 ```
+
+Add in:
+```apache
+ServerName tardbug.duckdns.org
+DocumentRoot /var/www/html
+```
+Your config should look something like this:
+```apache
+<VirtualHost *:80>
+    ServerName tardbug.duckdns.org
+    DocumentRoot /var/www/html
+
+    <Directory /var/www/html>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
+```
+
+Then enable the site, reload Apache, and run Certbot:
+```bash
+sudo a2ensite tardbug.duckdns.org.conf
+sudo systemctl reload apache2
+sudo certbot --apache -d yourdomain.com
+```
+
+For example, your command should look like the following:
+```bash
+sudo certbot --apache -d bughouse.pro
+```
+
+Note: if you need www.yourdomain.com, include `-d www.yourdomain.com` to the end of the command.
+
+If you have Certbot on another server, move the data. On the old server:
+
+```bash
 tar zpcvf backup-letsencrypt.tar.gz /etc/letsencrypt/
 ```
 
 Copy data to the new server. On the new server:
 
-```
+```bash
 tar zxvf backup-letsencrypt.tar.gz -C /
 ```
 
 Configure Cerbot as usual:
 https://certbot.eff.org/instructions?ws=apache&os=ubuntufocal
 
-Install Apache modules:
+---
+**Apache** *(Required)*:
 
-```
+```bash
 a2enmod proxy proxy_http proxy_wstunnel headers brotli
 systemctl restart apache2
 ```
@@ -138,9 +191,9 @@ Configure Apache:
   so we need to work this around:
   https://bz.apache.org/bugzilla/show_bug.cgi?id=45023#c30.
 
-Add this to `/etc/apache2/sites-available/<site>`:
+To do the above changes, add this to `/etc/apache2/sites-available/yourdomain.com.conf`:
 
-```
+```apache
 <VirtualHost *:443>
     ProxyPreserveHost On
     ProxyRequests Off
@@ -189,18 +242,24 @@ should be set to 4 times the number of expected concurrent games. I set it to
 
 Apply Apache config changes:
 
-```
+```bash
 sudo service apache2 reload
 ```
-
+---
+**Build & Configure Repository** *(Required)*:
 Clone the repo:
 
-```
+```bash
 git clone https://github.com/amatveiakin/bughouse-chess.git
 ```
 
-Add to `.bashrc`:
+Add to `.bashrc` (in your root folder):
+```bash
+export BUGHOUSE_ROOT=<path-to-bughouse-chess>
+export PATH="$BUGHOUSE_ROOT/prod/bin:$PATH"
 ```
+For example, if you have cloned the repository in your root folder, then add:
+```bash
 export BUGHOUSE_ROOT=<path-to-bughouse-chess>
 export PATH="$BUGHOUSE_ROOT/prod/bin:$PATH"
 ```
@@ -213,13 +272,32 @@ to the path pointed by `client_secret_source`.
 
 Generate a random session secret using `tools/gen_session_secret.py`.
 
+Here is an example of the `~/bughouse-config.yaml` assuming the repository was cloned in root and keeping secrets in `bughouse-chess/secrets`.
+```yaml
+database_options: !Sqlite /home/user_name/bughouse-chess/db/bughouse.db
+secret_database_options: !Sqlite /home/user_name/bughouse-chess/db/bughouse-secret.db
+auth_options:
+  callback_is_https: true
+  google: !Some
+	client_id_source: !Literal "1234567890-abc.apps.googleusercontent.com"
+	client_secret_source: !File /home/user_name/bughouse-chess/secrets/google-client-secret
+  lichess: !Some
+	client_id_source: !Literal "bughouse.pro"
+session_options: !WithSessions
+  secret: !File /home/user_name/bughouse-chess/secrets/session-secret
+  expire_in: 30d
+static_content_url_prefix: ""
+allowed_origin: !ThisSite https://bughouse.pro
+check_git_version: true
+max_starting_time: 1h
+```
+
 In order to get notification on bughouse server failures, create and fill
 `~/secrets/telegram-bot-token` and `~/secrets/telegram-chat-id`.
 You could get the token from BotFather and the chat ID from the URL of the
 “Saved Messages” chat in Telegram web.
 
 ---
-
 **Alternative: Build via GitHub Actions**
 
 Setup:
@@ -249,12 +327,12 @@ Getting and deploying new changes:
 
 ---
 
-Register bughouse server as a systemd service.
+After doing one of the two alternatives, register bughouse server as a systemd service.
 Copy `prod/configs/bughouse-handle-failure.service` and
 `prod/configs/bughouse-server.service` to `/etc/systemd/system/`.
 Enable and start the service:
 
-```
+```bash
 systemctl enable bughouse-server
 systemctl start bughouse-server
 ```
@@ -268,13 +346,13 @@ systemctl start bughouse-server
 
 Build & run server:
 
-```
+```bash
 cargo run --package bughouse_console -- server bughouse_console/test-config.yaml
 ```
 
 Build & run client:
 
-```
+```bash
 cargo run --package bughouse_console -- client <server_address> <match_id> <player_name>
 ```
 
