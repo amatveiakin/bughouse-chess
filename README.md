@@ -279,10 +279,10 @@ secret_database_options: !Sqlite /home/user_name/bughouse-chess/db/bughouse-secr
 auth_options:
   callback_is_https: true
   google: !Some
-	client_id_source: !Literal "1234567890-abc.apps.googleusercontent.com"
-	client_secret_source: !File /home/user_name/bughouse-chess/secrets/google-client-secret
+    client_id_source: !Literal "1234567890-abc.apps.googleusercontent.com"
+    client_secret_source: !File /home/user_name/bughouse-chess/secrets/google-client-secret
   lichess: !Some
-	client_id_source: !Literal "bughouse.pro"
+    client_id_source: !Literal "bughouse.pro"
 session_options: !WithSessions
   secret: !File /home/user_name/bughouse-chess/secrets/session-secret
   expire_in: 30d
