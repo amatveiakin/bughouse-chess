@@ -12,18 +12,18 @@ cargo build -r --package bughouse_console
 cd "$BUGHOUSE_ROOT/bughouse_wasm"
 wasm-pack build
 cd ../www
-rm -r dist || true
+rm -rf dist
 npm run build
 
 # Stop bughouse server
-systemctl stop bughouse-server
+sudo systemctl stop bughouse-server
 
 # Deploy bughouse web client
-sudo rm /var/www/html/* || true
-sudo cp dist/* /var/www/html
+sudo rm -rf /var/www/html/*
+sudo cp -r dist/* /var/www/html
 
 # Deploy bughouse server
-cp ./target/release/bughouse_console ~/server
+cp ../target/release/bughouse_console ~/server 
 
 # Start bughouse server
-systemctl start bughouse-server
+sudo systemctl start bughouse-server

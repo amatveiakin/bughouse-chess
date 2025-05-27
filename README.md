@@ -101,18 +101,22 @@ apply after a page refresh. Changes to Rust code must be recompiled via
 #### Install tools and libraries:
 
 ```bash
+# Update package list
 sudo apt update
 
 # Set up Node.js (v18.x)
 curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt install -y nodejs  # npm is included
+sudo apt install -y nodejs git curl pkg-config libssl-dev apache2 python3-certbot-apache build-essential
 
-# Install required packages
-sudo apt install -y curl pkg-config libssl-dev apache2 python3-certbot-apache
-
-# Install Rust and wasm-pack
+# Install Rust
 curl https://sh.rustup.rs -sSf | sh -s -- -y
 source $HOME/.cargo/env
+
+# Ensure Rust binaries (like wasm-pack) are in PATH for future sessions
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Install wasm-pack using cargo
 cargo install wasm-pack
 ```
 
@@ -128,13 +132,13 @@ sudo nano /etc/apache2/sites-available/tardbug.duckdns.org.conf
 
 Add in:
 ```apache
-ServerName tardbug.duckdns.org
+ServerName yourdomain.com
 DocumentRoot /var/www/html
 ```
 Your config should look something like this:
 ```apache
 <VirtualHost *:80>
-    ServerName tardbug.duckdns.org
+    ServerName bughouse.pro
     DocumentRoot /var/www/html
 
     <Directory /var/www/html>
@@ -147,13 +151,15 @@ Your config should look something like this:
 
 Then enable the site, reload Apache, and run Certbot:
 ```bash
-sudo a2ensite tardbug.duckdns.org.conf
+sudo a2ensite yourdomain.com
 sudo systemctl reload apache2
 sudo certbot --apache -d yourdomain.com
 ```
 
 For example, your command should look like the following:
 ```bash
+sudo a2ensite bughouse.pro
+sudo systemctl reload apache2
 sudo certbot --apache -d bughouse.pro
 ```
 
@@ -178,8 +184,8 @@ https://certbot.eff.org/instructions?ws=apache&os=ubuntufocal
 **Apache** *(Required)*:
 
 ```bash
-a2enmod proxy proxy_http proxy_wstunnel headers brotli
-systemctl restart apache2
+sudo a2enmod proxy proxy_http proxy_wstunnel headers brotli
+sudo systemctl restart apache2
 ```
 
 Configure Apache:
@@ -253,15 +259,17 @@ Clone the repo:
 git clone https://github.com/amatveiakin/bughouse-chess.git
 ```
 
-Add to `.bashrc` (in your root folder):
+Add to `.bashrc` (in your home folder):
 ```bash
 export BUGHOUSE_ROOT=<path-to-bughouse-chess>
 export PATH="$BUGHOUSE_ROOT/prod/bin:$PATH"
+export CARGO_TARGET_DIR="$BUGHOUSE_ROOT/target"
 ```
-For example, if you have cloned the repository in your root folder, then add:
+For example, if you have cloned the repository in your home folder, then add:
 ```bash
-export BUGHOUSE_ROOT=<path-to-bughouse-chess>
+export BUGHOUSE_ROOT="$HOME/bughouse-chess"
 export PATH="$BUGHOUSE_ROOT/prod/bin:$PATH"
+export CARGO_TARGET_DIR="$BUGHOUSE_ROOT/target"
 ```
 
 Copy `prod-config-template.yaml` to `~/bughouse-config.yaml` and fill in the
@@ -272,7 +280,7 @@ to the path pointed by `client_secret_source`.
 
 Generate a random session secret using `tools/gen_session_secret.py`.
 
-Here is an example of the `~/bughouse-config.yaml` assuming the repository was cloned in root and keeping secrets in `bughouse-chess/secrets`.
+Here is an example of the `~/bughouse-config.yaml` assuming the repository was cloned in home and keeping secrets in `bughouse-chess/secrets`.
 ```yaml
 database_options: !Sqlite /home/user_name/bughouse-chess/db/bughouse.db
 secret_database_options: !Sqlite /home/user_name/bughouse-chess/db/bughouse-secret.db
@@ -313,30 +321,45 @@ Getting and deploying new changes:
 
 ---
 
-**Alternative: Build locally**
+**Alternative: Build locally ** *(tested)*
 
 Setup:
 
 * Install Rust and wasm-pack.
-* Install npm packages: `cd "$BUGHOUSE_ROOT/www" && npm install`
+* Install npm packages: `cd "$BUGHOUSE_ROOT/www" && sudo npm install`
 
 Getting and deploying new changes:
 
 * Get latest version: `bh_pull`
 * Deploy web client: `bh_build_and_deploy`
 
----
+Allow cargo to access the folders. If your repository is in the home folder, do the following
+```bash
+sudo chown -R $USER:$USER /home/user_name/bughouse-chess
+chmod -R u+w /home/user_name/bughouse-chess
+```
 
+Then, run `bh_build_and_deploy`.
+> Note: there may be some issue with cargo trying to access some other weird target folder (such as targetXXXXX). If this happens, try to manually create the target and release folder either through mkdir or by trying to host locally. If issue persists, contact via discord.
+
+---
+**Register as Systemmd Service ***(Required)*
 After doing one of the two alternatives, register bughouse server as a systemd service.
 Copy `prod/configs/bughouse-handle-failure.service` and
-`prod/configs/bughouse-server.service` to `/etc/systemd/system/`.
+`prod/configs/bughouse-server.service` to `/etc/systemd/system/` and reload daemon.
+```bash
+sudo cp prod/configs/bughouse-handle-failure.service prod/configs/bughouse-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+```
 Enable and start the service:
 
 ```bash
-systemctl enable bughouse-server
-systemctl start bughouse-server
+sudo systemctl enable bughouse-server
+sudo systemctl start bughouse-server
 ```
 
+Some debugging tools
+- `sudo journalctl -u bughouse-server -n 50 --no-pager`
 
 ## Local console client setup
 
