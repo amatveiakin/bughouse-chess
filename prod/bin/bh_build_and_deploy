@@ -23,7 +23,7 @@ sudo rm -rf /var/www/html/*
 sudo cp -r dist/* /var/www/html
 
 # Deploy bughouse server
-cp ../target/release/bughouse_console ~/server 
+cp ./target/release/bughouse_console ~/server 
 
 # Start bughouse server
 sudo systemctl start bughouse-server
