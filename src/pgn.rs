@@ -635,6 +635,7 @@ fn parse_rules(tags: &TagMap) -> Result<Rules, String> {
             time_control,
             bughouse_rules: Some(BughouseRules {
                 koedem: variants.contains(&ChessVariant::Koedem),
+                duplicate: variants.contains(&ChessVariant::Duplicate),
                 promotion,
                 pawn_drop_ranks,
                 drop_aggression,

@@ -98,35 +98,113 @@ apply after a page refresh. Changes to Rust code must be recompiled via
 
 ## Full Ubuntu/Apache server setup
 
-Install tools and libraries:
+**Install tools and libraries**:
 
-```
-apt update
-apt install curl npm pkg-config libssl-dev apache2
+```bash
+# Update package list
+sudo apt update
+
+# Set up Node.js (v18.x)
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs git curl pkg-config libssl-dev apache2 python3-certbot-apache build-essential
+
+# Install Rust
 curl https://sh.rustup.rs -sSf | sh -s -- -y
+
+# Ensure Rust binaries (like wasm-pack) are in PATH for future sessions
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Install wasm-pack using cargo
 cargo install wasm-pack
 ```
 
-Move Certbot data. On the old server:
+---
+**Using Certbot with Apache** *(Reccomended)*:
 
+If this is the first time using Certbot, run the following, replacing yourdomain.com with your domain:
+
+Edit the Apache Config using the following:
+```bash
+sudo nano /etc/apache2/sites-available/000-default.conf
 ```
+
+Replace file with your domain in place of yourdomain.com:
+```apache
+<VirtualHost *:80>
+	# The ServerName directive sets the request scheme, hostname and port that
+	# the server uses to identify itself. This is used when creating
+	# redirection URLs. In the context of virtual hosts, the ServerName
+	# specifies what hostname must appear in the request's Host: header to
+	# match this virtual host. For the default virtual host (this file) this
+	# value is not decisive as it is used as a last resort host regardless.
+	# However, you must set it for any further virtual host explicitly.
+	#ServerName www.example.com
+
+	ServerAdmin webmaster@localhost
+	DocumentRoot /var/www/html
+
+	# Available loglevels: trace8, ..., trace1, debug, info, notice, warn,
+	# error, crit, alert, emerg.
+	# It is also possible to configure the loglevel for particular
+	# modules, e.g.
+	#LogLevel info ssl:warn
+
+	ErrorLog ${APACHE_LOG_DIR}/error.log
+	CustomLog ${APACHE_LOG_DIR}/access.log combined
+
+	# For most configuration files from conf-available/, which are
+	# enabled or disabled at a global level, it is possible to
+	# include a line for only one particular virtual host. For example the
+	# following line enables the CGI configuration for this host only
+	# after it has been globally disabled with "a2disconf".
+	#Include conf-available/serve-cgi-bin.conf
+
+	RewriteEngine on
+	RewriteCond %{SERVER_NAME} =yourdomain.com
+	RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,NE,R=permanent]
+</VirtualHost>
+
+# vim: syntax=apache ts=4 sw=4 sts=4 sr noet
+```
+
+Then enable the site, reload Apache, and run Certbot:
+```bash
+sudo a2ensite yourdomain.com
+sudo systemctl reload apache2
+sudo certbot --apache -d yourdomain.com
+```
+
+For example, your command should look like the following:
+```bash
+sudo a2ensite bughouse.pro
+sudo systemctl reload apache2
+sudo certbot --apache -d bughouse.pro
+```
+
+Note: if you need www.yourdomain.com, include `-d www.yourdomain.com` to the end of the command.
+
+If you have Certbot on another server, move the data. On the old server:
+
+```bash
 tar zpcvf backup-letsencrypt.tar.gz /etc/letsencrypt/
 ```
 
 Copy data to the new server. On the new server:
 
-```
+```bash
 tar zxvf backup-letsencrypt.tar.gz -C /
 ```
 
 Configure Cerbot as usual:
 https://certbot.eff.org/instructions?ws=apache&os=ubuntufocal
 
-Install Apache modules:
+---
+**Apache** *(Required)*:
 
-```
-a2enmod proxy proxy_http proxy_wstunnel headers brotli
-systemctl restart apache2
+```bash
+sudo a2enmod proxy proxy_http proxy_wstunnel headers brotli
+sudo systemctl restart apache2
 ```
 
 Configure Apache:
@@ -138,47 +216,85 @@ Configure Apache:
   so we need to work this around:
   https://bz.apache.org/bugzilla/show_bug.cgi?id=45023#c30.
 
-Add this to `/etc/apache2/sites-available/<site>`:
+To do the above changes, replace `/etc/apache2/sites-available/000-default-le-ssl.conf` with:
+Note: carefully look for any instances of yourdomain.com and replace with your domain.
 
-```
+```apache
+<IfModule mod_ssl.c>
 <VirtualHost *:443>
-    ProxyPreserveHost On
-    ProxyRequests Off
-    ProxyPass /dyn http://localhost:14361/dyn
-    ProxyPassReverse /dyn http://localhost:14361/dyn
-    ProxyPass /auth http://localhost:14361/auth
-    ProxyPassReverse /auth http://localhost:14361/auth
-    ProxyPass /ws ws://localhost:14361 keepalive=On
-    ProxyPassReverse /ws ws://localhost:14361
+	# The ServerName directive sets the request scheme, hostname and port that
+	# the server uses to identify itself. This is used when creating
+	# redirection URLs. In the context of virtual hosts, the ServerName
+	# specifies what hostname must appear in the request's Host: header to
+	# match this virtual host. For the default virtual host (this file) this
+	# value is not decisive as it is used as a last resort host regardless.
+	# However, you must set it for any further virtual host explicitly.
+	#ServerName www.example.com
 
-    Header set Cache-Control "public, no-cache, must-revalidate"
-    Header set Cross-Origin-Opener-Policy "same-origin"
-    Header set Cross-Origin-Embedder-Policy "require-corp"
-    FileETag All
+	ServerAdmin webmaster@localhost
+	DocumentRoot /var/www/html
 
-    SetEnvIf If-None-Match '^"((.*)-(gzip))"$' gzip
-    SetEnvIf If-None-Match '^"((.*)-(br))"$' br
-    RequestHeader edit "If-None-Match" '^"((.*)-(gzip|br))"$' '"$1", "$2"'
-    Header edit "ETag" '^"(.*)"$' '"$1-gzip"' env=gzip
-    Header edit "ETag" '^"(.*)"$' '"$1-br"' env=br
+	# Available loglevels: trace8, ..., trace1, debug, info, notice, warn,
+	# error, crit, alert, emerg.
+	# It is also possible to configure the loglevel for particular
+	# modules, e.g.
+	#LogLevel info ssl:warn
 
-    SetEnv no-gzip 1
-    AddOutputFilterByType BROTLI_COMPRESS application/javascript
-    AddOutputFilterByType BROTLI_COMPRESS application/wasm
-    AddOutputFilterByType BROTLI_COMPRESS application/xhtml+xml
-    AddOutputFilterByType BROTLI_COMPRESS application/xml
-    AddOutputFilterByType BROTLI_COMPRESS font/opentype
-    AddOutputFilterByType BROTLI_COMPRESS font/otf
-    AddOutputFilterByType BROTLI_COMPRESS font/ttf
-    AddOutputFilterByType BROTLI_COMPRESS font/woff
-    AddOutputFilterByType BROTLI_COMPRESS font/woff2
-    AddOutputFilterByType BROTLI_COMPRESS image/svg+xml
-    AddOutputFilterByType BROTLI_COMPRESS text/css
-    AddOutputFilterByType BROTLI_COMPRESS text/html
-    AddOutputFilterByType BROTLI_COMPRESS text/xml
-    AddOutputFilterByType BROTLI_COMPRESS text/javascript
-    AddOutputFilterByType BROTLI_COMPRESS text/plain
+	ErrorLog ${APACHE_LOG_DIR}/error.log
+	CustomLog ${APACHE_LOG_DIR}/access.log combined
+
+	# For most configuration files from conf-available/, which are
+	# enabled or disabled at a global level, it is possible to
+	# include a line for only one particular virtual host. For example the
+	# following line enables the CGI configuration for this host only
+	# after it has been globally disabled with "a2disconf".
+	#Include conf-available/serve-cgi-bin.conf
+
+
+	ServerName yourdomain.com
+	SSLCertificateFile /etc/letsencrypt/live/yourdomain.com/fullchain.pem
+	SSLCertificateKeyFile /etc/letsencrypt/live/yourdomain.com/privkey.pem
+	Include /etc/letsencrypt/options-ssl-apache.conf
+
+	ProxyPreserveHost On
+	ProxyRequests Off
+	ProxyPass /dyn http://localhost:14361/dyn
+	ProxyPassReverse /dyn http://localhost:14361/dyn
+	ProxyPass /auth http://localhost:14361/auth
+	ProxyPassReverse /auth http://localhost:14361/auth
+	ProxyPass /ws ws://localhost:14361 keepalive=On
+	ProxyPassReverse /ws ws://localhost:14361
+
+	Header set Cache-Control "public, no-cache, must-revalidate"
+	Header set Cross-Origin-Opener-Policy "same-origin"
+	Header set Cross-Origin-Embedder-Policy "require-corp"
+	FileETag All
+
+	SetEnvIf If-None-Match '^"((.*)-(gzip))"$' gzip
+	SetEnvIf If-None-Match '^"((.*)-(br))"$' br
+	RequestHeader edit "If-None-Match" '^"((.*)-(gzip|br))"$' '"$1", "$2"'
+	Header edit "ETag" '^"(.*)"$' '"$1-gzip"' env=gzip
+	Header edit "ETag" '^"(.*)"$' '"$1-br"' env=br
+
+	SetEnv no-gzip 1
+	AddOutputFilterByType BROTLI_COMPRESS application/javascript
+	AddOutputFilterByType BROTLI_COMPRESS application/wasm
+	AddOutputFilterByType BROTLI_COMPRESS application/xhtml+xml
+	AddOutputFilterByType BROTLI_COMPRESS application/xml
+	AddOutputFilterByType BROTLI_COMPRESS font/opentype
+	AddOutputFilterByType BROTLI_COMPRESS font/otf
+	AddOutputFilterByType BROTLI_COMPRESS font/ttf
+	AddOutputFilterByType BROTLI_COMPRESS font/woff
+	AddOutputFilterByType BROTLI_COMPRESS font/woff2
+	AddOutputFilterByType BROTLI_COMPRESS image/svg+xml
+	AddOutputFilterByType BROTLI_COMPRESS text/css
+	AddOutputFilterByType BROTLI_COMPRESS text/html
+	AddOutputFilterByType BROTLI_COMPRESS text/xml
+	AddOutputFilterByType BROTLI_COMPRESS text/javascript
+	AddOutputFilterByType BROTLI_COMPRESS text/plain
 </VirtualHost>
+</IfModule>
+
 ```
 
 Go to `/etc/apache2/mods-available/mpm_event.conf` and increase
@@ -189,20 +305,29 @@ should be set to 4 times the number of expected concurrent games. I set it to
 
 Apply Apache config changes:
 
-```
+```bash
 sudo service apache2 reload
 ```
+---
+**Build & Configure Repository** *(Required)*:
+Clone the repo in root:
 
-Clone the repo:
-
-```
+```bash
+sudo -i
 git clone https://github.com/amatveiakin/bughouse-chess.git
 ```
 
-Add to `.bashrc`:
-```
+Add to `.bashrc` (in your root folder):
+```bash
 export BUGHOUSE_ROOT=<path-to-bughouse-chess>
 export PATH="$BUGHOUSE_ROOT/prod/bin:$PATH"
+export CARGO_TARGET_DIR="$BUGHOUSE_ROOT/target"
+```
+For example, add:
+```bash
+export BUGHOUSE_ROOT="$/root/bughouse-chess"
+export PATH="$BUGHOUSE_ROOT/prod/bin:$PATH"
+export CARGO_TARGET_DIR="$BUGHOUSE_ROOT/target"
 ```
 
 Copy `prod-config-template.yaml` to `~/bughouse-config.yaml` and fill in the
@@ -213,13 +338,14 @@ to the path pointed by `client_secret_source`.
 
 Generate a random session secret using `tools/gen_session_secret.py`.
 
+An example of `~/bughouse-config.yaml` can be found in `bughouse_console\test-config-with-google-auth.yaml`.
+
 In order to get notification on bughouse server failures, create and fill
 `~/secrets/telegram-bot-token` and `~/secrets/telegram-chat-id`.
 You could get the token from BotFather and the chat ID from the URL of the
 “Saved Messages” chat in Telegram web.
 
 ---
-
 **Alternative: Build via GitHub Actions**
 
 Setup:
@@ -235,30 +361,35 @@ Getting and deploying new changes:
 
 ---
 
-**Alternative: Build locally**
+**Alternative: Build locally **
 
 Setup:
 
 * Install Rust and wasm-pack.
-* Install npm packages: `cd "$BUGHOUSE_ROOT/www" && npm install`
+* Install npm packages: `cd "$BUGHOUSE_ROOT/www" && sudo npm install`
 
 Getting and deploying new changes:
 
 * Get latest version: `bh_pull`
 * Deploy web client: `bh_build_and_deploy`
-
 ---
-
-Register bughouse server as a systemd service.
+**Register as Systemmd Service ***(Required)*
+After doing one of the two alternatives, register bughouse server as a systemd service.
 Copy `prod/configs/bughouse-handle-failure.service` and
-`prod/configs/bughouse-server.service` to `/etc/systemd/system/`.
+`prod/configs/bughouse-server.service` to `/etc/systemd/system/` and reload daemon.
+```bash
+sudo cp prod/configs/bughouse-handle-failure.service prod/configs/bughouse-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+```
 Enable and start the service:
 
-```
-systemctl enable bughouse-server
-systemctl start bughouse-server
+```bash
+sudo systemctl enable bughouse-server
+sudo systemctl start bughouse-server
 ```
 
+Debugging Tools
+- `sudo journalctl -u bughouse-server -n 50 --no-pager` - will give logs for systemmd
 
 ## Local console client setup
 
@@ -268,13 +399,13 @@ systemctl start bughouse-server
 
 Build & run server:
 
-```
+```bash
 cargo run --package bughouse_console -- server bughouse_console/test-config.yaml
 ```
 
 Build & run client:
 
-```
+```bash
 cargo run --package bughouse_console -- client <server_address> <match_id> <player_name>
 ```
 

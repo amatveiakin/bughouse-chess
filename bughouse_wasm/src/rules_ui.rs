@@ -24,6 +24,7 @@ const STARTING_POSITION: &str = "starting_position";
 const DUCK_CHESS: &str = "duck_chess";
 const FOG_OF_WAR: &str = "fog_of_war";
 const KOEDEM: &str = "koedem";
+const DUPLICATE: &str = "duplicate";
 const STARTING_TIME: &str = "starting_time";
 const PROMOTION: &str = "promotion";
 const PAWN_DROP_RANKS: &str = "pawn_drop_ranks";
@@ -175,6 +176,22 @@ const KOEDEM_ON_ICON: &str = r##"
   <g transform="matrix(.786 .0826 -.0826 .786 3.98 1.12)">
    <rect x="2.85" y="1.52" width="4.3" height="6.96" ry=".499" fill="#fff" stroke="#000" stroke-linejoin="round" stroke-width=".253"/>
    <path d="m4.81 2.19h0.371l0.00964 0.309h0.361v0.371h-0.35l0.0169 0.42q0.0101-0.0119 0.021-0.0234c0.338-0.359 0.838-0.55 1.21-0.242 0.371 0.309 0.371 1.02-0.14 1.43-0.289 0.233-0.548 0.457-0.535 0.786l0.52 0.0702v0.464h-2.59v-0.464l0.52-0.0702c0.0128-0.328-0.246-0.553-0.535-0.786-0.51-0.411-0.51-1.12-0.14-1.43 0.37-0.308 0.87-0.117 1.21 0.242q0.0108 0.0115 0.021 0.0234l0.0169-0.42h-0.35v-0.371h0.361zm-0.349 1.42c0.227 0.371 0.257 0.805 0.257 0.994-0.114 0-0.542-0.188-0.768-0.497-0.163-0.223-0.206-0.553-0.0658-0.681 0.14-0.128 0.436-0.0471 0.578 0.185zm1.07 0c-0.227 0.371-0.257 0.805-0.257 0.994 0.114 0 0.542-0.188 0.768-0.497 0.163-0.223 0.206-0.553 0.0658-0.681-0.14-0.128-0.436-0.0471-0.578 0.185z" fill-rule="evenodd"/>
+  </g>
+ </g>
+</svg>
+"##;
+
+const DUPLICATE_OFF_ICON: &str = r##"
+<svg class="rule-variant-icon" viewBox="0 0 10 10">
+ <path style="display:inline;fill:#000000;fill-opacity:0;stroke:#000000;stroke-width:0.1;stroke-opacity:1;stroke-dasharray:none" d="m 5.2739453,5.369559 h -0.55859 c 0,-1.0261972 0.3111397,-2.0498553 0.9994279,-2.7994021 a 0.88633841,0.88633841 0 1 0 -1.3478057,0.096055 c -0.5536186,0.394718 -1.5826723,1.4526536 -1.5826723,2.7771892 0,1.3367002 1.0479915,1.8778345 1.5974822,1.9889183 L 2.3411366,7.7931802 V 8.8405363 H 7.6588634 V 7.7931802 L 5.569533,7.4267101 C 6.1255606,7.3044155 7.141874,6.7594707 7.141874,5.4431883 7.141874,4.5812878 6.7398771,3.8129098 6.251554,3.2543201 5.7147832,3.6734741 5.2739453,4.6511109 5.2739453,5.3695553 Z"/>
+</svg>
+"##;
+const DUPLICATE_ON_ICON: &str = r##"
+<svg class="rule-variant-icon" viewBox="0 0 10 10">
+ <g>
+  <g transform="translate(-0.3998634,0.40023639)">
+   <path style="display:inline;fill:#262626;fill-opacity:1;stroke:#000000;stroke-width:0.2;stroke-dasharray:none;stroke-opacity:1" d="m 6.0738087,4.5690771 h -0.55859 c 0,-1.0261972 0.3111397,-2.0498553 0.9994279,-2.7994021 A 0.88633841,0.88633841 0 1 0 5.1668409,1.86573 C 4.6132223,2.260448 3.5841686,3.3183836 3.5841686,4.6429192 c 0,1.3367002 1.0479915,1.8778345 1.5974822,1.9889183 L 3.141,6.9926983 V 8.0400544 H 8.4587268 V 6.9926983 L 6.3693964,6.6262282 c 0.5560276,-0.1222946 1.572341,-0.6672394 1.572341,-1.9835218 0,-0.8619005 -0.4019969,-1.6302785 -0.89032,-2.1888682 C 6.5146466,2.8729922 6.0738087,3.850629 6.0738087,4.5690734 Z" />
+   <path style="display:inline;fill:#e4e4e4;fill-opacity:1;stroke:#000000;stroke-width:0.200005;stroke-dasharray:none;stroke-opacity:1" d="M 5.2739591,5.3695496 H 4.7153409 c 0,-1.0261965 0.3111554,-2.0498539 0.9994784,-2.7994002 A 0.88638312,0.88633784 0 1 0 4.3669456,2.6662043 C 3.813299,3.060922 2.7841934,4.118857 2.7841934,5.4433917 c 0,1.3366993 1.0480444,1.8778333 1.5975628,1.988917 L 2.3410025,7.7931693 v 1.0473554 h 5.317995 V 7.7931693 L 5.5695617,7.4266994 C 6.1256174,7.3044049 7.141982,6.7594604 7.141982,5.4431789 7.141982,4.581279 6.7399649,3.8129015 6.2516171,3.2543121 5.7148193,3.6734658 5.2739591,4.651102 5.2739591,5.3695459 Z" />
   </g>
  </g>
 </svg>
@@ -484,6 +501,17 @@ fn koedem_tooltip() -> JsResult<Vec<web_sys::Element>> {
     ])
 }
 
+fn duplicate_tooltip() -> JsResult<Vec<web_sys::Element>> {
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("Duplicate.")?
+            .with_more_text(
+                " Pieces taken by one player are returned to the reserve of both players.",
+            )?,
+    ])
+}
+
 fn starting_time_tooltip(max_starting_time: Option<Duration>) -> JsResult<Vec<web_sys::Element>> {
     let mut paragraphs =
         vec![web_document().create_element("p")?.with_text_content(
@@ -777,6 +805,14 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
         .with_tooltip(combine_elements(koedem_tooltip()?)?)
         .to_element()?,
     )?;
+    variants_node.append_element(
+        VariantButton::new(DUPLICATE, vec![
+            VariantButtonState::new("off", "No duplicate", DUPLICATE_OFF_ICON),
+            VariantButtonState::new("on", "Duplicate", DUPLICATE_ON_ICON),
+        ])
+        .with_tooltip(combine_elements(duplicate_tooltip()?)?)
+        .to_element()?,
+    )?;
 
     details_node.remove_all_children();
     details_node.append_children(
@@ -866,6 +902,7 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
                 AtomicChess => panic!("Atomic chess disabled"),
                 FogOfWar => (FOG_OF_WAR_ON_ICON, fog_of_war_tooltip()?),
                 Koedem => (KOEDEM_ON_ICON, koedem_tooltip()?),
+                Duplicate => (DUPLICATE_ON_ICON, duplicate_tooltip()?),
             };
             Ok((icon, variant.to_human_readable(), Some(combine_elements(tooltip)?)))
         })
@@ -1045,6 +1082,11 @@ pub fn new_match_rules() -> JsResult<Rules> {
         "on" => true,
         s => return Err(format!("Invalid koedem option: {s}").into()),
     };
+    let duplicate = match variants.get(DUPLICATE).unwrap().as_str() {
+        "off" => false,
+        "on" => true,
+        s => return Err(format!("Invalid duplicate option: {s}").into()),
+    };
     let atomic_chess = false;
 
     // Other chess rules
@@ -1089,6 +1131,7 @@ pub fn new_match_rules() -> JsResult<Rules> {
         time_control: TimeControl { starting_time },
         bughouse_rules: Some(BughouseRules {
             koedem,
+            duplicate,
             promotion,
             pawn_drop_ranks,
             drop_aggression,
@@ -1133,6 +1176,10 @@ fn new_match_apply_rules(rules: &ChessRules) -> JsResult<()> {
         false => "off",
         true => "on",
     })?;
+    activate_variant_button_value(DUPLICATE, match bughouse_rules.duplicate {
+        false => "off",
+        true => "on",
+    })?;
 
     // Other chess rules
     set_select_value(PROMOTION, match bughouse_rules.promotion {
@@ -1169,6 +1216,7 @@ pub fn variant_icons(rules: &ChessRules) -> Vec<&'static str> {
             AtomicChess => panic!("Atomic chess disabled"),
             FogOfWar => FOG_OF_WAR_ON_ICON,
             Koedem => KOEDEM_ON_ICON,
+            Duplicate => DUPLICATE_ON_ICON,
         })
         .collect()
 }

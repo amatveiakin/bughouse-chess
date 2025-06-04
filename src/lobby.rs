@@ -118,7 +118,7 @@ pub fn fix_teams_if_needed(participants: &mut impl IterableMut<Participant>) -> 
     }
     let players_per_team = num_fixed_players_per_team(participants.get_iter());
 
-    // Teams are always the same iff all random players must go into the same team.
+    // Teams are always the same if all random players must go into the same team.
     let mut random_players_team = None;
 
     for (team, &team_players) in players_per_team.iter() {
