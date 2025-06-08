@@ -22,8 +22,8 @@ pub enum StringSource {
 impl StringSource {
     pub fn get(&self) -> anyhow::Result<String> {
         match self {
-            Self::Random { len } => Ok(rand::thread_rng()
-                .sample_iter(rand::distributions::Uniform::new(0, 128))
+            Self::Random { len } => Ok(rand::rng()
+                .sample_iter(rand::distr::Uniform::new(0u8, 128u8).unwrap())
                 .take(*len)
                 .map(|b: u8| -> char { b.into() })
                 .collect()),
