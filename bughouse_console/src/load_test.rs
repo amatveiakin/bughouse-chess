@@ -15,7 +15,7 @@ use hdrhistogram::Histogram;
 use instant::Instant;
 use itertools::Itertools;
 use rand::Rng;
-use rand::seq::SliceRandom;
+use rand::prelude::IndexedRandom;
 use url::Url;
 
 use crate::network;
@@ -118,8 +118,8 @@ impl Client {
     }
 
     fn run_one_game(&mut self) {
-        let rng = &mut rand::thread_rng();
-        let mut random_delay = || Duration::from_millis(rng.gen_range(100..=300));
+        let rng = &mut rand::rng();
+        let mut random_delay = || Duration::from_millis(rng.random_range(100..=300));
         let mut next_action = Instant::now() + random_delay();
         loop {
             let GameState { alt_game, .. } = self.state.game_state().unwrap();
@@ -171,7 +171,7 @@ fn get_random_turn(board: &Board) -> Option<Turn> {
             .collect_vec()
     };
     const DROP_PROBABILITY: f64 = 0.3;
-    let rng = &mut rand::thread_rng();
+    let rng = &mut rand::rng();
     let moves = keep_legal(board.potential_moves());
     let drops = keep_legal(board.potential_drops());
     if moves.is_empty() && drops.is_empty() {
@@ -181,7 +181,7 @@ fn get_random_turn(board: &Board) -> Option<Turn> {
     } else if drops.is_empty() {
         Some(*moves.choose(rng).unwrap())
     } else {
-        if rng.gen_bool(DROP_PROBABILITY) {
+        if rng.random_bool(DROP_PROBABILITY) {
             Some(*drops.choose(rng).unwrap())
         } else {
             Some(*moves.choose(rng).unwrap())
@@ -258,9 +258,9 @@ fn player_name(test_id: &str, match_index: usize, player_index: usize) -> String
 }
 
 pub fn run(config: LoadTestConfig) -> io::Result<()> {
-    let rng = &mut rand::thread_rng();
+    let rng = &mut rand::rng();
     let test_id: String = rng
-        .sample_iter(rand::distributions::Uniform::from(0..MATCH_ID_ALPHABET.len()))
+        .sample_iter(rand::distr::Uniform::new(0, MATCH_ID_ALPHABET.len()).unwrap())
         .map(|idx| MATCH_ID_ALPHABET[idx])
         .take(3)
         .collect();

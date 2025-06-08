@@ -9,7 +9,7 @@ use std::{io, panic};
 use bughouse_chess::role::Role;
 use bughouse_chess::test_util::*;
 use instant::Instant;
-use rand::distributions::WeightedIndex;
+use rand::distr::weighted::WeightedIndex;
 use rand::prelude::*;
 
 use crate::bughouse_prelude::*;
@@ -88,30 +88,30 @@ fn random_rules(rng: &mut rand::rngs::ThreadRng) -> Rules {
         let rules = Rules {
             match_rules: MatchRules::unrated_public(),
             chess_rules: ChessRules {
-                fairy_pieces: if rng.r#gen::<bool>() {
+                fairy_pieces: if rng.random::<bool>() {
                     FairyPieces::NoFairy
                 } else {
                     FairyPieces::Accolade
                 },
-                starting_position: if rng.r#gen::<bool>() {
+                starting_position: if rng.random::<bool>() {
                     StartingPosition::Classic
                 } else {
                     StartingPosition::FischerRandom
                 },
-                duck_chess: rng.r#gen::<bool>(),
-                atomic_chess: rng.r#gen::<bool>(),
-                fog_of_war: rng.r#gen::<bool>(),
+                duck_chess: rng.random::<bool>(),
+                atomic_chess: rng.random::<bool>(),
+                fog_of_war: rng.random::<bool>(),
                 time_control: TimeControl { starting_time: Duration::from_secs(300) },
                 bughouse_rules: Some(BughouseRules {
-                    koedem: rng.r#gen::<bool>(),
+                    koedem: rng.random::<bool>(),
                     // Improvement potential: Test other promotion strategies.
                     promotion: Promotion::Upgrade,
                     // Improvement potential: Wider range of pawn drop ranks for larger boards.
                     pawn_drop_ranks: PawnDropRanks {
-                        min: SubjectiveRow::from_one_based(rng.gen_range(1..=7)),
-                        max: SubjectiveRow::from_one_based(rng.gen_range(1..=7)),
+                        min: SubjectiveRow::from_one_based(rng.random_range(1..=7)),
+                        max: SubjectiveRow::from_one_based(rng.random_range(1..=7)),
                     },
-                    drop_aggression: match rng.gen_range(0..4) {
+                    drop_aggression: match rng.random_range(0..4) {
                         0 => DropAggression::NoCheck,
                         1 => DropAggression::NoChessMate,
                         2 => DropAggression::NoBughouseMate,
@@ -133,8 +133,8 @@ fn bughouse_game(rules: Rules) -> BughouseGame {
 
 fn random_coord(rng: &mut rand::rngs::ThreadRng, board_shape: BoardShape) -> Coord {
     Coord::new(
-        Row::from_zero_based(rng.gen_range(0..board_shape.num_rows as i8)),
-        Col::from_zero_based(rng.gen_range(0..board_shape.num_cols as i8)),
+        Row::from_zero_based(rng.random_range(0..board_shape.num_rows as i8)),
+        Col::from_zero_based(rng.random_range(0..board_shape.num_cols as i8)),
     )
 }
 
@@ -145,7 +145,7 @@ fn random_piece(rng: &mut rand::rngs::ThreadRng) -> PieceKind {
 }
 
 fn random_force(rng: &mut rand::rngs::ThreadRng) -> Force {
-    if rng.r#gen::<bool>() {
+    if rng.random::<bool>() {
         Force::White
     } else {
         Force::Black
@@ -153,7 +153,7 @@ fn random_force(rng: &mut rand::rngs::ThreadRng) -> Force {
 }
 
 fn random_board(rng: &mut rand::rngs::ThreadRng) -> BughouseBoard {
-    if rng.r#gen::<bool>() {
+    if rng.random::<bool>() {
         BughouseBoard::A
     } else {
         BughouseBoard::B
@@ -162,7 +162,7 @@ fn random_board(rng: &mut rand::rngs::ThreadRng) -> BughouseBoard {
 
 fn random_turn(rng: &mut rand::rngs::ThreadRng, board_shape: BoardShape) -> Turn {
     // Note: Castling is also covered thanks to `TurnInput::DragDrop`.
-    if rng.gen_bool(DROP_RATIO) {
+    if rng.random_bool(DROP_RATIO) {
         Turn::Drop(TurnDrop {
             to: random_coord(rng, board_shape),
             piece_kind: random_piece(rng),
@@ -175,12 +175,12 @@ fn random_turn(rng: &mut rand::rngs::ThreadRng, board_shape: BoardShape) -> Turn
         let from = random_coord(rng, board_shape);
         let to = random_coord(rng, board_shape);
 
-        let promote_to = if to.row == Row::_1 || to.row == Row::_8 && rng.gen_bool(PROMOTION_RATIO)
-        {
-            Some(PromotionTarget::Upgrade(random_piece(rng)))
-        } else {
-            None
-        };
+        let promote_to =
+            if to.row == Row::_1 || to.row == Row::_8 && rng.random_bool(PROMOTION_RATIO) {
+                Some(PromotionTarget::Upgrade(random_piece(rng)))
+            } else {
+                None
+            };
         Turn::Move(TurnMove { from, to, promote_to })
     }
 }
@@ -270,7 +270,7 @@ fn random_action(alt_game: &AlteredGame, rng: &mut rand::rngs::ThreadRng) -> Opt
         PieceDragState => Action::PieceDragState,
         StartDragPiece => {
             let board_idx = random_board(rng);
-            let start = if rng.gen_bool(DRAG_RESERVE_RATIO) {
+            let start = if rng.random_bool(DRAG_RESERVE_RATIO) {
                 Location::Reserve(random_force(rng), random_piece(rng))
             } else {
                 Location::Square(random_coord(rng, board_shape))
@@ -311,7 +311,7 @@ fn apply_action(alt_game: &mut AlteredGame, action: Action) {
 
 
 pub fn bughouse_game_test() -> io::Result<()> {
-    let rng = &mut rand::thread_rng();
+    let rng = &mut rand::rng();
     loop {
         let t0 = Instant::now();
         let mut finished_games = 0;
@@ -330,7 +330,7 @@ pub fn bughouse_game_test() -> io::Result<()> {
                 if ret.is_ok() {
                     successful_turns += 1;
                 }
-                if !game.is_active() && rng.gen_bool(QUIT_INACTIVE_GAME_RATIO) {
+                if !game.is_active() && rng.random_bool(QUIT_INACTIVE_GAME_RATIO) {
                     break;
                 }
             }
@@ -363,7 +363,7 @@ pub fn altered_game_test() -> io::Result<()> {
         });
         std_panic_hook(panic_info);
     }));
-    let rng = &mut rand::thread_rng();
+    let rng = &mut rand::rng();
     loop {
         let t0 = Instant::now();
         let mut finished_games = 0;
@@ -385,7 +385,7 @@ pub fn altered_game_test() -> io::Result<()> {
                 });
                 apply_action(&mut alt_game, action);
                 alt_game.local_game();
-                if !alt_game.is_active() && rng.gen_bool(QUIT_INACTIVE_GAME_RATIO) {
+                if !alt_game.is_active() && rng.random_bool(QUIT_INACTIVE_GAME_RATIO) {
                     break;
                 }
             }

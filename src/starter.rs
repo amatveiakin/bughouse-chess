@@ -84,10 +84,10 @@ pub fn generate_starting_position(rules: &ChessRules) -> EffectiveStartingPositi
         (_, StartingPosition::Classic) => EffectiveStartingPosition::Classic,
         (NoFairy | Accolade, StartingPosition::FischerRandom) => {
             assert_eq!(rules.board_shape().num_cols, 8);
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             let mut row = [None; 8];
-            row[rng.gen_range(0..4) * 2] = Some(Bishop);
-            row[rng.gen_range(0..4) * 2 + 1] = Some(Bishop);
+            row[rng.random_range(0..4) * 2] = Some(Bishop);
+            row[rng.random_range(0..4) * 2 + 1] = Some(Bishop);
             let mut cols = row
                 .iter()
                 .enumerate()

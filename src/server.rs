@@ -488,14 +488,14 @@ impl CoreServerState {
 
         const MIN_ID_LEN: usize = 4;
         const MAX_ATTEMPTS_PER_LEN: usize = 100;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut id_len = MIN_ID_LEN;
         let mut id = MatchId(String::new());
         let mut attempts_at_this_len = 0;
         while id.0.is_empty() || self.matches.contains_key(&id) {
             id = MatchId(
                 (&mut rng)
-                    .sample_iter(rand::distributions::Uniform::from(0..MATCH_ID_ALPHABET.len()))
+                    .sample_iter(rand::distr::Uniform::new(0, MATCH_ID_ALPHABET.len()).unwrap())
                     .map(|idx| MATCH_ID_ALPHABET[idx])
                     .take(id_len)
                     .collect(),
@@ -1601,9 +1601,10 @@ impl Match {
             self.init_scores(teaming);
         }
 
-        let players = self.next_board_assignment.take().unwrap_or_else(|| {
-            assign_boards(self.participants.iter(), None, &mut rand::thread_rng())
-        });
+        let players = self
+            .next_board_assignment
+            .take()
+            .unwrap_or_else(|| assign_boards(self.participants.iter(), None, &mut rand::rng()));
         let game = BughouseGame::new(self.rules.clone(), Role::ServerOrStandalone, &players);
         let player_map = game.player_map();
         for p in self.participants.iter_mut() {
@@ -1815,11 +1816,8 @@ fn update_board_assigment(
             return;
         }
     };
-    let next_players = assign_boards(
-        participants.iter(),
-        next_board_assignment.as_deref(),
-        &mut rand::thread_rng(),
-    );
+    let next_players =
+        assign_boards(participants.iter(), next_board_assignment.as_deref(), &mut rand::rng());
     if next_board_assignment.as_ref() == Some(&next_players) {
         return;
     }
