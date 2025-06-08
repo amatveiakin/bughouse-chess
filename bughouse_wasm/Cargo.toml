@@ -12,7 +12,7 @@ strict = []  # treat warnings as a build error
 
 [dependencies]
 enum-map = { workspace = true }
-getrandom = { workspace = true, features = ["js"] }
+getrandom = { workspace = true, features = ["wasm_js"] }
 instant = { workspace = true, features = ["wasm-bindgen"] }
 itertools = { workspace = true }
 regex-lite = { workspace = true }
