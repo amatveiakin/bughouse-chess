@@ -3,11 +3,10 @@ use argon2::Argon2;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use oauth2::basic::BasicClient;
-// Alternatively, this can be oauth2::curl::http_client or a custom.
-use oauth2::reqwest::async_http_client;
 use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, RevocationUrl, Scope, TokenResponse, TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointNotSet, EndpointSet,
+    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RevocationUrl, Scope, TokenResponse,
+    TokenUrl,
 };
 use serde::Deserialize;
 use url::Url;
@@ -34,7 +33,7 @@ pub fn verify_password(password: &str, password_hash: &str) -> anyhow::Result<bo
 
 #[derive(Clone)]
 pub struct GoogleAuth {
-    client: BasicClient,
+    client: BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointSet, EndpointSet>,
 }
 
 // Internal Google-specific user info struct, used for
@@ -79,16 +78,13 @@ impl GoogleAuth {
             .context("Invalid authorization endpoint URL")?;
         let token_url = TokenUrl::new("https://oauth2.googleapis.com/token".to_owned())
             .context("Invalid token endpoint URL")?;
-        let client = BasicClient::new(
-            google_client_id,
-            Some(google_client_secret),
-            auth_url,
-            Some(token_url),
-        )
-        .set_revocation_uri(
-            RevocationUrl::new("https://oauth2.googleapis.com/revoke".to_owned())
-                .context("Invalid revocation endpoint URL")?,
-        );
+        let revocation_url = RevocationUrl::new("https://oauth2.googleapis.com/revoke".to_owned())
+            .context("Invalid revocation endpoint URL")?;
+        let client = BasicClient::new(google_client_id)
+            .set_client_secret(google_client_secret)
+            .set_auth_uri(auth_url)
+            .set_token_uri(token_url)
+            .set_revocation_url(revocation_url);
         Ok(Self { client })
     }
 
@@ -110,7 +106,7 @@ impl GoogleAuth {
             .clone()
             .set_redirect_uri(RedirectUrl::new(callback_url)?)
             .exchange_code(code)
-            .request_async(async_http_client)
+            .request_async(&reqwest::Client::new())
             .await
             .context("exchanging auth code for auth token failed")?;
         let response = reqwest::get(format!(
@@ -127,7 +123,7 @@ impl GoogleAuth {
 }
 
 pub struct LichessAuth {
-    client: BasicClient,
+    client: BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>,
 }
 
 impl LichessAuth {
@@ -140,7 +136,9 @@ impl LichessAuth {
         let token_url = TokenUrl::new("https://lichess.org/api/token".to_owned())
             .context("Invalid token endpoint URL")?;
         // TODO: revokation. Lichess uses DELETE on /api/token.
-        let client = BasicClient::new(lichess_client_id, None, auth_url, Some(token_url));
+        let client = BasicClient::new(lichess_client_id)
+            .set_auth_uri(auth_url)
+            .set_token_uri(token_url);
         Ok(Self { client })
     }
 
@@ -153,7 +151,7 @@ impl LichessAuth {
             .set_redirect_uri(RedirectUrl::new(callback_url)?)
             .exchange_code(code)
             .set_pkce_verifier(pkce_verifier)
-            .request_async(async_http_client)
+            .request_async(&reqwest::Client::new())
             .await
             .context("exchanging auth code for auth token failed")?;
         let secret = token_response.access_token().secret();

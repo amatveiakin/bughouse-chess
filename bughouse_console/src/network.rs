@@ -26,7 +26,9 @@ where
     S: io::Read + io::Write,
 {
     let serialized = serde_json::to_string(obj).map_err(CommunicationError::Serde)?;
-    socket.send(Message::Text(serialized)).map_err(CommunicationError::Socket)
+    socket
+        .send(Message::Text(serialized.into()))
+        .map_err(CommunicationError::Socket)
 }
 
 pub fn read_obj<T, S>(socket: &mut WebSocket<S>) -> Result<T, CommunicationError>
@@ -48,7 +50,10 @@ where
     S: SinkExt<Message, Error = tungstenite::Error> + Unpin,
 {
     let serialized = serde_json::to_string(obj).map_err(CommunicationError::Serde)?;
-    socket.send(Message::Text(serialized)).await.map_err(CommunicationError::Socket)
+    socket
+        .send(Message::Text(serialized.into()))
+        .await
+        .map_err(CommunicationError::Socket)
 }
 
 pub async fn read_obj_async<T, S>(socket: &mut S) -> Result<T, CommunicationError>
