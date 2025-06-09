@@ -5,6 +5,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::anyhow;
 use async_std::channel;
 use async_std::sync::Mutex;
 use async_tungstenite::WebSocketStream;
@@ -109,6 +110,66 @@ async fn handle_connection<
     }
 
     Ok(())
+}
+
+// Converts an `http_types::Request` into an `http::Request<()>`.
+//
+// This conversion is necessary because `tide` (and `http-types`) uses an older version
+// of the `http` crate's ecosystem (`http` v0.2.x) than `tungstenite` (`http` v1.x)
+// since the `f3cf3538` dependency update.
+// Previously, this conversion was handled automatically via the `Into` trait.
+fn http_types_req_to_http_req(
+    http_types_req: http_types::Request,
+) -> tide::Result<http::Request<()>> {
+    let version = match http_types_req.version() {
+        Some(http_types::Version::Http0_9) => http::Version::HTTP_09,
+        Some(http_types::Version::Http1_0) => http::Version::HTTP_10,
+        Some(http_types::Version::Http1_1) => http::Version::HTTP_11,
+        Some(http_types::Version::Http2_0) => http::Version::HTTP_2,
+        Some(http_types::Version::Http3_0) => http::Version::HTTP_3,
+        None => http::Version::HTTP_11,
+        Some(v) => {
+            return Err(tide::Error::new(
+                StatusCode::MethodNotAllowed,
+                anyhow!("Invalid version: {:?}", v),
+            ));
+        }
+    };
+    let mut builder = http::Request::builder()
+        .method(http_types_req.method().to_string().as_str())
+        .uri(http_types_req.url().as_str())
+        .version(version);
+    for (name, values) in &http_types_req {
+        for value in values.iter() {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+    }
+    builder
+        .body(())
+        .map_err(|e| tide::Error::new(StatusCode::InternalServerError, e))
+}
+
+// Converts an `http::Response<http_types::Body>` into an `http_types::Response`.
+//
+// This conversion is necessary because `tide` (and `http-types`) uses an older version
+// of the `http` crate's ecosystem (`http` v0.2.x) than `tungstenite` (`http` v1.x)
+// since the `f3cf3538` dependency update.
+// Previously, this conversion was handled automatically via the `Into` trait.
+fn http_resp_to_http_types_resp(
+    http_resp: http::Response<http_types::Body>,
+) -> tide::Result<http_types::Response> {
+    let (parts, body) = http_resp.into_parts();
+    let mut http_types_resp = http_types::Response::new(
+        http_types::StatusCode::try_from(parts.status.as_u16())
+            .map_err(|e| tide::Error::new(StatusCode::InternalServerError, e.into_inner()))?,
+    );
+    for (name, value) in &parts.headers {
+        if let Ok(value_str) = value.to_str() {
+            http_types_resp.append_header(name.as_str(), value_str);
+        }
+    }
+    http_types_resp.set_body(body);
+    Ok(http_types_resp)
 }
 
 async fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
@@ -219,15 +280,14 @@ async fn run_tide<DB: Sync + Send + 'static + DatabaseReader>(
 
             // tide::Request -> http_types::Request -> http::Request<Body> -> http::Request<()>.
             let http_types_req: http_types::Request = req.into();
-            let http_req_with_body: http::Request<http_types::Body> = http_types_req.into();
-            let http_req = http_req_with_body.map(|_| ());
+            let http_req = http_types_req_to_http_req(http_types_req)?;
 
             let http_resp = tungstenite::handshake::server::create_response(&http_req)
                 .map_err(|e| tide::Error::new(StatusCode::BadRequest, e))?;
 
             // http::Response<()> -> http::Response<Body> -> http_types::Response
             let http_resp_with_body = http_resp.map(|_| http_types::Body::empty());
-            let mut http_types_resp: http_types::Response = http_resp_with_body.into();
+            let mut http_types_resp = http_resp_to_http_types_resp(http_resp_with_body)?;
 
             // http_types::Response is a magic thing that can give us the stream back
             // once it's upgraded.

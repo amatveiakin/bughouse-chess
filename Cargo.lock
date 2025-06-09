@@ -4617,6 +4617,7 @@ dependencies = [
  "rand 0.9.1",
  "sha1 0.10.6",
  "thiserror 2.0.12",
+ "url",
  "utf-8",
 ]
 
