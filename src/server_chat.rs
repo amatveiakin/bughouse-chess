@@ -24,7 +24,7 @@ pub enum ChatRecipientExpanded {
 #[derive(Clone, Debug)]
 pub struct ServerChat {
     messages: VecDeque<(ChatRecipientExpanded, ChatMessage)>,
-    first_new_message_id: u64,
+    last_sent_message_id: Option<u64>, // ID of last message broadcast to all clients
     next_id: u64,
 }
 
@@ -32,21 +32,31 @@ impl ServerChat {
     pub fn new() -> Self {
         ServerChat {
             messages: VecDeque::new(),
-            first_new_message_id: 0,
+            last_sent_message_id: None,
             next_id: 0,
         }
     }
 
-    pub fn first_new_message_id(&self) -> u64 { self.first_new_message_id }
-    pub fn reset_first_new_message_id(&mut self) { self.first_new_message_id = self.next_id; }
-
-    pub fn messages_since(
-        &self, start: usize,
-    ) -> impl Iterator<Item = &(ChatRecipientExpanded, ChatMessage)> {
-        self.messages.range(start..)
-    }
     pub fn all_messages(&self) -> impl Iterator<Item = &(ChatRecipientExpanded, ChatMessage)> {
         self.messages.iter()
+    }
+    pub fn fetch_new_messages(&mut self) -> Vec<(ChatRecipientExpanded, ChatMessage)> {
+        let last_send_id = self.last_sent_message_id;
+        self.last_sent_message_id = self.messages.back().map(|(_, m)| m.message_id);
+        let Some(start_id) = last_send_id else {
+            // Sending messages to clients for the first time: everything is new.
+            return self.messages.iter().cloned().collect();
+        };
+        let last_sent_index = self.messages.iter().position(|(_, m)| m.message_id == start_id);
+        if let Some(last_sent_index) = last_sent_index {
+            // We've already sent message up to and including `last_sent_index`. Send everything
+            // after that.
+            self.messages.range((last_sent_index + 1)..).cloned().collect()
+        } else {
+            // We got so many new messages at once that all of the messages we saw last time were
+            // already discarded.
+            self.messages.iter().cloned().collect()
+        }
     }
 
     pub fn add(
@@ -75,20 +85,4 @@ impl ServerChat {
             self.messages.pop_front();
         }
     }
-}
-
-// Returns messages added since the last call to `fetch_new_messages`.
-//
-// Rust-upgrade: Change this to a member function like this
-//   pub fn fetch_new_messages(&mut self) -> impl Iterator<Item = &ChatMessageExpanded> { ... }
-// when Rust allows to express the fact that we only an immutable borrow to `self `exists after the
-// function returns. See
-// https://users.rust-lang.org/t/return-immutable-reference-taking-mutable-reference-to-self/16970
-#[macro_export]
-macro_rules! fetch_new_chat_messages {
-    ($chat:expr) => {{
-        let start = $chat.first_new_message_id() as usize;
-        $chat.reset_first_new_message_id();
-        $chat.messages_since(start)
-    }};
 }

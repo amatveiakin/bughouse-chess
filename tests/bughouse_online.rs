@@ -16,7 +16,7 @@ use Force::{Black, White};
 use async_std::sync::Mutex;
 use bughouse_chess::altered_game::{AlteredGame, WaybackDestination};
 use bughouse_chess::board::{Board, TurnError, TurnInput, VictoryReason};
-use bughouse_chess::chat::ChatRecipient;
+use bughouse_chess::chat::{ChatRecipient, MAX_CHAT_MESSAGES};
 use bughouse_chess::clock::GameInstant;
 use bughouse_chess::coord::{Coord, SubjectiveRow};
 use bughouse_chess::display::{DisplayBoard, Perspective, get_display_board_index};
@@ -1414,6 +1414,34 @@ fn chat_message_order() {
 
     assert_eq!(world[cl1].chat_item_text(), ["1-a", "2-a", "1-b", "2-b", "1-c"]);
     assert_eq!(world[cl2].chat_item_text(), ["1-a", "2-a", "1-b", "2-b", "1-c"]);
+}
+
+#[test]
+fn chat_message_limit_reached_gradually() {
+    let mut world = World::new();
+    let (_, cl1, cl2, _cl3, _cl4) = world.default_clients();
+    let messages = (0..MAX_CHAT_MESSAGES + 10).map(|i| format!("message {i}")).collect_vec();
+    for message in messages.iter() {
+        world[cl1].state.send_chat_message(message.clone(), ChatRecipient::All);
+        world.process_all_events();
+    }
+    let chat_items = world[cl2].chat_item_text();
+    assert_eq!(chat_items.len(), MAX_CHAT_MESSAGES);
+    assert_eq!(chat_items, messages[messages.len() - MAX_CHAT_MESSAGES..]);
+}
+
+#[test]
+fn chat_message_limit_reached_in_one_go() {
+    let mut world = World::new();
+    let (_, cl1, cl2, _cl3, _cl4) = world.default_clients();
+    let messages = (0..MAX_CHAT_MESSAGES + 10).map(|i| format!("message {i}")).collect_vec();
+    for message in messages.iter() {
+        world[cl1].state.send_chat_message(message.clone(), ChatRecipient::All);
+    }
+    world.process_all_events();
+    let chat_items = world[cl2].chat_item_text();
+    assert_eq!(chat_items.len(), MAX_CHAT_MESSAGES);
+    assert_eq!(chat_items, messages[messages.len() - MAX_CHAT_MESSAGES..]);
 }
 
 #[test]
