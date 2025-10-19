@@ -1409,16 +1409,32 @@ impl Match {
                 let teaming = self.teaming.ok_or_else(|| unknown_error!())?;
                 match teaming {
                     Teaming::DynamicTeams => {
-                        let Some(sender_active_team) = sender.active_team() else {
-                            return Err(unknown_error!());
-                        };
-                        ChatRecipientExpanded::Participants(
-                            self.participants
-                                .iter()
-                                .filter(|p| p.active_team() == Some(sender_active_team))
-                                .map(|p| p.name.clone())
-                                .collect(),
-                        )
+                        match sender.active_team() {
+                            Some(sender_active_team) => ChatRecipientExpanded::Participants(
+                                self.participants
+                                    .iter()
+                                    .filter(|p| p.active_team() == Some(sender_active_team))
+                                    .map(|p| p.name.clone())
+                                    .collect(),
+                            ),
+                            None => {
+                                if self
+                                    .game_state
+                                    .as_ref()
+                                    .map(|s| s.game.is_active())
+                                    .unwrap_or(false)
+                                {
+                                    // The games is active, the client wants to chats with the team,
+                                    // but doesn't have a team. This should not happen.
+                                    return Err(unknown_error!());
+                                }
+                                // With dynamic teams, teams are defined only within games, but not
+                                // between games. Between games default sending mode is to all, so
+                                // we fall back to it if there was a race condition and the client
+                                // asked for a team message not knowing that the game is over.
+                                ChatRecipientExpanded::All
+                            }
+                        }
                     }
                     Teaming::FixedTeams => {
                         let Some(sender_team) = sender.team_affiliation() else {

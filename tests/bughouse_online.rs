@@ -174,7 +174,7 @@ impl Client {
     fn my_id(&self) -> BughouseParticipant { self.alt_game().my_id() }
     fn local_game(&self) -> Ref<BughouseGame> { self.alt_game().local_game() }
 
-    fn chat_item_text(&self) -> Vec<String> {
+    fn chat_item_texts(&self) -> Vec<String> {
         let my_name = self.state.my_name().unwrap();
         let chess_rules = &self.mtch().rules.chess_rules;
         let game_index = self.state.game_state().map(|state| state.game_index);
@@ -186,6 +186,9 @@ impl Client {
             .into_iter()
             .map(|item| item.text)
             .collect_vec()
+    }
+    fn chat_contains_message(&self, message: &str) -> bool {
+        self.chat_item_texts().iter().any(|m| m == message)
     }
 
     // Only if player:
@@ -290,12 +293,17 @@ impl World {
         self.new_match_with_rules(client_id, player_name, default_chess_rules())
     }
 
-    fn join_and_set_team(
-        &mut self, client_id: TestClientId, match_id: &str, player_name: &str, team: Team,
+    fn join_and_set_faction(
+        &mut self, client_id: TestClientId, match_id: &str, player_name: &str, faction: Faction,
     ) {
         self[client_id].join(match_id, player_name);
         self.process_events_for(client_id).unwrap();
-        self[client_id].state.set_faction(Faction::Fixed(team));
+        self[client_id].state.set_faction(faction);
+    }
+    fn join_and_set_team(
+        &mut self, client_id: TestClientId, match_id: &str, player_name: &str, team: Team,
+    ) {
+        self.join_and_set_faction(client_id, match_id, player_name, Faction::Fixed(team));
     }
 
     fn new_client(&mut self) -> TestClientId {
@@ -1372,9 +1380,9 @@ fn chat_basic() {
     world.process_all_events();
 
     let over = "Game over! p1 & p2 won: p3 & p4 checkmated.";
-    assert_eq!(world[cl1].chat_item_text(), ["hi all", "hi team", "hi p1", over, "gg"]);
-    assert_eq!(world[cl2].chat_item_text(), ["hi all", "hi team", over, "gg"]);
-    assert_eq!(world[cl3].chat_item_text(), ["hi all", "hi p1", over, "gg"]);
+    assert_eq!(world[cl1].chat_item_texts(), ["hi all", "hi team", "hi p1", over, "gg"]);
+    assert_eq!(world[cl2].chat_item_texts(), ["hi all", "hi team", over, "gg"]);
+    assert_eq!(world[cl3].chat_item_texts(), ["hi all", "hi p1", over, "gg"]);
 }
 
 #[test]
@@ -1384,9 +1392,9 @@ fn chat_ephemeral_message() {
 
     world[cl1].state.send_chat_message("hi".to_owned(), ChatRecipient::Team);
     world[cl1].state.execute_input("<Release the Kraken!");
-    assert_eq!(world[cl1].chat_item_text(), ["hi", "Invalid notation."]);
+    assert_eq!(world[cl1].chat_item_texts(), ["hi", "Invalid notation."]);
     world[cl1].state.execute_input("<e4");
-    assert_eq!(world[cl1].chat_item_text(), ["hi"]);
+    assert_eq!(world[cl1].chat_item_texts(), ["hi"]);
 }
 
 // All clients should eventually see chat messages in the same order determined by the server.
@@ -1407,13 +1415,13 @@ fn chat_message_order() {
     world[cl2].state.send_chat_message("2-b".to_owned(), ChatRecipient::Team);
     world.process_events_for_clients(&ClientFilter::only([cl2]));
 
-    assert_eq!(world[cl1].chat_item_text(), ["1-a", "2-a", "1-b", "1-c"]);
-    assert_eq!(world[cl2].chat_item_text(), ["1-a", "2-a", "1-b", "2-b"]);
+    assert_eq!(world[cl1].chat_item_texts(), ["1-a", "2-a", "1-b", "1-c"]);
+    assert_eq!(world[cl2].chat_item_texts(), ["1-a", "2-a", "1-b", "2-b"]);
 
     world.process_all_events();
 
-    assert_eq!(world[cl1].chat_item_text(), ["1-a", "2-a", "1-b", "2-b", "1-c"]);
-    assert_eq!(world[cl2].chat_item_text(), ["1-a", "2-a", "1-b", "2-b", "1-c"]);
+    assert_eq!(world[cl1].chat_item_texts(), ["1-a", "2-a", "1-b", "2-b", "1-c"]);
+    assert_eq!(world[cl2].chat_item_texts(), ["1-a", "2-a", "1-b", "2-b", "1-c"]);
 }
 
 #[test]
@@ -1425,7 +1433,7 @@ fn chat_message_limit_reached_gradually() {
         world[cl1].state.send_chat_message(message.clone(), ChatRecipient::All);
         world.process_all_events();
     }
-    let chat_items = world[cl2].chat_item_text();
+    let chat_items = world[cl2].chat_item_texts();
     assert_eq!(chat_items.len(), MAX_CHAT_MESSAGES);
     assert_eq!(chat_items, messages[messages.len() - MAX_CHAT_MESSAGES..]);
 }
@@ -1439,7 +1447,7 @@ fn chat_message_limit_reached_in_one_go() {
         world[cl1].state.send_chat_message(message.clone(), ChatRecipient::All);
     }
     world.process_all_events();
-    let chat_items = world[cl2].chat_item_text();
+    let chat_items = world[cl2].chat_item_texts();
     assert_eq!(chat_items.len(), MAX_CHAT_MESSAGES);
     assert_eq!(chat_items, messages[messages.len() - MAX_CHAT_MESSAGES..]);
 }
@@ -1473,10 +1481,10 @@ fn chat_reconnect() {
     world[cl5].join(&mtch, "p5");
     world.process_all_events();
 
-    assert_eq!(world[cl1].chat_item_text(), ["1-a", "2-a", "3-a", "1-b", "2-b", "3-b"]);
-    assert_eq!(world[cl2].chat_item_text(), ["1-a", "2-a", "3-a", "1-b", "2-b"]);
-    assert_eq!(world[cl3].chat_item_text(), ["1-a", "3-a", "1-b", "3-b"]);
-    assert_eq!(world[cl5].chat_item_text(), ["1-a", "3-a", "1-b"]);
+    assert_eq!(world[cl1].chat_item_texts(), ["1-a", "2-a", "3-a", "1-b", "2-b", "3-b"]);
+    assert_eq!(world[cl2].chat_item_texts(), ["1-a", "2-a", "3-a", "1-b", "2-b"]);
+    assert_eq!(world[cl3].chat_item_texts(), ["1-a", "3-a", "1-b", "3-b"]);
+    assert_eq!(world[cl5].chat_item_texts(), ["1-a", "3-a", "1-b"]);
 }
 
 // In dynamic teams mode team chat should be visible to the players who were in sender's team at
@@ -1525,11 +1533,11 @@ fn team_chat_dynamic_teams() {
     world.process_all_events();
 
     let over = "Game over! p4 & p5 won: p1 & p2 resigned.";
-    assert_eq!(world[cl1].chat_item_text(), ["first", over, "second"]);
-    assert_eq!(world[cl2].chat_item_text(), ["first", over]);
-    assert_eq!(world[cl3].chat_item_text(), [over, "second"]);
-    assert_eq!(world[cl4].chat_item_text(), [over]);
-    assert_eq!(world[cl5].chat_item_text(), [over]);
+    assert_eq!(world[cl1].chat_item_texts(), ["first", over, "second"]);
+    assert_eq!(world[cl2].chat_item_texts(), ["first", over]);
+    assert_eq!(world[cl3].chat_item_texts(), [over, "second"]);
+    assert_eq!(world[cl4].chat_item_texts(), [over]);
+    assert_eq!(world[cl5].chat_item_texts(), [over]);
 
     world[cl2].state.leave_server();
     world[cl3].state.leave_server();
@@ -1541,8 +1549,8 @@ fn team_chat_dynamic_teams() {
     world[cl3_new].join(&mtch, "p3");
     world.process_all_events();
 
-    assert_eq!(world[cl2_new].chat_item_text(), ["first", over]);
-    assert_eq!(world[cl3_new].chat_item_text(), [over, "second"]);
+    assert_eq!(world[cl2_new].chat_item_texts(), ["first", over]);
+    assert_eq!(world[cl3_new].chat_item_texts(), [over, "second"]);
 }
 
 // In fixed teams mode the message is sent to the entire team, regardless of who is currently
@@ -1592,11 +1600,11 @@ fn team_chat_fixed_teams() {
     world.process_all_events();
 
     let over = "Game over! p4 & p5 won: p1 & p2 resigned.";
-    assert_eq!(world[cl1].chat_item_text(), ["first", over, "second"]);
-    assert_eq!(world[cl2].chat_item_text(), ["first", over, "second"]);
-    assert_eq!(world[cl3].chat_item_text(), ["first", over, "second"]);
-    assert_eq!(world[cl4].chat_item_text(), [over]);
-    assert_eq!(world[cl5].chat_item_text(), [over]);
+    assert_eq!(world[cl1].chat_item_texts(), ["first", over, "second"]);
+    assert_eq!(world[cl2].chat_item_texts(), ["first", over, "second"]);
+    assert_eq!(world[cl3].chat_item_texts(), ["first", over, "second"]);
+    assert_eq!(world[cl4].chat_item_texts(), [over]);
+    assert_eq!(world[cl5].chat_item_texts(), [over]);
 
     world[cl2].state.leave_server();
     world[cl3].state.leave_server();
@@ -1608,8 +1616,61 @@ fn team_chat_fixed_teams() {
     world[cl3_new].join(&mtch, "p3");
     world.process_all_events();
 
-    assert_eq!(world[cl2_new].chat_item_text(), ["first", over, "second"]);
-    assert_eq!(world[cl3_new].chat_item_text(), ["first", over, "second"]);
+    assert_eq!(world[cl2_new].chat_item_texts(), ["first", over, "second"]);
+    assert_eq!(world[cl3_new].chat_item_texts(), ["first", over, "second"]);
+}
+
+// TODO: What should this do: new team, old team or all? !!!
+#[test]
+fn team_chat_between_games_fixed_teams() {
+    let mut world = World::new();
+    let [cl1, cl2, cl3, cl4] = world.new_clients();
+
+    let mtch = world.new_match(cl1, "p1");
+    world[cl1].state.set_faction(Faction::Fixed(Team::Red));
+    world.process_all_events();
+    world.join_and_set_faction(cl2, &mtch, "p2", Faction::Fixed(Team::Red));
+    world.join_and_set_faction(cl3, &mtch, "p3", Faction::Fixed(Team::Blue));
+    world.join_and_set_faction(cl4, &mtch, "p4", Faction::Fixed(Team::Blue));
+    world.process_all_events();
+    world.new_game_with_default_board_assignment(mtch.clone(), cl1, cl2, cl3, cl4);
+
+    world[cl1].state.execute_input("knight needed");
+    world.process_all_events();
+    world[cl1].state.resign();
+    world.process_all_events();
+    world[cl1].state.execute_input("gg");
+    world.process_all_events();
+    assert!(world[cl2].chat_contains_message(&"knight needed"));
+    assert!(world[cl2].chat_contains_message(&"gg"));
+    assert!(!world[cl3].chat_contains_message(&"knight needed"));
+    assert!(!world[cl3].chat_contains_message(&"gg"));
+}
+
+#[test]
+fn team_chat_between_games_dynamic_teams() {
+    let mut world = World::new();
+    let [cl1, cl2, cl3, cl4] = world.new_clients();
+
+    let mtch = world.new_match(cl1, "p1");
+    world[cl1].state.set_faction(Faction::Random);
+    world.process_all_events();
+    world.join_and_set_faction(cl2, &mtch, "p2", Faction::Random);
+    world.join_and_set_faction(cl3, &mtch, "p3", Faction::Random);
+    world.join_and_set_faction(cl4, &mtch, "p4", Faction::Random);
+    world.process_all_events();
+    world.new_game_with_default_board_assignment(mtch.clone(), cl1, cl2, cl3, cl4);
+
+    world[cl1].state.execute_input("knight needed");
+    world.process_all_events();
+    world[cl1].state.resign();
+    world.process_all_events();
+    world[cl1].state.execute_input("gg");
+    world.process_all_events();
+    assert!(world[cl2].chat_contains_message(&"knight needed"));
+    assert!(world[cl2].chat_contains_message(&"gg"));
+    assert!(!world[cl3].chat_contains_message(&"knight needed"));
+    assert!(world[cl3].chat_contains_message(&"gg"));
 }
 
 // Regression test: we used to not remove offline participants from the lobby if there was an active
@@ -1757,7 +1818,7 @@ fn mid_match_faction_change() {
     world[cl1].state.set_faction(Faction::Observer);
     world.process_all_events();
 
-    let mut chat_iter = world[cl1].chat_item_text().into_iter();
+    let mut chat_iter = world[cl1].chat_item_texts().into_iter();
     assert_eq!(chat_iter.next().unwrap(), "p5 joined team Red");
     assert_eq!(chat_iter.next().unwrap(), "Game over! p3 & p4 won: p1 & p2 resigned.");
     assert!(chat_iter.next().unwrap().starts_with("Next up:"));

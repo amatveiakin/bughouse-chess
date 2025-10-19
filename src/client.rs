@@ -815,7 +815,16 @@ impl ClientState {
     pub fn team_chat_enabled(&self) -> bool {
         if let Some(GameState { alt_game, .. }) = self.game_state() {
             match alt_game.my_id() {
-                BughouseParticipant::Player(BughousePlayer::SinglePlayer(_)) => true,
+                BughouseParticipant::Player(BughousePlayer::SinglePlayer(_)) => {
+                    // With fixed teams, we can always send messages to the team, even between
+                    // games. With dynamic games, the concept of a "team" between games is rather
+                    // blurred. All of these three options make sense:
+                    //   - Send to the player you just played with,
+                    //   - Send to the player you are going to play with,
+                    //   - Send to all players.
+                    // We are using the last option for now.
+                    matches!(self.my_faction(), Some(Faction::Fixed(_))) || alt_game.is_active()
+                }
                 // Note. If we ever allow to double-play while having a fixed team with 2+ people,
                 // then message should also go to team chat by default in this case.
                 BughouseParticipant::Player(BughousePlayer::DoublePlayer(_)) => false,
