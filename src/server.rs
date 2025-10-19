@@ -35,6 +35,7 @@ use crate::lobby::{
     ParticipantsStatus, ParticipantsWarning, Teaming, assign_boards, fix_teams_if_needed,
     post_game_update_participant_counters, verify_participants,
 };
+use crate::my_git_version;
 use crate::ping_pong::{PassiveConnectionMonitor, PassiveConnectionStatus};
 use crate::player::{Faction, Participant, PlayerSchedulingPriority};
 use crate::role::Role;
@@ -46,7 +47,6 @@ use crate::server_hooks::{NoopServerHooks, ServerHooks};
 use crate::session_store::{SessionId, SessionStore};
 use crate::utc_time::UtcDateTime;
 use crate::util::Relax;
-use crate::{fetch_new_chat_messages, my_git_version};
 
 
 // Exclude confusing characters:
@@ -1065,7 +1065,8 @@ impl Match {
             ctx.clients
                 .send(client_id, self.make_game_start_event(ctx.now, Some(participant_id)))
                 .await;
-            self.send_messages(ctx, Some(client_id), self.chat.all_messages()).await;
+            self.send_messages(ctx, Some(client_id), self.chat.all_messages().cloned().collect())
+                .await;
             ctx.clients
                 .send(client_id, BughouseServerEvent::ChalkboardUpdated {
                     chalkboard: game_state.chalkboard.clone(),
@@ -1483,7 +1484,7 @@ impl Match {
         //   and one from `self.start_game`. Note also `gc_inactive_players`.
         //   Idea: Add `ctx.should_update_lobby` bit and check it in the end.
 
-        let new_chat_messages = fetch_new_chat_messages!(self.chat);
+        let new_chat_messages = self.chat.fetch_new_messages();
         self.send_messages(ctx, None, new_chat_messages).await;
 
         let can_start_game =
@@ -1689,9 +1690,8 @@ impl Match {
     // chat workflow) or one client (in case of a reconnect).
     async fn send_messages(
         &self, ctx: &mut Context, limit_to_client_id: Option<ClientId>,
-        messages_to_send: impl IntoIterator<Item = &(ChatRecipientExpanded, ChatMessage)>,
+        messages_to_send: Vec<(ChatRecipientExpanded, ChatMessage)>,
     ) {
-        let messages_to_send = messages_to_send.into_iter().collect_vec();
         let send_to_client = async |client_id: ClientId| {
             let Some(participant_id) = self.clients.get(&client_id).copied() else {
                 return;
