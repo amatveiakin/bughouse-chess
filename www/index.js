@@ -3,6 +3,7 @@
 import "./main.css";
 import * as wasm from "bughouse-chess";
 import { fetch_asset } from "./assets";
+import { load_sound, play_sound, set_sound_volume } from "./audio";
 
 import transparent from "../assets/transparent.png";
 
@@ -260,15 +261,7 @@ load_svg_images([
   { path: fog_3, symbol: "fog-3", size: FOG_TILE_SIZE },
 ]);
 
-// Ideally AudioContext should be created after the first user interaction. Otherwise
-// it's be created in the "suspended" state, and a log warning will be shown (in Chrome):
-// https://developer.chrome.com/blog/autoplay/#webaudio
-// But we can't really create the context later, because we need it to load sounds.
-let audio_context = new AudioContext();
-
-// Improvement potential. Establish priority on sounds; play more important sounds first
-// in case of a clash.
-const Sound = load_sounds({
+load_sounds({
   clack: clack_sound, // similar to `turn` and roughly the same volume
   turn: turn_sound,
   reserve_restocked: reserve_restocked_sound,
@@ -293,12 +286,6 @@ let consecutive_socket_connection_attempts = 0;
 let socket = null;
 open_socket();
 
-// Parameters and data structures for the audio logic. Our goal is to make short and
-// important sounds (like turn sound) as clear as possible when several events occur
-// simultaneously. The main example is when you make a move and immediately get a
-// premove back.
-const audio_min_interval_ms = 70;
-const audio_max_queue_size = 5;
 const max_volume = 3;
 const volume_to_js = {
   0: 0.0,
@@ -306,13 +293,7 @@ const volume_to_js = {
   2: 0.5,
   3: 1.0,
 };
-let audio_last_played = 0;
-let audio_queue = [];
 let audio_volume = 0;
-
-const gain_node = audio_context.createGain();
-gain_node.connect(audio_context.destination);
-const pan_nodes = new Map();
 
 const drag_start_threshold = 8;
 let pointer_down_position = null;
@@ -862,9 +843,9 @@ function process_notable_events() {
     } else if (js_event_type === "JsEventGameStarted") {
       close_menu();
     } else if (js_event_type === "JsEventGameOver") {
-      play_audio(Sound[js_event.result]);
+      play_sound(js_event.result);
     } else if (js_event_type === "JsEventPlaySound") {
-      play_audio(Sound[js_event.audio], js_event.pan);
+      play_sound(js_event.audio, js_event.pan);
     } else if (js_event_type === "JsEventArchiveGameLoaded") {
       update();
     } else {
@@ -1777,26 +1758,17 @@ function load_svg_images(image_records) {
   }
 }
 
-async function load_sound(filepath, key) {
-  try {
-    const array_buffer = await fetch_asset(filepath);
-    Sound[key] = await audio_context.decodeAudioData(array_buffer);
-    loading_tracker.resource_loaded();
-  } catch (error) {
-    console.error(`Cannot load sound ${filepath}:`, error);
-    loading_tracker.resource_failed();
-  }
-}
-
 function load_sounds(sound_map) {
-  ensure_audio_context_running();
-  const ret = {};
-  for (const [key, filepath] of Object.entries(sound_map)) {
-    ret[key] = null;
-    load_sound(filepath, key);
+  for (const [name, url] of Object.entries(sound_map)) {
     loading_tracker.resource_required();
+    load_sound(name, url).then(
+      () => loading_tracker.resource_loaded(),
+      (error) => {
+        console.error(`Cannot load sound ${name}:`, error);
+        loading_tracker.resource_failed();
+      }
+    );
   }
-  return ret;
 }
 
 function go_to_suburl(event) {
@@ -2161,7 +2133,7 @@ function toggle_analysis() {
 function set_volume(volume) {
   // TODO: Save settings to a local storage.
   audio_volume = volume;
-  gain_node.gain.value = volume_to_js[volume];
+  set_sound_volume(volume_to_js[volume]);
   if (volume === 0) {
     set_displayed(document.getElementById("volume-mute"), true);
     for (let v = 1; v <= max_volume; ++v) {
@@ -2177,55 +2149,7 @@ function set_volume(volume) {
 
 function next_volume() {
   set_volume((audio_volume + 1) % (max_volume + 1));
-  play_audio(Sound.clack);
-}
-
-function ensure_audio_context_running() {
-  // Need to activate the context, because we create it before the first user interaction.
-  audio_context.resume();
-}
-
-function play_audio(audio_buffer, pan) {
-  ensure_audio_context_running();
-  pan = pan || 0;
-  if (audio_queue.length >= audio_max_queue_size) {
-    return;
-  }
-  audio_queue.push({ audio_buffer, pan });
-  const now = performance.now();
-  const audio_next_avaiable = audio_last_played + audio_min_interval_ms;
-  if (audio_queue.length > 1) {
-    // play_audio_delayed already scheduled
-  } else if (now < audio_next_avaiable) {
-    setTimeout(play_audio_delayed, audio_next_avaiable - now);
-  } else {
-    play_audio_impl();
-  }
-}
-
-function play_audio_delayed() {
-  play_audio_impl();
-  if (audio_queue.length > 0) {
-    setTimeout(play_audio_delayed, audio_min_interval_ms);
-  }
-}
-
-function play_audio_impl() {
-  console.assert(audio_queue.length > 0);
-  const { audio_buffer, pan } = audio_queue.shift();
-  if (audio_volume > 0) {
-    if (!pan_nodes.has(pan)) {
-      const panner_node = audio_context.createStereoPanner();
-      panner_node.pan.value = pan;
-      panner_node.connect(gain_node);
-      pan_nodes.set(pan, panner_node);
-    }
-    const source = audio_context.createBufferSource();
-    source.buffer = audio_buffer;
-    source.connect(pan_nodes.get(pan));
-    source.start();
-  }
-  audio_last_played = performance.now();
+  play_sound("clack");
 }
 
 function download(text, filename) {
