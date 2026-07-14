@@ -96,6 +96,7 @@ const Storage = {
   cookies_accepted: "cookies-accepted", // values: null, "essential", "all"
   chat_reference_tooltip: "chat-reference-tooltip", // values: "show" (default), "hide"
   player_name: "player-name",
+  sound_volume: "sound-volume", // values: 0 to `max_volume`
 };
 
 const SearchParams = {
@@ -391,8 +392,8 @@ for (const button of document.querySelectorAll("[data-suburl]")) {
   button.addEventListener("click", go_to_suburl);
 }
 
-// TODO: Make sounds louder and set volume to 2 by default.
-set_volume(max_volume);
+// TODO: Make sounds louder and set the default volume to 2.
+set_volume(stored_volume() ?? max_volume);
 
 setInterval(on_tick, 50);
 
@@ -2130,8 +2131,13 @@ function toggle_analysis() {
   });
 }
 
+function stored_volume() {
+  const volume = parseInt(window.localStorage.getItem(Storage.sound_volume));
+  return volume >= 0 && volume <= max_volume ? volume : null;
+}
+
 function set_volume(volume) {
-  // TODO: Save settings to a local storage.
+  window.localStorage.setItem(Storage.sound_volume, volume);
   audio_volume = volume;
   set_sound_volume(volume_to_js[volume]);
   if (volume === 0) {
