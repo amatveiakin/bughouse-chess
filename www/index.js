@@ -2,6 +2,7 @@
 
 import "./main.css";
 import * as wasm from "bughouse-chess";
+import { fetch_asset } from "./assets";
 
 import transparent from "../assets/transparent.png";
 
@@ -181,6 +182,7 @@ const menu_page_stack = [];
 const loading_tracker = new (class {
   #resources_required = 0;
   #resources_loaded = 0;
+  #resources_failed = 0;
 
   resource_required() {
     this.#resources_required += 1;
@@ -190,12 +192,25 @@ const loading_tracker = new (class {
     this.#resources_loaded += 1;
     this.#update();
   }
+  // A failed resource still counts towards loading completion: the app mostly works even
+  // with some graphics or sounds missing.
+  resource_failed() {
+    this.#resources_failed += 1;
+    this.#update();
+  }
   #update() {
     // TODO: Don't start the game until `ready`.
-    console.assert(this.#resources_loaded <= this.#resources_required);
-    const ready = this.#resources_loaded === this.#resources_required;
+    const resources_processed = this.#resources_loaded + this.#resources_failed;
+    console.assert(resources_processed <= this.#resources_required);
+    const ready = resources_processed === this.#resources_required;
     if (ready) {
-      console.log(`Graphics and sounds loaded (${this.#resources_loaded})`);
+      if (this.#resources_failed > 0) {
+        console.error(
+          `Failed to load ${this.#resources_failed} of ${this.#resources_required} resources!`
+        );
+      } else {
+        console.log(`Graphics and sounds loaded (${this.#resources_loaded})`);
+      }
       // Load Stockfish in the end to speed up the initial loading.
       initStockfish();
     }
@@ -1706,6 +1721,14 @@ function make_svg_image_symbol(symbol_id, data, size) {
 
 async function load_svg_image(record) {
   loading_tracker.resource_required();
+  let image_data;
+  try {
+    image_data = await fetch_asset(record.path);
+  } catch (error) {
+    console.error(`Cannot load image ${record.path}:`, error);
+    loading_tracker.resource_failed();
+    return;
+  }
   const reader = new FileReader();
   reader.addEventListener(
     "load",
@@ -1742,11 +1765,10 @@ async function load_svg_image(record) {
     false
   );
   reader.addEventListener("error", () => {
-    console.error(`Cannot load image ${record.path}`);
+    console.error(`Cannot decode image ${record.path}:`, reader.error);
+    loading_tracker.resource_failed();
   });
-  const response = await fetch(record.path);
-  const blob = await response.blob();
-  reader.readAsDataURL(blob);
+  reader.readAsDataURL(new Blob([image_data]));
 }
 
 function load_svg_images(image_records) {
@@ -1756,11 +1778,14 @@ function load_svg_images(image_records) {
 }
 
 async function load_sound(filepath, key) {
-  const response = await fetch(filepath);
-  const array_buffer = await response.arrayBuffer();
-  const audio_buffer = await audio_context.decodeAudioData(array_buffer);
-  Sound[key] = audio_buffer;
-  loading_tracker.resource_loaded();
+  try {
+    const array_buffer = await fetch_asset(filepath);
+    Sound[key] = await audio_context.decodeAudioData(array_buffer);
+    loading_tracker.resource_loaded();
+  } catch (error) {
+    console.error(`Cannot load sound ${filepath}:`, error);
+    loading_tracker.resource_failed();
+  }
 }
 
 function load_sounds(sound_map) {
