@@ -1641,10 +1641,10 @@ fn team_chat_between_games_fixed_teams() {
     world.process_all_events();
     world[cl1].state.execute_input("gg");
     world.process_all_events();
-    assert!(world[cl2].chat_contains_message(&"knight needed"));
-    assert!(world[cl2].chat_contains_message(&"gg"));
-    assert!(!world[cl3].chat_contains_message(&"knight needed"));
-    assert!(!world[cl3].chat_contains_message(&"gg"));
+    assert!(world[cl2].chat_contains_message("knight needed"));
+    assert!(world[cl2].chat_contains_message("gg"));
+    assert!(!world[cl3].chat_contains_message("knight needed"));
+    assert!(!world[cl3].chat_contains_message("gg"));
 }
 
 #[test]
@@ -1667,10 +1667,10 @@ fn team_chat_between_games_dynamic_teams() {
     world.process_all_events();
     world[cl1].state.execute_input("gg");
     world.process_all_events();
-    assert!(world[cl2].chat_contains_message(&"knight needed"));
-    assert!(world[cl2].chat_contains_message(&"gg"));
-    assert!(!world[cl3].chat_contains_message(&"knight needed"));
-    assert!(world[cl3].chat_contains_message(&"gg"));
+    assert!(world[cl2].chat_contains_message("knight needed"));
+    assert!(world[cl2].chat_contains_message("gg"));
+    assert!(!world[cl3].chat_contains_message("knight needed"));
+    assert!(world[cl3].chat_contains_message("gg"));
 }
 
 // Regression test: we used to not remove offline participants from the lobby if there was an active
