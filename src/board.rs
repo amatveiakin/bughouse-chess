@@ -1226,6 +1226,9 @@ impl Board {
         assert_eq!(self.is_duck_turn[force], matches!(turn, Turn::PlaceDuck(_)));
         match &turn {
             Turn::Move(mv) => {
+                if (self.grid[mv.from].unwrap().kind == PieceKind::King) {
+                    self.castling_rights[force].clear();
+                }
                 remove_castling_right(&mut self.castling_rights, shape, mv.from);
                 remove_castling_right(&mut self.castling_rights, shape, mv.to);
             }
@@ -1601,22 +1604,6 @@ impl Board {
                 reserve_reduction = Some(drop.piece_kind);
             }
             Turn::Castle(dir) => {
-                // TODO: More castling tests. Include cases:
-                //   - Castle successful.
-                //   - Cannot castle when king has moved.
-                //   - Cannot castle when rook has moved.
-                //   - Cannot castle when there are pieces in between.
-                //   - King cannot starts in a checked square.
-                //   - King cannot pass through a checked square.
-                //   - King cannot ends up in a checked square.
-                //   - Cannot castle if rook was captured and another one was
-                //     dropped on its place.
-                //   - [Chess960] Castle blocked by a piece at the destination,
-                //      which is outside of kind and rook initial positions.
-                //   - [Chess960] Castle when both rooks are on the same side,
-                //      both when it's possible (the other rook is further away)
-                //      and impossible (the other rook is in the way).
-
                 if self.is_duck_turn[force] {
                     return Err(TurnError::MustPlaceDuck);
                 }

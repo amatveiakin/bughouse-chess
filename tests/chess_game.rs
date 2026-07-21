@@ -104,6 +104,93 @@ fn wikipedia_example() {
 }
 
 #[test]
+fn castle_successful() {
+    let mut game = chess_classic();
+    assert_eq!(replay_log(&mut game, "1.Nf3 a6 2.g3 a5 3.Bg2 a4 4.O-O"), Ok(()));
+}
+
+#[test]
+fn cannot_castle_when_king_has_moved() {
+    let mut game = chess_classic();
+    assert_eq!(
+        replay_log(&mut game, "1.Nf3 a6 2.g3 a5 3.Bg2 a4 4.Kf1 b6 5.Ke1 b5 6.O-O"),
+        Err(TurnError::CastlingPieceHasMoved)
+    );
+}
+
+#[test]
+fn cannot_castle_when_rook_has_moved() {
+    let mut game = chess_classic();
+    assert_eq!(
+        replay_log(&mut game, "1.Nf3 a6 2.Rg1 a5 3.Rh1 a4 4.O-O"),
+        Err(TurnError::CastlingPieceHasMoved)
+    );
+}
+
+#[test]
+fn cannot_castle_when_path_is_blocked() {
+    let mut game = chess_classic();
+    assert_eq!(replay_log(&mut game, "1.O-O"), Err(TurnError::PathBlocked));
+}
+
+#[test]
+fn cannot_castle_when_king_starts_checked() {
+    let mut game = chess_classic();
+    assert_eq!(
+        replay_log(&mut game, "1.Nf3 Nc6 2.e3 Nb4 3.Be2 Nd3 4.O-O"),
+        Err(TurnError::UnprotectedKing)
+    );
+}
+
+#[test]
+fn cannot_castle_when_king_passes_through_checked_square() {
+    let mut game = chess_classic();
+    assert_eq!(
+        replay_log(&mut game, "1.e4 b6 2.g3 Ba6 3.Bh3 h6 4.Nf3 h5 5.O-O"),
+        Err(TurnError::UnprotectedKing)
+    );
+}
+
+#[test]
+fn cannot_castle_when_king_ends_up_checked() {
+    let mut game = chess_classic();
+    assert_eq!(
+        replay_log(&mut game, "1.f4 e6 2.Nf3 Bc5 3.g3 h6 4.Bg2 h5 5.O-O"),
+        Err(TurnError::UnprotectedKing)
+    );
+}
+
+// Castle blocked by a piece at the destination square, which is outside of king
+// and rook initial positions.
+#[test]
+fn chess960_cannot_castle_when_destination_blocked() {
+    let mut game = chess960_from_short_fen("RKNNBQRB");
+    assert_eq!(replay_log(&mut game, "1.O-O-O"), Err(TurnError::PathBlocked));
+}
+
+// The H-side rook moves over to the A-side and stops between the king and the
+// A-side rook, blocking A-side castling.
+#[test]
+fn chess960_cannot_castle_when_other_rook_moved_in_the_way() {
+    let mut game = chess960_from_short_fen("RNKRBQNB");
+    assert_eq!(
+        replay_log(&mut game, "1.b4 h6 2.Na3 g6 3.d4 h5 4.Rd3 g5 5.Rb3 h4 6.Rbb1 g4 7.O-O-O"),
+        Err(TurnError::PathBlocked)
+    );
+}
+
+// The H-side rook moves over to the A-side further away from the king than the
+// A-side rook, so A-side castling still works.
+#[test]
+fn chess960_castle_when_other_rook_moved_further_away() {
+    let mut game = chess960_from_short_fen("BNRKRQNB");
+    assert_eq!(
+        replay_log(&mut game, "1.b4 h6 2.Na3 g6 3.e4 h5 4.Re3 g5 5.Rb3 h4 6.Rbb1 g4 7.O-O-O"),
+        Ok(())
+    );
+}
+
+#[test]
 fn chess960_first_move_castle() {
     let mut game = chess960_from_short_fen("RBNNBKRQ");
     replay_log(&mut game, "1.0-0").unwrap();
