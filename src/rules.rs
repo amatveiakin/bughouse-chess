@@ -285,6 +285,12 @@ impl ChessRules {
         self.variants().into_iter().filter(|v| v.enables_regicide()).collect()
     }
 
+    // True iff Dixie is active and no other regicide-enabling variant is also active. If any of those are on too, they take
+    // priority and the game reverts to plain "no checks, no mates, win by capture" regicide.
+    pub fn dixie_active(&self) -> bool {
+        self.regicide_reason() == vec![ChessVariant::Dixie]
+    }
+
     // If false, use normal chess rules: players are not allowed to leave the king undefended,
     // the king cannot pass through a square attacked by an enemy piece when castling, the game
     // end with a mate.

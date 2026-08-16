@@ -1365,37 +1365,37 @@ impl Board {
                 } else {
                     if self.bughouse_rules().is_some_and(|r| r.koedem) {
                     // Cannot check victory condition here, need to see both boards.
-                } else if self.bughouse_rules().is_some_and(|r| r.dixie) {
-                    let bughouse_rules = self.bughouse_rules().unwrap().clone();
-                    let captured_kings = facts
-                        .captures
-                        .iter()
-                        .filter(|c| c.piece_kind == PieceKind::King)
-                        .collect_vec();
-                    match captured_kings.len() {
-                        0 => {
-                            let opponent_king_pos = find_king(&self.grid, force.opponent()).unwrap();
-                            match dixie_mate_status_to(
-                                &self.rules.chess_rules, &mut self.grid, opponent_king_pos,
-                                self.en_passant_target, &self.reserves[force.opponent()], &bughouse_rules,
-                            ) {
-                                DixieMateStatus::NotMate => {}
-                                DixieMateStatus::Checkmate => {
-                                    self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
-                                }
-                                DixieMateStatus::CheckmateNoReserve => {
-                                    self.status = ChessGameStatus::Victory(force, VictoryReason::CheckmateNoReserve);
+                    } else if self.chess_rules().dixie_active() {
+                        let bughouse_rules = self.bughouse_rules().unwrap().clone();
+                        let captured_kings = facts
+                            .captures
+                            .iter()
+                            .filter(|c| c.piece_kind == PieceKind::King)
+                            .collect_vec();
+                        match captured_kings.len() {
+                            0 => {
+                                let opponent_king_pos = find_king(&self.grid, force.opponent()).unwrap();
+                                match dixie_mate_status_to(
+                                    &self.rules.chess_rules, &mut self.grid, opponent_king_pos,
+                                    self.en_passant_target, &self.reserves[force.opponent()], &bughouse_rules,
+                                ) {
+                                    DixieMateStatus::NotMate => {}
+                                    DixieMateStatus::Checkmate => {
+                                        self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
+                                    }
+                                    DixieMateStatus::CheckmateNoReserve => {
+                                        self.status = ChessGameStatus::Victory(force, VictoryReason::CheckmateNoReserve);
+                                    }
                                 }
                             }
+                            1 => {
+                                let loser: Force = captured_kings[0].force.try_into().unwrap();
+                                self.status = ChessGameStatus::Victory(loser.opponent(), VictoryReason::KingCaptured);
+                            }
+                            2 => self.status = ChessGameStatus::Draw(DrawReason::SimultaneousCheckmate),
+                            _ => panic!("Shouldn't be able to capture more than two kings under Dixie"),
                         }
-                        1 => {
-                            let loser: Force = captured_kings[0].force.try_into().unwrap();
-                            self.status = ChessGameStatus::Victory(loser.opponent(), VictoryReason::KingCaptured);
-                        }
-                        2 => self.status = ChessGameStatus::Draw(DrawReason::SimultaneousCheckmate),
-                        _ => panic!("Shouldn't be able to capture more than two kings under Dixie"),
-                    }
-                } else {
+                    } else {
                     // Existing plain-regicide (Duck/Fog/Atomic) capture-only logic, unchanged.
                     let captured_kings = facts.captures.iter().filter(|c| c.piece_kind == PieceKind::King).collect_vec();
                     match captured_kings.len() {

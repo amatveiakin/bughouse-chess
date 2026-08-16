@@ -181,8 +181,34 @@ const KOEDEM_ON_ICON: &str = r##"
 </svg>
 "##;
 
-const DIXIE_OFF_ICON: &str = PLACEHOLDER_ICON;
-const DIXIE_ON_ICON: &str = PLACEHOLDER_ICON;
+const DIXIE_OFF_ICON: &str = r##"
+<svg class="rule-variant-icon" viewBox="0 0 680 400">
+ <g fill="none" stroke="#000" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M150 70 C155 45 165 45 168 65 C178 45 190 48 188 70 C200 55 212 60 205 78"/>
+  <path d="M205 78 C230 82 250 100 255 130 C280 135 340 130 400 140 C450 148 480 160 495 190 C505 215 500 245 480 265 C460 285 430 290 405 280 C385 305 355 320 325 320 C300 340 265 350 235 335 C205 350 175 340 165 320 C140 310 128 285 135 260 C110 250 100 225 110 200 C95 190 92 165 108 148 C112 125 130 105 150 95 L120 105 L100 90 L128 82 Z"/>
+  <circle cx="160" cy="90" r="6" fill="#000" stroke="none"/>
+  <path d="M235 175 C270 190 320 195 360 200"/>
+  <path d="M215 220 C260 235 315 240 365 245"/>
+  <path d="M210 265 C255 278 305 282 350 280"/>
+  <path d="M225 315 C220 340 218 365 216 385 M245 315 C242 340 240 365 238 385" stroke-width="9"/>
+  <path d="M195 385 L216 385 M228 385 L255 385" stroke-width="9"/>
+ </g>
+</svg>
+"##;
+const DIXIE_ON_ICON: &str = r##"
+<svg class="rule-variant-icon" viewBox="0 0 680 400">
+ <g stroke="#000" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M150 70 C155 45 165 45 168 65 C178 45 190 48 188 70 C200 55 212 60 205 78" fill="none"/>
+  <path d="M205 78 C230 82 250 100 255 130 C280 135 340 130 400 140 C450 148 480 160 495 190 C505 215 500 245 480 265 C460 285 430 290 405 280 C385 305 355 320 325 320 C300 340 265 350 235 335 C205 350 175 340 165 320 C140 310 128 285 135 260 C110 250 100 225 110 200 C95 190 92 165 108 148 C112 125 130 105 150 95 L120 105 L100 90 L128 82 Z" fill="#000"/>
+  <circle cx="160" cy="90" r="6" fill="#fff" stroke="none"/>
+  <path d="M235 175 C270 190 320 195 360 200" fill="none" stroke="#fff"/>
+  <path d="M215 220 C260 235 315 240 365 245" fill="none" stroke="#fff"/>
+  <path d="M210 265 C255 278 305 282 350 280" fill="none" stroke="#fff"/>
+  <path d="M225 315 C220 340 218 365 216 385 M245 315 C242 340 240 365 238 385" stroke-width="9" fill="none"/>
+  <path d="M195 385 L216 385 M228 385 L255 385" stroke-width="9" fill="none"/>
+ </g>
+</svg>
+"##;
 
 struct VariantButtonState {
     value: String,
@@ -646,8 +672,8 @@ fn pawn_drop_rank_specific_tooltip(
 }
 
 fn regicide_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    let regicide_variants = ChessVariant::iter()
-        .filter(|v| v.enables_regicide())
+    let capture_only_variants = ChessVariant::iter()
+        .filter(|v| v.enables_regicide() && *v != ChessVariant::Dixie)
         .map(|v| v.to_human_readable())
         .join(", ");
     Ok(vec![
@@ -656,14 +682,20 @@ fn regicide_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
             .with_more_text_i("Regicide.")?
             .with_more_text(
                 " Kings can be captured and there is no restriction on exposing your
-                own king to attack. In most variants there are no checks or checkmates
-                at all — the game simply ends when a king is captured. Dixie is the
-                exception: checkmate is still detected, and if the checkmated side has
-                no piece in reserve to block it, they lose.",
+                own king to attack.",
             )?,
         web_document().create_element("p")?.with_more_text(&format!(
-            "This option is enabled when any of these variants is on: {regicide_variants}."
+            "In {capture_only_variants}: there are no checks or checkmates at all — \
+            the game simply ends when a king is captured.",
         ))?,
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("In Dixie: ")?
+            .with_more_text(
+                "checkmate is still detected. If the checkmated side has no piece in \
+                reserve to block it, they lose. Dixie cannot be combined with the \
+                other regicide variants listed above — turning one on turns the other off.",
+            )?,
     ])
 }
 fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Element>> {
@@ -1028,17 +1060,43 @@ fn new_match_rules_form_data() -> JsResult<web_sys::FormData> {
     web_sys::FormData::new_with_form(&node.dyn_into()?)
 }
 
+fn set_variant_button_disabled(name: &str, disabled: bool) -> JsResult<()> {
+    let buttons = web_document().query_selector_all(&format!("[data-variant-name='{name}']"))?;
+    for button in buttons {
+        let button = button.dyn_into::<web_sys::Element>()?;
+        if disabled {
+            button.set_attribute("disabled", "")?;
+        } else {
+            button.remove_attribute("disabled")?;
+        }
+        button.class_list().toggle_with_force("rule-variant-disabled", disabled)?;
+    }
+    Ok(())
+}
+
 pub fn update_new_match_rules_body() -> JsResult<()> {
     let variants = new_match_rules_variants()?;
     let duck_chess = variants.get(DUCK_CHESS).unwrap() == "on";
     let fog_of_war = variants.get(FOG_OF_WAR).unwrap() == "on";
     let koedem = variants.get(KOEDEM).unwrap() == "on";
-    let dixie = variants.get(DIXIE).unwrap() == "on";
+    let mut dixie = variants.get(DIXIE).unwrap() == "on";
     let atomic_chess = false;
-    // Should mirror `ChessRules::regicide`. Could've constructed `ChessRules` and called it
-    // directly, but doing so could fail due to unrelated problems, e.g. errors in "starting time"
-    // format.
-    let regicide = duck_chess || atomic_chess || fog_of_war || koedem || dixie;
+
+    // Dixie's checkmate-aware logic must never combine with Duck/Fog/Koedem's plain
+    // capture-only regicide. If a conflicting variant is (or becomes) active while Dixie
+    // is also on -- e.g. via a preset -- the other variant wins and Dixie is forced off.
+    let other_regicide = duck_chess || atomic_chess || fog_of_war || koedem;
+    if dixie && other_regicide {
+        activate_variant_button_value(DIXIE, "off")?;
+        dixie = false;
+    }
+
+    set_variant_button_disabled(DIXIE, other_regicide)?;
+    for name in [DUCK_CHESS, FOG_OF_WAR, KOEDEM] {
+        set_variant_button_disabled(name, dixie)?;
+    }
+
+    let regicide = other_regicide || dixie;
     for node in web_document().get_elements_by_class_name(REGICIDE_CLASS) {
         node.set_displayed(regicide)?;
     }
