@@ -24,6 +24,7 @@ const STARTING_POSITION: &str = "starting_position";
 const DUCK_CHESS: &str = "duck_chess";
 const FOG_OF_WAR: &str = "fog_of_war";
 const KOEDEM: &str = "koedem";
+const DIXIE: &str = "dixie";
 const STARTING_TIME: &str = "starting_time";
 const PROMOTION: &str = "promotion";
 const PAWN_DROP_RANKS: &str = "pawn_drop_ranks";
@@ -179,6 +180,9 @@ const KOEDEM_ON_ICON: &str = r##"
  </g>
 </svg>
 "##;
+
+const DIXIE_OFF_ICON: &str = PLACEHOLDER_ICON;
+const DIXIE_ON_ICON: &str = PLACEHOLDER_ICON;
 
 struct VariantButtonState {
     value: String,
@@ -484,6 +488,18 @@ fn koedem_tooltip() -> JsResult<Vec<web_sys::Element>> {
     ])
 }
 
+fn dixie_tooltip() -> JsResult<Vec<web_sys::Element>> {
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("Dixie.")?
+            .with_more_text(
+                " Kings can be taken. If your king is taken, your team instantly loses the game.
+            You can use reserve pieces to block checkmate if you have a piece available in the moment.
+            ")?,
+    ])
+}
+
 fn starting_time_tooltip(max_starting_time: Option<Duration>) -> JsResult<Vec<web_sys::Element>> {
     let mut paragraphs =
         vec![web_document().create_element("p")?.with_text_content(
@@ -778,6 +794,15 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
         .to_element()?,
     )?;
 
+    variants_node.append_element(
+        VariantButton::new(DIXIE, vec![
+            VariantButtonState::new("off", "No Dixie", DIXIE_OFF_ICON),
+            VariantButtonState::new("on", "Dixie", DIXIE_ON_ICON),
+        ])
+        .with_tooltip(combine_elements(dixie_tooltip()?)?)
+        .to_element()?,
+    )?;
+
     details_node.remove_all_children();
     details_node.append_children(
         RuleNode::new(STARTING_TIME, "Starting time")
@@ -866,6 +891,7 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
                 AtomicChess => panic!("Atomic chess disabled"),
                 FogOfWar => (FOG_OF_WAR_ON_ICON, fog_of_war_tooltip()?),
                 Koedem => (KOEDEM_ON_ICON, koedem_tooltip()?),
+                Dixie => (DIXIE_ON_ICON, dixie_tooltip()?),
             };
             Ok((icon, variant.to_human_readable(), Some(combine_elements(tooltip)?)))
         })
@@ -997,11 +1023,12 @@ pub fn update_new_match_rules_body() -> JsResult<()> {
     let duck_chess = variants.get(DUCK_CHESS).unwrap() == "on";
     let fog_of_war = variants.get(FOG_OF_WAR).unwrap() == "on";
     let koedem = variants.get(KOEDEM).unwrap() == "on";
+    let dixie = variants.get(DIXIE).unwrap() == "on";
     let atomic_chess = false;
     // Should mirror `ChessRules::regicide`. Could've constructed `ChessRules` and called it
     // directly, but doing so could fail due to unrelated problems, e.g. errors in "starting time"
     // format.
-    let regicide = duck_chess || atomic_chess || fog_of_war || koedem;
+    let regicide = duck_chess || atomic_chess || fog_of_war || koedem || dixie;
     for node in web_document().get_elements_by_class_name(REGICIDE_CLASS) {
         node.set_displayed(regicide)?;
     }
@@ -1044,6 +1071,11 @@ pub fn new_match_rules() -> JsResult<Rules> {
         "off" => false,
         "on" => true,
         s => return Err(format!("Invalid koedem option: {s}").into()),
+    };
+    let dixie = match variants.get(DIXIE).unwrap().as_str() {
+       "off" => false,
+       "on" => true,
+       s => return Err(format!("Invalid dixie option: {s}").into()),
     };
     let atomic_chess = false;
 
@@ -1089,6 +1121,7 @@ pub fn new_match_rules() -> JsResult<Rules> {
         time_control: TimeControl { starting_time },
         bughouse_rules: Some(BughouseRules {
             koedem,
+            dixie,
             promotion,
             pawn_drop_ranks,
             drop_aggression,
@@ -1169,6 +1202,7 @@ pub fn variant_icons(rules: &ChessRules) -> Vec<&'static str> {
             AtomicChess => panic!("Atomic chess disabled"),
             FogOfWar => FOG_OF_WAR_ON_ICON,
             Koedem => KOEDEM_ON_ICON,
+            Dixie => DIXIE_ON_ICON,
         })
         .collect()
 }
