@@ -303,17 +303,23 @@ fn is_bughouse_mate_to(
     true
 }
 
+enum DixieMateStatus {
+    NotMate,
+    Checkmate,          // no block would help, regardless of what's in reserve
+    CheckmateNoReserve, // some drop would block, just not one currently held
+}
+
 // Grid is guaranteed to be returned intact.
-fn is_dixie_mate_to(
+fn dixie_mate_status_to(
     rules: &ChessRules, grid: &mut Grid, king_pos: Coord, en_passant_target: Option<Coord>,
     reserve: &Reserve, bughouse_rules: &BughouseRules,
-) -> bool {
+) -> DixieMateStatus {
     if !is_check_to_ignoring_regicide(rules, grid, king_pos) {
-        return false;
+        return DixieMateStatus::NotMate;
     }
     let force = king_force(grid, king_pos);
 
-    // Can the king's side escape by making any legal move?
+    // Escape by moving?
     for from in grid.shape().coords() {
         if let Some(piece) = grid[from] {
             if piece.force == force.into() {
@@ -324,38 +330,47 @@ fn is_dixie_mate_to(
                     let grid = grid.scoped_set(to, Some(piece));
                     let new_king_pos = if piece.kind == PieceKind::King { to } else { king_pos };
                     if !is_check_to_ignoring_regicide(rules, &grid, new_king_pos) {
-                        return false;
+                        return DixieMateStatus::NotMate;
                     }
                 }
             }
         }
     }
 
-    // Can the king's side block using a piece they actually hold in reserve right now?
+    // Block using a piece actually in reserve right now?
     for (piece_kind, &count) in reserve {
         if count == 0 || piece_kind == PieceKind::Duck || piece_kind == PieceKind::King {
             continue;
         }
         for pos in grid.shape().coords() {
-            if grid[pos].is_some() {
-                continue;
-            }
+            if grid[pos].is_some() { continue; }
             if piece_kind == PieceKind::Pawn {
-                let subjective_row = SubjectiveRow::from_row(grid.shape(), pos.row, force);
-                if !bughouse_rules.pawn_drop_ranks.contains(subjective_row) {
-                    continue;
-                }
+                let row = SubjectiveRow::from_row(grid.shape(), pos.row, force);
+                if !bughouse_rules.pawn_drop_ranks.contains(row) { continue; }
             }
             let grid = grid.scoped_set(
                 pos,
                 Some(PieceOnBoard::new(PieceId::tmp(), piece_kind, PieceOrigin::Dropped, force.into())),
             );
             if !is_check_to_ignoring_regicide(rules, &grid, king_pos) {
-                return false;
+                return DixieMateStatus::NotMate;
             }
         }
     }
-    true
+
+    // Would ANY piece (regardless of reserve) block? (interposition doesn't care which piece kind)
+    for pos in grid.shape().coords() {
+        if grid[pos].is_none() {
+            let grid = grid.scoped_set(
+                pos,
+                Some(PieceOnBoard::new(PieceId::tmp(), PieceKind::Queen, PieceOrigin::Dropped, force.into())),
+            );
+            if !is_check_to_ignoring_regicide(rules, &grid, king_pos) {
+                return DixieMateStatus::CheckmateNoReserve;
+            }
+        }
+    }
+    DixieMateStatus::Checkmate
 }
 
 fn is_check_to_ignoring_regicide(rules: &ChessRules, grid: &Grid, king_pos: Coord) -> bool {
@@ -771,10 +786,12 @@ pub enum TurnMode {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum VictoryReason {
-    Checkmate, // means "checkmake", "king lost" (if regicide) or "all kings lost" (if Koedem)
+    Checkmate,          // classic/bughouse mate, or Dixie mate where no piece could have blocked
+    CheckmateNoReserve, // Dixie only: a block existed in principle, but the defender's reserve lacked it
+    KingCaptured,        // literal king capture (Duck/Fog/Atomic/Koedem, and Dixie's exposed-king case)
     Flag,
     Resignation,
-    UnknownVictory, // for parsing PGN
+    UnknownVictory,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -1358,21 +1375,22 @@ impl Board {
                     match captured_kings.len() {
                         0 => {
                             let opponent_king_pos = find_king(&self.grid, force.opponent()).unwrap();
-                            if is_dixie_mate_to(
-                                &self.rules.chess_rules,
-                                &mut self.grid,
-                                opponent_king_pos,
-                                self.en_passant_target,
-                                &self.reserves[force.opponent()],
-                                &bughouse_rules,
+                            match dixie_mate_status_to(
+                                &self.rules.chess_rules, &mut self.grid, opponent_king_pos,
+                                self.en_passant_target, &self.reserves[force.opponent()], &bughouse_rules,
                             ) {
-                                self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
+                                DixieMateStatus::NotMate => {}
+                                DixieMateStatus::Checkmate => {
+                                    self.status = ChessGameStatus::Victory(force, VictoryReason::Checkmate);
+                                }
+                                DixieMateStatus::CheckmateNoReserve => {
+                                    self.status = ChessGameStatus::Victory(force, VictoryReason::CheckmateNoReserve);
+                                }
                             }
                         }
                         1 => {
                             let loser: Force = captured_kings[0].force.try_into().unwrap();
-                            self.status =
-                                ChessGameStatus::Victory(loser.opponent(), VictoryReason::Checkmate);
+                            self.status = ChessGameStatus::Victory(loser.opponent(), VictoryReason::KingCaptured);
                         }
                         2 => self.status = ChessGameStatus::Draw(DrawReason::SimultaneousCheckmate),
                         _ => panic!("Shouldn't be able to capture more than two kings under Dixie"),

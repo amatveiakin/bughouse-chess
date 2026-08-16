@@ -426,6 +426,8 @@ fn make_termination_string(status: BughouseGameStatus) -> Option<&'static str> {
     match status {
         Active => Some("unterminated"),
         Victory(_, Checkmate) => Some("normal"),
+        Victory(_, CheckmateNoReserve) => Some("normal"),
+        Victory(_, KingCaptured) => Some("normal"),
         Victory(_, Flag) => Some("time forfeit"),
         // There is no "resign" Termination, should use "normal" apparently:
         // https://lichess.org/forum/general-chess-discussion/how-do-i-make-it-say-that-one-side-resigned#4

@@ -194,11 +194,15 @@ impl GameOutcome {
             Victory(_, Checkmate) => {
                 if rules.bughouse_rules.as_ref().is_some_and(|r| r.koedem) {
                     format!("{winners} won: {losers} lost all kings")
-                } else if rules.regicide() {
-                    format!("{winners} won: {losers} lost a king")
                 } else {
                     format!("{winners} won: {losers} checkmated")
                 }
+            }
+            Victory(_, CheckmateNoReserve) => {
+                format!("{winners} won: {losers} checkmated with no reserve piece to block")
+            }
+            Victory(_, KingCaptured) => {
+                format!("{winners} won: {losers} lost a king")
             }
             Victory(_, Flag) => format!("{winners} won: {losers} lost on time"),
             Victory(_, Resignation) => format!("{winners} won: {losers} resigned"),
@@ -222,7 +226,11 @@ impl GameOutcome {
         use DrawReason::*;
         use VictoryReason::*;
         let checkmate_victory_re =
-            once_cell_regex!("^(.+) won: (.+) (?:lost all kings|lost a king|checkmated)$");
+            once_cell_regex!("^(.+) won: (.+) (?:lost all kings|checkmated)$");
+        let checkmate_no_reserve_victory_re =
+            once_cell_regex!("^(.+) won: (.+) checkmated with no reserve piece to block$");
+        let king_captured_victory_re =
+            once_cell_regex!("^(.+) won: (.+) lost a king$");
         let flag_victory_re = once_cell_regex!("^(.+) won: (.+) lost on time$");
         let resignation_victory_re = once_cell_regex!("^(.+) won: (.+) resigned$");
         let unknown_victory_re = once_cell_regex!("^(.+) won, (.+) lost$");
@@ -241,6 +249,8 @@ impl GameOutcome {
         }
         for (regex, reason) in [
             (checkmate_victory_re, Checkmate),
+            (checkmate_no_reserve_victory_re, CheckmateNoReserve),
+            (king_captured_victory_re, KingCaptured),
             (flag_victory_re, Flag),
             (resignation_victory_re, Resignation),
             (unknown_victory_re, UnknownVictory),

@@ -655,9 +655,11 @@ fn regicide_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
             .create_element("p")?
             .with_more_text_i("Regicide.")?
             .with_more_text(
-                " Capture opponent's king in order to win the game.
-            There are no checks and checkmates. Drop aggression is always “Mate Allowed”.
-            Attacking the king does not prevent castling.",
+                " Kings can be captured and there is no restriction on exposing your
+                own king to attack. In most variants there are no checks or checkmates
+                at all — the game simply ends when a king is captured. Dixie is the
+                exception: checkmate is still detected, and if the checkmated side has
+                no piece in reserve to block it, they lose.",
             )?,
         web_document().create_element("p")?.with_more_text(&format!(
             "This option is enabled when any of these variants is on: {regicide_variants}."
@@ -666,6 +668,16 @@ fn regicide_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
 }
 fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Element>> {
     let variants = rules.regicide_reason();
+    let is_dixie_only = variants == vec![ChessVariant::Dixie];
+    let body = if is_dixie_only {
+        " Kings can be captured and there is no restriction on exposing your own king. \
+        Checkmate is still detected: if you're checkmated and hold no piece in reserve \
+        that could block it, you lose."
+    } else {
+        " Capture opponent's king in order to win the game. \
+        There are no checks and checkmates. Drop aggression is always “Mate Allowed”. \
+        Attacking the king does not prevent castling."
+    };
     let prefix = match variants.len() {
         0 => return Err(rust_error!("Regicide is on, but regicide reason list is empty")),
         1 => "this chess variant: ",
@@ -676,9 +688,7 @@ fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Elemen
             .create_element("p")?
             .with_more_text_i("Regicide.")?
             .with_more_text(
-                " Capture opponent's king in order to win the game.
-            There are no checks and checkmates. Drop aggression is always “Mate Allowed”.
-            Attacking the king does not prevent castling.",
+                body,
             )?,
         web_document().create_element("p")?.with_more_text(&format!(
             "This option is enabled because of {}{}.",
