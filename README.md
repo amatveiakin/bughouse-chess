@@ -78,7 +78,7 @@ cargo run --package bughouse_console -- server bughouse_console/test-config.yaml
 Run once in the beginning and every time after changing Rust code:
 
 ```
-cd bughouse_wasm && wasm-pack build
+cd bughouse_wasm && wasm-pack build --profiling
 ```
 
 Serve web client locally:

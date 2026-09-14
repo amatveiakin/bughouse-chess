@@ -128,3 +128,12 @@ workspace = true
 [profile.release]
 panic = "abort"
 strip = true
+
+# Keep the `name` section in the WASM module. Without it, stack traces in client
+# error reports contain nothing but function indices: `wasm-function[417]`.
+# Costs ~10% of raw module size. Does not affect code generation.
+#
+# Optimization potential: Strip the names from the deployed module and symbolize
+# error reports offline against an archived unstripped build of the same commit.
+[profile.release.package.bughouse_wasm]
+strip = "none"

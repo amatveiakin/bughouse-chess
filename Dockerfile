@@ -30,7 +30,9 @@ RUN \
     # Build everything. Subsequent runs of `cargo build` will be fast thanks to
     # the caches above, but `wasm-pack` is always slow.
     && cargo build -r --package bughouse_console \
-    && cd bughouse_wasm && wasm-pack build && cd - \
+    # "--profiling" is release-level optimization plus debug info. The latter
+    # keeps function names in client error report stack traces.
+    && cd bughouse_wasm && wasm-pack build --profiling && cd - \
     # Copy produced binaries to a separate folder, because cache folders are not
     # available when running the container.
     && mkdir bin \
