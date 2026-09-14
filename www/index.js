@@ -111,7 +111,7 @@ const chat_text_area = document.getElementById("chat-text-area");
 const chat_input = document.getElementById("chat-input");
 const chat_send_button = document.getElementById("chat-send-button");
 const chat_reference_tooltip_container = document.getElementById(
-  "chat-reference-tooltip-container"
+  "chat-reference-tooltip-container",
 );
 const chat_reference_tooltip_hide = document.getElementById("chat-reference-tooltip-hide");
 const connection_info = document.getElementById("connection-info");
@@ -209,7 +209,7 @@ const loading_tracker = new (class {
     if (ready) {
       if (this.#resources_failed > 0) {
         console.error(
-          `Failed to load ${this.#resources_failed} of ${this.#resources_required} resources!`
+          `Failed to load ${this.#resources_failed} of ${this.#resources_required} resources!`,
         );
       } else {
         console.log(`Graphics and sounds loaded (${this.#resources_loaded})`);
@@ -339,7 +339,7 @@ chat_input.addEventListener("focusin", () => update_chat_reference_tooltip());
 chat_input.addEventListener("focusout", () => update_chat_reference_tooltip());
 chat_send_button.addEventListener("click", () => execute_chat_input());
 chat_reference_tooltip_hide.addEventListener("click", () =>
-  set_show_chat_reference_tooltip("hide")
+  set_show_chat_reference_tooltip("hide"),
 );
 
 leave_match_button.addEventListener("click", leave_match);
@@ -363,10 +363,10 @@ sign_with_lichess_button.addEventListener("click", sign_with_lichess);
 begin_login_button.addEventListener("click", () => push_menu_page(menu_login_page));
 begin_signup_button.addEventListener("click", () => push_menu_page(menu_signup_page));
 view_account_change_button.addEventListener("click", () =>
-  push_menu_page(menu_change_account_page)
+  push_menu_page(menu_change_account_page),
 );
 view_account_delete_button.addEventListener("click", () =>
-  push_menu_page(menu_delete_account_page)
+  push_menu_page(menu_delete_account_page),
 );
 menu_login_page.addEventListener("submit", log_in);
 menu_signup_page.addEventListener("submit", sign_up);
@@ -375,10 +375,10 @@ menu_signup_with_lichess_page.addEventListener("submit", sign_up_with_lichess);
 menu_change_account_page.addEventListener("submit", change_account);
 menu_delete_account_page.addEventListener("submit", delete_account);
 create_rated_match_button.addEventListener("click", (event) =>
-  on_create_match_request(event, true)
+  on_create_match_request(event, true),
 );
 create_unrated_match_button.addEventListener("click", (event) =>
-  on_create_match_request(event, false)
+  on_create_match_request(event, false),
 );
 join_match_button.addEventListener("click", on_join_match_submenu);
 menu_create_match_name_page.addEventListener("submit", create_match_as_guest);
@@ -444,7 +444,7 @@ function with_error_handling(f) {
         fatal_error_dialog(
           "Internal error! This client is now dead 💀 " +
             "Only refreshing the page may help you. We are very sorry. " +
-            report
+            report,
         );
       } else {
         if (socket.readyState === WebSocket.OPEN) {
@@ -644,7 +644,7 @@ function on_document_keydown(event) {
           event.key,
           event.ctrlKey,
           event.shiftKey,
-          event.altKey
+          event.altKey,
         );
         update();
         setTimeout(() => (is_processing_wayback = false), 10);
@@ -1482,7 +1482,7 @@ function set_up_player_name_inputs() {
         "Player name may consist of Latin letters, numbers, underscores ('_') and dashes ('-')";
       if (input.classList.contains("new-user-name")) {
         input.addEventListener("input", (event) =>
-          on_name_input("auth/check-new-user-name", event)
+          on_name_input("auth/check-new-user-name", event),
         );
       } else {
         input.addEventListener("input", (event) => on_name_input("auth/check-player-name", event));
@@ -1733,7 +1733,7 @@ async function load_svg_image(record) {
             context.drawImage(
               pawn_image,
               Math.round((image.width - pawn_image.width) / 2 + dx * image.width),
-              Math.round((image.height - pawn_image.height) / 2 + dy * image.height)
+              Math.round((image.height - pawn_image.height) / 2 + dy * image.height),
             );
             const symbol_id = `${record.symbol}-promo`;
             make_svg_image_symbol(symbol_id, canvas.toDataURL(), size);
@@ -1745,7 +1745,7 @@ async function load_svg_image(record) {
       }
       loading_tracker.resource_loaded();
     },
-    false
+    false,
   );
   reader.addEventListener("error", () => {
     console.error(`Cannot decode image ${record.path}:`, reader.error);
@@ -1768,7 +1768,7 @@ function load_sounds(sound_map) {
       (error) => {
         console.error(`Cannot load sound ${name}:`, error);
         loading_tracker.resource_failed();
-      }
+      },
     );
   }
 }
@@ -1911,7 +1911,7 @@ async function sign_up(event) {
     const ret = await text_dialog(
       "Without an email you will not be able to restore your account " +
         "if you forget your password. Continue?",
-      [new MyButton("Go back", MyButton.HIDE), new MyButton("Proceed without email", MyButton.DO)]
+      [new MyButton("Go back", MyButton.HIDE), new MyButton("Proceed without email", MyButton.DO)],
     );
     if (ret !== MyButton.DO) {
       return;
@@ -1921,7 +1921,7 @@ async function sign_up(event) {
     new Request("auth/signup", {
       method: "POST",
       body: as_x_www_form_urlencoded(data),
-    })
+    }),
   );
 }
 
@@ -1931,7 +1931,7 @@ function sign_up_with_google(event) {
     new Request("auth/finish-signup-with-google", {
       method: "POST",
       body: as_x_www_form_urlencoded(data),
-    })
+    }),
   );
 }
 
@@ -1941,7 +1941,7 @@ function sign_up_with_lichess(event) {
     new Request("auth/finish-signup-with-lichess", {
       method: "POST",
       body: as_x_www_form_urlencoded(data),
-    })
+    }),
   );
 }
 
@@ -1959,7 +1959,7 @@ async function log_in(event) {
     new Request("auth/login", {
       method: "POST",
       body: as_x_www_form_urlencoded(data),
-    })
+    }),
   );
 }
 
@@ -1967,7 +1967,7 @@ function log_out(event) {
   process_authentification_request(
     new Request("auth/logout", {
       method: "POST",
-    })
+    }),
   );
 }
 
@@ -1983,7 +1983,7 @@ async function change_account(event) {
       method: "POST",
       body: as_x_www_form_urlencoded(data),
     }),
-    "Account changes applied."
+    "Account changes applied.",
   );
 }
 
@@ -1994,7 +1994,7 @@ async function delete_account(event) {
       method: "POST",
       body: as_x_www_form_urlencoded(data),
     }),
-    "Account deleted."
+    "Account deleted.",
   );
 }
 
@@ -2113,7 +2113,7 @@ function update_chat_reference_tooltip() {
     chat_reference_tooltip_container.classList.add("fading");
     update_chat_reference_tooltip.hide_timeout_id = setTimeout(
       () => chat_reference_tooltip_container.classList.add("display-none"),
-      200
+      200,
     );
   }
 }
@@ -2223,7 +2223,7 @@ function isStockfishSupported() {
 async function initStockfish() {
   if (!isStockfishSupported()) {
     console.warn(
-      "Fairy-Stockfish not supported! For more information, see https://github.com/hi-ogawa/Stockfish/wiki"
+      "Fairy-Stockfish not supported! For more information, see https://github.com/hi-ogawa/Stockfish/wiki",
     );
     return;
   }
