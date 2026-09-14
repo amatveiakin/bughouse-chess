@@ -127,7 +127,8 @@ workspace = true
 
 [profile.release]
 panic = "abort"
-strip = true
+# Keep line numbers in server panic backtraces.
+debug = "line-tables-only"
 
 # Keep the `name` section in the WASM module. Without it, stack traces in client
 # error reports contain nothing but function indices: `wasm-function[417]`.
