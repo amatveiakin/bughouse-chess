@@ -1625,10 +1625,10 @@ impl ClientState {
         let mut num_events = enum_map! { _ => 0 };
         for board_idx in BughouseBoard::iter() {
             let Some(time_left) = my_time_left(alt_game, board_idx, game_now) else {
-                return;
+                continue;
             };
             let Ok(time_left) = Duration::try_from(time_left) else {
-                return;
+                continue;
             };
             let idx = &mut next_low_time_warning_idx[board_idx];
             while *idx < LOW_TIME_WARNING_THRESHOLDS.len()
