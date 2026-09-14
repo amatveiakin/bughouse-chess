@@ -13,13 +13,11 @@ async-trait = "^0.1.88"
 async-tungstenite = "^0.29.1"
 censor = "^0.3.0"
 chain-cmp = "^0.2.0"
-chrono = "^0.4.41"
 clap = "^4.5.39"
 console = "^0.15.11"
 console_error_panic_hook = "^0.1.7"
 crossterm = "^0.29.0"
 ctrlc = "^3.4.7"
-dashmap = "^6.1.0"
 derive-new = "^0.7.0"
 enum-map = "^2.7.3"
 env_logger = "^0.11.8"
@@ -64,6 +62,10 @@ wasm-bindgen = "^0.2.100"
 wasm-bindgen-test = "^0.3.50"
 web-sys = "^0.3.77"
 
+[workspace.lints.cargo]
+# TODO: Rename the binary as cargo suggests.
+non_kebab_case_bins = "allow"
+
 # Clippy philosophy. The goal is to have zero warnings from `cargo clippy` on the main branch.
 # Thus silencing all warning that I don't want to fix now. These decisions could be revised.
 [workspace.lints.clippy]
@@ -91,11 +93,6 @@ strict = []  # treat warnings as a build error
 async-std = { workspace = true }
 async-trait = { workspace = true }
 chain-cmp = { workspace = true }
-# We don't use `chrono` ourselves, but some dependencies do. Until recently `chrono` depended
-# on `time 0.1.45`, which is affected by https://rustsec.org/advisories/RUSTSEC-2020-0071.
-# Bumping the version to fix this.
-chrono = { workspace = true }
-dashmap = { workspace = true }
 derive-new = { workspace = true }
 enum-map = { workspace = true, features = ["serde"] }
 git-version = { workspace = true }
@@ -113,7 +110,6 @@ rand = { workspace = true }
 regex-lite = { workspace = true }
 scopeguard = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 static_assertions = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 time = { workspace = true, features = ["formatting", "macros", "parsing", "serde", "wasm-bindgen"] }

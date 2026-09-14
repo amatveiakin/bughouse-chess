@@ -12,6 +12,7 @@ use std::ops::Range;
 use bughouse_chess::meter::MeterStats;
 use bughouse_chess::my_git_version;
 use log::error;
+use sqlx::Row;
 use sqlx::prelude::*;
 use tide::utils::async_trait;
 use time::{OffsetDateTime, PrimitiveDateTime};

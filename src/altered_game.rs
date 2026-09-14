@@ -318,13 +318,13 @@ impl AlteredGame {
     pub fn perspective(&self) -> Perspective { Perspective::for_participant(self.my_id) }
     pub fn game_confirmed(&self) -> &BughouseGame { &self.game_confirmed }
 
-    pub fn local_game(&self) -> Ref<BughouseGame> {
+    pub fn local_game(&self) -> Ref<'_, BughouseGame> {
         Ref::map(self.derived_data(), |d| &d.local_game)
     }
-    pub fn true_local_game(&self) -> Ref<BughouseGame> {
+    pub fn true_local_game(&self) -> Ref<'_, BughouseGame> {
         Ref::map(self.derived_data(), |d| d.true_local_game.as_ref().unwrap_or(&d.local_game))
     }
-    pub fn fog_of_war_area(&self, board_idx: BughouseBoard) -> Ref<HashSet<Coord>> {
+    pub fn fog_of_war_area(&self, board_idx: BughouseBoard) -> Ref<'_, HashSet<Coord>> {
         Ref::map(self.derived_data(), |d| &d.fog_of_war_area[board_idx])
     }
 
@@ -959,7 +959,7 @@ impl AlteredGame {
         ret
     }
 
-    fn derived_data(&self) -> Ref<DerivedData> {
+    fn derived_data(&self) -> Ref<'_, DerivedData> {
         // Important: take all dirt, no short-circuiting!
         if self.game_confirmed.take_dirt()
             | self.partial_turn_input.take_dirt()

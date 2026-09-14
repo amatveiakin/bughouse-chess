@@ -1,5 +1,4 @@
 #![feature(anonymous_lifetime_in_impl_trait)]
-#![feature(let_chains)]
 #![cfg_attr(feature = "strict", deny(warnings))]
 // Suppress Rust analyzer diagnostics like:
 //   Function `__wasm_bindgen_generated_WebClient_update_state` should have snake_case ...

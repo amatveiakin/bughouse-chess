@@ -1,10 +1,6 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(feature = "strict", deny(warnings))]
 #![feature(anonymous_lifetime_in_impl_trait)]
-#![feature(fn_traits)]
-#![feature(int_roundings)]
-#![feature(let_chains)]
-#![feature(type_alias_impl_trait)]
 #![feature(unboxed_closures)]
 
 pub mod algebraic;
