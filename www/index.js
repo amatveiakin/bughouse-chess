@@ -96,7 +96,8 @@ const Storage = {
   cookies_accepted: "cookies-accepted", // values: null, "essential", "all"
   chat_reference_tooltip: "chat-reference-tooltip", // values: "show" (default), "hide"
   player_name: "player-name",
-  sound_volume: "sound-volume", // values: 0 to `max_volume`
+  sound_volume_old: "sound-volume", // values: 0 to `max_volume`  // TODO: Remove after 2026-12-01
+  sound_volume: "sound-volume-level", // values: 0 to `max_volume`
 };
 
 const SearchParams = {
@@ -287,12 +288,13 @@ let consecutive_socket_connection_attempts = 0;
 let socket = null;
 open_socket();
 
+const default_volume = 2;
 const max_volume = 3;
 const volume_to_js = {
   0: 0.0,
-  1: 0.25,
-  2: 0.5,
-  3: 1.0,
+  1: 0.5,
+  2: 1.0,
+  3: 2.0,
 };
 let audio_volume = 0;
 
@@ -392,8 +394,7 @@ for (const button of document.querySelectorAll("[data-suburl]")) {
   button.addEventListener("click", go_to_suburl);
 }
 
-// TODO: Make sounds louder and set the default volume to 2.
-set_volume(stored_volume() ?? max_volume);
+set_volume(stored_volume() ?? default_volume);
 
 setInterval(on_tick, 50);
 
@@ -2132,7 +2133,10 @@ function toggle_analysis() {
 }
 
 function stored_volume() {
-  const volume = parseInt(window.localStorage.getItem(Storage.sound_volume));
+  const volume = parseInt(
+    window.localStorage.getItem(Storage.sound_volume) ??
+      window.localStorage.getItem(Storage.sound_volume_old) - 1,
+  );
   return volume >= 0 && volume <= max_volume ? volume : null;
 }
 
