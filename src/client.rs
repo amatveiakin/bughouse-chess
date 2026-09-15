@@ -325,7 +325,7 @@ impl ClientState {
     }
     pub fn my_name(&self) -> Option<&str> {
         match &self.match_state {
-            MatchState::NotConnected { .. } => None,
+            MatchState::NotConnected => None,
             MatchState::Creating { my_name } => Some(my_name),
             MatchState::Joining { my_name, .. } => Some(my_name),
             MatchState::LoadingArchiveGame { .. } => None,

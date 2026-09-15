@@ -384,22 +384,20 @@ fn generic_reachability_modulo_destination_square(
     if to == from {
         return Impossible;
     }
-    let force;
-    let piece_kind;
-    match grid[from] {
-        Some(piece) => {
-            force = piece.force;
-            piece_kind = piece.kind;
-        }
-        None => {
-            return Impossible;
-        }
-    }
+    let Some(piece) = grid[from] else {
+        return Impossible;
+    };
 
     let mut ret = Impossible;
-    for &m in piece_kind.movements() {
-        let r =
-            reachability_by_movement_modulo_destination_square(grid, from, to, force, capturing, m);
+    for &m in piece.kind.movements() {
+        let r = reachability_by_movement_modulo_destination_square(
+            grid,
+            from,
+            to,
+            piece.force,
+            capturing,
+            m,
+        );
         ret = combine_reachability(ret, r);
     }
     ret

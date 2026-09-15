@@ -129,8 +129,9 @@ pub struct JsEventGameOver {
     pub result: String,
 }
 
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen]
 pub struct JsEventPlaySound {
+    #[wasm_bindgen(getter_with_clone)]
     pub audio: String,
     pub pan: f64,
 }
@@ -494,7 +495,7 @@ impl WebClient {
         (if let Some(GameState { alt_game, .. }) = self.state.game_state() {
             match alt_game.piece_drag_state() {
                 PieceDragState::NoDrag => "no",
-                PieceDragState::Dragging { .. } => "yes",
+                PieceDragState::Dragging => "yes",
                 PieceDragState::Defunct => "defunct",
             }
         } else {

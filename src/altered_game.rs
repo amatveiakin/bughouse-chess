@@ -440,8 +440,8 @@ impl AlteredGame {
         let square_highlights = square_highlights
             .into_iter()
             .into_group_map_by(|h| (h.board_idx, h.coord))
-            .into_iter()
-            .flat_map(|(_, group)| {
+            .into_values()
+            .flat_map(|group| {
                 group
                     .into_iter()
                     .sorted_by_key(|h| cmp::Reverse(turn_highlight_z_index(h)))
@@ -522,7 +522,7 @@ impl AlteredGame {
                 let mut iter_rev = iter.clone().rev();
                 let candidate = match iter_rev.find(|index| *index <= old_index) {
                     Some(local_index) => iter_rev.find(|index| *index < local_index),
-                    None => iter_rev.last(),
+                    None => iter_rev.next_back(),
                 };
                 candidate.or(iter.nth(0))
             }

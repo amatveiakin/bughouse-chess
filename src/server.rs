@@ -2039,7 +2039,7 @@ fn event_name(event: &IncomingEvent) -> &'static str {
             BughouseClientEvent::SendChatMessage { .. } => "Client_SendChatMessage",
             BughouseClientEvent::UpdateChalkDrawing { .. } => "Client_UpdateChalkDrawing",
             BughouseClientEvent::SetSharedWayback { .. } => "Client_SetSharedWayback",
-            BughouseClientEvent::GetArchiveGameList { .. } => "Client_GetArchiveGameList",
+            BughouseClientEvent::GetArchiveGameList => "Client_GetArchiveGameList",
             BughouseClientEvent::GetArchiveGameBpgn { .. } => "Client_GetArchiveGameBpgn",
             BughouseClientEvent::ReportPerformace(_) => "Client_ReportPerformace",
             BughouseClientEvent::ReportError(_) => "Client_ReportError",

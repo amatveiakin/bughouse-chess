@@ -133,7 +133,7 @@ pub async fn handle_signup<DB: Send + Sync + 'static>(
     if existing_account.is_some() {
         return Err(tide::Error::from_str(
             StatusCode::Forbidden,
-            format!("Username '{}' is already taken.", &user_name),
+            format!("Username '{}' is already taken.", user_name),
         ));
     };
 
@@ -176,7 +176,7 @@ pub async fn handle_login<DB: Send + Sync + 'static>(
     let Some(Account::Live(account)) = account else {
         return Err(tide::Error::from_str(
             StatusCode::Forbidden,
-            format!("User '{}' does not exist.", &form_data.user_name),
+            format!("User '{}' does not exist.", form_data.user_name),
         ));
     };
 
@@ -436,7 +436,7 @@ pub async fn handle_finish_signup_with_google<DB: Send + Sync + 'static>(
     if existing_account.is_some() {
         return Err(tide::Error::from_str(
             StatusCode::Forbidden,
-            format!("Username '{}' is already taken.", &user_name),
+            format!("Username '{}' is already taken.", user_name),
         ));
     };
 
@@ -494,7 +494,7 @@ pub async fn handle_finish_signup_with_lichess<DB: Send + Sync + 'static>(
     if existing_account.is_some() {
         return Err(tide::Error::from_str(
             StatusCode::Forbidden,
-            format!("Username '{}' is already taken.", &user_name),
+            format!("Username '{}' is already taken.", user_name),
         ));
     };
 
@@ -727,7 +727,7 @@ pub async fn handle_check_new_user_name<DB>(
         .map_err(|err| tide::Error::from_str(StatusCode::BadRequest, err))?;
     match validate_player_name(&user_name) {
         Ok(_) => match req.state().secret_db.account_by_user_name(&user_name).await? {
-            Some(_) => Ok(format!("Username '{}' is already taken.", &user_name).into()),
+            Some(_) => Ok(format!("Username '{}' is already taken.", user_name).into()),
             None => Ok("".into()),
         },
         Err(message) => Ok(message.into()),

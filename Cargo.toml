@@ -18,7 +18,6 @@ console = "^0.15.11"
 console_error_panic_hook = "^0.1.7"
 crossterm = "^0.29.0"
 ctrlc = "^3.4.7"
-derive-new = "^0.7.0"
 enum-map = "^2.7.3"
 env_logger = "^0.11.8"
 futures-io = "^0.3.31"
@@ -75,6 +74,8 @@ large_enum_variant = "allow"
 manual_is_ascii_check = "allow"
 new_without_default = "allow"
 option_map_unit_fn = "allow"
+question_mark = "allow"  # can make `if let`-`else if let` chains look inconsistent
+result_large_err = "allow"  # same rationale as large_enum_variant
 result_unit_err = "allow"
 too_many_arguments = "allow"
 type_complexity = "allow"
@@ -93,7 +94,6 @@ strict = []  # treat warnings as a build error
 async-std = { workspace = true }
 async-trait = { workspace = true }
 chain-cmp = { workspace = true }
-derive-new = { workspace = true }
 enum-map = { workspace = true, features = ["serde"] }
 git-version = { workspace = true }
 hdrhistogram = { workspace = true }

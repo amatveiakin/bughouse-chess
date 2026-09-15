@@ -1,4 +1,3 @@
-use derive_new::new;
 use enum_map::Enum;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
@@ -86,7 +85,7 @@ pub enum PieceOrigin {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct PieceId(pub u32);
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, new, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct PieceOnBoard {
     pub id: PieceId,
     pub kind: PieceKind,
@@ -410,5 +409,11 @@ impl TryFrom<PieceForce> for Force {
             PieceForce::Black => Ok(Force::Black),
             PieceForce::Neutral => Err(()),
         }
+    }
+}
+
+impl PieceOnBoard {
+    pub fn new(id: PieceId, kind: PieceKind, origin: PieceOrigin, force: PieceForce) -> Self {
+        PieceOnBoard { id, kind, origin, force }
     }
 }

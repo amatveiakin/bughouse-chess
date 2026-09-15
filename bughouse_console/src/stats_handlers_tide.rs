@@ -55,8 +55,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
             OffsetDateTime::UNIX_EPOCH..OffsetDateTime::now_utc(),
             /*only_rated=*/ false,
         )
-        .await
-        .map_err(anyhow::Error::from)?;
+        .await?;
         let table_body = games
             .iter()
             .rev()
@@ -141,12 +140,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
             None => OffsetDateTime::UNIX_EPOCH,
             Some(d) => now.saturating_sub(d),
         };
-        let games = req
-            .state()
-            .db()
-            .finished_games(range_start..now, /*only_rated=*/ true)
-            .await
-            .map_err(anyhow::Error::from)?;
+        let games = req.state().db().finished_games(range_start..now, /*only_rated=*/ true).await?;
 
         let all_stats = GroupStats::from_games(games, ComputeMetaStats::No)?;
 
@@ -292,8 +286,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
             .state()
             .db()
             .finished_games(OffsetDateTime::UNIX_EPOCH..now, /*only_rated=*/ true)
-            .await
-            .map_err(anyhow::Error::from)?;
+            .await?;
 
         let mut all_stats = GroupStats::<Vec<RawStats>>::from_games(games, ComputeMetaStats::No)?;
 
@@ -330,8 +323,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
             .state()
             .db()
             .finished_games(OffsetDateTime::UNIX_EPOCH..now, /*only_rated=*/ true)
-            .await
-            .map_err(anyhow::Error::from)?;
+            .await?;
 
         let all_stats = GroupStats::<RawStats>::from_games(games, ComputeMetaStats::Yes)?;
 
@@ -355,8 +347,7 @@ impl<ST: SuitableServerState> Handlers<ST> {
     }
 
     async fn handle_client_performance_stats(req: Request<ST>) -> tide::Result {
-        let performance_records =
-            req.state().db().client_performance().await.map_err(anyhow::Error::from)?;
+        let performance_records = req.state().db().client_performance().await?;
         let stats = ClientPerformanceStats::from_values(performance_records);
 
         let graph_html = client_performance_stats::performance_stats_graph_html(&stats);

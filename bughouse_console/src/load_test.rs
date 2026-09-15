@@ -80,15 +80,13 @@ impl AMeter {
 
 impl Client {
     fn new(server_address: &str, aggregated_meter_box: Arc<Mutex<AMeterBox>>) -> io::Result<Self> {
-        let server_addr;
-        let ws_request;
-        if server_address == "localhost" {
-            server_addr = (server_address, network::PORT).to_socket_addrs().unwrap().collect_vec();
-            ws_request = Url::parse(&format!("ws://{}", server_address)).unwrap();
+        let (port, ws_url) = if server_address == "localhost" {
+            (network::PORT, format!("ws://{}", server_address))
         } else {
-            server_addr = (server_address, 443).to_socket_addrs().unwrap().collect_vec();
-            ws_request = Url::parse(&format!("wss://{}/ws", server_address)).unwrap();
-        }
+            (443, format!("wss://{}/ws", server_address))
+        };
+        let server_addr = (server_address, port).to_socket_addrs().unwrap().collect_vec();
+        let ws_request = Url::parse(&ws_url).unwrap();
         let stream = TcpStream::connect(&server_addr[..])?;
         let (socket, _) = tungstenite::client_tls(ws_request, stream).unwrap();
 
