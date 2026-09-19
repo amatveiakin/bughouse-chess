@@ -712,3 +712,18 @@ fn koedem_preturn_king_drop_without_king_in_reserve() {
     assert_eq!(alt_game.num_preturns_on_board(A), 0);
     assert!(alt_game.local_game().board(A).grid()[Coord::E5].is_none());
 }
+
+// Regression test: on the client, an in-order local turn is applied on top of the local game, which
+// may already contain preturns on the other board. In Koedem such preturns can distort the king
+// count, so mate check after an in-order turn must not assume that all kings are accounted for.
+#[test]
+fn koedem_double_player_inorder_turn_after_preturn_king_drop() {
+    let mut alt_game = AlteredGame::new(as_double_player(Team::Red), koedem_game());
+    alt_game.apply_remote_turn(envoy!(White A), &alg("e4"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White B), &alg("e4"), T0).unwrap();
+    // Black to move on A, so this is a preturn. White has no king in reserve.
+    assert_eq!(alt_game.try_local_turn(A, alg("K@e5"), T0), Ok(TurnMode::Preturn));
+    // Black to move on B: an in-order turn.
+    assert_eq!(alt_game.try_local_turn(B, alg("e5"), T0), Ok(TurnMode::InOrder));
+    assert!(alt_game.local_game().is_active());
+}
