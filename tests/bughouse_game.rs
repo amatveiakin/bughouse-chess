@@ -205,6 +205,24 @@ fn threefold_repetition_draw_ignores_reserve() {
     assert_eq!(game.status(), BughouseGameStatus::Draw(DrawReason::ThreefoldRepetition));
 }
 
+// Regression test: threefold repetition in Koedem. Koedem has custom logic for victory checks, but
+// draws should be propagated from individual boards as usual.
+#[test]
+fn koedem_threefold_repetition_draw() {
+    let mut game = koedem_game();
+    replay_log(
+        &mut game,
+        "
+        1A.Nc3  1a.Nf6
+        2A.Nb1  2a.Ng8
+        3A.Nc3  3a.Nf6
+        4A.Nb1  4a.Ng8
+    ",
+    )
+    .unwrap();
+    assert_eq!(game.status(), BughouseGameStatus::Draw(DrawReason::ThreefoldRepetition));
+}
+
 #[test]
 fn discard_promotion() {
     let mut rules = default_rules();

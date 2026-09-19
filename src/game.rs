@@ -788,10 +788,9 @@ impl BughouseGame {
             time: now,
         });
         assert!(self.status.is_active());
+        self.set_status(self.game_status_for_board(board_idx), now);
         if self.bughouse_rules().koedem {
             self.check_koedem_victory(now);
-        } else {
-            self.set_status(self.game_status_for_board(board_idx), now);
         }
         Ok(turn)
     }
