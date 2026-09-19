@@ -1556,8 +1556,11 @@ impl Board {
                         new_grid[mv.to] = Some(piece);
                     }
                 }
-                if rules.atomic_chess && capture_pos_or.is_some() {
-                    captures.extend(piece_to_captured(mv.to, new_grid[mv.to].unwrap()));
+                if rules.atomic_chess
+                    && capture_pos_or.is_some()
+                    && let Some(piece) = new_grid[mv.to]
+                {
+                    captures.extend(piece_to_captured(mv.to, piece));
                     new_grid[mv.to] = None;
                 }
             }

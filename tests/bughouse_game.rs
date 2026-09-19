@@ -572,6 +572,30 @@ fn atomic_explosions() {
     );
 }
 
+// Regression test: a capturing promotion in atomic chess with discard promotion. Discard never puts
+// a piece on the destination square, so atomic code must not assume that something would be there.
+#[test]
+fn atomic_discard_promotion_capture() {
+    let mut rules = default_rules();
+    rules.chess_rules.atomic_chess = true;
+    rules.bughouse_rules_mut().unwrap().promotion = Promotion::Discard;
+    let board_str = "
+        r n b q k b . r
+        p p p p p p P p
+        . . . . . n . .
+        . . . . . . . .
+        . . . . . . . .
+        . . . . . . . .
+        P P P P P P P .
+        R N B Q K B N R
+    ";
+    let mut board = parse_ascii_board(rules, Role::ServerOrStandalone, board_str).unwrap();
+    let turn = board.parse_turn_input(&alg("xh8=."), TurnMode::InOrder, None).unwrap();
+    board.try_turn(turn, TurnMode::InOrder, T0).unwrap();
+    assert!(board.grid()[Coord::G7].is_none());
+    assert!(board.grid()[Coord::H8].is_none());
+}
+
 // Unfortunately we cannot mock the boards, so the test has to pay the full price of executing the
 // turns. Which does serve as a limiting factor since we are only able to do about 50k turns per
 // second in debug mode at the time of writing. I considered instantiating two clocks manually, but

@@ -245,3 +245,23 @@ fn duck_cannot_stay_in_place() {
     let mut game = chess_with_rules(rules);
     assert_eq!(replay_log(&mut game, "1.e4 @d4 d5 @d4"), Err(TurnError::MustChangeDuckPosition));
 }
+
+#[test]
+fn atomic_en_passant() {
+    let rules = ChessRules {
+        atomic_chess: true,
+        ..ChessRules::chess_blitz_5()
+    };
+    let mut game = chess_with_rules(rules);
+    replay_log(
+        &mut game,
+        "
+        1.e4 Nc6
+        2.e5 f5
+        3.xf6
+    ",
+    )
+    .unwrap();
+    assert!(game.board().grid()[Coord::F5].is_none());
+    assert!(game.board().grid()[Coord::F6].is_none());
+}
