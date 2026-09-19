@@ -97,6 +97,7 @@ fn time_difference_breakdown_to_duration(time_breakdown: TimeDifferenceBreakdown
     }
 }
 
+// Even when a new rook is dropped on the exact original spot, castling right are not restored.
 #[test]
 fn no_castling_with_dropped_rook() {
     let mut game = default_game();
@@ -110,11 +111,12 @@ fn no_castling_with_dropped_rook() {
         0A.Ne4  0a.Rg1
         0A.Ng3  0a.Rxf1
         0A.Nxf1  0a.e5
+        0A.Ng3  0a.e4
         0B.b4  0b.a5
         0B.xa5  0b.Rxa5
         0B.Nf3  0b.Rxa2
         0B.Nc3  0b.Rxa1
-        0A.R@h8  0a.d5
+        0A.R@h1  0a.d5
     ",
     )
     .unwrap();
@@ -436,6 +438,30 @@ fn koedem_castling() {
         Err(TurnError::PathBlocked)
     );
     game.try_turn(BughouseBoard::A, &alg("0-0"), TurnMode::InOrder, T0).unwrap();
+}
+
+// If the original king is captured and a new king is dropped back onto the very same square,
+// that dropped king is a different piece and should not be castle-able.
+#[test]
+fn koedem_cannot_castle_dropped_king_on_original_square() {
+    let mut game = koedem_game();
+    replay_log(
+        &mut game,
+        "
+        1A. f4 1a. e5 2A. e4 2a. Qh4 3A. xe5 3a. Qxe1
+        4A. Nf3 4a. Qh4
+        5A. g3 5a. Nf6
+        6A. Bg2 6a. Nc6
+        1B. K@a3 1b. e5 2B. f4 2b. Qh4 3B. e4 3b. Bb4
+        4B. xe5 4b. Qxe1
+        7A. K@e1 7a. d6
+        ",
+    )
+    .unwrap();
+    assert_eq!(
+        game.try_turn(BughouseBoard::A, &alg("0-0"), TurnMode::InOrder, T0),
+        Err(TurnError::CastlingPieceHasMoved)
+    );
 }
 
 // Normally the only turn one can do in Koedem while having a king in reserve is to drop the king.
