@@ -7,7 +7,7 @@ use bughouse_chess::altered_game::{
     AlteredGame, ReservePieceHighlight, SquareHighlight, TurnHighlightFamily, TurnHighlightItem,
     TurnHighlightLayer, TurnInputResult, WaybackDestination,
 };
-use bughouse_chess::board::{TurnError, TurnInput, VictoryReason};
+use bughouse_chess::board::{TurnError, TurnInput, TurnMode, VictoryReason};
 use bughouse_chess::clock::GameInstant;
 use bughouse_chess::coord::Coord;
 use bughouse_chess::envoy;
@@ -639,4 +639,29 @@ fn invalidate_own_preturn() {
     alt_game.try_local_turn(A, drag_move!(G8 -> F6), T0).unwrap();
     alt_game.try_local_turn(B, drag_move!(C7 -> E8), T0).unwrap();
     alt_game.local_game();
+}
+
+// Regression test: a double player has a preturn on one board and makes a game-ending move on
+// the other board. The preturn can no longer be applied on top of the finished local game; this
+// must not crash the client.
+#[test]
+fn double_player_preturn_then_checkmate() {
+    let mut alt_game = AlteredGame::new(as_double_player(Team::Red), default_game());
+    // Contact mate on board B that cannot be blocked by a drop: ...Qxf2# supported by Ng4.
+    alt_game.apply_remote_turn(envoy!(White B), &alg("a3"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black B), &alg("Nf6"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White B), &alg("Ra2"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black B), &alg("Ng4"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White B), &alg("Ra1"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black B), &alg("e5"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White B), &alg("Ra2"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black B), &alg("Qf6"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White B), &alg("Ra1"), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &alg("e4"), T0).unwrap();
+    assert_eq!(alt_game.try_local_turn(A, drag_move!(D2 -> D4), T0), Ok(TurnMode::Preturn));
+    assert_eq!(alt_game.try_local_turn(B, drag_move!(F6 -> F2), T0), Ok(TurnMode::InOrder));
+    assert_eq!(
+        alt_game.local_game().status(),
+        BughouseGameStatus::Victory(Team::Red, VictoryReason::Checkmate)
+    );
 }

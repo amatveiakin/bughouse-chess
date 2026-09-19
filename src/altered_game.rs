@@ -864,33 +864,44 @@ impl AlteredGame {
             if !is_board_ok[turn_record.envoy.board_idx] {
                 continue;
             }
-            // Unwrap ok: could fail only when game is over.
-            let mode = game.turn_mode_for_envoy(turn_record.envoy).unwrap();
+            let mode = game.turn_mode_for_envoy(turn_record.envoy);
             match mode {
-                TurnMode::InOrder | TurnMode::Virtual => {
+                Ok(mode @ (TurnMode::InOrder | TurnMode::Virtual)) => {
                     if game.apply_turn_record(&turn_record, mode).is_ok() {
                         local_turns.push(turn_record);
                     } else {
                         is_board_ok[turn_record.envoy.board_idx] = false;
                     }
                 }
-                TurnMode::Preturn => {
+                Ok(TurnMode::Preturn) => {
                     preturns.push(turn_record);
+                }
+                Err(TurnError::GameOver) => {
+                    // Skip remaining turns if an earlier local turn ended the game.
+                    //
+                    // TODO: Fix a race condition: if this local turn would be invalidated
+                    // (which is very unlikely but possible, e.g. with stealing promotion),
+                    // then we'll lose all subsequent local turns and preturns.
+                }
+                Err(err) => {
+                    panic!("Unexpected error from game.turn_mode_for_envoy: {err:?}")
                 }
             }
         }
 
-        for turn_record in preturns {
-            if !is_board_ok[turn_record.envoy.board_idx] {
-                continue;
-            }
-            // Unwrap ok: could fail only when game is over.
-            let mode = game.turn_mode_for_envoy(turn_record.envoy).unwrap();
-            assert_eq!(mode, TurnMode::Preturn);
-            if game.apply_turn_record(&turn_record, mode).is_ok() {
-                local_turns.push(turn_record);
-            } else {
-                is_board_ok[turn_record.envoy.board_idx] = false;
+        if game.is_active() {
+            for turn_record in preturns {
+                if !is_board_ok[turn_record.envoy.board_idx] {
+                    continue;
+                }
+                // Unwrap ok: could fail only when game is over. Preturns never end the game.
+                let mode = game.turn_mode_for_envoy(turn_record.envoy).unwrap();
+                assert_eq!(mode, TurnMode::Preturn);
+                if game.apply_turn_record(&turn_record, mode).is_ok() {
+                    local_turns.push(turn_record);
+                } else {
+                    is_board_ok[turn_record.envoy.board_idx] = false;
+                }
             }
         }
 
