@@ -531,13 +531,21 @@ fn initial_castling_rights(
     rights
 }
 
-fn remove_castling_right(
-    castling_rights: &mut BoardCastlingRights, board_shape: BoardShape, pos: Coord,
-) {
+fn remove_castling_right(castling_rights: &mut BoardCastlingRights, grid: &Grid, pos: Coord) {
+    if let Some(piece) = grid[pos]
+        && piece.kind == PieceKind::King
+        && let Ok(force) = Force::try_from(piece.force)
+    {
+        castling_rights[force].clear();
+        return;
+    }
     for force in Force::iter() {
-        if pos.row == SubjectiveRow::first().to_row(board_shape, force) {
+        if pos.row == SubjectiveRow::first().to_row(grid.shape(), force) {
             for (_, c) in castling_rights[force].iter_mut() {
                 if *c == Some(pos.col) {
+                    // If we still have castling right, this must be a rook. Not asserting this in
+                    // case something funny happens in some fairy chess mode.
+                    // assert_matches!(grid[pos], Some(p) if p.kind == PieceKind::Rook);
                     *c = None;
                 }
             }
@@ -1218,20 +1226,16 @@ impl Board {
     fn apply_turn(
         &mut self, turn: Turn, mode: TurnMode, new_grid: Grid, facts: &TurnFacts, now: GameInstant,
     ) {
-        let shape = self.shape();
         self.next_piece_id = facts.next_piece_id;
         let force = self.turn_owner(mode);
         assert_eq!(self.is_duck_turn[force], matches!(turn, Turn::PlaceDuck(_)));
         match &turn {
             Turn::Move(mv) => {
-                if (self.grid[mv.from].unwrap().kind == PieceKind::King) {
-                    self.castling_rights[force].clear();
-                }
-                remove_castling_right(&mut self.castling_rights, shape, mv.from);
-                remove_castling_right(&mut self.castling_rights, shape, mv.to);
+                remove_castling_right(&mut self.castling_rights, &self.grid, mv.from);
+                remove_castling_right(&mut self.castling_rights, &self.grid, mv.to);
             }
             Turn::Drop(drop) => {
-                remove_castling_right(&mut self.castling_rights, shape, drop.to);
+                remove_castling_right(&mut self.castling_rights, &self.grid, drop.to);
                 self.total_drops += 1;
             }
             Turn::Castle(_) => {
@@ -1241,7 +1245,7 @@ impl Board {
         }
         for capture in facts.captures.iter() {
             if let Some(capture_pos) = capture.from {
-                remove_castling_right(&mut self.castling_rights, shape, capture_pos);
+                remove_castling_right(&mut self.castling_rights, &self.grid, capture_pos);
             }
         }
         self.grid = new_grid;
@@ -1779,8 +1783,8 @@ impl Board {
                 TurnMode::Preturn => {}
             }
             if let Some(pos) = pos {
+                remove_castling_right(&mut self.castling_rights, &self.grid, pos);
                 self.grid[pos] = None;
-                remove_castling_right(&mut self.castling_rights, self.grid.shape(), pos);
             }
         }
     }
