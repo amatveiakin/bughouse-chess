@@ -124,6 +124,34 @@ fn no_castling_with_dropped_rook() {
     );
 }
 
+// Regression test: stealing a rook must revoke the castling right on the other board, like
+// capturing does.
+#[test]
+fn no_castling_with_stolen_rook() {
+    let mut rules = default_rules();
+    rules.bughouse_rules_mut().unwrap().promotion = Promotion::Steal;
+    let mut game = BughouseGame::new(rules, Role::ServerOrStandalone, &sample_bughouse_players());
+    replay_log(
+        &mut game,
+        "
+        1A.h4  1a.a5
+        2A.h5  2a.a4
+        3A.h6  3a.a3
+        4A.xg7  4a.xb2
+        1B.Nf3  1b.a6
+        2B.e3  2b.a5
+        3B.Be2  3b.a4
+        5A.xf8=Rh1
+    ",
+    )
+    .unwrap();
+    assert!(game.board(BughouseBoard::B).grid()[Coord::H1].is_none());
+    assert_eq!(
+        make_turn(&mut game, BughouseBoard::B, "0-0").err().unwrap(),
+        TurnError::CastlingPieceHasMoved
+    );
+}
+
 // Test that after dropping a piece the threefold repetition counter starts anew. Note that
 // in this particular case this is harmful, because it leads to an infinite loops involving
 // both boards. However this scenario is extremely rare. Much more common are cases when a

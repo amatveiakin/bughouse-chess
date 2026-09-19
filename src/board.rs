@@ -1780,6 +1780,7 @@ impl Board {
             }
             if let Some(pos) = pos {
                 self.grid[pos] = None;
+                remove_castling_right(&mut self.castling_rights, self.grid.shape(), pos);
             }
         }
     }
