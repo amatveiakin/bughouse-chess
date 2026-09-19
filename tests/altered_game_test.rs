@@ -699,3 +699,16 @@ fn stealing_promotion_preturn_target_captured() {
     assert_eq!(alt_game.num_preturns_on_board(A), 0);
     assert!(alt_game.local_game().board(A).grid()[Coord::G7].is(piece!(White Pawn)));
 }
+
+// Regression test: in Koedem a preturn dropping a king that is not in reserve yet is legitimate.
+// It used to trip the king-count assertion.
+#[test]
+fn koedem_preturn_king_drop_without_king_in_reserve() {
+    let mut alt_game = AlteredGame::new(as_single_player(envoy!(Black A)), koedem_game());
+    assert_eq!(alt_game.try_local_turn(A, alg("K@e5"), T0), Ok(TurnMode::Preturn));
+    assert!(alt_game.local_game().board(A).grid()[Coord::E5].is(piece!(Black King)));
+    // No king has arrived, so the preturn fails and gets discarded when its time comes.
+    alt_game.apply_remote_turn(envoy!(White A), &alg("e4"), T0).unwrap();
+    assert_eq!(alt_game.num_preturns_on_board(A), 0);
+    assert!(alt_game.local_game().board(A).grid()[Coord::E5].is_none());
+}

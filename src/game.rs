@@ -790,7 +790,7 @@ impl BughouseGame {
         assert!(self.status.is_active());
         self.set_status(self.game_status_for_board(board_idx), now);
         if self.bughouse_rules().koedem {
-            self.check_koedem_victory(now);
+            self.check_koedem_victory(mode, now);
         }
         Ok(turn)
     }
@@ -811,29 +811,39 @@ impl BughouseGame {
         self.try_turn_by_envoy(turn_record.envoy, &turn_record.turn_input, mode, turn_record.time)
     }
 
-    pub fn check_koedem_victory(&mut self, now: GameInstant) {
-        let mut num_kings = enum_map! { _ => 0 };
-        for (board_idx, board) in &self.boards {
-            for coord in board.shape().coords() {
-                if let Some(piece) = board.grid()[coord] {
-                    if piece.kind == PieceKind::King {
-                        // Unwrap ok: King cannot be neutral.
-                        let team = get_bughouse_team(board_idx, piece.force.try_into().unwrap());
-                        num_kings[team] += 1;
+    pub fn check_koedem_victory(&mut self, mode: TurnMode, now: GameInstant) {
+        match mode {
+            TurnMode::InOrder | TurnMode::Virtual => {
+                let mut num_kings = enum_map! { _ => 0 };
+                for (board_idx, board) in &self.boards {
+                    for coord in board.shape().coords() {
+                        if let Some(piece) = board.grid()[coord] {
+                            if piece.kind == PieceKind::King {
+                                // Unwrap ok: King cannot be neutral.
+                                let team =
+                                    get_bughouse_team(board_idx, piece.force.try_into().unwrap());
+                                num_kings[team] += 1;
+                            }
+                        }
+                    }
+                    for force in Force::iter() {
+                        let team = get_bughouse_team(board_idx, force);
+                        num_kings[team] += board.reserve(force)[PieceKind::King];
+                    }
+                }
+                if mode == TurnMode::InOrder {
+                    assert!(num_kings.values().sum::<u8>() as usize == TOTAL_ENVOYS);
+                }
+                for team in Team::iter() {
+                    if num_kings[team] as usize == TOTAL_ENVOYS {
+                        self.set_status(
+                            BughouseGameStatus::Victory(team, VictoryReason::Checkmate),
+                            now,
+                        );
                     }
                 }
             }
-            for force in Force::iter() {
-                let team = get_bughouse_team(board_idx, force);
-                num_kings[team] += board.reserve(force)[PieceKind::King];
-            }
-        }
-        // Note. Could be less with preturns.
-        assert!(num_kings.values().sum::<u8>() as usize <= TOTAL_ENVOYS);
-        for team in Team::iter() {
-            if num_kings[team] as usize == TOTAL_ENVOYS {
-                self.set_status(BughouseGameStatus::Victory(team, VictoryReason::Checkmate), now);
-            }
+            TurnMode::Preturn => {}
         }
     }
 
