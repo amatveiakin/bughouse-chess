@@ -789,8 +789,17 @@ impl WebClient {
                 if !matches!(partial_input, PartialTurnInput::StealPromotion { .. }) {
                     return false;
                 }
+                // There isn't a clear answer for "Which turn mode to use to highlight steal
+                // targets?" For the simplest case (playing on one board, in-order turn on our
+                // board), in-order is the best choice. When our turn in a preturn, the situation is
+                // muddy: boards move on different cadence, so while our invalid preturn may become
+                // valid by the time it's resolved, this isn't the usual preturn dynamics where you
+                // can reasonably anticipate which moves would be valid on your turn; you would just
+                // be couting on timing. When you are double-playing and have preturns on the other
+                // board, the situation is equally confusing. Compromise solution: highlight pieces
+                // that are 100% valid steal target, but allow clicking other pieces too.
                 board_idx == input_board_idx.other()
-                    && board.stealing_result(coord, envoy.force).is_ok()
+                    && board.stealing_result(coord, TurnMode::InOrder, envoy.force).is_ok()
             };
             let upgrade_promotion_target = if let Some((input_board_idx, partial_input)) =
                 alt_game.partial_turn_input()

@@ -1124,7 +1124,9 @@ impl Board {
         Some((from, to))
     }
 
-    pub fn stealing_result(&self, pos: Coord, thief: Force) -> Result<(), TurnError> {
+    pub fn stealing_result(
+        &self, pos: Coord, mode: TurnMode, thief: Force,
+    ) -> Result<(), TurnError> {
         let partner = thief.opponent();
         let Some(piece) = self.grid[pos] else {
             return Err(TurnError::StealTargetMissing);
@@ -1135,26 +1137,40 @@ impl Board {
         if piece.force != partner.opponent().into() {
             return Err(TurnError::StealTargetInvalid);
         }
-        if !self.chess_rules().regicide() {
-            for king_owner in [partner, partner.opponent()] {
-                // Technically we don't need the `clone` because of `scoped_set`. However removing
-                // the `clone` would complicate the API (we'll have to use `&mut self`), and steal
-                // promtions are rare.
-                let mut grid = self.grid.clone();
-                let king_pos = find_king(&grid, king_owner).unwrap();
-                let attackers_before =
-                    attacker_set(self.chess_rules(), &grid, king_pos, self.en_passant_target);
-                let grid = grid.scoped_set(pos, None);
-                let attackers_after =
-                    attacker_set(self.chess_rules(), &grid, king_pos, self.en_passant_target);
-                if !attackers_after.is_subset(&attackers_before) {
-                    if king_owner == partner {
-                        return Err(TurnError::ExposingPartnerKingByStealing);
-                    } else {
-                        return Err(TurnError::ExposingKingByStealing);
+
+        match mode {
+            TurnMode::InOrder | TurnMode::Virtual => {
+                if !self.chess_rules().regicide() {
+                    for king_owner in [partner, partner.opponent()] {
+                        // Technically we don't need the `clone` because of `scoped_set`.
+                        // However removing the `clone` would complicate the API (we'll have
+                        // to use `&mut self`), and steal promtions are rare.
+                        let mut grid = self.grid.clone();
+                        let king_pos = find_king(&grid, king_owner).unwrap();
+                        let attackers_before = attacker_set(
+                            self.chess_rules(),
+                            &grid,
+                            king_pos,
+                            self.en_passant_target,
+                        );
+                        let grid = grid.scoped_set(pos, None);
+                        let attackers_after = attacker_set(
+                            self.chess_rules(),
+                            &grid,
+                            king_pos,
+                            self.en_passant_target,
+                        );
+                        if !attackers_after.is_subset(&attackers_before) {
+                            if king_owner == partner {
+                                return Err(TurnError::ExposingPartnerKingByStealing);
+                            } else {
+                                return Err(TurnError::ExposingKingByStealing);
+                            }
+                        }
                     }
                 }
             }
+            TurnMode::Preturn => {}
         }
         Ok(())
     }
@@ -1735,10 +1751,6 @@ impl Board {
     pub fn verify_sibling_turn(
         &self, turn: Turn, mode: TurnMode, turn_owner: Force,
     ) -> Result<(), TurnError> {
-        match mode {
-            TurnMode::InOrder => {}
-            TurnMode::Virtual | TurnMode::Preturn => return Ok(()),
-        }
         match turn {
             Turn::Move(mv) => {
                 if let Some(PromotionTarget::Steal((piece_kind, piece_origin, piece_id))) =
@@ -1756,7 +1768,7 @@ impl Board {
                     if piece.origin != piece_origin {
                         return Err(TurnError::StealTargetInvalid);
                     }
-                    return self.stealing_result(pos, turn_owner);
+                    return self.stealing_result(pos, mode, turn_owner);
                 }
             }
             Turn::Drop(_) => {}

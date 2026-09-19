@@ -665,3 +665,37 @@ fn double_player_preturn_then_checkmate() {
         BughouseGameStatus::Victory(Team::Red, VictoryReason::Checkmate)
     );
 }
+
+// Regression test: a stealing promotion preturn whose target piece is captured on the other board
+// before the preturn is executed. The preturn cannot be executed any more, so it should be
+// discarded like any other invalidated preturn rather than crash the client.
+#[test]
+fn stealing_promotion_preturn_target_captured() {
+    let mut alt_game =
+        AlteredGame::new(as_single_player(envoy!(White A)), stealing_promotion_game());
+    alt_game.apply_remote_turn(envoy!(White B), &drag_move!(B1 -> C3), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H2 -> H4), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A7 -> A5), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H4 -> H5), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A5 -> A4), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H5 -> H6), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black A), &drag_move!(A4 -> A3), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White A), &drag_move!(H6 -> G7), T0).unwrap();
+
+    // Black to move on A, so the promotion is a preturn.
+    alt_game.start_drag_piece(A, loc!(G7)).unwrap();
+    assert_eq!(alt_game.drag_piece_drop(A, Coord::F8), TurnInputResult::Noop);
+    let TurnInputResult::Turn((board_idx, input)) = alt_game.click(B, loc!(C3)) else {
+        panic!();
+    };
+    assert_eq!(board_idx, A);
+    assert_eq!(alt_game.try_local_turn(A, input, T0), Ok(TurnMode::Preturn));
+    assert_eq!(alt_game.num_preturns_on_board(A), 1);
+
+    // The knight is captured on board B.
+    alt_game.apply_remote_turn(envoy!(Black B), &drag_move!(D7 -> D5), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(White B), &drag_move!(C3 -> D5), T0).unwrap();
+    alt_game.apply_remote_turn(envoy!(Black B), &drag_move!(D8 -> D5), T0).unwrap();
+    assert_eq!(alt_game.num_preturns_on_board(A), 0);
+    assert!(alt_game.local_game().board(A).grid()[Coord::G7].is(piece!(White Pawn)));
+}
