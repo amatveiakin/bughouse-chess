@@ -89,7 +89,7 @@ where
     for<'q> OffsetDateTime: sqlx::Type<DB> + sqlx::Encode<'q, DB>,
     for<'q> PrimitiveDateTime: sqlx::Type<DB> + sqlx::Decode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
-    for<'a> <DB as sqlx::Database>::Arguments<'a>: sqlx::IntoArguments<'a, DB>,
+    <DB as sqlx::Database>::Arguments: sqlx::IntoArguments<DB>,
     for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
     usize: sqlx::ColumnIndex<DB::Row>,
 {
@@ -278,14 +278,13 @@ where
     Option<OffsetDateTime>: Type<DB> + for<'q> Encode<'q, DB>,
     bool: Type<DB> + for<'q> Encode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
-    for<'a> <DB as sqlx::Database>::Arguments<'a>: sqlx::IntoArguments<'a, DB>,
+    <DB as sqlx::Database>::Arguments: sqlx::IntoArguments<DB>,
 {
     async fn create_tables(&self) -> anyhow::Result<()> {
         // TODO: Include match_id in finished_games.
         let rowid_column_definition = DB::ROWID_COLUMN_DEFINITION;
-        sqlx::query(
-            format!(
-                "CREATE TABLE IF NOT EXISTS finished_games (
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "CREATE TABLE IF NOT EXISTS finished_games (
                 {rowid_column_definition}
                 git_version TEXT,
                 invocation_id TEXT,
@@ -298,9 +297,7 @@ where
                 result TEXT,
                 game_pgn TEXT,
                 rated BOOLEAN DEFAULT TRUE)",
-            )
-            .as_str(),
-        )
+        )))
         .execute(&self.pool)
         .await?;
         sqlx::query(

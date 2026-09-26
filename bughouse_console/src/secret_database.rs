@@ -17,7 +17,7 @@ where
     for<'q> bool: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'q> OffsetDateTime: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
-    for<'a> <DB as sqlx::Database>::Arguments<'a>: sqlx::IntoArguments<'a, DB>,
+    <DB as sqlx::Database>::Arguments: sqlx::IntoArguments<DB>,
     for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
     usize: sqlx::ColumnIndex<DB::Row>,
 {
@@ -154,7 +154,7 @@ where
     for<'q> bool: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'q> OffsetDateTime: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
-    for<'a> <DB as sqlx::Database>::Arguments<'a>: sqlx::IntoArguments<'a, DB>,
+    <DB as sqlx::Database>::Arguments: sqlx::IntoArguments<DB>,
     for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
     usize: sqlx::ColumnIndex<DB::Row>,
 {
@@ -196,15 +196,14 @@ where
     Option<OffsetDateTime>: Type<DB> + for<'q> Encode<'q, DB>,
     for<'q> bool: sqlx::Type<DB> + sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB>,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
-    for<'a> <DB as sqlx::Database>::Arguments<'a>: sqlx::IntoArguments<'a, DB>,
+    <DB as sqlx::Database>::Arguments: sqlx::IntoArguments<DB>,
     for<'s> &'s str: sqlx::ColumnIndex<DB::Row>,
     usize: sqlx::ColumnIndex<DB::Row>,
 {
     async fn create_tables(&self) -> anyhow::Result<()> {
         let rowid_column_definition = DB::ROWID_COLUMN_DEFINITION;
-        sqlx::query(
-            format!(
-                "CREATE TABLE IF NOT EXISTS accounts (
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "CREATE TABLE IF NOT EXISTS accounts (
                 {rowid_column_definition}
                 deleted BOOLEAN DEFAULT FALSE,
                 creation_time TIMESTAMP,
@@ -215,22 +214,17 @@ where
                 lichess_user_id TEXT,
                 registration_method TEXT
                 )",
-            )
-            .as_str(),
-        )
+        )))
         .execute(&self.pool)
         .await?;
-        sqlx::query(
-            format!(
-                "CREATE TABLE IF NOT EXISTS sessions (
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "CREATE TABLE IF NOT EXISTS sessions (
                     session_id TEXT NOT NULL PRIMARY KEY,
                     user_name TEXT,
                     last_activity_at TIMESTAMP,
                     FOREIGN KEY(user_name) REFERENCES accounts(user_name)
                 )",
-            )
-            .as_str(),
-        )
+        )))
         .execute(&self.pool)
         .await?;
         Ok(())
