@@ -24,6 +24,7 @@ const STARTING_POSITION: &str = "starting_position";
 const DUCK_CHESS: &str = "duck_chess";
 const FOG_OF_WAR: &str = "fog_of_war";
 const KOEDEM: &str = "koedem";
+const DIXIE: &str = "dixie";
 const STARTING_TIME: &str = "starting_time";
 const PROMOTION: &str = "promotion";
 const PAWN_DROP_RANKS: &str = "pawn_drop_ranks";
@@ -179,6 +180,28 @@ const KOEDEM_ON_ICON: &str = r##"
  </g>
 </svg>
 "##;
+
+// Source: "Hahn-lineart.svg" (title: "cock - lineart"), CC0 1.0 Universal (public domain).
+const DIXIE_OFF_ICON: &str = r##" <svg class="rule-variant-icon" viewBox="0 0 116.92913 109.84251"> <path
+ d="m 91.235196,10.021204 c -0.868232,0.02391 -1.875681,0.126551 -3.761719,0.279297 -3.352954,0.271552 -7.317012,0.906349 -9.86914,3.246094 -2.480338,2.273929 -3.838863,5.574441 -4.783204,8.435547 -1.184719,3.589391 -1.928261,8.214423 -3.503906,10.86914 -2.082493,3.508679 -4.686535,6.170606 -8.27539,8.480469 -4.481447,2.884354 -6.585576,4.620589 -11.75,5.328125 C 47.204325,46.945869 44.789824,46.159695 42.63754,45.49972 41.546719,45.165238 39.870437,43.963146 38.407071,42.86886 35.043366,40.353525 30.671375,37.827513 25.655118,37.509485 20.538688,37.185106 13.101549,39.161681 9.1512118,42.30636 3.820637,46.549784 0.98053136,53.667623 0.42464935,59.83761 c -0.29015576,3.220571 -0.76606337,7.033656 -0.0605469,10.869141 0.35275827,1.917742 1.33752275,3.854772 2.15820315,5.416016 0.96587,1.83745 3.0313493,3.215321 4.6914062,4.08789 1.6545354,0.869666 4.4822222,0.845292 5.9218752,1.070313 C 12.350833,80.058475 11.036804,79.117974 9.5418368,77.185267 8.1880682,75.435102 7.4911899,74.281945 6.6238681,70.761439 6.4692989,70.134033 6.2145919,66.975354 6.1726962,66.378626 c 0.1646337,0.531737 1.6583049,3.336406 2.0546875,3.896484 0.4395401,0.621059 1.3310341,1.361154 2.0800783,1.00586 0.734974,-0.348621 0.874726,-1.568285 1.060547,-2.06836 0.358866,-0.965781 0.21345,-3.02443 0.654296,-4.068359 0.09248,0.946115 0.05311,6.110634 0.212891,7.841797 0.212877,2.306492 1.09142,4.706666 1.994141,4.818359 1.579132,0.195384 1.86964,-3.231926 2.164062,-4.914062 l 0.892578,-5.09961 c 0.421652,-2.409045 0.819748,-4.822965 1.271485,-7.226562 0.677241,-1.468218 0.201777,1.330455 0.210937,1.359375 0.09398,0.296525 0.06849,2.503413 -0.0059,3.097656 -0.155847,1.247064 0.05458,2.962033 0.445312,2.982422 0.879244,-0.0021 1.426594,-0.608383 1.888672,-1.181641 0.250788,-0.23107 2.443521,-9.717204 2.998047,-10.382812 0.375505,1.080286 -1.813391,5.908274 -2.109375,9.294922 -0.328723,3.761263 0.566567,7.448244 1.345085,9.003325 0.886887,1.771552 4.583641,5.699095 6.51429,4.813081 -0.681898,-2.80908 -2.108507,-5.401315 -2.386719,-8.050781 -0.179491,-1.70932 -0.388609,-4.04845 -0.09766,-7.511719 0.231812,-2.759175 1.053129,-4.903973 1.457031,-6.164062 0.505424,-1.57682 0.924513,-2.174068 0.427735,0.07422 -1.272769,5.760179 -0.727876,16.885478 1.253906,19.511719 0.470903,-1.797155 1.08773,-5.586459 2.326172,-5.775391 0.204374,0.505178 0.119203,3.835579 1.109375,4.957032 1.027339,1.16355 3.166422,2.566071 5.498047,2.625 -0.31478,-1.64714 -1.312932,-4.301429 -0.796875,-5.837891 0.771403,1.536301 2.012625,1.019183 3.21875,1.085937 0.312692,0.339013 0.799275,1.81477 1.18164,1.996094 1.105851,0.524415 1.65837,-0.535657 2.779297,-0.908203 0.395596,0.198518 1.10237,1.218192 2.335938,1.240235 1.105686,0.01975 1.771906,-0.08969 2.466797,-0.703126 0.790182,2.330726 3.217687,5.321618 4.964843,5.957032 l 1.404297,-3.363282 c 0.666632,0.708343 1.273613,2.424799 1.861328,2.916016 1.513746,1.475813 2.276576,1.466314 3.617188,2.982422 0.751271,-0.25438 1.297064,-0.491249 1.794922,-0.146484 0.802657,0.555837 1.173188,1.015618 1.455078,1.792968 2.677148,-0.561384 5.042506,-1.624978 6.851562,-2.943359 0.928472,0.832134 2.610133,1.289001 4.216797,1.697266 4.643148,-2.419486 5.457139,-6.715161 5.585938,-10.824219 0.574577,-0.564421 6.079528,-5.013484 9.421875,-8.736328 2.726785,-3.037207 7.382356,-7.878201 8.591798,-12.712891 1.244,-4.972874 0.88556,-9.975458 0.16992,-14.560547 -0.655574,-4.200181 -2.641132,-10.976774 -2.988281,-11.863281 -0.285652,-0.729461 -1.033387,-2.213406 -1.185547,-2.597656 -0.498968,-1.260052 -0.372537,-1.620261 -0.03906,-2.97461 l -2.931641,-2.86914 c -0.477096,-0.467064 -1.311668,-2.532078 -1.347656,-3.029297 -0.183129,-2.530149 2.616998,-2.780143 5.607422,-3.654297 0,0 -2.843424,-0.887175 -4.314453,-1.039063 -0.487747,-0.05036 -0.888655,-0.08193 -1.269532,-0.0957 -0.285657,-0.01033 -0.560198,-0.01189 -0.849609,-0.0039 z"
+ fill="none"
+ stroke="#000000"
+ stroke-width="2.5"
+ stroke-linecap="round"
+ stroke-linejoin="round"
+/> </svg>
+"##;
+
+const DIXIE_ON_ICON: &str = r##" <svg class="rule-variant-icon" viewBox="0 0 116.92913 109.84251"> <path
+ d="m 91.235196,10.021204 c -0.868232,0.02391 -1.875681,0.126551 -3.761719,0.279297 -3.352954,0.271552 -7.317012,0.906349 -9.86914,3.246094 -2.480338,2.273929 -3.838863,5.574441 -4.783204,8.435547 -1.184719,3.589391 -1.928261,8.214423 -3.503906,10.86914 -2.082493,3.508679 -4.686535,6.170606 -8.27539,8.480469 -4.481447,2.884354 -6.585576,4.620589 -11.75,5.328125 C 47.204325,46.945869 44.789824,46.159695 42.63754,45.49972 41.546719,45.165238 39.870437,43.963146 38.407071,42.86886 35.043366,40.353525 30.671375,37.827513 25.655118,37.509485 20.538688,37.185106 13.101549,39.161681 9.1512118,42.30636 3.820637,46.549784 0.98053136,53.667623 0.42464935,59.83761 c -0.29015576,3.220571 -0.76606337,7.033656 -0.0605469,10.869141 0.35275827,1.917742 1.33752275,3.854772 2.15820315,5.416016 0.96587,1.83745 3.0313493,3.215321 4.6914062,4.08789 1.6545354,0.869666 4.4822222,0.845292 5.9218752,1.070313 C 12.350833,80.058475 11.036804,79.117974 9.5418368,77.185267 8.1880682,75.435102 7.4911899,74.281945 6.6238681,70.761439 6.4692989,70.134033 6.2145919,66.975354 6.1726962,66.378626 c 0.1646337,0.531737 1.6583049,3.336406 2.0546875,3.896484 0.4395401,0.621059 1.331034,1.361154 2.0800783,1.00586 0.734974,-0.348621 0.874726,-1.568285 1.060547,-2.06836 0.358866,-0.965781 0.21345,-3.02443 0.654296,-4.068359 0.09248,0.946115 0.05311,6.110634 0.212891,7.841797 0.212877,2.306492 1.09142,4.706666 1.994141,4.818359 1.579132,0.195384 1.86964,-3.231926 2.164062,-4.914062 l 0.892578,-5.09961 c 0.421652,-2.409045 0.819748,-4.822965 1.271485,-7.226562 0.677241,-1.468218 0.201777,1.330455 0.210937,1.359375 0.09398,0.296525 0.06849,2.503413 -0.0059,3.097656 -0.155847,1.247064 0.05458,2.962033 0.445312,2.982422 0.879244,-0.0021 1.426594,-0.608383 1.888672,-1.181641 0.250788,-0.23107 2.443521,-9.717204 2.998047,-10.382812 0.375505,1.080286 -1.813391,5.908274 -2.109375,9.294922 -0.328723,3.761263 0.566567,7.448244 1.345085,9.003325 0.886887,1.771552 4.583641,5.699095 6.51429,4.813081 -0.681898,-2.80908 -2.108507,-5.401315 -2.386719,-8.050781 -0.179491,-1.70932 -0.388609,-4.04845 -0.09766,-7.511719 0.231812,-2.759175 1.053129,-4.903973 1.457031,-6.164062 0.505424,-1.57682 0.924513,-2.174068 0.427735,0.07422 -1.272769,5.760179 -0.727876,16.885478 1.253906,19.511719 0.470903,-1.797155 1.08773,-5.586459 2.326172,-5.775391 0.204374,0.505178 0.119203,3.835579 1.109375,4.957032 1.027339,1.16355 3.166422,2.566071 5.498047,2.625 -0.31478,-1.64714 -1.312932,-4.301429 -0.796875,-5.837891 0.771403,1.536301 2.012625,1.019183 3.21875,1.085937 0.312692,0.339013 0.799275,1.81477 1.18164,1.996094 1.105851,0.524415 1.65837,-0.535657 2.779297,-0.908203 0.395596,0.198518 1.10237,1.218192 2.335938,1.240235 1.105686,0.01975 1.771906,-0.08969 2.466797,-0.703126 0.790182,2.330726 3.217687,5.321618 4.964843,5.957032 l 1.404297,-3.363282 c 0.666632,0.708343 1.273613,2.424799 1.861328,2.916016 1.513746,1.475813 2.276576,1.466314 3.617188,2.982422 0.751271,-0.25438 1.297064,-0.491249 1.794922,-0.146484 0.802657,0.555837 1.173188,1.015618 1.455078,1.792968 2.677148,-0.561384 5.042506,-1.624978 6.851562,-2.943359 0.928472,0.832134 2.610133,1.289001 4.216797,1.697266 4.643148,-2.419486 5.457139,-6.715161 5.585938,-10.824219 0.574577,-0.564421 6.079528,-5.013484 9.421875,-8.736328 2.726785,-3.037207 7.382356,-7.878201 8.591798,-12.712891 1.244,-4.972874 0.88556,-9.975458 0.16992,-14.560547 -0.655574,-4.200181 -2.641132,-10.976774 -2.988281,-11.863281 -0.285652,-0.729461 -1.033387,-2.213406 -1.185547,-2.597656 -0.498968,-1.260052 -0.372537,-1.620261 -0.03906,-2.97461 l -2.931641,-2.86914 c -0.477096,-0.467064 -1.311668,-2.532078 -1.347656,-3.029297 -0.183129,-2.530149 2.616998,-2.780143 5.607422,-3.654297 0,0 -2.843424,-0.887175 -4.314453,-1.039063 -0.487747,-0.05036 -0.888655,-0.08193 -1.269532,-0.0957 -0.285657,-0.01033 -0.560198,-0.01189 -0.849609,-0.0039 z"
+ fill="#ffffff"
+ stroke="#000000"
+ stroke-width="2.5"
+ stroke-linecap="round"
+ stroke-linejoin="round"
+/> </svg>
+"##;
+
 
 struct VariantButtonState {
     value: String,
@@ -484,6 +507,18 @@ fn koedem_tooltip() -> JsResult<Vec<web_sys::Element>> {
     ])
 }
 
+fn dixie_tooltip() -> JsResult<Vec<web_sys::Element>> {
+    Ok(vec![
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("Dixie.")?
+            .with_more_text(
+                " Kings can be taken. If your king is taken, your team instantly loses the game.
+            You can use reserve pieces to block checkmate if you have a piece available in the moment.
+            ")?,
+    ])
+}
+
 fn starting_time_tooltip(max_starting_time: Option<Duration>) -> JsResult<Vec<web_sys::Element>> {
     let mut paragraphs =
         vec![web_document().create_element("p")?.with_text_content(
@@ -630,8 +665,8 @@ fn pawn_drop_rank_specific_tooltip(
 }
 
 fn regicide_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
-    let regicide_variants = ChessVariant::iter()
-        .filter(|v| v.enables_regicide())
+    let capture_only_variants = ChessVariant::iter()
+        .filter(|v| v.enables_regicide() && *v != ChessVariant::Dixie)
         .map(|v| v.to_human_readable())
         .join(", ");
     Ok(vec![
@@ -639,17 +674,35 @@ fn regicide_general_tooltip() -> JsResult<Vec<web_sys::Element>> {
             .create_element("p")?
             .with_more_text_i("Regicide.")?
             .with_more_text(
-                " Capture opponent's king in order to win the game.
-            There are no checks and checkmates. Drop aggression is always “Mate Allowed”.
-            Attacking the king does not prevent castling.",
+                " Kings can be captured and there is no restriction on exposing your
+                own king to attack.",
             )?,
         web_document().create_element("p")?.with_more_text(&format!(
-            "This option is enabled when any of these variants is on: {regicide_variants}."
+            "In {capture_only_variants}: there are no checks or checkmates at all — \
+            the game simply ends when a king is captured.",
         ))?,
+        web_document()
+            .create_element("p")?
+            .with_more_text_i("In Dixie: ")?
+            .with_more_text(
+                "checkmate is still detected. If the checkmated side has no piece in \
+                reserve to block it, they lose. Dixie cannot be combined with the \
+                other regicide variants listed above — turning one on turns the other off.",
+            )?,
     ])
 }
 fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Element>> {
     let variants = rules.regicide_reason();
+    let is_dixie_only = variants == vec![ChessVariant::Dixie];
+    let body = if is_dixie_only {
+        " Kings can be captured and there is no restriction on exposing your own king. \
+        Checkmate is still detected: if you're checkmated and hold no piece in reserve \
+        that could block it, you lose."
+    } else {
+        " Capture opponent's king in order to win the game. \
+        There are no checks and checkmates. Drop aggression is always “Mate Allowed”. \
+        Attacking the king does not prevent castling."
+    };
     let prefix = match variants.len() {
         0 => return Err(rust_error!("Regicide is on, but regicide reason list is empty")),
         1 => "this chess variant: ",
@@ -660,9 +713,7 @@ fn regicide_specific_tooltip(rules: &ChessRules) -> JsResult<Vec<web_sys::Elemen
             .create_element("p")?
             .with_more_text_i("Regicide.")?
             .with_more_text(
-                " Capture opponent's king in order to win the game.
-            There are no checks and checkmates. Drop aggression is always “Mate Allowed”.
-            Attacking the king does not prevent castling.",
+                body,
             )?,
         web_document().create_element("p")?.with_more_text(&format!(
             "This option is enabled because of {}{}.",
@@ -778,6 +829,15 @@ pub fn make_new_match_rules_body(server_options: &ServerOptions) -> JsResult<()>
         .to_element()?,
     )?;
 
+    variants_node.append_element(
+        VariantButton::new(DIXIE, vec![
+            VariantButtonState::new("off", "No Dixie", DIXIE_OFF_ICON),
+            VariantButtonState::new("on", "Dixie", DIXIE_ON_ICON),
+        ])
+        .with_tooltip(combine_elements(dixie_tooltip()?)?)
+        .to_element()?,
+    )?;
+
     details_node.remove_all_children();
     details_node.append_children(
         RuleNode::new(STARTING_TIME, "Starting time")
@@ -866,6 +926,7 @@ pub fn make_readonly_rules_body(rules: &Rules) -> JsResult<web_sys::Element> {
                 AtomicChess => panic!("Atomic chess disabled"),
                 FogOfWar => (FOG_OF_WAR_ON_ICON, fog_of_war_tooltip()?),
                 Koedem => (KOEDEM_ON_ICON, koedem_tooltip()?),
+                Dixie => (DIXIE_ON_ICON, dixie_tooltip()?),
             };
             Ok((icon, variant.to_human_readable(), Some(combine_elements(tooltip)?)))
         })
@@ -992,16 +1053,43 @@ fn new_match_rules_form_data() -> JsResult<web_sys::FormData> {
     web_sys::FormData::new_with_form(&node.dyn_into()?)
 }
 
+fn set_variant_button_disabled(name: &str, disabled: bool) -> JsResult<()> {
+    let buttons = web_document().query_selector_all(&format!("[data-variant-name='{name}']"))?;
+    for button in buttons {
+        let button = button.dyn_into::<web_sys::Element>()?;
+        if disabled {
+            button.set_attribute("disabled", "")?;
+        } else {
+            button.remove_attribute("disabled")?;
+        }
+        button.class_list().toggle_with_force("rule-variant-disabled", disabled)?;
+    }
+    Ok(())
+}
+
 pub fn update_new_match_rules_body() -> JsResult<()> {
     let variants = new_match_rules_variants()?;
     let duck_chess = variants.get(DUCK_CHESS).unwrap() == "on";
     let fog_of_war = variants.get(FOG_OF_WAR).unwrap() == "on";
     let koedem = variants.get(KOEDEM).unwrap() == "on";
+    let mut dixie = variants.get(DIXIE).unwrap() == "on";
     let atomic_chess = false;
-    // Should mirror `ChessRules::regicide`. Could've constructed `ChessRules` and called it
-    // directly, but doing so could fail due to unrelated problems, e.g. errors in "starting time"
-    // format.
-    let regicide = duck_chess || atomic_chess || fog_of_war || koedem;
+
+    // Dixie's checkmate-aware logic must never combine with Duck/Fog/Koedem's plain
+    // capture-only regicide. If a conflicting variant is (or becomes) active while Dixie
+    // is also on -- e.g. via a preset -- the other variant wins and Dixie is forced off.
+    let other_regicide = duck_chess || atomic_chess || fog_of_war || koedem;
+    if dixie && other_regicide {
+        activate_variant_button_value(DIXIE, "off")?;
+        dixie = false;
+    }
+
+    set_variant_button_disabled(DIXIE, other_regicide)?;
+    for name in [DUCK_CHESS, FOG_OF_WAR, KOEDEM] {
+        set_variant_button_disabled(name, dixie)?;
+    }
+
+    let regicide = other_regicide || dixie;
     for node in web_document().get_elements_by_class_name(REGICIDE_CLASS) {
         node.set_displayed(regicide)?;
     }
@@ -1044,6 +1132,11 @@ pub fn new_match_rules() -> JsResult<Rules> {
         "off" => false,
         "on" => true,
         s => return Err(format!("Invalid koedem option: {s}").into()),
+    };
+    let dixie = match variants.get(DIXIE).unwrap().as_str() {
+       "off" => false,
+       "on" => true,
+       s => return Err(format!("Invalid dixie option: {s}").into()),
     };
     let atomic_chess = false;
 
@@ -1089,6 +1182,7 @@ pub fn new_match_rules() -> JsResult<Rules> {
         time_control: TimeControl { starting_time },
         bughouse_rules: Some(BughouseRules {
             koedem,
+            dixie,
             promotion,
             pawn_drop_ranks,
             drop_aggression,
@@ -1169,6 +1263,7 @@ pub fn variant_icons(rules: &ChessRules) -> Vec<&'static str> {
             AtomicChess => panic!("Atomic chess disabled"),
             FogOfWar => FOG_OF_WAR_ON_ICON,
             Koedem => KOEDEM_ON_ICON,
+            Dixie => DIXIE_ON_ICON,
         })
         .collect()
 }

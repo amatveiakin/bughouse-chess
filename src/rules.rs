@@ -180,6 +180,7 @@ pub struct ChessRules {
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct BughouseRules {
     pub koedem: bool,
+    pub dixie: bool,
     pub promotion: Promotion,
     pub pawn_drop_ranks: PawnDropRanks, // TODO: Update when board shape changes
     pub drop_aggression: DropAggression,
@@ -200,6 +201,7 @@ pub enum ChessVariant {
     AtomicChess,
     FogOfWar,
     Koedem,
+    Dixie,
 }
 
 impl MatchRules {
@@ -212,6 +214,7 @@ impl ChessRules {
     pub fn from_preset(preset: RulesPreset) -> Self {
         let international_bughouse = BughouseRules {
             koedem: false,
+            dixie: false,
             promotion: Promotion::Upgrade,
             pawn_drop_ranks: PawnDropRanks::from_one_based(2, 7),
             drop_aggression: DropAggression::MateAllowed,
@@ -229,6 +232,7 @@ impl ChessRules {
                 starting_position: StartingPosition::FischerRandom,
                 bughouse_rules: Some(BughouseRules {
                     koedem: false,
+                    dixie: false,
                     promotion: Promotion::Steal,
                     pawn_drop_ranks: PawnDropRanks::from_one_based(2, 6),
                     drop_aggression: DropAggression::NoChessMate,
@@ -281,6 +285,12 @@ impl ChessRules {
         self.variants().into_iter().filter(|v| v.enables_regicide()).collect()
     }
 
+    // True iff Dixie is active and no other regicide-enabling variant is also active. If any of those are on too, they take
+    // priority and the game reverts to plain "no checks, no mates, win by capture" regicide.
+    pub fn dixie_active(&self) -> bool {
+        self.regicide_reason() == vec![ChessVariant::Dixie]
+    }
+
     // If false, use normal chess rules: players are not allowed to leave the king undefended,
     // the king cannot pass through a square attacked by an enemy piece when castling, the game
     // end with a mate.
@@ -320,6 +330,9 @@ impl ChessRules {
         if let Some(bughouse_rules) = &self.bughouse_rules {
             if bughouse_rules.koedem {
                 v.push(ChessVariant::Koedem);
+            }
+            if bughouse_rules.dixie {
+                v.push(ChessVariant::Dixie);
             }
         }
         v
@@ -426,7 +439,7 @@ impl ChessVariant {
         use ChessVariant::*;
         match self {
             Capablanca | Accolade | FischerRandom => false,
-            DuckChess | AtomicChess | FogOfWar | Koedem => true,
+            DuckChess | AtomicChess | FogOfWar | Koedem | Dixie => true,
         }
     }
 
@@ -441,6 +454,7 @@ impl ChessVariant {
             // confusing. If renaming, don't forget to update existing PGNs!
             ChessVariant::FogOfWar => "DarkChess",
             ChessVariant::Koedem => "Koedem",
+            ChessVariant::Dixie => "Dixie",
         }
     }
 
@@ -454,6 +468,7 @@ impl ChessVariant {
             "Atomic" => Some(ChessVariant::AtomicChess),
             "DarkChess" | "FogOfWar" => Some(ChessVariant::FogOfWar),
             "Koedem" => Some(ChessVariant::Koedem),
+            "Dixie" => Some(ChessVariant::Dixie),
             _ => None,
         }
     }
@@ -467,6 +482,7 @@ impl ChessVariant {
             ChessVariant::AtomicChess => "Atomic chess",
             ChessVariant::FogOfWar => "Fog of war",
             ChessVariant::Koedem => "Koedem",
+            ChessVariant::Dixie => "Dixie",
         }
     }
 }
